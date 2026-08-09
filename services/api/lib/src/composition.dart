@@ -13,18 +13,24 @@ import 'adapters/firebase_auth_gateway.dart';
 import 'adapters/logging_notification_gateway.dart';
 import 'adapters/memory_idempotency_store.dart';
 import 'application/hold_seats.dart';
+import 'adapters/ed25519_ticket_issuer.dart';
+import 'application/ports/booking_store.dart';
+import 'application/ports/ticket_issuer.dart';
 import 'application/ports/city_catalogue.dart';
 import 'application/ports/departure_catalogue.dart';
 import 'application/ports/notification_gateway.dart';
 import 'application/ports/seat_inventory.dart';
 import 'application/ports/user_directory.dart';
+import 'application/reserve_booking.dart';
 import 'application/search_departures.dart';
 import 'application/sign_in.dart';
 import 'infrastructure/db/database.dart';
+import 'infrastructure/memory/memory_booking_store.dart';
 import 'infrastructure/memory/memory_city_catalogue.dart';
 import 'infrastructure/memory/memory_identity.dart';
 import 'infrastructure/memory/memory_seat_inventory.dart';
 import 'infrastructure/postgres/postgres_departure_catalogue.dart';
+import 'infrastructure/postgres/postgres_booking_store.dart';
 import 'infrastructure/postgres/postgres_identity.dart';
 import 'infrastructure/postgres/postgres_idempotency_store.dart';
 import 'infrastructure/postgres/postgres_seat_inventory.dart';
@@ -47,6 +53,8 @@ final class Services {
     required this.holdSeats,
     required this.searchDepartures,
     required this.signIn,
+    required this.reserveBooking,
+    required this.bookings,
     required this.authGateway,
     required this.directory,
     required this.catalogue,
@@ -62,6 +70,8 @@ final class Services {
   final HoldSeats holdSeats;
   final SearchDepartures searchDepartures;
   final SignIn signIn;
+  final ReserveBooking reserveBooking;
+  final BookingStore bookings;
 
   /// Who the caller is. Firebase behind a real database, a deterministic fake
   /// otherwise — the same condition under which the inventory is a fake, so a
@@ -108,6 +118,12 @@ final class Services {
 
     final directory = PostgresUserDirectory(db);
 
+    // Tickets are signed with the KMS key in a real environment; the fixed
+    // development seed keeps a ticket signed by yesterday's run verifiable
+    // today (ADR-0020). Resolved once, at startup, because key material is
+    // not something to fetch per request.
+    final bookings = PostgresBookingStore(db, issuer: _ticketIssuer);
+
     return Services._(
       holdSeats: HoldSeats(inventory: inventory),
       searchDepartures: SearchDepartures(catalogue: catalogue),
@@ -120,6 +136,8 @@ final class Services {
         codeKey: _codeKey(env),
         clock: clock,
       ),
+      reserveBooking: ReserveBooking(bookings: bookings),
+      bookings: bookings,
       authGateway: FirebaseAuthGateway(
         config: FirebaseConfig.fromEnvironment(env),
         directory: directory,
@@ -164,6 +182,11 @@ final class Services {
 
     final catalogue = MemoryDepartureCatalogue(inventory, clock: clock);
     final directory = MemoryUserDirectory(clock: clock);
+    final memoryBookings = MemoryBookingStore(
+      inventory: inventory,
+      issuer: _ticketIssuer,
+      clock: clock,
+    );
 
     return Services._(
       holdSeats: HoldSeats(inventory: inventory),
@@ -180,6 +203,8 @@ final class Services {
         codeKey: _developmentCodeKey,
         clock: clock,
       ),
+      reserveBooking: ReserveBooking(bookings: memoryBookings),
+      bookings: memoryBookings,
       // A demo traveller, so a fresh clone can hold a seat without standing up
       // Firebase first — and a fake, so this token cannot reach a real
       // database even by accident.
@@ -289,6 +314,14 @@ final class Services {
   /// `BEL_I18N_DIR` because the working directory differs between `dart_frog
   /// dev`, `dart test` and a built binary, and a catalog that resolves in one
   /// of those and not the others is a feature that works until it is deployed.
+  /// Signs every ticket this process issues.
+  ///
+  /// A fixed development seed, so a ticket signed by yesterday's run still
+  /// verifies today (ADR-0020) — production keys are generated in and never
+  /// leave the KMS, and swapping this line is the whole change. Lazily
+  /// resolved because key generation is async and composition is not.
+  static final TicketIssuer _ticketIssuer = _LazyTicketIssuer();
+
   static final TranslationCatalog _catalog = CatalogLoader.fromDirectory(
     Platform.environment['BEL_I18N_DIR'] ?? _findI18nDirectory(),
   );
@@ -308,6 +341,37 @@ final class Services {
     }
     throw StateError(
       'translation catalog not found. Set BEL_I18N_DIR to the i18n directory.',
+    );
+  }
+}
+
+
+/// Defers key generation until the first ticket is issued.
+///
+/// `Ed25519TicketSigner.fromSeed` is async and `Services.resolve` is not —
+/// and making composition async would push a `Future` into every route's
+/// context read. The signer is created once and reused; concurrent first
+/// issues share one future rather than generating two keys.
+final class _LazyTicketIssuer implements TicketIssuer {
+  Future<Ed25519TicketIssuer>? _resolved;
+
+  @override
+  Future<List<SignedTicket>> issue({
+    required BookingRef bookingRef,
+    required String departureId,
+    required DateTime departsAt,
+    required String routeCode,
+    required String operatorCode,
+    required List<({String seatLabel, String passengerName})> seats,
+  }) async {
+    final issuer = await (_resolved ??= Ed25519TicketIssuer.development());
+    return issuer.issue(
+      bookingRef: bookingRef,
+      departureId: departureId,
+      departsAt: departsAt,
+      routeCode: routeCode,
+      operatorCode: operatorCode,
+      seats: seats,
     );
   }
 }

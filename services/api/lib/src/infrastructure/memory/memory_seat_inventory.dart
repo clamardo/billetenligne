@@ -231,6 +231,42 @@ final class MemorySeatInventory implements SeatInventory {
     );
   }
 
+  /// A read-only view of a hold, for the pieces that need to know what was
+  /// claimed without being able to change it.
+  ///
+  /// A record rather than the private class: exposing `_MemoryHold` would let
+  /// a caller mutate inventory state through a getter, and the Postgres
+  /// adapter offers no such thing — a fake that is more capable than the real
+  /// adapter is a fake that lets tests pass on code that cannot ship.
+  ({
+    String id,
+    String userId,
+    String departureId,
+    String operatorId,
+    List<String> seatLabels,
+    DateTime expiresAt,
+    String state,
+  })?
+  holdView(String holdId) {
+    final hold = _holds[holdId];
+    if (hold == null) return null;
+    return (
+      id: hold.id,
+      userId: hold.userId,
+      departureId: hold.departureId,
+      operatorId: hold.operatorId,
+      seatLabels: List.unmodifiable(hold.seatLabels),
+      expiresAt: hold.expiresAt,
+      state: hold.state,
+    );
+  }
+
+  /// The fare on one seat row. The fake's equivalent of the real adapter's
+  /// in-transaction price read, so both price from inventory rather than from
+  /// whatever the caller passed.
+  Money? fareFor(String departureId, String seatLabel) =>
+      _departures[departureId]?.seats[seatLabel]?.fare;
+
   @override
   Future<bool> release({required String holdId, required String userId}) async {
     final hold = _holds[holdId];

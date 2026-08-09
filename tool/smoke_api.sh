@@ -339,6 +339,75 @@ check "the same code cannot be used twice" "401" \
 
 session_token="$(sed 's/.*"customToken":"\([^"]*\)".*/\1/' <<<"$session_body")"
 
+# ── Reserving, and paying at the agency ─────────────────────────────────────
+#
+# The four hours the whole cash-only pilot lives in: a traveller picks a seat
+# on their phone and walks to an agency with a code (`04-payments.md` §4.4).
+# Over a real socket, because the price is read from the seat row inside the
+# transaction that consumes the hold and nothing but a running server proves
+# that path.
+BOOK_AUTH="Authorization: Bearer $session_token"
+
+book_hold="$(curl -s -X POST "$BASE/public/v1/holds" \
+  -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: smoke-book-$$" \
+  -d "{\"departureId\":\"$DEP\",\"seatLabels\":[\"5A\"]}")"
+book_hold_id="$(sed 's/.*"id":"\([^"]*\)".*/\1/' <<<"$book_hold")"
+
+booking="$(curl -s -X POST "$BASE/public/v1/bookings" \
+  -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: smoke-booking-$$" \
+  -d "{\"holdId\":\"$book_hold_id\",\"passengers\":[{\"fullName\":\"Aline M.\",\"seatLabel\":\"5A\"}]}")"
+
+check "reserving returns a booking reference" "yes" \
+  "$(grep -q '"ref":"BEL-' <<<"$booking" && echo yes || echo no)"
+check "a reservation is unpaid" "yes" \
+  "$(grep -q '"state":"pending_payment"' <<<"$booking" && echo yes || echo no)"
+check "it carries a payment code and a deadline" "yes" \
+  "$(grep -q '"paymentCode"' <<<"$booking" && grep -q '"paymentDeadline"' \
+     <<<"$booking" && echo yes || echo no)"
+# The price is read from the seat row inside the transaction that consumes the
+# hold. No number in the request could have said otherwise, because none
+# travels — a client-supplied price is a client-supplied discount.
+check "the price comes from the seat, not the request" "yes" \
+  "$(grep -q '"total":{"minor":12300,"currency":"XAF"}' <<<"$booking" \
+     && echo yes || echo no)"
+# Nothing is ticketed before the money is taken. A ticket that exists before
+# payment is a ticket that can board before payment.
+check "an unpaid booking has no ticket" "yes" \
+  "$(grep -q '"tickets"' <<<"$booking" && echo no || echo yes)"
+
+check "reserving needs an account" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/bookings" \
+     -H 'Content-Type: application/json' -H 'Idempotency-Key: anon-book' \
+     -d '{"holdId":"x","passengers":[]}')"
+check "reserving without an idempotency key is 400" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/bookings" \
+     -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+     -d "{\"holdId\":\"$book_hold_id\",\"passengers\":[]}")"
+
+# Booking a seat that was not held is a free seat if it works.
+other_hold="$(curl -s -X POST "$BASE/public/v1/holds" \
+  -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: smoke-book2-$$" \
+  -d "{\"departureId\":\"$DEP\",\"seatLabels\":[\"5B\"]}")"
+other_hold_id="$(sed 's/.*"id":"\([^"]*\)".*/\1/' <<<"$other_hold")"
+check "booking a seat that was not held is refused" "410" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/bookings" \
+     -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+     -H "Idempotency-Key: smoke-wrongseat-$$" \
+     -d "{\"holdId\":\"$other_hold_id\",\"passengers\":[{\"fullName\":\"X\",\"seatLabel\":\"9Z\"}]}")"
+
+# A booking list carries a payment code and a passenger's name. A shared cache
+# holding either is a shared cache leaking both.
+check "the booking list is never shared-cached" "yes" \
+  "$(curl -sD - -o /dev/null -H "$BOOK_AUTH" "$BASE/public/v1/bookings" \
+     | tr -d '\r' | grep -qi '^cache-control: private, no-store' \
+     && echo yes || echo no)"
+check "a traveller sees their own booking" "yes" \
+  "$(curl -s -H "$BOOK_AUTH" "$BASE/public/v1/bookings" \
+     | grep -q '"state":"pending_payment"' && echo yes || echo no)"
+
 check "the profile needs an account" "401" "$(status "$BASE/public/v1/me")"
 me="$(curl -s -H "Authorization: Bearer $session_token" "$BASE/public/v1/me")"
 check "the profile is the address that signed in" "yes" \

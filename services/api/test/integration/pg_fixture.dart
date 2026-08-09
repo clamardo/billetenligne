@@ -105,6 +105,99 @@ final class PgFixture {
     return rows.first.toColumnMap()['id'] as String;
   }
 
+  /// An agency counter. Cash is reconciled against the drawer that took it,
+  /// so a till needs a station and a station needs a row.
+  Future<String> station(String cityCode, String name) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        INSERT INTO stations (operator_id, city_code, name)
+        VALUES (@operator, @city, @name)
+        RETURNING id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'city': TypedValue(Type.text, cityCode),
+        'name': TypedValue(Type.text, name),
+      },
+    );
+    return rows.first.toColumnMap()['id'] as String;
+  }
+
+  Future<int> ledgerRowsFor(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named(
+        'SELECT count(*)::int AS n FROM ledger_entries WHERE booking_id = @id',
+      ),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return rows.first.toColumnMap()['n'] as int;
+  }
+
+  Future<int> ticketCount(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT count(*)::int AS n FROM tickets WHERE booking_id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return rows.first.toColumnMap()['n'] as int;
+  }
+
+  /// Asked of the `ledger_txn_balances` view, never summed in Dart.
+  ///
+  /// A test that derives the balance itself agrees with the query by sharing
+  /// its bug — the same reason the timezone tests ask Postgres what today is.
+  Future<int> unbalancedTxnCount() async {
+    final rows = await _seed.execute('''
+      SELECT count(*)::int AS n FROM ledger_txn_balances
+       WHERE balance_minor <> 0
+    ''');
+    return rows.first.toColumnMap()['n'] as int;
+  }
+
+  /// Signed balances per account for one booking: debits positive, credits
+  /// negative, exactly as `account_balances` computes them.
+  Future<Map<String, int>> accountBalances(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT account,
+               SUM(CASE WHEN direction = 'debit'
+                        THEN amount_minor ELSE -amount_minor END)::int AS bal
+          FROM ledger_entries
+         WHERE booking_id = @id
+         GROUP BY account
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return {
+      for (final row in rows)
+        row.toColumnMap()['account'] as String: row.toColumnMap()['bal'] as int,
+    };
+  }
+
+  Future<Map<String, Object?>> bookingPaymentColumns(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT payment_method, paid_at, station_id, payment_code
+          FROM bookings WHERE id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return rows.first.toColumnMap();
+  }
+
+  Future<int> outboxCount(String eventType, String aggregateId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT count(*)::int AS n FROM outbox
+         WHERE event_type = @type AND aggregate_id = @id
+      '''),
+      parameters: {
+        'type': TypedValue(Type.text, eventType),
+        'id': TypedValue(Type.uuid, aggregateId),
+      },
+    );
+    return rows.first.toColumnMap()['n'] as int;
+  }
+
   /// A departure with [seatLabels] all available. Returns its id.
   Future<String> departure({
     required List<String> seatLabels,

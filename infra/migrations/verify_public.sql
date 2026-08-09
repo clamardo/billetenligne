@@ -149,7 +149,7 @@ DECLARE
     'operator_staff', 'platform_staff', 'kyb_documents',
     'ledger_entries', 'payment_events', 'audit_log',
     'refunds', 'refund_policies', 'payment_intents',
-    'vehicles', 'departure_patterns', 'stations', 'redemptions'
+    'vehicles', 'departure_patterns', 'redemptions'
   ];
 BEGIN
   FOREACH t IN ARRAY forbidden LOOP
@@ -165,7 +165,23 @@ BEGIN
     RAISE EXCEPTION 'FAIL: the public role can reach %', reachable;
   END IF;
 
-  RAISE NOTICE 'OK  the public role cannot reach % restricted tables',
+  -- `stations` left this list in 0008, and the reason is worth stating
+  -- because it is the first time anything has: reserve-then-pay requires
+  -- telling a traveller WHICH agency to walk into, and a list of addresses is
+  -- exactly what the table holds. It was on the list originally by grouping
+  -- rather than by analysis — unlike `vehicles`, which stayed off because it
+  -- carries registration plates and `status = 'blocked_compliance'`, and
+  -- unlike `operator_staff`, which is a list of people.
+  --
+  -- SELECT only. A traveller can read where an agency is and cannot write
+  -- anything about it.
+  IF has_table_privilege('bel_public', 'stations', 'INSERT')
+  OR has_table_privilege('bel_public', 'stations', 'UPDATE')
+  OR has_table_privilege('bel_public', 'stations', 'DELETE') THEN
+    RAISE EXCEPTION 'FAIL: the public role can write to stations';
+  END IF;
+
+  RAISE NOTICE 'OK  the public role cannot reach % restricted tables, and may only read stations',
     cardinality(forbidden);
 END
 $$;

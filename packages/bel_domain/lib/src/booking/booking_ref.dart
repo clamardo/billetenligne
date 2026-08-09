@@ -88,3 +88,63 @@ final class BookingRef {
   @override
   String toString() => display;
 }
+
+/// The code a traveller reads to a vendor to pay for a reservation.
+///
+/// Same alphabet as [BookingRef] and for the same reasons — read aloud over a
+/// bad line, typed by an agent — but **shorter and separate**, and the
+/// separation is the point:
+///
+///   * a booking reference is an **identifier**. It appears on manifests, in
+///     support conversations and on paper, it never expires, and knowing one
+///     grants nothing.
+///   * a payment code is a **bearer**. Whoever holds it can pay for and
+///     collect the booking, so it expires with the reservation and is erased
+///     the moment the money is taken.
+///
+/// Five characters is ~33 million values. Small on purpose: it is spoken
+/// aloud, it lives for four hours, and it is unique only among *live*
+/// reservations — which is what migration 0008's partial index enforces.
+final class PaymentCode {
+  const PaymentCode._(this.value);
+
+  final String value;
+
+  static const length = 5;
+
+  factory PaymentCode.generate(int Function(int max) nextInt) {
+    final buffer = StringBuffer();
+    for (var i = 0; i < length; i++) {
+      buffer.write(BookingRef._alphabet[nextInt(BookingRef._alphabet.length)]);
+    }
+    return PaymentCode._(buffer.toString());
+  }
+
+  /// Normalised the same way a booking reference is: lowercase accepted,
+  /// spaces and hyphens ignored, and the four confusable characters folded.
+  /// A vendor typing what a traveller said must not fail on an O.
+  static Result<PaymentCode, InvalidBookingRef> parse(String input) {
+    var s = input.toUpperCase().trim().replaceAll(RegExp(r'[\s\-]'), '');
+    s = s
+        .replaceAll('O', '0')
+        .replaceAll('I', '1')
+        .replaceAll('L', '1')
+        .replaceAll('U', 'V');
+
+    if (s.length != length) return const Err(InvalidBookingRef('length'));
+    for (final ch in s.split('')) {
+      if (!BookingRef._alphabet.contains(ch)) {
+        return const Err(InvalidBookingRef('charset'));
+      }
+    }
+    return Ok(PaymentCode._(s));
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is PaymentCode && other.value == value;
+  @override
+  int get hashCode => value.hashCode;
+  @override
+  String toString() => value;
+}

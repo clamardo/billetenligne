@@ -143,6 +143,10 @@ final class BookingDto {
     this.tickets = const [],
     this.involuntaryChange = false,
     this.refundPolicySummaryKey,
+    this.fare,
+    this.serviceFee,
+    this.paymentCode,
+    this.paymentDeadline,
   });
 
   final String id;
@@ -169,6 +173,30 @@ final class BookingDto {
 
   final String? refundPolicySummaryKey;
 
+  /// The itemised halves of [total]. A receipt read aloud at a counter has to
+  /// be checkable, and a single number is not.
+  ///
+  /// Nullable because a booking summarised in a history list does not need
+  /// them, and the wire rule is that absent and null mean the same thing.
+  final Money? fare;
+  final Money? serviceFee;
+
+  /// What the traveller reads to the vendor to pay for a reservation
+  /// (`04-payments.md` §4.4).
+  ///
+  /// **Present only while unpaid.** It is a bearer — whoever holds it can pay
+  /// for and collect this booking — so it is erased the moment the money is
+  /// taken, unlike [ref], which is an identifier that never expires and
+  /// grants nothing.
+  final String? paymentCode;
+
+  /// When the seats go back on sale if nobody pays. Server-decided: three API
+  /// instances with three slightly different clocks must not disagree about
+  /// whether a reservation is still payable.
+  final DateTime? paymentDeadline;
+
+  bool get isPaid => state == 'confirmed';
+
   Map<String, Object?> toJson() => Wire.compact({
     'id': id,
     'ref': ref,
@@ -185,6 +213,11 @@ final class BookingDto {
     'tickets': tickets.isEmpty ? null : [for (final t in tickets) t.toJson()],
     'involuntaryChange': involuntaryChange,
     'refundPolicySummaryKey': refundPolicySummaryKey,
+    'fare': fare == null ? null : Wire.money(fare!),
+    'serviceFee': serviceFee == null ? null : Wire.money(serviceFee!),
+    'paymentCode': paymentCode,
+    'paymentDeadline':
+        paymentDeadline == null ? null : Wire.instant(paymentDeadline!),
   });
 
   factory BookingDto.fromJson(Map<String, Object?> json) => BookingDto(
@@ -214,6 +247,17 @@ final class BookingDto {
     ),
     involuntaryChange: json['involuntaryChange'] as bool? ?? false,
     refundPolicySummaryKey: json['refundPolicySummaryKey'] as String?,
+    fare: json['fare'] == null
+        ? null
+        : Wire.readMoney(json['fare'], field: 'fare'),
+    serviceFee: json['serviceFee'] == null
+        ? null
+        : Wire.readMoney(json['serviceFee'], field: 'serviceFee'),
+    paymentCode: json['paymentCode'] as String?,
+    paymentDeadline: Wire.readInstantOrNull(
+      json['paymentDeadline'],
+      field: 'paymentDeadline',
+    ),
   );
 }
 
@@ -282,4 +326,35 @@ final class TicketDto {
     issuedAt: Wire.readInstant(json['issuedAt'], field: 'issuedAt'),
     voidedAt: Wire.readInstantOrNull(json['voidedAt'], field: 'voidedAt'),
   );
+}
+
+
+/// Turn a hold into an unpaid reservation.
+///
+/// The passenger list is the body; the *price* is not, and never is. A seat
+/// can carry its own fare — a VIP row is a price modifier on the layout — and
+/// a client-supplied number is a client-supplied discount.
+final class CreateBookingRequest {
+  const CreateBookingRequest({
+    required this.holdId,
+    required this.passengers,
+  });
+
+  final String holdId;
+  final List<PassengerDto> passengers;
+
+  Map<String, Object?> toJson() => {
+    'holdId': holdId,
+    'passengers': [for (final p in passengers) p.toJson()],
+  };
+
+  factory CreateBookingRequest.fromJson(Map<String, Object?> json) =>
+      CreateBookingRequest(
+        holdId: Wire.requireString(json['holdId'], 'holdId'),
+        passengers: Wire.readList(
+          json['passengers'],
+          PassengerDto.fromJson,
+          field: 'passengers',
+        ),
+      );
 }

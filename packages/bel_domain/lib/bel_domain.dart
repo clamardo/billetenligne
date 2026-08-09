@@ -10,6 +10,7 @@ export 'src/shared/result.dart';
 export 'src/shared/failure.dart';
 export 'src/shared/clock.dart';
 export 'src/money/currency.dart';
+export 'src/money/ledger.dart';
 export 'src/money/money.dart';
 export 'src/identity/email_address.dart';
 export 'src/identity/phone_number.dart';
