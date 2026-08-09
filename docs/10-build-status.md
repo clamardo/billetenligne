@@ -51,7 +51,9 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 ## Phase 2 and beyond
 
-Not started. See `09-roadmap.md`.
+Not started. `09-roadmap.md` has the remaining Phase 1 work in **dependency
+order** — identity first, because every hold today belongs to one demo user and
+nothing downstream of it can be built honestly until that is fixed.
 
 ---
 

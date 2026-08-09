@@ -96,7 +96,7 @@ Full reasoning: **[`docs/adr/`](docs/adr/)** — 23 records, each with the alter
 | [`06-fleet-and-routes.md`](docs/06-fleet-and-routes.md) | Vehicles, cabin-section seat designer, routes, schedules |
 | [`07-trip-sharing-tracking.md`](docs/07-trip-sharing-tracking.md) | Shareable trip links, live tracking tiers, maps |
 | [`08-disruption.md`](docs/08-disruption.md) | IRROPS — breakdown, re-accommodation, protection |
-| [`09-roadmap.md`](docs/09-roadmap.md) | Phased delivery and the five risks that decide this |
+| [`09-roadmap.md`](docs/09-roadmap.md) | Phased delivery, what remains in dependency order, and the risks that decide this |
 | [`10-build-status.md`](docs/10-build-status.md) | **What is built, what is half-built, and what is missing** — updated every push |
 
 ---
