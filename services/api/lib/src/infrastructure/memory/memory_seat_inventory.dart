@@ -1,5 +1,7 @@
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 
+import '../../application/ports/departure_catalogue.dart';
 import '../../application/ports/seat_inventory.dart';
 
 /// A departure's worth of seats, in memory.
@@ -9,6 +11,13 @@ final class MemoryDeparture {
     required this.operatorId,
     required this.departsAt,
     required Iterable<String> seatLabels,
+    this.operatorName = 'Ocean du Nord',
+    this.originCity = 'BZV',
+    this.destinationCity = 'PNR',
+    this.mode = 'bus',
+    this.accentHue = 'foret',
+    this.amenities = const ['wifi', 'usb', 'ac'],
+    this.duration = const Duration(hours: 8),
     this.fare = const Money.xaf(12000),
     this.status = 'scheduled',
     this.salesCloseAt,
@@ -16,11 +25,21 @@ final class MemoryDeparture {
 
   final String id;
   final String operatorId;
+  final String operatorName;
+  final String originCity;
+  final String destinationCity;
+  final String mode;
+  final String accentHue;
+  final List<String> amenities;
+  final Duration duration;
   final DateTime departsAt;
   final Money fare;
   final String status;
   final DateTime? salesCloseAt;
   final Map<String, _Seat> seats;
+
+  DateTime get arrivesAt => departsAt.add(duration);
+  int get capacity => seats.length;
 
   /// A 2+2 coach: rows of A, B, C, D.
   factory MemoryDeparture.coach({
@@ -30,12 +49,18 @@ final class MemoryDeparture {
     int rows = 13,
     Money fare = const Money.xaf(12000),
     String status = 'scheduled',
+    String operatorName = 'Ocean du Nord',
+    String originCity = 'BZV',
+    String destinationCity = 'PNR',
   }) => MemoryDeparture(
     id: id,
     operatorId: operatorId,
     departsAt: departsAt,
     fare: fare,
     status: status,
+    operatorName: operatorName,
+    originCity: originCity,
+    destinationCity: destinationCity,
     seatLabels: [
       for (var row = 1; row <= rows; row++)
         for (final col in const ['A', 'B', 'C', 'D']) '$row$col',
@@ -103,6 +128,19 @@ final class MemorySeatInventory implements SeatInventory {
   void add(MemoryDeparture departure) => _departures[departure.id] = departure;
 
   MemoryDeparture? departure(String id) => _departures[id];
+
+  Iterable<MemoryDeparture> get departures => _departures.values;
+
+  /// What the catalogue sees: a lapsed hold reads as available, exactly as it
+  /// does in SQL.
+  String seatStateAt(MemoryDeparture departure, String label, DateTime now) {
+    final seat = departure.seats[label]!;
+    final lapsed = seat.heldUntil != null && !seat.heldUntil!.isAfter(now);
+    return seat.state == 'held' && lapsed ? 'available' : seat.state;
+  }
+
+  Money seatFare(MemoryDeparture departure, String label) =>
+      departure.seats[label]!.fare;
 
   @override
   Future<ClaimOutcome> claim(SeatClaim claim) async {
@@ -233,4 +271,102 @@ final class MemorySeatInventory implements SeatInventory {
     }
     return swept;
   }
+}
+
+/// The catalogue, without a database.
+///
+/// Reads the same [MemorySeatInventory] the holds are written to, so a seat
+/// that has just been held disappears from the seat map here exactly as it
+/// would in SQL. A fake that answered from a separate store would be a fake
+/// that lies about the one thing this screen is for.
+final class MemoryDepartureCatalogue implements DepartureCatalogue {
+  const MemoryDepartureCatalogue(this._inventory, {required Clock clock})
+    : _clock = clock;
+
+  final MemorySeatInventory _inventory;
+  final Clock _clock;
+
+  @override
+  Future<List<DepartureRow>> search(DepartureQuery query) async {
+    final now = _clock.now();
+
+    final matches = _inventory.departures.where((d) {
+      if (d.originCity != query.originCity) return false;
+      if (d.destinationCity != query.destinationCity) return false;
+      if (d.status == 'cancelled') return false;
+      if (!d.departsAt.isAfter(now)) return false;
+      if (query.operatorId != null && d.operatorId != query.operatorId) {
+        return false;
+      }
+      if (query.mode != null && d.mode != query.mode) return false;
+      return _isSameLocalDay(d.departsAt, query.localDate);
+    }).toList()..sort((a, b) => a.departsAt.compareTo(b.departsAt));
+
+    return [
+      for (final d in matches)
+        DepartureRow(
+          id: d.id,
+          operatorId: d.operatorId,
+          operatorName: d.operatorName,
+          mode: d.mode,
+          originCity: d.originCity,
+          destinationCity: d.destinationCity,
+          departsAt: d.departsAt,
+          arrivesAt: d.arrivesAt,
+          fare: d.fare,
+          seatsAvailable: d.seats.keys
+              .where((l) => _inventory.seatStateAt(d, l, now) == 'available')
+              .length,
+          capacity: d.capacity,
+          seatSelectionEnabled: true,
+          operatorAccentHue: d.accentHue,
+          amenities: d.amenities,
+        ),
+    ];
+  }
+
+  @override
+  Future<SeatMapDto?> seatMap(String departureId) async {
+    final departure = _inventory.departure(departureId);
+    if (departure == null) return null;
+
+    final now = _clock.now();
+    final labels = departure.seats.keys.toList()..sort();
+
+    return SeatMapDto(
+      departureId: departureId,
+      mode: departure.mode,
+      layoutVersion: 1,
+      sections: [
+        CabinSectionDto(
+          code: 'STD',
+          labelKey: 'seat.class.standard',
+          rows: (labels.length / 4).ceil(),
+          abreast: '2+2',
+        ),
+      ],
+      seats: [
+        for (final label in labels)
+          SeatDto(
+            label: label,
+            sectionCode: 'STD',
+            fare: _inventory.seatFare(departure, label),
+            status: switch (_inventory.seatStateAt(departure, label, now)) {
+              'held' => SeatStatusDto.held,
+              'sold' => SeatStatusDto.sold,
+              'blocked' => SeatStatusDto.blocked,
+              _ => SeatStatusDto.available,
+            },
+          ),
+      ],
+    );
+  }
+
+  /// Compared in UTC, which is a simplification the Postgres adapter does not
+  /// make. Fine here: the fakes exist so a fresh clone answers something, and
+  /// the timezone question is tested where it is actually decided.
+  static bool _isSameLocalDay(DateTime instant, DateTime date) =>
+      instant.year == date.year &&
+      instant.month == date.month &&
+      instant.day == date.day;
 }

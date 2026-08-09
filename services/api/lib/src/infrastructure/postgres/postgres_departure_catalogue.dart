@@ -1,0 +1,224 @@
+import 'dart:convert';
+
+import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_domain/bel_domain.dart';
+import 'package:postgres/postgres.dart';
+
+import '../../application/ports/departure_catalogue.dart';
+import '../db/database.dart';
+
+/// The read side of the catalogue.
+///
+/// Runs under [DbScope.anonymous], because browsing needs no account and
+/// forcing sign-up before a traveller sees a price is the biggest avoidable
+/// drop-off in this funnel (ADR-0013). The public policies in migration 0005
+/// are what make an unauthenticated connection able to see anything at all.
+final class PostgresDepartureCatalogue implements DepartureCatalogue {
+  const PostgresDepartureCatalogue(
+    this._db, {
+    this.timeZone = 'Africa/Brazzaville',
+  });
+
+  final Database _db;
+
+  /// The market's timezone, passed to Postgres rather than hardcoded in SQL.
+  ///
+  /// "Departures on the 15th" is a local-day question, and a second country
+  /// will have a different answer to it. This is the one line that has to
+  /// change; nothing else in the query does.
+  final String timeZone;
+
+  @override
+  Future<List<DepartureRow>> search(DepartureQuery query) =>
+      _db.transaction(const DbScope.anonymous(), (tx) async {
+        // The availability count is computed in the same statement rather than
+        // in a second round trip: a search on 2G that needs two requests is a
+        // screen that visibly stalls, and the count is a rendering hint anyway
+        // — the hold transaction is what actually decides.
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT d.id,
+                   d.operator_id,
+                   COALESCE(o.trading_name, o.legal_name) AS operator_name,
+                   o.accent_hue,
+                   o.logo_asset,
+                   r.origin_city,
+                   r.destination_city,
+                   d.departs_at,
+                   d.arrives_at,
+                   d.fare_minor,
+                   d.currency,
+                   d.capacity,
+                   d.seat_selection_enabled,
+                   d.mode,
+                   d.amenities,
+                   COUNT(s.seat_label) FILTER (
+                     WHERE s.state = 'available'
+                        OR (s.state = 'held' AND s.held_until <= now())
+                   )::int             AS seats_available
+              FROM departures d
+              JOIN routes    r ON r.id = d.route_id
+              JOIN operators o ON o.id = d.operator_id
+              -- Deliberately no join to `vehicles`. The traveller needs the
+              -- mode and the amenities, both captured onto the departure by
+              -- migration 0006; the rest of that table is the operator's
+              -- business, and the public role has no grant on it at all.
+              LEFT JOIN seats s ON s.departure_id = d.id
+             WHERE r.origin_city      = @from
+               AND r.destination_city = @to
+               AND (d.departs_at AT TIME ZONE @tz)::date = @date::date
+               AND d.status <> 'cancelled'
+               -- A coach that has left is not a search result. The traveller
+               -- searching at 06:05 for the 06:00 needs the 09:00, not a row
+               -- they cannot buy.
+               AND d.departs_at > now()
+               AND (d.sales_close_at IS NULL OR d.sales_close_at > now())
+               AND (@operator::uuid IS NULL OR d.operator_id = @operator::uuid)
+               AND (@mode::text IS NULL OR d.mode = @mode::text)
+             GROUP BY d.id, o.trading_name, o.legal_name, o.accent_hue,
+                      o.logo_asset, r.origin_city, r.destination_city
+             ORDER BY d.departs_at
+             LIMIT 100
+          '''),
+          parameters: {
+            'from': TypedValue(Type.text, query.originCity),
+            'to': TypedValue(Type.text, query.destinationCity),
+            'tz': TypedValue(Type.text, timeZone),
+            'date': TypedValue(Type.text, _isoDate(query.localDate)),
+            'operator': TypedValue(Type.uuid, query.operatorId),
+            'mode': TypedValue(Type.text, query.mode),
+          },
+        );
+
+        return [for (final row in rows) _toRow(row.toColumnMap())];
+      });
+
+  DepartureRow _toRow(Map<String, dynamic> r) {
+    final currency =
+        Currency.byCode((r['currency'] as String).trim()) ?? Currency.xaf;
+
+    return DepartureRow(
+      id: r['id'] as String,
+      operatorId: r['operator_id'] as String,
+      operatorName: r['operator_name'] as String,
+      mode: (r['mode'] as String?) ?? 'bus',
+      originCity: r['origin_city'] as String,
+      destinationCity: r['destination_city'] as String,
+      departsAt: (r['departs_at'] as DateTime).toUtc(),
+      arrivesAt: (r['arrives_at'] as DateTime).toUtc(),
+      fare: Money(r['fare_minor'] as int, currency),
+      seatsAvailable: (r['seats_available'] as int?) ?? 0,
+      capacity: r['capacity'] as int,
+      seatSelectionEnabled: (r['seat_selection_enabled'] as bool?) ?? true,
+      operatorAccentHue: r['accent_hue'] as String?,
+      operatorLogoAsset: r['logo_asset'] as String?,
+      amenities: (r['amenities'] as List?)?.cast<String>() ?? const [],
+    );
+  }
+
+  @override
+  Future<SeatMapDto?> seatMap(String departureId) =>
+      _db.transaction(const DbScope.anonymous(), (tx) async {
+        final header = await tx.execute(
+          Sql.named('''
+            SELECT l.version, l.mode, l.sections, l.features
+              FROM departures d
+              JOIN seat_layouts l ON l.id = d.seat_layout_id
+             WHERE d.id = @id
+          '''),
+          parameters: {'id': TypedValue(Type.uuid, departureId)},
+        );
+        if (header.isEmpty) return null;
+
+        final h = header.first.toColumnMap();
+
+        final seats = await tx.execute(
+          Sql.named('''
+            SELECT seat_label,
+                   section_code,
+                   fare_minor,
+                   currency,
+                   -- A hold that has lapsed reads as available. The sweeper is
+                   -- a tidy-up, never the thing that decides — otherwise a
+                   -- stalled worker shows a coach as full when it is empty.
+                   CASE WHEN state = 'held' AND held_until <= now()
+                        THEN 'available' ELSE state::text END AS state
+              FROM seats
+             WHERE departure_id = @id
+             ORDER BY seat_label
+          '''),
+          parameters: {'id': TypedValue(Type.uuid, departureId)},
+        );
+
+        return SeatMapDto(
+          departureId: departureId,
+          mode: (h['mode'] as String?) ?? 'bus',
+          layoutVersion: (h['version'] as int?) ?? 1,
+          sections: _sections(h['sections']),
+          features: _features(h['features']),
+          seats: [for (final row in seats) _toSeat(row.toColumnMap())],
+        );
+      });
+
+  SeatDto _toSeat(Map<String, dynamic> r) {
+    final currency =
+        Currency.byCode((r['currency'] as String).trim()) ?? Currency.xaf;
+    return SeatDto(
+      label: r['seat_label'] as String,
+      sectionCode: r['section_code'] as String,
+      status: switch (r['state'] as String) {
+        'held' => SeatStatusDto.held,
+        'sold' => SeatStatusDto.sold,
+        'blocked' => SeatStatusDto.blocked,
+        _ => SeatStatusDto.available,
+      },
+      // Per seat, so a VIP row never surprises anyone at checkout.
+      fare: Money(r['fare_minor'] as int, currency),
+    );
+  }
+
+  /// The stored JSON shape lives here, in infrastructure, and nowhere else.
+  /// The domain's [CabinSection] has no `fromJson` on purpose — it would drag
+  /// a storage format into a package that is supposed to be pure.
+  static List<CabinSectionDto> _sections(Object? raw) {
+    final list = _asList(raw);
+    return [
+      for (final entry in list)
+        if (entry is Map)
+          CabinSectionDto(
+            code: entry['code'] as String? ?? 'STD',
+            labelKey: entry['labelKey'] as String? ?? 'seat.class.standard',
+            rows: (entry['rows'] as num?)?.toInt() ?? 0,
+            abreast: entry['abreast'] as String? ?? '2+2',
+            pitchCm: (entry['pitchCm'] as num?)?.toInt(),
+          ),
+    ];
+  }
+
+  static List<LayoutFeatureDto> _features(Object? raw) {
+    final list = _asList(raw);
+    return [
+      for (final entry in list)
+        if (entry is Map)
+          LayoutFeatureDto(
+            type: entry['type'] as String? ?? 'unknown',
+            row: (entry['row'] as num?)?.toInt() ?? 0,
+            col: (entry['col'] as num?)?.toInt() ?? 0,
+          ),
+    ];
+  }
+
+  /// JSONB arrives already decoded from the driver, but a text column or an
+  /// older row may still be a string. Both are accepted rather than one
+  /// crashing a seat map at boarding time.
+  static List<Object?> _asList(Object? raw) => switch (raw) {
+    final List l => l,
+    final String s => jsonDecode(s) is List ? jsonDecode(s) as List : const [],
+    _ => const [],
+  };
+
+  static String _isoDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+}

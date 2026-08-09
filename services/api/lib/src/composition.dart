@@ -4,9 +4,12 @@ import 'package:bel_domain/bel_domain.dart';
 
 import 'adapters/memory_idempotency_store.dart';
 import 'application/hold_seats.dart';
+import 'application/ports/departure_catalogue.dart';
 import 'application/ports/seat_inventory.dart';
+import 'application/search_departures.dart';
 import 'infrastructure/db/database.dart';
 import 'infrastructure/memory/memory_seat_inventory.dart';
+import 'infrastructure/postgres/postgres_departure_catalogue.dart';
 import 'infrastructure/postgres/postgres_idempotency_store.dart';
 import 'infrastructure/postgres/postgres_seat_inventory.dart';
 import 'middleware/idempotency.dart';
@@ -25,6 +28,8 @@ import 'middleware/idempotency.dart';
 final class Services {
   Services._({
     required this.holdSeats,
+    required this.searchDepartures,
+    required this.catalogue,
     required this.inventory,
     required this.idempotency,
     required this.clock,
@@ -33,6 +38,8 @@ final class Services {
   }) : _database = database;
 
   final HoldSeats holdSeats;
+  final SearchDepartures searchDepartures;
+  final DepartureCatalogue catalogue;
   final SeatInventory inventory;
   final Idempotency idempotency;
   final Clock clock;
@@ -55,9 +62,15 @@ final class Services {
 
     final db = Database.open(url);
     final inventory = PostgresSeatInventory(db);
+    final catalogue = PostgresDepartureCatalogue(
+      db,
+      timeZone: Market.current.timeZone,
+    );
 
     return Services._(
       holdSeats: HoldSeats(inventory: inventory),
+      searchDepartures: SearchDepartures(catalogue: catalogue),
+      catalogue: catalogue,
       inventory: inventory,
       // Scoped per request in the handler; this instance carries the anonymous
       // scope so a key written outside a signed-in request cannot masquerade
@@ -90,8 +103,12 @@ final class Services {
           ],
     );
 
+    final catalogue = MemoryDepartureCatalogue(inventory, clock: clock);
+
     return Services._(
       holdSeats: HoldSeats(inventory: inventory),
+      searchDepartures: SearchDepartures(catalogue: catalogue),
+      catalogue: catalogue,
       inventory: inventory,
       idempotency: Idempotency(MemoryIdempotencyStore()),
       clock: clock,

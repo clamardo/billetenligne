@@ -195,6 +195,60 @@ check "a seat not on the coach is 404" "404" "$(hold "smoke-ghost-$$" '["99Z"]')
 check "seven seats is 400" "400" \
   "$(hold "smoke-many-$$" '["2A","2B","2C","2D","3A","3B","3C"]')"
 
+# ── Browsing ────────────────────────────────────────────────────────────────
+#
+# Open to anyone, and that is the point: forcing sign-up before a traveller
+# sees a price is the largest avoidable drop-off in this funnel (ADR-0013).
+TOMORROW="$(date -u -d '+1 day' +%Y-%m-%d)"
+TRIPS="$BASE/public/v1/trips?from=BZV&to=PNR&date=$TOMORROW"
+
+check "search is open to anonymous" "200" "$(status "$TRIPS")"
+trips="$(curl -s "$TRIPS")"
+check "search returns the demo departure" "yes" \
+  "$(grep -q '"id":"dep-demo-0001"' <<<"$trips" && echo yes || echo no)"
+check "search prices include the service fee" "yes" \
+  "$(grep -q '"serviceFee":{"minor":300,"currency":"XAF"}' <<<"$trips" && echo yes || echo no)"
+check "search echoes the query back" "yes" \
+  "$(grep -q "\"date\":\"$TOMORROW\"" <<<"$trips" && echo yes || echo no)"
+# A stale list is an acceptable trade for a screen that appears on 2G; a stale
+# seat is not, which is why only one of these two is cacheable.
+check "search is cacheable" "yes" \
+  "$(curl -sD - -o /dev/null "$TRIPS" | tr -d '\r' \
+     | grep -qi '^cache-control: public' && echo yes || echo no)"
+
+check "same city both ends is 400" "400" \
+  "$(status "$BASE/public/v1/trips?from=BZV&to=BZV&date=$TOMORROW")"
+check "a missing date is 400" "400" \
+  "$(status "$BASE/public/v1/trips?from=BZV&to=PNR")"
+
+check "seat map is open to anonymous" "200" \
+  "$(status "$BASE/public/v1/departures/dep-demo-0001/seatmap")"
+seatmap="$(curl -s "$BASE/public/v1/departures/dep-demo-0001/seatmap")"
+check "seat map carries seats" "yes" \
+  "$(grep -q '"label":"1A"' <<<"$seatmap" && echo yes || echo no)"
+check "seat map prices each seat" "yes" \
+  "$(grep -q '"fare":{"minor":12000' <<<"$seatmap" && echo yes || echo no)"
+# The one screen where a stale answer sells a seat twice.
+check "seat map is not cached" "yes" \
+  "$(curl -sD - -o /dev/null "$BASE/public/v1/departures/dep-demo-0001/seatmap" \
+     | tr -d '\r' | grep -qi '^cache-control: no-store' && echo yes || echo no)"
+check "unknown departure seat map is 404" "404" \
+  "$(status "$BASE/public/v1/departures/nope/seatmap")"
+
+# ── Releasing ───────────────────────────────────────────────────────────────
+release_body="$(hold_body "smoke-release-$$" '["4A"]')"
+release_id="$(sed 's/.*"id":"\([^"]*\)".*/\1/' <<<"$release_body")"
+
+check "release needs an account" "401" \
+  "$(status -X DELETE "$BASE/public/v1/holds/$release_id")"
+check "releasing returns 204" "204" \
+  "$(status -X DELETE -H "$AUTH" "$BASE/public/v1/holds/$release_id")"
+# Releasing twice is releasing once. The second tap of "Retour" is not a
+# failure, but it is honestly reported as nothing-to-do.
+check "releasing twice is 404, not an error page" "404" \
+  "$(status -X DELETE -H "$AUTH" "$BASE/public/v1/holds/$release_id")"
+check "the seat is back on sale" "201" "$(hold "smoke-again-$$" '["4A"]')"
+
 check "unknown route is 404" "404" "$(status "$BASE/public/v1/nope")"
 
 echo

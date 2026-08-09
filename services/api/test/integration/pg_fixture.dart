@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:bel_api/src/application/ports/seat_inventory.dart';
 import 'package:postgres/postgres.dart';
 
 /// The world a booking test needs, seeded through the front door.
@@ -18,6 +19,10 @@ final class PgFixture {
   static const operatorId = '11111111-1111-1111-1111-111111111111';
   static const routeId = 'aaaaaaaa-0000-0000-0000-000000000001';
   static const layoutId = 'bbbbbbbb-0000-0000-0000-000000000001';
+
+  /// The market's timezone. Every "which day is this?" question in these tests
+  /// is asked in it, because that is the question a traveller asks.
+  static const timeZone = 'Africa/Brazzaville';
 
   /// The URL the application connects on: `bel_api`, which is NOINHERIT and
   /// therefore has no privileges until a transaction declares its surface.
@@ -138,7 +143,15 @@ final class PgFixture {
     );
 
     final departureId = created.first.toColumnMap()['id'] as String;
+    await _insertSeats(departureId, seatLabels, fareMinor);
+    return departureId;
+  }
 
+  Future<void> _insertSeats(
+    String departureId,
+    List<String> seatLabels,
+    int fareMinor,
+  ) async {
     for (final label in seatLabels) {
       await _seed.execute(
         Sql.named('''
@@ -154,8 +167,6 @@ final class PgFixture {
         },
       );
     }
-
-    return departureId;
   }
 
   /// Reads seat states directly, bypassing the application. The test's own
@@ -209,6 +220,87 @@ final class PgFixture {
       parameters: {'id': TypedValue(Type.uuid, holdId)},
     );
   }
+
+  /// The market-local calendar date [offset] from now, as Postgres computes
+  /// it.
+  ///
+  /// Asked of the database rather than derived in Dart, deliberately. Deriving
+  /// it here would mean the test and the query agree because they share a bug,
+  /// which is the classic way a timezone test passes while the feature is
+  /// broken.
+  Future<DateTime> localDateIn(Duration offset) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT ((now() + make_interval(secs => @offset))
+                  AT TIME ZONE @tz)::date AS d
+      '''),
+      parameters: {
+        'offset': TypedValue(Type.double, offset.inSeconds.toDouble()),
+        'tz': TypedValue(Type.text, timeZone),
+      },
+    );
+    return rows.first.toColumnMap()['d'] as DateTime;
+  }
+
+  Future<DateTime> localDateAheadOfToday(int days) =>
+      localDateIn(Duration(days: days));
+
+  /// A departure at a specific *local* hour, [daysAhead] from today.
+  ///
+  /// This is the fixture the timezone tests need: "the 06:00 from Brazzaville
+  /// on Thursday" is a local statement, and building it from a UTC instant
+  /// would ask the wrong question.
+  Future<String> departureAtLocalTime({
+    required List<String> seatLabels,
+    required int daysAhead,
+    required int localHour,
+    int fareMinor = 12000,
+  }) async {
+    final created = await _seed.execute(
+      Sql.named('''
+        INSERT INTO departures
+          (operator_id, route_id, seat_layout_id, departs_at, arrives_at,
+           capacity, fare_minor, currency)
+        VALUES
+          (@operator, @route, @layout,
+           ((((now() AT TIME ZONE @tz)::date + make_interval(days => @days))
+             + make_interval(hours => @hour)) AT TIME ZONE @tz),
+           ((((now() AT TIME ZONE @tz)::date + make_interval(days => @days))
+             + make_interval(hours => @hour)) AT TIME ZONE @tz)
+             + INTERVAL '8 hours',
+           @capacity, @fare, 'XAF')
+        RETURNING id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'route': TypedValue(Type.uuid, routeId),
+        'layout': TypedValue(Type.uuid, layoutId),
+        'tz': TypedValue(Type.text, timeZone),
+        'days': TypedValue(Type.integer, daysAhead),
+        'hour': TypedValue(Type.integer, localHour),
+        'capacity': TypedValue(Type.integer, seatLabels.length),
+        'fare': TypedValue(Type.bigInteger, fareMinor),
+      },
+    );
+
+    final departureId = created.first.toColumnMap()['id'] as String;
+    await _insertSeats(departureId, seatLabels, fareMinor);
+    return departureId;
+  }
+
+  /// A claim, so catalogue tests read as catalogue tests rather than as holds.
+  SeatClaim claimFor({
+    required String departureId,
+    required String userId,
+    required List<String> seatLabels,
+    required String key,
+  }) => SeatClaim(
+    departureId: departureId,
+    seatLabels: seatLabels,
+    userId: userId,
+    ttl: const Duration(minutes: 15),
+    idempotencyKey: key,
+  );
 
   Future<void> close() => _seed.close();
 }

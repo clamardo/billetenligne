@@ -10,11 +10,11 @@ The wedge is not the traveller — it is the operator's cash leakage. **Travelle
 
 ## Status
 
-**Phase 0 is complete. Phase 1 has begun with the piece everything else sits
-on: holding a seat.** A traveller's request now goes route → use case →
-Postgres, and fifty concurrent claims for the last seat produce exactly one
-ticket — proven against the lock manager that will actually arbitrate it, not
-against a fake.
+**Phase 0 is complete. Phase 1 has the whole browse-and-hold path working
+against a real database.** Search, seat map, hold and release all run route →
+use case → Postgres, open to anyone until the moment a seat is claimed. Fifty
+concurrent claims for the last seat produce exactly one ticket — proven
+against the lock manager that will actually arbitrate it, not against a fake.
 
 Per-feature detail, including what is deliberately unfinished:
 **[`docs/10-build-status.md`](docs/10-build-status.md)** — updated on every push.
@@ -27,20 +27,20 @@ Per-feature detail, including what is deliberately unfinished:
 | `bel_localization` — FR/EN YAML catalog | ✅ 15 tests |
 | `bel_contracts` — wire format, error codes | ✅ 29 tests |
 | `bel_design` — Kilo tokens + contrast gates | ✅ 38 tests |
-| `services/api` — Dart Frog, middleware, **holds** | ✅ 57 tests + 27 smoke checks |
+| `services/api` — Dart Frog, middleware, **search, seat map, holds** | ✅ 71 tests + 43 smoke checks |
 | Database — schema, RLS, ledger, public sales boundary | ✅ 23 guarantees verified |
-| **Seat inventory under concurrency** | ✅ 14 integration tests on real Postgres |
+| **Inventory and catalogue on real Postgres** | ✅ 28 integration tests |
 | Local dev stack | ✅ `infra/dev` |
 | CI — analyze, format, layers, tests, schema, integration | ✅ `.github/workflows/ci.yml` |
 | Traveller app, operator console, admin back office | ⬜ Next |
 
 ```bash
-dart test packages services/api                 # 241 tests, ~3 s, no containers
+dart test packages services/api                 # 255 tests, ~3 s, no containers
 cd packages/bel_design && flutter test          # Kilo contrast gates
 dart run tool/check_layers.dart                 # onion dependency rule
 ./infra/migrations/check.sh                     # 23 schema guarantees (needs Docker)
 ./tool/integration.sh                           # the seat race, on real Postgres
-./tool/smoke_api.sh                             # 27 checks over a real socket
+./tool/smoke_api.sh                             # 43 checks over a real socket
 ```
 
 ---
@@ -156,7 +156,7 @@ Five layers, each answering a different question ([ADR-0021](docs/adr/0021-test-
 | Domain unit | Is the rule right? | ~2000 | < 5 s |
 | Widget / golden | Does the screen render, in fr + en, at 3 text scales? | ~400 | < 60 s |
 | **Integration** | Does this component talk to Postgres / Firebase / the PSP correctly? | ~250 | ~2 min |
-| ↳ *running today* | Does one seat go to exactly one of fifty simultaneous buyers? | 14 | ~3 s |
+| ↳ *running today* | Does one seat go to exactly one of fifty simultaneous buyers? | 28 | ~4 s |
 | **End-to-end** | Can a real person complete a real journey? | ~40 | ~15 min |
 | Manual smoke | Real SIM, real money, real sunlight | — | pre-release |
 
