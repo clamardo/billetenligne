@@ -3,6 +3,9 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:flutter/material.dart';
 
 import '../../application/boarding_session.dart';
+import '../../infrastructure/demo_data.dart';
+import '../widgets/camera_view.dart';
+import '../widgets/ticket_simulator.dart';
 import '../widgets/verdict_screen.dart';
 import 'manual_boarding_page.dart';
 
@@ -12,9 +15,12 @@ import 'manual_boarding_page.dart';
 /// no settings drawer — a conductor boarding sixty people in ten minutes has
 /// no attention to spare for an information architecture.
 class BoardingPage extends StatefulWidget {
-  const BoardingPage({required this.session, super.key});
+  const BoardingPage({required this.session, this.demo, super.key});
 
   final BoardingSession session;
+
+  /// Present only in debug builds, to drive the simulator sheet.
+  final DemoDeparture? demo;
 
   @override
   State<BoardingPage> createState() => _BoardingPageState();
@@ -23,10 +29,9 @@ class BoardingPage extends StatefulWidget {
 class _BoardingPageState extends State<BoardingPage> {
   VerificationOutcome? _verdict;
 
-  /// The camera plugin is deliberately not wired here yet: this build proves
-  /// the verification path, the verdicts and the manifest arithmetic, which is
-  /// where the risk actually lives. Feeding a decoded string in from the
-  /// camera is the small part.
+  /// One entry point for both the camera and the simulator, so a simulated
+  /// scan cannot take a different code path from a real one — the moment it
+  /// does, the simulator stops proving anything.
   void _handleScan(String raw, {String? code}) {
     final outcome = widget.session.scan(raw, presentedCode: code);
     setState(() => _verdict = outcome);
@@ -63,7 +68,18 @@ class _BoardingPageState extends State<BoardingPage> {
         child: Column(
           children: [
             _DepartureHeader(session: widget.session),
-            Expanded(child: _CameraArea(onScan: _handleScan)),
+            Expanded(
+              child: Stack(
+                children: [
+                  CameraView(onDetect: (raw) => _handleScan(raw)),
+                  if (TicketSimulator.isAvailable && widget.demo != null)
+                    TicketSimulator(
+                      demo: widget.demo!,
+                      onScan: (raw, code) => _handleScan(raw, code: code),
+                    ),
+                ],
+              ),
+            ),
             _BoardingFooter(session: widget.session, onManual: _openManual),
           ],
         ),
@@ -170,46 +186,6 @@ class _StalenessChip extends StatelessWidget {
           style: kilo.text.bodySm.copyWith(color: color),
         ),
       ],
-    );
-  }
-}
-
-class _CameraArea extends StatelessWidget {
-  const _CameraArea({required this.onScan});
-
-  final void Function(String raw, {String? code}) onScan;
-
-  @override
-  Widget build(BuildContext context) {
-    final kilo = context.kilo;
-
-    return Container(
-      color: kilo.color.surfaceSunken,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 240,
-              height: 240,
-              decoration: BoxDecoration(
-                border: Border.all(color: kilo.color.brandPrimary, width: 3),
-                borderRadius: kilo.radius.cardBorder,
-              ),
-              child: Icon(
-                Icons.qr_code_scanner,
-                size: 96,
-                color: kilo.color.brandPrimary,
-              ),
-            ),
-            SizedBox(height: kilo.space.s5),
-            Text(
-              'Présentez le billet',
-              style: kilo.text.h3.copyWith(color: kilo.color.contentSecondary),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

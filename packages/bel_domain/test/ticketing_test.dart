@@ -195,6 +195,38 @@ void main() {
       }
     });
 
+    test('a name containing a dot still parses', () {
+      // "Aline M." is a perfectly ordinary passenger name, and it broke the
+      // naive split-on-every-dot version immediately. Parsing from the right
+      // is what makes it safe.
+      final encoded = issue(payloadFor(passenger: 'Aline M.'));
+      final decoded = TicketPayload.decode(encoded).valueOrNull!;
+      expect(decoded.payload.passengerName, 'Aline M.');
+      expect(decoded.freshnessCode, isNull);
+    });
+
+    test('a live ticket carries its freshness code inside the QR', () {
+      // A camera reads one thing. Printing six digits beside the QR and asking
+      // a conductor to type them would add ten seconds per passenger.
+      final p = payloadFor();
+      final encoded = p.encode(
+        signatures.sign(message: p.signingBytes(), keyId: 1),
+        freshnessCode: '418207',
+      );
+      final decoded = TicketPayload.decode(encoded).valueOrNull!;
+      expect(decoded.freshnessCode, '418207');
+      expect(decoded.payload.seatLabel, '14A');
+    });
+
+    test('a malformed freshness code is rejected, not ignored', () {
+      final p = payloadFor();
+      final base = p.encode(
+        signatures.sign(message: p.signingBytes(), keyId: 1),
+      );
+      expect(TicketPayload.decode('$base.12345').isErr, isTrue);
+      expect(TicketPayload.decode('$base.abcdef').isErr, isTrue);
+    });
+
     test('refuses a future format version', () {
       // A scanner that misreads a format it does not know is worse than one
       // that says "update me".
@@ -291,6 +323,47 @@ void main() {
       // The usual cause is a double-tap by the conductor, not fraud — so the
       // screen shows when, and lets them judge.
       expect(second.firstScannedAt, firstAt);
+    });
+
+    test('a printed ticket boards without a live code', () {
+      // Paper has no rotating code. Its defence against replay is the
+      // redemption log, which makes it single-use — refusing it outright
+      // would strand every passenger who printed their ticket.
+      final outcome = verifier.verify(
+        scanned: issue(payloadFor()),
+        manifest: manifestWith(),
+        now: atGate,
+      );
+      expect(outcome.result, VerificationResult.valid);
+      expect(outcome.detail, 'printed');
+    });
+
+    test('a live QR carries its own code, so the conductor types nothing', () {
+      final p = payloadFor();
+      final scanned = p.encode(
+        signatures.sign(message: p.signingBytes(), keyId: 1),
+        freshnessCode: codeNow(),
+      );
+      final outcome = verifier.verify(
+        scanned: scanned,
+        manifest: manifestWith(),
+        now: atGate,
+      );
+      expect(outcome.result, VerificationResult.valid);
+    });
+
+    test('a screenshot of a live QR carries a frozen code', () {
+      final p = payloadFor();
+      final scanned = p.encode(
+        signatures.sign(message: p.signingBytes(), keyId: 1),
+        freshnessCode: codeNow(atGate.subtract(const Duration(minutes: 10))),
+      );
+      final outcome = verifier.verify(
+        scanned: scanned,
+        manifest: manifestWith(),
+        now: atGate,
+      );
+      expect(outcome.result, VerificationResult.staleCode);
     });
 
     test('CODE PÉRIMÉ — a screenshot scans but its code is frozen', () {

@@ -82,26 +82,67 @@ final class TicketPayload {
     '$keyId',
   ].join('|');
 
-  /// The string that goes into the QR: canonical payload, a dot, then the
-  /// signature. Chosen over CBOR because it is trivially inspectable in a
-  /// support conversation and already comfortably inside the size budget —
-  /// `version` is what buys us the option to change it later.
-  String encode(List<int> signature) =>
-      '${_canonical()}.${base64Url.encode(signature)}';
+  /// The string that goes into the QR: canonical payload, a dot, the
+  /// signature, and — for a live ticket — a dot and the freshness code.
+  ///
+  /// Chosen over CBOR because it is trivially inspectable in a support
+  /// conversation and already comfortably inside the size budget; `version` is
+  /// what buys us the option to change it later.
+  ///
+  /// **The freshness code travels inside the QR, not beside it.** A camera
+  /// reads one thing. Printing the six digits next to the QR and expecting a
+  /// conductor to type them would put a ten-second pause into every boarding,
+  /// which on a sixty-seat coach is ten minutes nobody has. So the traveller's
+  /// app regenerates the QR every 30 seconds and the code rides along — which
+  /// is also what makes a screenshot detectably stale.
+  String encode(List<int> signature, {String? freshnessCode}) {
+    final base = '${_canonical()}.${base64Url.encode(signature)}';
+    return freshnessCode == null ? base : '$base.$freshnessCode';
+  }
 
-  static Result<({TicketPayload payload, List<int> signature}), MalformedTicket>
+  static Result<
+    ({TicketPayload payload, List<int> signature, String? freshnessCode}),
+    MalformedTicket
+  >
   decode(String raw) {
-    final dot = raw.lastIndexOf('.');
-    if (dot <= 0 || dot == raw.length - 1) {
+    // Two shapes: `<canonical>.<signature>` from a printed ticket, and
+    // `<canonical>.<signature>.<code>` from a live screen.
+    //
+    // Parsed from the RIGHT, never by splitting on every dot — the canonical
+    // body legitimately contains them. "Aline M." is a perfectly ordinary
+    // passenger name and it broke the naive version immediately.
+    //
+    // Right-parsing is unambiguous because the two trailing segments cannot
+    // look like anything else: a freshness code is exactly six digits, and a
+    // base64url Ed25519 signature is 86 characters with no dots.
+    var rest = raw;
+    String? freshnessCode;
+
+    final lastDot = rest.lastIndexOf('.');
+    if (lastDot <= 0) {
       return const Err(MalformedTicket('missing signature separator'));
     }
 
-    final body = raw.substring(0, dot);
+    final tail = rest.substring(lastDot + 1);
+    if (tail.length == 6 && int.tryParse(tail) != null) {
+      freshnessCode = tail;
+      rest = rest.substring(0, lastDot);
+    }
+
+    final sigDot = rest.lastIndexOf('.');
+    if (sigDot <= 0 || sigDot == rest.length - 1) {
+      return const Err(MalformedTicket('missing signature separator'));
+    }
+
+    final body = rest.substring(0, sigDot);
     final List<int> signature;
     try {
-      signature = base64Url.decode(raw.substring(dot + 1));
+      signature = base64Url.decode(rest.substring(sigDot + 1));
     } on FormatException {
       return const Err(MalformedTicket('signature is not base64url'));
+    }
+    if (signature.isEmpty) {
+      return const Err(MalformedTicket('empty signature'));
     }
 
     final parts = body.split('|');
@@ -139,6 +180,7 @@ final class TicketPayload {
         keyId: keyId,
       ),
       signature: signature,
+      freshnessCode: freshnessCode,
     ));
   }
 

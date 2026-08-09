@@ -1,0 +1,39 @@
+<svg viewBox="0 0 320 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="BilletEnLigne">
+  <!--
+    Horizontal lockup: mark + wordmark.
+
+    The word is set as paths rather than <text> on purpose — an SVG that
+    depends on a font is an SVG that renders differently on the one machine
+    that matters. For live UI, use the mark alongside real Inter text (see
+    brand/README.md); this file is for places that take a single asset:
+    posters, PDFs, partner decks, favicons.
+
+    "Billet" in ink, "EnLigne" in Forêt: the split says what the product does
+    without a tagline.
+  -->
+  <g transform="translate(0,0)">
+    <defs>
+      <mask id="wm-notch">
+        <rect width="64" height="64" fill="#fff"/>
+        <circle cx="12" cy="32" r="4.5" fill="#000"/>
+        <circle cx="52" cy="32" r="4.5" fill="#000"/>
+      </mask>
+    </defs>
+    <g mask="url(#wm-notch)">
+      <rect x="12" y="19" width="40" height="26" rx="5" fill="#0A6B4F"/>
+    </g>
+    <line x1="41" y1="22.5" x2="41" y2="41.5" stroke="#FCFAF7" stroke-width="1.6"
+          stroke-linecap="round" stroke-dasharray="1.6 2.6"/>
+    <g stroke="#FCFAF7" fill="#FCFAF7">
+      <line x1="19.5" y1="37.5" x2="33.5" y2="26.5" stroke-width="2.6" stroke-linecap="round"/>
+      <circle cx="19.5" cy="37.5" r="3"/>
+      <circle cx="33.5" cy="26.5" r="3"/>
+    </g>
+  </g>
+
+  <text x="72" y="41"
+        font-family="Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+        font-size="27" font-weight="700" letter-spacing="-0.9">
+    <tspan fill="#141A17">Billet</tspan><tspan fill="#0A6B4F">EnLigne</tspan>
+  </text>
+</svg>

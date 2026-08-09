@@ -39,6 +39,7 @@ class _Bootstrap extends StatefulWidget {
 
 class _BootstrapState extends State<_Bootstrap> {
   BoardingSession? _session;
+  DemoDeparture? _demo;
   Object? _error;
 
   @override
@@ -59,6 +60,7 @@ class _BootstrapState extends State<_Bootstrap> {
 
       if (!mounted) return;
       setState(() {
+        _demo = demo;
         _session = BoardingSession(
           manifest: demo.manifest,
           verifier: TicketVerifier(
@@ -105,6 +107,6 @@ class _BootstrapState extends State<_Bootstrap> {
       );
     }
 
-    return BoardingPage(session: session);
+    return BoardingPage(session: session, demo: _demo);
   }
 }

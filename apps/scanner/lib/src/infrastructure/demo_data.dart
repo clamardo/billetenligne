@@ -81,7 +81,17 @@ final class DemoDeparture {
         signature: signature,
         keyId: 1,
       );
-      tickets[key] = payload.encode(signature);
+      // The QR a traveller's screen would be showing right now: payload,
+      // signature, and the current freshness code. Their app regenerates it
+      // every 30 seconds.
+      tickets[key] = payload.encode(
+        signature,
+        freshnessCode: RotatingCode.current(
+          secret: secret,
+          now: DateTime.now().toUtc(),
+          mac: const HmacSha256Authenticator(),
+        ),
+      );
     }
 
     // A ticket for a different coach, so MAUVAIS DÉPART is demonstrable.

@@ -1,0 +1,38 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="BilletEnLigne">
+  <!--
+    The BilletEnLigne mark: a ticket stub with a journey inside it.
+
+    Two ideas, one shape. The notches and the perforation say "ticket" with no
+    text and in any language. The two nodes and the rising line say "a journey
+    from here to there" — which is also, literally, kilomètre.
+
+    Built from three primitives (rounded rect, circle, line) so it survives
+    every place it has to live: a 16px favicon, a 108dp Android adaptive icon,
+    an 80mm thermal ticket printed in one bit, and an agency poster.
+  -->
+  <defs>
+    <mask id="bel-notch">
+      <rect width="64" height="64" fill="#fff"/>
+      <!-- The notches bite in from the left and right edges. -->
+      <circle cx="12" cy="32" r="4.5" fill="#000"/>
+      <circle cx="52" cy="32" r="4.5" fill="#000"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#bel-notch)">
+    <rect x="12" y="19" width="40" height="26" rx="5" fill="currentColor"/>
+  </g>
+
+  <!-- Perforation: the tear line between ticket and stub. -->
+  <line x1="41" y1="22.5" x2="41" y2="41.5"
+        stroke="var(--bel-ground, #0A6B4F)" stroke-width="1.6"
+        stroke-linecap="round" stroke-dasharray="1.6 2.6"/>
+
+  <!-- The journey: origin, destination, and the road between them. -->
+  <g stroke="var(--bel-ground, #0A6B4F)" fill="var(--bel-ground, #0A6B4F)">
+    <line x1="19.5" y1="37.5" x2="33.5" y2="26.5"
+          stroke-width="2.6" stroke-linecap="round"/>
+    <circle cx="19.5" cy="37.5" r="3"/>
+    <circle cx="33.5" cy="26.5" r="3"/>
+  </g>
+</svg>

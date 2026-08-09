@@ -170,9 +170,13 @@ final class TicketVerifier {
   final MessageAuthenticator _mac;
   final RedemptionLog _log;
 
-  /// [presentedCode] is the six digits the conductor's device read from under
-  /// the QR. Null when scanning a printed ticket, which has no live code —
-  /// see [requireFreshCode].
+  /// [presentedCode] overrides the code carried inside the scanned QR. Normally
+  /// left null: a live ticket's QR regenerates every 30 seconds and carries its
+  /// own freshness code, because a camera reads one thing and a conductor
+  /// cannot be asked to type six digits per passenger.
+  ///
+  /// A **printed** ticket has no live code. It is not rejected — its defence
+  /// against replay is the redemption log, which makes it single-use.
   VerificationOutcome verify({
     required String scanned,
     required BoardingManifest manifest,
@@ -252,16 +256,20 @@ final class TicketVerifier {
     }
 
     // 6. Freshness — the screenshot check.
+    final code = presentedCode ?? data.freshnessCode;
     if (requireFreshCode) {
-      if (presentedCode == null) {
+      if (code == null) {
+        // A printed ticket. Signed, on the manifest, not yet redeemed — board
+        // them. Single use is enforced by the redemption log above, which is
+        // the right defence for paper.
         return VerificationOutcome(
-          result: VerificationResult.staleCode,
+          result: VerificationResult.valid,
           payload: payload,
-          detail: 'no code presented',
+          detail: 'printed',
         );
       }
       final fresh = RotatingCode.isFresh(
-        presented: presentedCode,
+        presented: code,
         secret: entry.rotatingSecret,
         now: now,
         mac: _mac,

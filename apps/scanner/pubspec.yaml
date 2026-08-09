@@ -17,6 +17,10 @@ dependencies:
   bel_design: ^0.1.0
   bel_domain: ^0.1.0
   bel_localization: ^0.1.0
+  # Camera + barcode decoding. Wraps MLKit on Android and Vision on iOS, both
+  # of which decode a QR far faster than anything we would write, and both of
+  # which run on-device with no network.
+  mobile_scanner: ^5.2.3
 
 dev_dependencies:
   flutter_test:
