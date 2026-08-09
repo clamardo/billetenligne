@@ -100,6 +100,39 @@ final class HoldReady extends BookingStep {
   final HoldDto hold;
 }
 
+/// Collecting the names that go on the tickets.
+///
+/// Asked here rather than at seat selection, deliberately: a traveller
+/// choosing a seat is browsing, and a form between them and the seat map is a
+/// form most of them abandon. By this step they have a seat held and a
+/// countdown running, which is the moment they are most willing to type.
+final class NamingPassengers extends BookingStep {
+  const NamingPassengers(this.departure, this.hold, {this.failure});
+  final DepartureSummaryDto departure;
+  final HoldDto hold;
+
+  /// A refusal from the last attempt — a lapsed hold, a missing name. Kept on
+  /// this step so the names they already typed survive it.
+  final ApiFailure? failure;
+}
+
+final class Reserving extends BookingStep {
+  const Reserving(this.departure, this.hold);
+  final DepartureSummaryDto departure;
+  final HoldDto hold;
+}
+
+/// Reserved, unpaid, with a code and a deadline.
+///
+/// The end of the app's part in a cash sale. What happens next happens at an
+/// agency counter, so this screen's whole job is to be readable across one:
+/// the code large, the deadline plain, and the amount exact.
+final class Reserved extends BookingStep {
+  const Reserved(this.departure, this.booking);
+  final DepartureSummaryDto departure;
+  final BookingDto booking;
+}
+
 /// Something went wrong, and we know exactly what.
 final class StepFailed extends BookingStep {
   const StepFailed(this.failure, {this.recoverable = true});
@@ -352,9 +385,49 @@ final class BookingFlow {
     _emit(const Idle());
   }
 
+  // ── Reserve ───────────────────────────────────────────────────────────────
+
+  /// Moves from a held seat to the form that names its passengers.
+  void namePassengers() {
+    final current = _step;
+    if (current is! HoldReady) return;
+    _emit(NamingPassengers(current.departure, current.hold));
+  }
+
+  /// Reserves the seats for the named passengers.
+  ///
+  /// Reuses the attempt key across retries, exactly as [holdSelection] does.
+  /// A duplicate tap here is worse than a duplicate hold: the second request
+  /// would meet an already-consumed hold and be refused, and a traveller shown
+  /// that refusal believes nothing worked when in fact everything did.
+  Future<void> reserve(List<PassengerDto> passengers) async {
+    final current = _step;
+    if (current is! NamingPassengers) return;
+
+    _attemptKey ??= IdempotencyKey.generate();
+    _emit(Reserving(current.departure, current.hold));
+
+    try {
+      final booking = await _gateway.reserve(
+        holdId: current.hold.id,
+        passengers: passengers,
+        idempotencyKey: _attemptKey!,
+      );
+      _attemptKey = null;
+      _emit(Reserved(current.departure, booking));
+    } on ApiFailure catch (failure) {
+      if (failure is ServerRefused) _attemptKey = null;
+      // Back to the form, not to an error screen: the names they typed are
+      // still right, and most of these failures are fixed by trying again.
+      _emit(
+        NamingPassengers(current.departure, current.hold, failure: failure),
+      );
+    }
+  }
+
   /// The hold ran out while the traveller was on the payment screen.
   void holdExpired() {
-    if (_step is! HoldReady) return;
+    if (_step is! HoldReady && _step is! NamingPassengers) return;
     _emit(
       const StepFailed(
         ServerRefused(410, ApiError(code: ErrorCode.holdExpired)),

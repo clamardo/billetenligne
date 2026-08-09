@@ -2,6 +2,8 @@
 # back office. No screen-specific strings here.
 common:
   actions:
+    copy: "Copy"
+    done: "Done"
     search: "Search"
     book: "Book"
     pay: "Pay"

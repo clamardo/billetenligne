@@ -2,6 +2,8 @@
 # console opérateur, back-office. Aucune chaîne propre à un écran ici.
 common:
   actions:
+    copy: "Copier"
+    done: "Terminé"
     search: "Rechercher"
     book: "Réserver"
     pay: "Payer"

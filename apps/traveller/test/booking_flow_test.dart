@@ -61,6 +61,42 @@ final class _ScriptedGateway implements TravelGateway {
     );
   }
 
+  ApiFailure? reserveFailure;
+  BookingDto? reserveResult;
+  final List<PassengerDto> reserved = [];
+  final List<String> reserveKeys = [];
+
+  @override
+  Future<BookingDto> reserve({
+    required String holdId,
+    required List<PassengerDto> passengers,
+    required String idempotencyKey,
+  }) async {
+    reserveKeys.add(idempotencyKey);
+    if (reserveFailure != null) throw reserveFailure!;
+    reserved
+      ..clear()
+      ..addAll(passengers);
+    return reserveResult ??= BookingDto(
+      id: 'bk-1',
+      ref: 'BEL-7QK4M2',
+      state: 'pending_payment',
+      departureId: 'dep-1',
+      operatorName: 'Ocean du Nord',
+      originCity: 'BZV',
+      destinationCity: 'PNR',
+      departsAt: DateTime.utc(2026, 8, 10, 6),
+      arrivesAt: DateTime.utc(2026, 8, 10, 14),
+      passengers: passengers,
+      fare: const Money.xaf(12000),
+      serviceFee: const Money.xaf(300),
+      total: const Money.xaf(12300),
+      createdAt: DateTime.utc(2026, 8, 9),
+      paymentCode: 'K4M2Q',
+      paymentDeadline: DateTime.utc(2026, 8, 9, 10),
+    );
+  }
+
   @override
   Future<void> release(String holdId) async => released.add(holdId);
 }
@@ -111,6 +147,15 @@ final _query = SearchDeparturesQuery(
   destinationCity: 'PNR',
   date: DateTime.utc(2026, 8, 10),
 );
+
+/// Search, open the coach, pick 1A, hold it.
+Future<void> _reachHold(BookingFlow flow, _ScriptedGateway gateway) async {
+  await flow.start();
+  await flow.search(_query);
+  await flow.openSeatMap(_departure());
+  flow.toggleSeat('1A');
+  await flow.holdSelection();
+}
 
 void main() {
   group('launch', () {
@@ -420,6 +465,90 @@ void main() {
       final step = flow.step as StepFailed;
       expect((step.failure as ServerRefused).code, ErrorCode.holdExpired);
       expect(step.recoverable, isFalse);
+    });
+
+    test('reserving turns a held seat into a payment code', () async {
+      final gateway = _ScriptedGateway(searchResult: [_departure()]);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+      await _reachHold(flow, gateway);
+
+      flow.namePassengers();
+      expect(flow.step, isA<NamingPassengers>());
+
+      await flow.reserve([
+        const PassengerDto(fullName: 'Aline M.', seatLabel: '1A'),
+      ]);
+
+      final step = flow.step as Reserved;
+      expect(step.booking.paymentCode, 'K4M2Q');
+      expect(step.booking.state, 'pending_payment');
+      // No ticket yet. The money has not moved, and a screen that looked
+      // like a ticket before payment is the most confusing thing this flow
+      // could do.
+      expect(step.booking.tickets, isEmpty);
+    });
+
+    test('a refused reservation keeps the names on the form', () async {
+      final gateway = _ScriptedGateway(searchResult: [_departure()]);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+      await _reachHold(flow, gateway);
+
+      flow.namePassengers();
+      gateway.reserveFailure = const NetworkUnreachable();
+      await flow.reserve([
+        const PassengerDto(fullName: 'Aline M.', seatLabel: '1A'),
+      ]);
+
+      // Back to the form rather than to an error screen: the names they
+      // typed are still right, and most of these are fixed by trying again.
+      final step = flow.step as NamingPassengers;
+      expect(step.failure, isA<NetworkUnreachable>());
+    });
+
+    test('a retried reservation reuses the attempt key', () async {
+      final gateway = _ScriptedGateway(searchResult: [_departure()]);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+      await _reachHold(flow, gateway);
+      flow.namePassengers();
+
+      gateway.reserveFailure = const NetworkUnreachable();
+      await flow.reserve([
+        const PassengerDto(fullName: 'A', seatLabel: '1A'),
+      ]);
+      gateway.reserveFailure = null;
+      await flow.reserve([
+        const PassengerDto(fullName: 'A', seatLabel: '1A'),
+      ]);
+
+      // The same key both times. A second reservation would meet an
+      // already-consumed hold and be refused, and the traveller would be told
+      // nothing worked when in fact everything did.
+      expect(gateway.reserveKeys, hasLength(2));
+      expect(gateway.reserveKeys.first, gateway.reserveKeys.last);
+    });
+
+    test('a refusal ends the attempt, so the next try is a new request',
+        () async {
+      final gateway = _ScriptedGateway(searchResult: [_departure()]);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+      await _reachHold(flow, gateway);
+      flow.namePassengers();
+
+      gateway.reserveFailure = const ServerRefused(
+        410,
+        ApiError(code: ErrorCode.holdExpired),
+      );
+      await flow.reserve([
+        const PassengerDto(fullName: 'A', seatLabel: '1A'),
+      ]);
+      gateway.reserveFailure = null;
+      await flow.reserve([
+        const PassengerDto(fullName: 'A', seatLabel: '1A'),
+      ]);
+
+      // The server answered. Reusing the key would ask it to replay an answer
+      // it already gave.
+      expect(gateway.reserveKeys.first, isNot(gateway.reserveKeys.last));
     });
 
     test('expiry outside a hold is ignored', () async {

@@ -155,6 +155,30 @@ final class BelApiClient {
     return HoldDto.fromJson(body);
   }
 
+  /// Reserve now, pay at the agency.
+  ///
+  /// Takes the same [idempotencyKey] discipline as [createHold], and for a
+  /// sharper reason: a duplicate tap that produced a second reservation would
+  /// fail on the already-consumed hold, leaving the traveller believing
+  /// nothing worked when in fact everything did.
+  Future<BookingDto> createBooking(
+    CreateBookingRequest request, {
+    String? idempotencyKey,
+  }) async {
+    final body = await _post(
+      '/public/v1/bookings',
+      body: request.toJson(),
+      idempotencyKey: idempotencyKey ?? IdempotencyKey.generate(),
+    );
+    return BookingDto.fromJson(body);
+  }
+
+  /// The traveller's own bookings, newest first.
+  Future<List<BookingDto>> bookings() async {
+    final body = await _get('/public/v1/bookings');
+    return Wire.readList(body['items'], BookingDto.fromJson, field: 'items');
+  }
+
   /// Give the seats back. Idempotent, so no key is required — demanding one
   /// for an operation that is already idempotent is ceremony clients get
   /// wrong.

@@ -37,4 +37,14 @@ final class ApiTravelGateway implements TravelGateway {
 
   @override
   Future<void> release(String holdId) => _client.releaseHold(holdId);
+
+  @override
+  Future<BookingDto> reserve({
+    required String holdId,
+    required List<PassengerDto> passengers,
+    required String idempotencyKey,
+  }) => _client.createBooking(
+    CreateBookingRequest(holdId: holdId, passengers: passengers),
+    idempotencyKey: idempotencyKey,
+  );
 }

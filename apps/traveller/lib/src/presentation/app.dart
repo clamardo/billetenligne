@@ -11,6 +11,8 @@ import 'l10n.dart';
 import 'screens/hold_screen.dart';
 import 'screens/results_screen.dart';
 import 'screens/search_screen.dart';
+import 'screens/passengers_screen.dart';
+import 'screens/reserved_screen.dart';
 import 'screens/seat_map_screen.dart';
 import 'screens/sign_in_screen.dart';
 import 'widgets/failure_view.dart';
@@ -191,9 +193,32 @@ class _FunnelState extends State<_Funnel> {
         releasing: _releasing,
         onRelease: _release,
         onExpired: _flow.holdExpired,
-        // Payment lands in Phase 2. Disabled and honest about why, rather than
-        // a button that opens a screen apologising.
-        onPay: null,
+        // Cash at an agency. Mobile money is Phase 2 and this button does not
+        // pretend otherwise — it collects names and issues a code to pay
+        // with, which is the whole of the pilot's payment story.
+        onPay: _flow.namePassengers,
+      ),
+
+      NamingPassengers(:final departure, :final hold, :final failure) =>
+        PassengersScreen(
+          departure: departure,
+          hold: hold,
+          failure: failure,
+          onReserve: _flow.reserve,
+          onBack: _backToResults,
+        ),
+
+      Reserving(:final departure, :final hold) => PassengersScreen(
+        departure: departure,
+        hold: hold,
+        busy: true,
+        onReserve: (_) {},
+        onBack: () {},
+      ),
+
+      Reserved(:final booking) => ReservedScreen(
+        booking: booking,
+        onDone: _flow.reset,
       ),
 
       StepFailed(:final failure, :final recoverable) => Scaffold(

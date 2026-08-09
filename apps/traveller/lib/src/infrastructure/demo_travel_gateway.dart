@@ -197,6 +197,55 @@ final class DemoTravelGateway implements TravelGateway {
   }
 
   @override
+  Future<BookingDto> reserve({
+    required String holdId,
+    required List<PassengerDto> passengers,
+    required String idempotencyKey,
+  }) async {
+    await Future<void>.delayed(latency);
+
+    // Looked up by hold id, and the map is keyed by idempotency key — the
+    // same lookup `release` already does by hand. Getting this wrong reads as
+    // "the hold expired", which is the most plausible-looking wrong answer
+    // this gateway could give.
+    final hold = _holds.values.where((h) => h.id == holdId).firstOrNull;
+    if (hold == null) {
+      throw const ServerRefused(410, ApiError(code: ErrorCode.holdExpired));
+    }
+
+    final departure = _departures[hold.departureId]!;
+    // Priced from the hold, which was priced from the seats. Nothing here
+    // takes a number from the caller, mirroring the real path.
+    final fare = hold.fare;
+    final fee = Money(
+      departure.serviceFee.minor * hold.seatLabels.length,
+      departure.fare.currency,
+    );
+
+    // A fixed code, printed on the screen's own hint in the demo: there is no
+    // agency to walk into here, and a random one would make the flow
+    // unreviewable.
+    return BookingDto(
+      id: 'bk-demo-${++_counter}',
+      ref: 'BEL-DEMO$_counter',
+      state: 'pending_payment',
+      departureId: hold.departureId,
+      operatorName: departure.operatorName,
+      originCity: departure.originCity,
+      destinationCity: departure.destinationCity,
+      departsAt: departure.departsAt,
+      arrivesAt: departure.arrivesAt,
+      passengers: passengers,
+      fare: fare,
+      serviceFee: fee,
+      total: fare + fee,
+      createdAt: _now,
+      paymentCode: 'K4M2Q',
+      paymentDeadline: _now.add(const Duration(hours: 4)),
+    );
+  }
+
+  @override
   Future<void> release(String holdId) async {
     await Future<void>.delayed(latency);
 

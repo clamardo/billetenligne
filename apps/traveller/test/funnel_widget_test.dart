@@ -272,6 +272,52 @@ void main() {
       expect(find.text('6 places choisies'), findsOneWidget);
     });
 
+    testWidgets('a held seat becomes a payment code to take to an agency', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await searchBzvToPnr(tester);
+      await tester.tap(find.textContaining('Ocean du Nord').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1A'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Continuer'));
+      await settleHoldScreen(tester);
+
+      // The pay button collects names rather than opening a screen that
+      // apologises: cash at an agency IS the pilot's payment story.
+      await tester.tap(find.textContaining('Payer'));
+      await tester.pumpAndSettle();
+      expect(find.text('Qui voyage ?'), findsOneWidget);
+
+      // Nameless passengers cannot be reserved — a conductor reads that name
+      // aloud against a face.
+      expect(find.text("Indiquez le nom de chaque passager"), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField).first, 'Aline M.');
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Réserver'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Réservation confirmée'), findsOneWidget);
+      // Spaced, because a five-character code read aloud is read in pieces.
+      expect(find.text('K 4 M 2 Q'), findsOneWidget);
+      // Which agency, and by when. Scrolled to, because the deadline sits
+      // below the fold on a test-sized screen and `findsOneWidget` only sees
+      // what a ListView has actually built.
+      expect(find.textContaining('agence'), findsOneWidget);
+      // Dragged rather than `scrollUntilVisible`: that helper requires
+      // exactly one Scrollable and this screen's Scaffold has more than one.
+      await tester.drag(find.byType(ListView).last, const Offset(0, -400));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('À payer avant'), findsOneWidget);
+
+      // No QR anywhere: the money has not moved, and a screen that looked
+      // like a ticket before payment is the most confusing thing this flow
+      // could do.
+      expect(find.textContaining('QR'), findsOneWidget);
+    });
+
     testWidgets('releasing puts the seat back on sale', (tester) async {
       final flow = await pumpApp(tester);
       await searchBzvToPnr(tester);

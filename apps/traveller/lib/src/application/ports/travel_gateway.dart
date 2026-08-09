@@ -31,4 +31,15 @@ abstract interface class TravelGateway {
   });
 
   Future<void> release(String holdId);
+
+  /// Turns a hold into an unpaid reservation with a code to pay at an agency.
+  ///
+  /// No price is sent. The fare is read from the seat row inside the
+  /// transaction that consumes the hold, which is what removes the window
+  /// between quoting a price and charging it.
+  Future<BookingDto> reserve({
+    required String holdId,
+    required List<PassengerDto> passengers,
+    required String idempotencyKey,
+  });
 }
