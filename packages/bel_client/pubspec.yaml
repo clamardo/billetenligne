@@ -1,0 +1,16 @@
+name: bel_client
+description: >-
+  Typed HTTP client for the BilletEnLigne API. Shared unchanged by the
+  traveller app, the operator console and the admin back office — one place
+  that knows about retries, idempotency keys and what "offline" means.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.8.0
+dependencies:
+  bel_contracts: ^0.1.0
+  bel_domain: ^0.1.0
+  http: ^1.2.0
+dev_dependencies:
+  test: ^1.25.0

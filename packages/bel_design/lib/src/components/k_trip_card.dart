@@ -1,0 +1,163 @@
+import 'package:flutter/material.dart';
+
+import '../kilo_theme.dart';
+import 'k_card.dart';
+import 'k_chip.dart';
+import 'k_money.dart';
+
+/// One search result.
+///
+/// The row a traveller scans a dozen of on a 5-inch screen in a hurry, so it
+/// answers the three questions they actually have, in the order they have
+/// them: **when does it leave, who runs it, what does it cost.** Everything
+/// else is secondary and looks it.
+///
+/// The departure time is the largest thing on the card. Not the price — people
+/// choose a coach by when it goes, and only then check whether they can afford
+/// it.
+final class KTripCard extends StatelessWidget {
+  const KTripCard({
+    required this.departureTime,
+    required this.arrivalTime,
+    required this.operatorName,
+    required this.durationLabel,
+    required this.totalFormatted,
+    required this.seatsLabel,
+    required this.onTap,
+    this.soldOut = false,
+    this.soldOutLabel,
+    this.scarce = false,
+    this.accentColor,
+    this.amenities = const [],
+    super.key,
+  });
+
+  final String departureTime;
+  final String arrivalTime;
+  final String operatorName;
+  final String durationLabel;
+  final String totalFormatted;
+
+  /// Already pluralised by the caller — the catalog owns plural rules, not the
+  /// design system.
+  final String seatsLabel;
+
+  final VoidCallback? onTap;
+  final bool soldOut;
+  final String? soldOutLabel;
+
+  /// True when few seats remain. Rendered as a warning chip, and **only when
+  /// it is actually true** — manufactured scarcity is the fastest way to lose
+  /// the trust this product runs on.
+  final bool scarce;
+
+  final Color? accentColor;
+  final List<IconData> amenities;
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+    final muted = soldOut;
+
+    return Opacity(
+      // Dimmed rather than hidden. Seeing that the 06:00 is full is how a
+      // traveller learns to book earlier; hiding it makes the service look
+      // empty.
+      opacity: muted ? 0.6 : 1,
+      child: KCard(
+        onTap: soldOut ? null : onTap,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // A 3 px operator rail. Enough to tell two operators apart in a
+            // list; not enough to let one shout over the others.
+            Container(
+              width: 3,
+              height: 52,
+              margin: EdgeInsets.only(right: kilo.space.s3),
+              decoration: BoxDecoration(
+                color: accentColor ?? kilo.color.brandPrimary,
+                borderRadius: BorderRadius.all(kilo.radius.pill),
+              ),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Scaled down rather than wrapped or clipped. The departure
+                  // time is the one thing on this card that must always be
+                  // readable, and "06:00 → 14:00" broken across two lines
+                  // reads as two separate journeys. Narrow screens and long
+                  // operator names both squeeze this row.
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(departureTime, style: kilo.text.h1),
+                        SizedBox(width: kilo.space.s2),
+                        Icon(
+                          Icons.arrow_forward,
+                          size: 14,
+                          color: kilo.color.contentMuted,
+                        ),
+                        SizedBox(width: kilo.space.s2),
+                        Text(
+                          arrivalTime,
+                          style: kilo.text.h3.copyWith(
+                            color: kilo.color.contentSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: kilo.space.s1),
+                  Text(
+                    '$operatorName · $durationLabel',
+                    style: kilo.text.bodySm.copyWith(
+                      color: kilo.color.contentSecondary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: kilo.space.s3),
+                  Wrap(
+                    spacing: kilo.space.s2,
+                    runSpacing: kilo.space.s1,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (soldOut && soldOutLabel != null)
+                        KChip(soldOutLabel!, tone: KChipTone.danger)
+                      else
+                        KChip(
+                          seatsLabel,
+                          tone: scarce ? KChipTone.warning : KChipTone.neutral,
+                        ),
+                      for (final icon in amenities)
+                        Icon(icon, size: 14, color: kilo.color.contentMuted),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: kilo.space.s3),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                KMoney(totalFormatted),
+                SizedBox(height: kilo.space.s1),
+                if (!soldOut)
+                  Icon(
+                    Icons.chevron_right,
+                    color: kilo.color.contentMuted,
+                    size: 20,
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

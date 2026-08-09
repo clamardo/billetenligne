@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-09 · after commit *Phase 1: the browse path*
+**Updated:** 2026-08-09 · after commit *Phase 1: the traveller app*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -14,13 +14,13 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 | Feature | State | Notes |
 |---|---|---|
-| Monorepo, Melos, pub workspace | ✅ done | 7 packages, one `dart pub get` |
-| Layer-boundary check in CI | ✅ done | `tool/check_layers.dart`, 5 rules, 81 files |
+| Monorepo, Melos, pub workspace | ✅ done | 8 packages + 2 apps, one `dart pub get` |
+| Layer-boundary check in CI | ✅ done | `tool/check_layers.dart`, 5 rules, 108 files |
 | `bel_domain` — money, market, policies, state machines | ✅ done | Zero dependencies; DRC stood up entirely in test code |
 | `bel_localization` — YAML catalogs, fr + en | ✅ done | Missing-key, orphan, placeholder and SMS-length guards |
 | `bel_contracts` — wire format | ✅ done | Money is always `{minor, currency}` |
 | `bel_crypto` — Ed25519, HMAC | ✅ done | Verified against the RFC 4231 vector |
-| `bel_design` — Kilo tokens, three themes | 🔨 in progress | Tokens and contrast gates done; **component library and gallery app not built** |
+| `bel_design` — Kilo tokens, three themes, components | ✅ done | 9 components, 58 tests; **gallery app still not built** |
 | Postgres schema, RLS, ledger | ✅ done | 6 migrations, 23 executed guarantees |
 | Public sales boundary (`bel_public`) | ✅ done | 0005 — a traveller cannot mark a seat sold, proven in `verify_public.sql` |
 | Dart Frog skeleton, auth + idempotency middleware | ✅ done | 43 smoke checks over a real socket |
@@ -40,7 +40,9 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Booking + cash payment | ⬜ not started | |
 | Ticket issue + QR delivery | 🔨 in progress | Payload, signing, verification and rotating code all done and tested; **no issuing endpoint** |
 | Boarding scanner (standalone app) | ✅ done | Camera, five verdicts, offline, debug simulator |
-| Traveller app | ⬜ not started | **Next.** Every endpoint it needs to browse and hold now exists |
+| **Traveller app — browse and hold** | ✅ done | Onboardingless search → results → seat map → hold → release. 28 tests |
+| `bel_client` — typed API client | ✅ done | Retries, idempotency keys, offline taxonomy. 17 tests |
+| Traveller app — payment, tickets, history | ⬜ not started | Needs Phase 2 rails and the ticket issuing endpoint |
 | Operator console | ⬜ not started | |
 | Admin back office | ⬜ not started | |
 | Operator onboarding + approval queue | ⬜ not started | Designed in `03-operator-lifecycle.md` |
@@ -70,10 +72,18 @@ These are true today and each one is a decision, not an oversight.
    will not approach it. It becomes a real gap the moment the console can
    create a hundred departures, and it is a silent truncation until then —
    which is exactly the kind of cap worth writing down rather than discovering.
-4. **Auth is a fake.** `FakeAuthGateway` resolves `fake:<id>` tokens. The
-   Firebase adapter behind the same port is not written. The demo token exists
-   only when `DATABASE_URL` is unset, so it cannot reach a real database.
-5. **Nothing writes to the ledger yet.** The tables, the balance trigger and
+4. **Auth is a fake.** `FakeAuthGateway` resolves `fake:<id>` tokens, and the
+   traveller app sends `fake:traveller` in debug builds only. The Firebase
+   adapter behind the same port is not written. There is no sign-in screen, so
+   every hold today belongs to the same demo user.
+5. **The traveller app's city list is hardcoded** in `main.dart`. Congo's
+   intercity network is genuinely this small, so it is harmless today and
+   wrong to leave: a cities endpoint is the next small slice.
+6. **The catalog is copied, not shared, into the apps.** `bel_localization` is
+   pure Dart — the API imports it — so it cannot declare Flutter assets, and
+   Flutter refuses `..` in asset paths. `tool/sync_i18n.sh` copies it and
+   `i18n_freshness_test` fails the build if a copy drifts.
+7. **Nothing writes to the ledger yet.** The tables, the balance trigger and
    the append-only grants are all in place and tested; no code posts an entry.
 
 ---
@@ -81,16 +91,56 @@ These are true today and each one is a decision, not an oversight.
 ## How to verify any of this yourself
 
 ```bash
-dart test packages services/api      # 255 unit tests
-dart run tool/check_layers.dart      # the onion rule, 81 files
-./infra/migrations/check.sh          # 23 schema guarantees
-./tool/integration.sh                # 28 tests on real Postgres
-./tool/smoke_api.sh                  # 43 checks over a real socket
+dart test packages services/api          # 272 unit tests
+cd packages/bel_design && flutter test   # 58 component and contrast tests
+cd apps/traveller && flutter test        # 28 app tests
+cd apps/scanner && flutter test          # 20 scanner tests
+dart run tool/check_layers.dart          # the onion rule, 108 files
+./infra/migrations/check.sh              # 23 schema guarantees
+./tool/integration.sh                    # 28 tests on real Postgres
+./tool/smoke_api.sh                      # 43 checks over a real socket
 ```
+
+**378 tests in total**, plus 43 smoke checks and 23 executed schema
+guarantees.
 
 ---
 
 ## What the last push changed, and what it cost
+
+The traveller app went in, and with it the shared API client and the Kilo
+component library. A person can now open the app, search Brazzaville →
+Pointe-Noire, see real departures, pick a seat off a diagram and hold it, with
+a countdown running. Payment is the next phase; the button says so rather than
+opening a screen that apologises.
+
+Three things the build found, each caught by a check rather than by review:
+
+**The layer rule refused `ChangeNotifier`.** It lives in
+`package:flutter/foundation`, and the application layer may not import Flutter.
+The rule was right: a use case that needs the Flutter SDK cannot be tested with
+`dart test`, cannot be reused by the console's web build without dragging the
+framework in, and has inverted the dependency direction. `BookingFlow` is a
+plain broadcast stream instead, and its 18 tests run in milliseconds.
+
+**The recovery button on the error screen did nothing.** `backToSeatMap()`
+derived the departure from the current step — and after a failure the step is
+`StepFailed`, which carries no departure. So a traveller whose seat was taken
+landed on an error screen whose only way forward was inert. The retry test
+caught it; the flow now remembers the active departure independently of the
+step.
+
+**The countdown could not be tested at the moment that matters.** It read
+`DateTime.now()` directly, and `tester.pump()` advances Flutter's timers but
+not the wall clock — so in a test it counted down forever and the expiry
+callback, the one that releases a seat, was never exercised. The clock is now
+injectable. While fixing it, the formatter turned out to truncate rather than
+round up, which meant a fifteen-minute hold opened at 14:59 and looked like it
+was already leaking.
+
+---
+
+## What the previous push changed, and what it cost
 
 The browse path went in: search, seat map, and releasing a hold. Two things
 are worth recording because they were not planned.

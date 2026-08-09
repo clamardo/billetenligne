@@ -1,0 +1,31 @@
+# Traveller-journey error codes. The server never sends prose: it sends a code
+# and parameters, and each surface renders the sentence in its reader's own
+# language (ADR-0008).
+errors:
+  network:
+    unreachable: "No connection. Check your network and try again."
+    timeout: "The server is taking too long. Try again."
+  client:
+    unreadable: "This version of the app does not understand the server's reply. Please update it."
+  request:
+    bad: "Bad request."
+    idempotency_key_reused: "This request was already handled with different contents."
+    rate_limited: "Too many attempts. Wait a moment."
+  auth:
+    unauthorized: "Sign in to continue."
+    forbidden: "You do not have access to this action."
+  resource:
+    not_found: "Not found."
+    conflict: "This action is already in progress. Try again shortly."
+  server:
+    internal: "Something went wrong on our side. Try again."
+    unavailable: "Service temporarily unavailable. Try again in a moment."
+  hold:
+    seat_unavailable: "Seat {seats} was just taken. Please choose another."
+    expired: "Your reservation expired."
+    already_consumed: "This reservation has already been used."
+    expired_during_payment: "Your reservation expired during payment."
+  departure:
+    sold_out: "This departure is full."
+    closed: "Sales are closed for this departure."
+    cancelled: "This departure was cancelled by the operator."

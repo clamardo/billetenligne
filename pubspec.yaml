@@ -8,5 +8,7 @@ workspace:
   - packages/bel_design
   - packages/bel_contracts
   - packages/bel_crypto
+  - packages/bel_client
   - services/api
   - apps/scanner
+  - apps/traveller

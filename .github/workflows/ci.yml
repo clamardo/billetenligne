@@ -32,8 +32,8 @@ jobs:
       - name: Layer boundaries
         run: dart run tool/check_layers.dart
 
-      - name: Domain, localization and contract tests
-        run: dart test packages/bel_domain packages/bel_localization packages/bel_contracts packages/bel_crypto
+      - name: Domain, localization, contract and client tests
+        run: dart test packages/bel_domain packages/bel_localization packages/bel_contracts packages/bel_crypto packages/bel_client
 
       - name: API tests
         run: dart test services/api
@@ -62,6 +62,17 @@ jobs:
 
       - name: Boarding scanner
         working-directory: apps/scanner
+        run: flutter test
+
+      # The bundled catalog is a copy (bel_localization is pure Dart and
+      # cannot declare Flutter assets). Sync first, so a stale copy fails the
+      # freshness test rather than shipping strings that disagree with the
+      # server's.
+      - name: Sync the translation catalog
+        run: ./tool/sync_i18n.sh
+
+      - name: Traveller app
+        working-directory: apps/traveller
         run: flutter test
 
   # Layer 3. A schema that compiles is not a schema that isolates tenants,

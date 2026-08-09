@@ -16,3 +16,7 @@ infra/dev/firebase-data/data/*
 .vscode/
 *.swp
 .DS_Store
+
+# Copied from packages/bel_localization/i18n by tool/sync_i18n.sh. Generated,
+# not authored — and a committed copy is a copy somebody will edit by mistake.
+apps/*/assets/i18n/

@@ -10,11 +10,12 @@ The wedge is not the traveller — it is the operator's cash leakage. **Travelle
 
 ## Status
 
-**Phase 0 is complete. Phase 1 has the whole browse-and-hold path working
-against a real database.** Search, seat map, hold and release all run route →
-use case → Postgres, open to anyone until the moment a seat is claimed. Fifty
-concurrent claims for the last seat produce exactly one ticket — proven
-against the lock manager that will actually arbitrate it, not against a fake.
+**Phase 0 is complete. Phase 1 has a traveller app that browses and holds
+seats against a real database.** Open the app, search Brazzaville →
+Pointe-Noire, see real departures, pick a seat off a diagram, hold it with a
+countdown running. Fifty concurrent claims for the last seat produce exactly
+one ticket — proven against the lock manager that will actually arbitrate it,
+not against a fake. Payment is Phase 2, and the button says so.
 
 Per-feature detail, including what is deliberately unfinished:
 **[`docs/10-build-status.md`](docs/10-build-status.md)** — updated on every push.
@@ -26,18 +27,21 @@ Per-feature detail, including what is deliberately unfinished:
 | `bel_domain` — money, market, policies, layouts, payment state machine | ✅ 78 tests |
 | `bel_localization` — FR/EN YAML catalog | ✅ 15 tests |
 | `bel_contracts` — wire format, error codes | ✅ 29 tests |
-| `bel_design` — Kilo tokens + contrast gates | ✅ 38 tests |
+| `bel_design` — Kilo tokens, components, contrast gates | ✅ 58 tests |
 | `services/api` — Dart Frog, middleware, **search, seat map, holds** | ✅ 71 tests + 43 smoke checks |
 | Database — schema, RLS, ledger, public sales boundary | ✅ 23 guarantees verified |
 | **Inventory and catalogue on real Postgres** | ✅ 28 integration tests |
+| `bel_client` — typed API client, retries, idempotency | ✅ 17 tests |
+| **`apps/traveller` — search, seat map, hold, release** | ✅ 28 tests |
 | Local dev stack | ✅ `infra/dev` |
 | CI — analyze, format, layers, tests, schema, integration | ✅ `.github/workflows/ci.yml` |
-| Traveller app, operator console, admin back office | ⬜ Next |
+| Operator console, admin back office, payments | ⬜ Next |
 
 ```bash
-dart test packages services/api                 # 255 tests, ~3 s, no containers
-cd packages/bel_design && flutter test          # Kilo contrast gates
-dart run tool/check_layers.dart                 # onion dependency rule
+dart test packages services/api                 # 272 tests, ~3 s, no containers
+cd packages/bel_design && flutter test          # Kilo components + contrast gates
+cd apps/traveller && flutter test               # the traveller funnel
+dart run tool/check_layers.dart                 # onion dependency rule, 108 files
 ./infra/migrations/check.sh                     # 23 schema guarantees (needs Docker)
 ./tool/integration.sh                           # the seat race, on real Postgres
 ./tool/smoke_api.sh                             # 43 checks over a real socket

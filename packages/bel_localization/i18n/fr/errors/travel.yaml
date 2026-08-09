@@ -1,0 +1,31 @@
+# Codes d'erreur du parcours voyageur. Le serveur n'envoie jamais de phrase :
+# il envoie un code et des paramètres, et chaque surface rend la phrase dans la
+# langue de son lecteur (ADR-0008).
+errors:
+  network:
+    unreachable: "Pas de connexion. Vérifiez votre réseau et réessayez."
+    timeout: "Le serveur met trop de temps à répondre. Réessayez."
+  client:
+    unreadable: "Cette version de l'application ne comprend pas la réponse du serveur. Mettez-la à jour."
+  request:
+    bad: "Demande incorrecte."
+    idempotency_key_reused: "Cette demande a déjà été traitée avec un contenu différent."
+    rate_limited: "Trop de tentatives. Patientez un instant."
+  auth:
+    unauthorized: "Connectez-vous pour continuer."
+    forbidden: "Vous n'avez pas accès à cette action."
+  resource:
+    not_found: "Introuvable."
+    conflict: "Cette action est déjà en cours. Réessayez dans un instant."
+  server:
+    internal: "Une erreur est survenue de notre côté. Réessayez."
+    unavailable: "Service momentanément indisponible. Réessayez dans quelques instants."
+  hold:
+    seat_unavailable: "La place {seats} vient d'être prise. Choisissez-en une autre."
+    expired: "Votre réservation a expiré."
+    already_consumed: "Cette réservation a déjà été utilisée."
+    expired_during_payment: "Votre réservation a expiré pendant le paiement."
+  departure:
+    sold_out: "Ce départ est complet."
+    closed: "Les ventes sont fermées pour ce départ."
+    cancelled: "Ce départ a été annulé par la compagnie."
