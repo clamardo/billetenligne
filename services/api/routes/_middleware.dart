@@ -13,11 +13,22 @@ import 'package:dart_frog/dart_frog.dart';
 /// `/console`, `/admin`), which have genuinely different rules — putting it in
 /// one shared layer is how a "super admin" flag ends up leaking a competitor's
 /// data (ADR-0011).
+/// ORDER MATTERS, and it reads backwards: `.use()` wraps, so the LAST call is
+/// the OUTERMOST layer and runs FIRST. Execution is therefore:
+///
+///   _traceId  ->  _errorBoundary  ->  provider  ->  _authentication  ->  route
+///
+/// _traceId must be outermost because every layer below it reads the trace id
+/// from the context. Getting this inverted turned a 401 into a 500: the auth
+/// layer tried to read a trace id that had not been provided yet, and the
+/// error boundary was inside the throw rather than around it. Unit tests
+/// cannot catch that — only running the server does, which is why
+/// tool/smoke_api.sh exists.
 Handler middleware(Handler handler) => handler
-    .use(_errorBoundary())
-    .use(_traceId())
     .use(_authentication())
-    .use(provider<AuthGateway>((_) => _authGateway));
+    .use(provider<AuthGateway>((_) => _authGateway))
+    .use(_errorBoundary())
+    .use(_traceId());
 
 // Swapped for the Firebase Admin SDK adapter at startup in real environments
 // (ADR-0018). The port keeps the handlers unaware of either.

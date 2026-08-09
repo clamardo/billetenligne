@@ -38,6 +38,13 @@ jobs:
       - name: API tests
         run: dart test services/api
 
+      # Over a real socket. Header casing and middleware ordering are both
+      # invisible to a unit suite that builds its own context.
+      - name: API smoke over HTTP
+        run: |
+          dart pub global activate dart_frog_cli
+          ./tool/smoke_api.sh
+
   # The design system's accessibility gates. Separate job because it needs the
   # Flutter SDK, which is a slower checkout.
   design:

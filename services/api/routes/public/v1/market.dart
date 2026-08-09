@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:bel_api/src/middleware/request_headers.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:dart_frog/dart_frog.dart';
@@ -16,14 +18,18 @@ Response onRequest(RequestContext context) {
     return Response(statusCode: HttpStatus.methodNotAllowed);
   }
 
-  final dto = MarketDto.fromDomain(Market.current);
-  final body = dto.toJson();
+  final body = MarketDto.fromDomain(Market.current).toJson();
+  // Hash the canonical JSON, not `toString()`: a map's debug representation is
+  // not a stable serialisation contract.
+  final etag = '"${_weakHash(jsonEncode(body))}"';
 
-  // A 304 costs about 200 bytes. On a metered prepaid bundle that is a
-  // feature, not a micro-optimisation.
-  final etag = '"${_weakHash(body.toString())}"';
-  if (context.request.headers[CacheHeaders.ifNoneMatch] == etag) {
-    return Response(statusCode: HttpStatus.notModified);
+  // A 304 costs about 200 bytes against ~1.1 KB. On a metered prepaid bundle
+  // that is a feature, not a micro-optimisation.
+  if (context.request.headers.matchesEtag(etag)) {
+    return Response(
+      statusCode: HttpStatus.notModified,
+      headers: {CacheHeaders.etag: etag},
+    );
   }
 
   return Response.json(body: body, headers: {CacheHeaders.etag: etag});
@@ -31,7 +37,7 @@ Response onRequest(RequestContext context) {
 
 String _weakHash(String s) {
   var h = 0xcbf29ce484222325;
-  for (final c in s.codeUnits) {
+  for (final c in utf8.encode(s)) {
     h = ((h ^ c) * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF;
   }
   return (h & 0x7FFFFFFFFFFFFFFF).toRadixString(16);

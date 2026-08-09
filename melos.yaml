@@ -35,6 +35,13 @@ scripts:
       Kilo contrast gates. Accessibility is a build gate, not a review comment.
     run: melos exec --scope=bel_design -- flutter test
 
+  smoke:api:
+    description: >-
+      Starts the real API and exercises it over real HTTP. Catches wiring bugs
+      no unit test can reach — header casing and middleware ordering both
+      shipped past a green suite.
+    run: ./tool/smoke_api.sh
+
   test:schema:
     description: >-
       Applies every migration to a throwaway Postgres and asserts tenant
@@ -50,4 +57,5 @@ scripts:
       melos run test:domain && \
       melos run test:api && \
       melos run test:design && \
+      melos run smoke:api && \
       melos run test:schema
