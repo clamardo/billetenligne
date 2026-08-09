@@ -4,6 +4,7 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:flutter/material.dart';
 
 import 'src/application/boarding_session.dart';
+import 'src/application/simulated_scan.dart';
 import 'src/infrastructure/demo_data.dart';
 import 'src/infrastructure/memory_redemption_log.dart';
 import 'src/presentation/pages/boarding_page.dart';
@@ -39,7 +40,7 @@ class _Bootstrap extends StatefulWidget {
 
 class _BootstrapState extends State<_Bootstrap> {
   BoardingSession? _session;
-  DemoDeparture? _demo;
+  List<SimulatedScan> _simulatedScans = const [];
   Object? _error;
 
   @override
@@ -60,7 +61,7 @@ class _BootstrapState extends State<_Bootstrap> {
 
       if (!mounted) return;
       setState(() {
-        _demo = demo;
+        _simulatedScans = demo.simulatedScans();
         _session = BoardingSession(
           manifest: demo.manifest,
           verifier: TicketVerifier(
@@ -107,6 +108,6 @@ class _BootstrapState extends State<_Bootstrap> {
       );
     }
 
-    return BoardingPage(session: session, demo: _demo);
+    return BoardingPage(session: session, simulatedScans: _simulatedScans);
   }
 }

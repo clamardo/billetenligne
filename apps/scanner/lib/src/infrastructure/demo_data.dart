@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:bel_crypto/bel_crypto.dart';
 import 'package:bel_domain/bel_domain.dart';
 
+import '../application/simulated_scan.dart';
+
 /// A signed, verifiable departure to run the scanner against with no server.
 ///
 /// Real tickets, real Ed25519 signatures, real rotating codes — so the demo
@@ -129,5 +131,76 @@ final class DemoDeparture {
       tickets: tickets,
       secrets: secrets,
     );
+  }
+
+  /// Canned scans for the debug simulator.
+  ///
+  /// Built here, in infrastructure, because this is where the signed tickets
+  /// and the rotating secrets live. The presentation layer receives plain
+  /// [SimulatedScan] values and never learns that a DemoDeparture exists —
+  /// which is the dependency direction the layer check enforces.
+  List<SimulatedScan> simulatedScans({DateTime? now}) {
+    final at = now ?? DateTime.now().toUtc();
+    const mac = HmacSha256Authenticator();
+
+    String ticket(String ref, String seat) =>
+        tickets[BoardingManifest.keyFor(ref, seat)]!;
+
+    String codeAt(String ref, String seat, DateTime when) =>
+        RotatingCode.current(
+          secret: secrets[BoardingManifest.keyFor(ref, seat)]!,
+          now: when,
+          mac: mac,
+        );
+
+    return [
+      SimulatedScan(
+        title: 'Billet valide',
+        subtitle: 'Aline Mabiala · 14A · code à jour',
+        payload: ticket('7QK4M2', '14A'),
+        code: codeAt('7QK4M2', '14A', at),
+        kind: SimulatedScanKind.genuine,
+      ),
+      SimulatedScan(
+        title: 'Deuxième passager',
+        subtitle: 'Pascal Nkouka · 14B · même réservation',
+        payload: ticket('7QK4M2', '14B'),
+        code: codeAt('7QK4M2', '14B', at),
+        kind: SimulatedScanKind.genuine,
+      ),
+      SimulatedScan(
+        title: "Capture d'écran",
+        subtitle: 'Le QR est authentique, le code est figé',
+        payload: ticket('ZZ1188', '2C'),
+        // Frozen ten minutes ago — exactly what a screenshot looks like.
+        code: codeAt('ZZ1188', '2C', at.subtract(const Duration(minutes: 10))),
+        kind: SimulatedScanKind.screenshot,
+      ),
+      SimulatedScan(
+        title: 'Autre départ',
+        subtitle: 'Denis Bouiti · billet du 14:00',
+        payload: tickets['WRONG_DEPARTURE']!,
+        kind: SimulatedScanKind.otherDeparture,
+      ),
+      SimulatedScan(
+        title: 'Billet remboursé',
+        subtitle: 'Firmin Massamba · 3A · annulé',
+        payload: ticket('T5W2YZ', '3A'),
+        code: codeAt('T5W2YZ', '3A', at),
+        kind: SimulatedScanKind.refunded,
+      ),
+      SimulatedScan(
+        title: 'Billet falsifié',
+        subtitle: 'Siège modifié après signature',
+        payload: ticket('K2M8PQ', '9D').replaceFirst('9D', '1A'),
+        kind: SimulatedScanKind.forged,
+      ),
+      SimulatedScan(
+        title: 'Code-barres quelconque',
+        subtitle: 'Étiquette de bouteille, affiche, autre app',
+        payload: 'https://example.cg/promo',
+        kind: SimulatedScanKind.foreign,
+      ),
+    ];
   }
 }

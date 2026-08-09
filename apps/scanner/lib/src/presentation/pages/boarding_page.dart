@@ -3,7 +3,7 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:flutter/material.dart';
 
 import '../../application/boarding_session.dart';
-import '../../infrastructure/demo_data.dart';
+import '../../application/simulated_scan.dart';
 import '../widgets/camera_view.dart';
 import '../widgets/ticket_simulator.dart';
 import '../widgets/verdict_screen.dart';
@@ -15,12 +15,17 @@ import 'manual_boarding_page.dart';
 /// no settings drawer — a conductor boarding sixty people in ten minutes has
 /// no attention to spare for an information architecture.
 class BoardingPage extends StatefulWidget {
-  const BoardingPage({required this.session, this.demo, super.key});
+  const BoardingPage({
+    required this.session,
+    this.simulatedScans = const [],
+    super.key,
+  });
 
   final BoardingSession session;
 
-  /// Present only in debug builds, to drive the simulator sheet.
-  final DemoDeparture? demo;
+  /// Canned scans for the debug simulator. Empty in release, and empty here
+  /// costs nothing — the sheet renders nothing.
+  final List<SimulatedScan> simulatedScans;
 
   @override
   State<BoardingPage> createState() => _BoardingPageState();
@@ -72,9 +77,9 @@ class _BoardingPageState extends State<BoardingPage> {
               child: Stack(
                 children: [
                   CameraView(onDetect: (raw) => _handleScan(raw)),
-                  if (TicketSimulator.isAvailable && widget.demo != null)
+                  if (TicketSimulator.isAvailable)
                     TicketSimulator(
-                      demo: widget.demo!,
+                      scans: widget.simulatedScans,
                       onScan: (raw, code) => _handleScan(raw, code: code),
                     ),
                 ],
