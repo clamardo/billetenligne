@@ -251,6 +251,25 @@ check "the seat is back on sale" "201" "$(hold "smoke-again-$$" '["4A"]')"
 
 check "unknown route is 404" "404" "$(status "$BASE/public/v1/nope")"
 
+# ── The Dart client against this same server ────────────────────────────────
+#
+# curl proves the HTTP surface; this proves the seam the *app* actually uses —
+# that the URL BelApiClient builds is the route dart_frog mounted, that header
+# casing survives a socket, and that the JSON the server emits parses into the
+# DTOs the screens render. Both halves have broken here before, and neither
+# break is reachable from a test that builds its own request.
+echo
+echo "── the Dart client, over the same socket"
+if client_out=$(BEL_API_URL="$BASE" dart test \
+     packages/bel_client/test/live_api_test.dart --reporter=failures-only 2>&1); then
+  pass=$((pass + 1))
+  printf '   \033[32mok\033[0m   the typed client completes the funnel\n'
+else
+  fail=$((fail + 1))
+  printf '   \033[31mFAIL\033[0m the typed client could not complete the funnel\n'
+  echo "$client_out" | sed 's/^/       /'
+fi
+
 echo
 if (( fail > 0 )); then
   printf '\033[31m── %d passed, %d failed\033[0m\n' "$pass" "$fail"

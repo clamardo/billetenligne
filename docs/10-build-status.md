@@ -98,11 +98,14 @@ cd apps/scanner && flutter test          # 20 scanner tests
 dart run tool/check_layers.dart          # the onion rule, 108 files
 ./infra/migrations/check.sh              # 23 schema guarantees
 ./tool/integration.sh                    # 28 tests on real Postgres
-./tool/smoke_api.sh                      # 43 checks over a real socket
+./tool/smoke_api.sh                      # 44 checks, incl. the Dart client
 ```
 
-**378 tests in total**, plus 43 smoke checks and 23 executed schema
-guarantees.
+**381 tests in total**, plus 44 smoke checks and 23 executed schema
+guarantees. The smoke run now includes the *typed client* against the running
+server — curl proves the HTTP surface, but only the client proves that the URL
+it builds is the route dart_frog mounted and that the JSON parses into the DTOs
+the screens render. Both halves of that seam have broken here before.
 
 ---
 

@@ -44,7 +44,7 @@ cd apps/traveller && flutter test               # the traveller funnel
 dart run tool/check_layers.dart                 # onion dependency rule, 108 files
 ./infra/migrations/check.sh                     # 23 schema guarantees (needs Docker)
 ./tool/integration.sh                           # the seat race, on real Postgres
-./tool/smoke_api.sh                             # 43 checks over a real socket
+./tool/smoke_api.sh                             # 44 checks, incl. the Dart client
 ```
 
 ---

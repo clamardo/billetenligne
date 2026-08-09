@@ -1,0 +1,5 @@
+# The live-seam suite skips itself unless BEL_API_URL is set, so `dart test`
+# on a laptop with no server running is green rather than misleadingly red.
+tags:
+  live:
+    timeout: 2x
