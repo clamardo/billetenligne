@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-09 · after commit *Identity: sign in with an emailed code*
+**Updated:** 2026-08-09 · after commit *The traveller can now pay*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -21,7 +21,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | `bel_contracts` — wire format | ✅ done | Money is always `{minor, currency}` |
 | `bel_crypto` — Ed25519, HMAC | ✅ done | Verified against the RFC 4231 vector |
 | `bel_design` — Kilo tokens, three themes, components | ✅ done | 9 components, 58 tests; **gallery app still not built** |
-| Postgres schema, RLS, ledger | ✅ done | 7 migrations, 26 executed guarantees |
+| Postgres schema, RLS, ledger | ✅ done | 10 migrations, 26 executed guarantees |
 | Public sales boundary (`bel_public`) | ✅ done | 0005 — a traveller cannot mark a seat sold, proven in `verify_public.sql` |
 | Dart Frog skeleton, auth + idempotency middleware | ✅ done | 43 smoke checks over a real socket |
 | `infra/dev` — Postgres, Firebase emulator, Azurite, Mailpit | ✅ done | `docker compose up`; `.env.example` connected as the wrong role until 0007 |
@@ -34,29 +34,33 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Hold seats, end to end** | ✅ done | Route → use case → Postgres. 50-way race proven; 30 tests |
 | Idempotency against the database | ✅ done | `ON CONFLICT DO NOTHING`; a refusal is never stored as the answer |
 | **Release a hold** — `DELETE /public/v1/holds/{id}` | ✅ done | Scoped to the owner; releasing twice is a no-op |
-| Expiry sweeper | 🔨 in progress | `claim()` already treats a lapsed hold as available, so nothing is stranded; **`services/worker` does not exist** |
+| **`services/worker`** | ✅ done | Outbox drain plus three sweepers. Run-once, not a service |
 | **Search** — `GET /public/v1/trips` | ✅ done | Open to anonymous; local-day correct; 14 unit + 14 integration tests |
 | **Seat map** — `GET /public/v1/departures/{id}/seatmap` | ✅ done | Layout + live availability in one response, never cached |
-| Booking + cash payment | ⬜ not started | |
-| Ticket issue + QR delivery | 🔨 in progress | Payload, signing, verification and rotating code all done and tested; **no issuing endpoint** |
+| **Booking + cash payment** | ✅ done | Reserve → pay at agency → ledger → ticket, one transaction. 71 integration tests |
+| **Double-entry ledger** | ✅ done | Chart of accounts in the domain; balance proven by the `ledger_txn_balances` view |
+| **Ticket issue** | ✅ done | Issued inside the capture transaction, Ed25519-signed, under 300 bytes |
+| Ticket delivery to the app | 🔨 in progress | Composed and queued by the outbox, drained by `services/worker`; **the traveller app has no ticket screen yet** |
 | Boarding scanner (standalone app) | ✅ done | Camera, five verdicts, offline, debug simulator |
 | **Traveller app — browse and hold** | ✅ done | Onboardingless search → results → seat map → hold → release. 45 tests |
 | **Identity — sign in with an emailed code** | ✅ done | Challenge → Firebase custom token → ID token. Server, client and app. ADR-0024 |
 | `bel_client` — typed API client | ✅ done | Retries, idempotency keys, offline taxonomy, Firebase session refresh. 32 tests |
-| Traveller app — payment, tickets, history | ⬜ not started | Needs Phase 2 rails and the ticket issuing endpoint |
-| Operator console | ⬜ not started | |
+| Traveller app — reserve and pay | ✅ done | Passenger names → payment code → agency. 54 app tests |
+| Traveller app — tickets and history | ⬜ not started | The list endpoint exists; the screens do not |
+| **Operator console — API** | ✅ done | Fleet, routes, timetables, materialisation, guichet, manifests |
+| Operator console — the app itself | ⬜ not started | **The largest remaining gap.** Every endpoint it needs exists and is tested; nobody can click any of them |
 | Admin back office | ⬜ not started | |
 | Operator onboarding + approval queue | ⬜ not started | Designed in `03-operator-lifecycle.md` |
 | Refund policy wizard + execution | ⬜ not started | Domain policy engine is built and tested |
 | Email on ACS | ✅ done | Signed requests, logging fallback; **only the sign-in code routes through it so far** |
-| SMS / push on ACS + Firebase | 🔨 in progress | Port, template and channel plumbing all done; **no provisioned sender number, so the API refuses the phone channel with a 503** |
+| SMS / push on ACS + Firebase | 🔨 in progress | Port, templates, drain and channel plumbing all done; **no provisioned sender number, so the API refuses the phone channel with a 503** |
 | Session in platform secure storage | 🔨 in progress | `SessionStore` port is there; the app uses `MemorySessionStore`, so **a session lasts until the app is killed** |
 
 ## Phase 2 and beyond
 
 Not started. `09-roadmap.md` has the remaining Phase 1 work in **dependency
-order** — identity first, because every hold today belongs to one demo user and
-nothing downstream of it can be built honestly until that is fixed.
+order** — the operator console's app is now the top of it, and it is the only
+thing between the current build and an operator selling a real seat.
 
 ---
 
@@ -88,10 +92,16 @@ These are true today and each one is a decision, not an oversight.
    under the 160-character gate. What is missing is a provisioned ACS sender
    number, so `COMMS__SMSFROM` is blank and the API answers 503 for that
    channel rather than accepting it and leaving somebody waiting (ADR-0024).
-6. **The traveller app's city list is hardcoded** in `main.dart`. Congo's
-   intercity network is genuinely this small, so it is harmless today and
-   wrong to leave: a cities endpoint is the next small slice.
-7. **The catalog is copied, not shared, into the apps.** `bel_localization` is
+6. **Nobody can use the operator console.** Every endpoint exists, is
+   scoped, capability-checked and covered by integration tests — and there is
+   no app in front of them. An operator cannot add a coach without curl,
+   which means the pilot is blocked on a Flutter web build and nothing else.
+7. **A confirmed booking's ticket never reaches a screen.** It is issued,
+   signed, stored and queued for SMS. The traveller app shows a payment code
+   and then has nowhere to go: no ticket screen, no booking history. The
+   endpoint (`GET /public/v1/bookings`) is there and typed in `bel_client`.
+
+8. **The catalog is copied, not shared, into the apps.** `bel_localization` is
    pure Dart — the API imports it — so it cannot declare Flutter assets, and
    Flutter refuses `..` in asset paths. `tool/sync_i18n.sh` copies it and
    `i18n_freshness_test` fails the build if a copy drifts.
@@ -107,23 +117,23 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 188 tests
+         packages/bel_contracts packages/bel_crypto     # 218 tests
 dart test packages/bel_client                           # 32 tests
-dart test services/api -x integration                   # 113 tests
+dart test services/api -x integration                   # 131 tests
 cd packages/bel_design && flutter test   # 58 component and contrast tests
-cd apps/traveller && flutter test        # 45 app tests
+cd apps/traveller && flutter test        # 54 app tests
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 131 files
+dart run tool/check_layers.dart          # the onion rule, 162 files
 ./infra/migrations/check.sh              # 26 schema guarantees
-./tool/integration.sh                    # 37 tests on real Postgres
-./tool/smoke_api.sh                      # 57 checks, incl. the Dart client
+./tool/integration.sh                    # 71 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 72 checks, incl. the Dart client
 ```
 
 Remove `services/api/build` before counting: `dart_frog build` copies the
 whole workspace into it, and `dart test services/api` then runs every suite
 twice and reports 414.
 
-**456 tests in total**, plus 57 smoke checks and 26 executed schema
+**515 tests in total**, plus 72 smoke checks and 26 executed schema
 guarantees. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
@@ -131,7 +141,36 @@ the screens render. Both halves of that seam have broken here before.
 
 ---
 
-## What the last push changed, and what it cost
+## What the last pushes changed, and what they cost
+
+Six commits: identity, cities, money, the console's API, the worker, and
+the traveller's payment screen. The build went from "a traveller can hold a
+seat" to "an operator can put a coach on a road and take cash for it" —
+except that the operator has to do it with curl, which is the whole of what
+is left.
+
+**The boundaries argued back three times, and each argument was worth
+having.** Granting the traveller `stations` tripped `verify_public.sql`;
+granting the identity role `operator_staff` tripped `verify_identity.sql`;
+the sweeper had no grant on a table created after 0004's blanket one. None
+was a mistake in the check — each was a real question about who may reach
+what, and the answer is written into the verification rather than into a
+commit message.
+
+**Two bugs only a real database could produce.** `savePattern` re-read
+through a method that opens its own transaction on its own pooled
+connection, so it could not see its own uncommitted row and returned null
+every time. `DbScope.platform('worker')` — the obvious thing to write —
+fails on the first query, because `app_user_id()` casts that setting to
+UUID.
+
+**One bug only a real clock could produce**, again: the Firebase session's
+expiry came from `DateTime.now()` inside the client, so the refresh test
+could not reach the moment the token goes stale and passed green while
+asserting nothing. Identical in shape to the hold countdown's, four commits
+apart, in a different package.
+
+## What the identity push changed, and what it cost
 
 Identity. Before it, every hold in the system belonged to one demo user,
 because there was no way to become a customer — and nothing downstream of

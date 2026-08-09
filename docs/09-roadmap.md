@@ -12,16 +12,18 @@ Per-feature state, updated on every push: **[`10-build-status.md`](10-build-stat
 
 ```
 Search → Seat map → Hold → Sign in → Book → Pay → Ticket → Board
-  ✅        ✅        ✅       ✅       ⬜     ⬜      ⬜       ✅
+  ✅        ✅        ✅       ✅       ✅     ✅      ✅       ✅
 ```
 
-Boarding is done because the scanner came early — it was the cheapest way to prove the ticket format was real. Sign-in is done as of this week, which unblocks everything to its right: until it existed, every hold in the system belonged to one demo user and nothing downstream of identity could be built honestly.
+**Every box is ticked, and the pilot still cannot run.** That sentence is the honest state of this project and it is worth sitting with rather than explaining away.
 
-The gap is now squarely the middle: **there is no way to pay, and nobody can create a departure except by running SQL.**
+The funnel is complete end to end: a traveller signs in with an emailed code, holds a seat, names their passengers, gets a payment code, walks into an agency, a vendor takes the cash, the ledger balances, a signed ticket is issued and queued for delivery, and a conductor scans it offline. Every step of that is executed by a test against real Postgres.
 
-**Done:** the domain, the schema with its tenancy and ledger guarantees, the public sales boundary, the API's browse-and-hold surface, phone-less email sign-in end to end, the typed client, the Kilo component library, the traveller app's funnel through to a held seat, the standalone boarding scanner, and CI that executes all of it.
+What is missing is not a step in the funnel. It is that **an operator cannot reach any of it without curl.** Every console endpoint exists — fleet, routes, timetables, materialisation, the guichet, manifests — scoped, capability-checked and covered. There is no app in front of them.
 
-456 tests · 57 smoke checks · 26 executed schema guarantees · 37 of those tests against real Postgres.
+**Done:** the domain, the schema with its tenancy and ledger guarantees, the public sales boundary, the whole traveller API surface, email sign-in, booking and cash payment with double-entry postings, ticket issuing, the operator console's API, `services/worker`, the typed client, the Kilo component library, the traveller app through to a payment code, the standalone boarding scanner, and CI that executes all of it.
+
+515 tests · 72 smoke checks · 26 executed schema guarantees · 71 of those tests against real Postgres.
 
 ---
 
@@ -56,36 +58,35 @@ Ships without a PSP. The point is to prove inventory, ticketing, boarding and th
 - ✅ Conductor mode: offline scan, five verdicts, standalone app
 - ✅ **Identity — sign in with a one-time code** (ADR-0024). Email leads, not phone: Firebase phone OTP needs a real billed project and we have no provisioned SMS sender, so we run the challenge over a rail we control and answer a correct code with a Firebase *custom token*. This is the fallback ADR-0018 already documented. Phone is a config value away — the channel is a column, an enum and a switch, and the SMS template is already written.
 
+### Also done since
+- ✅ **Cities from the server**, so the app holds no copy of an operator's network
+- ✅ **Booking and cash payment** — reserve, collect, post the ledger, issue the ticket, all in one transaction
+- ✅ **Ticket issuing** — Ed25519, under 300 bytes, inside the capture
+- ✅ **The operator console's API** — fleet, routes, timetables and the materialisation the pilot was blocked on
+- ✅ **`services/worker`** — the outbox drain that delivers a ticket, and three sweepers that are deliberately not guarantees
+
 ### Remaining, in dependency order
 
-Each slice below is blocked by the one above it. That ordering is not a preference — it is what the data model requires.
+**1. The operator console, as an app.**
+Flutter web. Sign-in, the fleet screens with the cabin-section designer and its presets, routes, the timetable editor, the dispatcher's day view, the guichet, manifests.
+*This is the only thing between the current build and an operator selling a real seat.* Every endpoint it needs exists and is tested; nobody can click one.
 
-**1. Reference data — the cities endpoint.**
-Small. The traveller app's city list is currently hardcoded in `main.dart`.
+**2. The traveller's tickets and history.**
+`GET /public/v1/bookings` is built and typed in `bel_client`. The app shows a payment code and then has nowhere to go — a confirmed booking's QR never reaches a screen.
 
-**2. Operator console — the minimum that lets somebody sell.**
-Sign-in and RBAC · vehicles and the cabin-section seat-layout designer · routes · schedules and departure materialisation · the guichet (cash sale over the counter, through the *same* hold path) · manifests.
-*Blocks the pilot entirely: right now departures exist only because a SQL fixture created them.*
-
-**3. Booking and cash payment.**
-Convert a hold into a booking, take cash, post the double-entry ledger rows that already have their tables and their balance trigger waiting.
-
-**4. Ticket issuing and delivery.**
-The payload, the signing, the rotating code and the verifier are all built and tested. What is missing is the endpoint that issues one, the SMS that delivers it, and the printable version.
-
-**5. Operator onboarding and admin approval.**
+**3. Operator onboarding and admin approval.**
 The admin back office, the KYB queue, approval and suspension (`03-operator-lifecycle.md`). Can trail the console: the anchor operator will be onboarded by hand.
 
-**6. The vitrine.**
+**4. The vitrine.**
 Logo, header text, accent from the closed set of eight. Cheap, and it is what makes an operator feel the platform is theirs.
 
-**7. Refund policy wizard and cash refunds.**
+**5. Refund policy wizard and cash refunds.**
 The policy engine is built and tested; the wizard and the execution path are not.
 
-**8. `services/worker`.**
-Hold sweeper, expired-challenge sweeper, SMS outbox, scheduled departure materialisation. Not urgent: `claim()` already treats a lapsed hold as available and an expired challenge is refused by the write that consumes it, so nothing is stranded by its absence — this is a tidy-up, not a guarantee.
+**6. Scheduled materialisation in the worker.**
+The pass exists and is driven by the console; nothing yet runs it nightly, so a timetable is materialised when a dispatcher asks. Fine for a pilot with one operator, wrong at ten.
 
-**9. Phone as the second sign-in channel, and a per-IP limit on codes.**
+**7. Phone as the second sign-in channel, and a per-IP limit on codes.**
 The channel is plumbed and switched off for want of a provisioned ACS sender number. Ships with it: codes are rate-limited per *destination* today — 60 seconds between sends, five attempts per code — which bounds the cost of hammering one address, and nothing yet bounds one host asking for codes to a thousand different addresses. Every one of those is a message we pay for, so this is a cost control before it is a security control.
 
 **Exit:** the anchor operator sells real seats through our console for real cash, and conductors board with our scanner. *Revenue: zero. Learning: maximum.*
@@ -168,6 +169,7 @@ Each is reasonable, and each would dilute the one thing that has to be excellent
 | Travellers do not trust prepayment | Funnel drop at the payment screen | SMS receipts, honest scarcity, visible refund policy, cash retained | Design done; unproven |
 | Disruption overwhelms support | Support tickets per disruption | IRROPS is operator self-service and P0 in Phase 2 | Designed, not built |
 | **Nobody has used this on a real network** | — | Phase 3 manual smoke | Everything so far is an emulator on a fast connection |
+| **No operator can configure anything without us** | Time from "yes" to first departure on sale | The console app — roadmap slice 1 | **The build's own bottleneck. Everything else in Phase 1 is done and unusable because of it** |
 | **Sign-in email does not arrive** | Delivery rate per hour, from day one of the pilot | Phone as a second channel — which is why it is plumbed rather than someday (ADR-0024) | **New. Email is now on the critical path of becoming a customer, and it has no fallback yet** |
 
 The first two are commercial, and they are the ones that decide the outcome. Nothing in the engineering backlog above changes either of them.
