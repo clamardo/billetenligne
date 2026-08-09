@@ -1,0 +1,34 @@
+# Payment screen — the most important screen in the app (spec §6.2).
+# Every second of waiting has a sentence attached: never a bare spinner.
+payment:
+  method:
+    title: "How would you like to pay?"
+    tabMobileMoney: "Mobile Money"
+    tabCard: "Card"
+    tabCash: "Cash"
+    detectedOperator: "{operator} detected"
+    payButton: "Pay {amount}"
+    holdCountdown: "Seat held · {time}"
+    holdExpiringSoon: "{minutes} min left to pay"
+  waiting:
+    title: "Check your phone"
+    body: "Enter your {operator} PIN to confirm the payment of {amount}."
+    stepSent: "Request sent"
+    stepPending: "Waiting for your confirmation"
+    stepConfirmed: "Payment confirmed"
+    remaining: "{time} left"
+    noPromptTitle: "Didn't get a prompt?"
+    noPromptBody: "Dial {ussd} on your phone, then approve the pending payment."
+    cancelHint: "If you cancel, any amount debited will be refunded to you."
+  success:
+    title: "Payment confirmed"
+    body: "Your ticket is ready. A confirmation SMS has been sent to you."
+  pending:
+    title: "Verifying your payment"
+    body: "We're confirming your payment with {operator}. Your seat is held. You'll get an SMS as soon as it's confirmed — usually within 5 minutes."
+    reference: "Reference: {reference}"
+  breakdown:
+    fare: "Fare"
+    serviceFee: "Service fee"
+    total: "Total"
+    nonRefundable: "Non-refundable"

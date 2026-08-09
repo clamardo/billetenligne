@@ -1,0 +1,34 @@
+# Écran de paiement — l'écran le plus important de l'application (spec §6.2).
+# Chaque seconde d'attente doit avoir une phrase attachée : jamais de spinner nu.
+payment:
+  method:
+    title: "Comment souhaitez-vous payer ?"
+    tabMobileMoney: "Mobile Money"
+    tabCard: "Carte"
+    tabCash: "Espèces"
+    detectedOperator: "{operator} détecté"
+    payButton: "Payer {amount}"
+    holdCountdown: "Place réservée · {time}"
+    holdExpiringSoon: "Plus que {minutes} min pour payer"
+  waiting:
+    title: "Vérifiez votre téléphone"
+    body: "Entrez votre code secret {operator} pour confirmer le paiement de {amount}."
+    stepSent: "Demande envoyée"
+    stepPending: "En attente de votre confirmation"
+    stepConfirmed: "Paiement confirmé"
+    remaining: "{time} restant"
+    noPromptTitle: "Vous n'avez pas reçu d'invite ?"
+    noPromptBody: "Composez {ussd} sur votre téléphone, puis validez le paiement en attente."
+    cancelHint: "Si vous annulez, tout montant débité vous sera remboursé."
+  success:
+    title: "Paiement confirmé"
+    body: "Votre billet est prêt. Un SMS de confirmation vous a été envoyé."
+  pending:
+    title: "Paiement en cours de vérification"
+    body: "Nous confirmons votre paiement auprès de {operator}. Votre place est réservée. Vous recevrez un SMS dès la confirmation — généralement en moins de 5 minutes."
+    reference: "Référence : {reference}"
+  breakdown:
+    fare: "Tarif"
+    serviceFee: "Frais de service"
+    total: "Total"
+    nonRefundable: "Non remboursable"

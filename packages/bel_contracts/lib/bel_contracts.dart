@@ -1,0 +1,26 @@
+/// The BilletEnLigne wire format, defined once.
+///
+/// Serialised by the Dart Frog API and parsed by the traveller app, the
+/// operator console and the admin back office. Adding a field is one edit
+/// here and every end fails to compile until updated — which is the good kind
+/// of breakage (ADR-0004).
+///
+/// Two rules run through all of it:
+///
+///  * **Money is `{minor, currency}`** — never a float, never a pre-formatted
+///    string. Formatting belongs to the surface that renders it.
+///  * **The server never sends prose.** Errors and labels travel as catalog
+///    keys plus parameters, so a French traveller never receives an English
+///    sentence (ADR-0008).
+library;
+
+export 'src/booking/booking_dto.dart';
+export 'src/catalog/seat_map_dto.dart';
+export 'src/catalog/trip_dto.dart';
+export 'src/common/headers.dart';
+export 'src/common/page.dart';
+export 'src/config/market_dto.dart';
+export 'src/error/api_error.dart';
+export 'src/error/error_code.dart';
+export 'src/json/json_codec.dart';
+export 'src/payment/payment_dto.dart';

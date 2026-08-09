@@ -1,0 +1,16 @@
+# Noms de pays traduits. C'est bien une donnée de LANGUE — le nom change avec
+# la langue du lecteur, contrairement à l'indicatif téléphonique ou à la
+# monnaie, qui appartiennent au pays et vivent dans config/markets.yaml.
+reference:
+  countries:
+    CG: "République du Congo"
+    CD: "République démocratique du Congo"
+    FR: "France"
+    BE: "Belgique"
+    CA: "Canada"
+  countriesShort:
+    CG: "Congo"
+    CD: "RD Congo"
+    FR: "France"
+    BE: "Belgique"
+    CA: "Canada"

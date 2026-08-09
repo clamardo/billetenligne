@@ -1,0 +1,54 @@
+# Libellés d'énumérations du domaine. Rendus par `translator.enumLabel(...)`,
+# ce qui évite un `switch` sur les états dans chaque surface.
+enum:
+  PaymentState:
+    created: "Créé"
+    pending: "En attente"
+    authorized: "Autorisé"
+    captured: "Payé"
+    failed: "Échoué"
+    expired: "Expiré"
+    cancelled: "Annulé"
+    indeterminate: "En vérification"
+  MobileOperator:
+    airtel: "Airtel Money"
+    mtn: "MTN MoMo"
+    orange: "Orange Money"
+    unknown: "Opérateur inconnu"
+  TransportMode:
+    bus: "Car"
+    air: "Avion"
+  RefundDestination:
+    source: "Sur le moyen de paiement d'origine"
+    agencyCash: "En espèces, à l'agence"
+    creditNote: "Avoir sur un prochain voyage"
+    travellerChoice: "Au choix du voyageur"
+  DisruptionKind:
+    delay: "Retard"
+    cancellation: "Annulation"
+    breakdownEnRoute: "Panne en route"
+    equipmentSwap: "Changement de véhicule"
+    diversion: "Déviation"
+    routeSuspension: "Ligne suspendue"
+  VerificationResult:
+    valid: "VALIDE"
+    alreadyBoarded: "DÉJÀ EMBARQUÉ"
+    wrongDeparture: "MAUVAIS DÉPART"
+    invalid: "INVALIDE"
+    staleCode: "CODE PÉRIMÉ"
+  OperatorRole:
+    orgOwner: "Directeur"
+    orgAdmin: "Administrateur"
+    finance: "Responsable financier"
+    fleetManager: "Responsable de flotte"
+    dispatcher: "Régulateur"
+    stationManager: "Chef d'agence"
+    vendor: "Agent guichet"
+    conductor: "Contrôleur"
+    viewer: "Consultation"
+seat:
+  class:
+    standard: "Standard"
+    vip: "VIP"
+    first: "Première"
+    economy: "Économique"

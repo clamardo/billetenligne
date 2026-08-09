@@ -1,0 +1,22 @@
+# Outbound SMS. SMS is the trust channel in this market (ADR-0013): anything
+# involving money goes out on it. Stay under 160 characters where possible —
+# a multipart SMS costs a multiple.
+sms:
+  otp:
+    body: "Your BilletEnLigne code is {code}. It expires in {minutes} minutes. Don't share it with anyone."
+  paymentConfirmed:
+    body: "Payment confirmed. {route} on {date} at {time}, seat {seat}. Ref {reference}. Ticket is in the BilletEnLigne app."
+  paymentPending:
+    body: "We're verifying your {operator} payment of {amount}. Your seat is held. Ref {reference}."
+  paymentFailed:
+    body: "Payment did not go through for {route}. No amount was debited. Your seat is free for {minutes} min."
+  refundIssued:
+    body: "Refund of {amount} sent to {destination}. Expect it within {hours}h. Ref {reference}."
+  ticketClaim:
+    body: "Your ticket for {route} on {date} is waiting. Open BilletEnLigne and enter code {code}."
+  departureReminder:
+    body: "Reminder: {route} departs at {time} from {station}. Seat {seat}. Please arrive 30 min early."
+  disruptionDeclared:
+    body: "{operator}: your {route} departure at {time} is disrupted. {summary} No fees. Your options: {link}"
+  disruptionResolved:
+    body: "{operator}: new arrangement for {route}. Departs {time}, seat {seat}. No fees. Details: {link}"

@@ -1,0 +1,51 @@
+# One failure code = one sentence and one recovery. Never "Payment failed".
+# Keys match the API contract's error codes exactly (04-payments.md §5).
+errors:
+  payment:
+    insufficient_funds:
+      title: "Not enough funds"
+      body: "Your {operator} balance doesn't cover {amount}."
+      action: "Pay with another number"
+    wrong_pin:
+      title: "Wrong PIN"
+      body: "That PIN wasn't right. You can try again."
+      action: "Try again"
+    user_declined:
+      title: "Payment cancelled"
+      body: "You declined the request on your phone. Your seat is still held."
+      action: "Choose another method"
+    timeout_no_response:
+      title: "You didn't respond in time"
+      body: "The prompt expired on your phone. We can send it again."
+      action: "Resend prompt"
+    wrong_operator_for_msisdn:
+      title: "Wrong operator"
+      body: "This number isn't a {operator} account. We detected {detected}."
+      action: "Pay with {detected}"
+    subscriber_not_found:
+      title: "Number not found"
+      body: "No mobile money account is linked to this number."
+      action: "Correct the number"
+    subscriber_barred:
+      title: "Account blocked"
+      body: "Your {operator} account doesn't allow this payment. Contact your operator."
+      action: "Choose another method"
+    limit_exceeded:
+      title: "Limit exceeded"
+      body: "This payment is over your {operator} account limit."
+      action: "Choose another method"
+    psp_unavailable:
+      title: "{operator} is temporarily unavailable"
+      body: "The service isn't responding. Your seat stays held for {minutes} minutes."
+      action: "Choose another method"
+    indeterminate:
+      title: "Verifying your payment"
+      body: "We're checking with {operator}. You'll get an SMS as soon as it's confirmed."
+    network_lost:
+      title: "Connection lost"
+      body: "We're checking your payment. Don't pay a second time."
+  hold:
+    expired_during_payment:
+      title: "Your seat hold expired"
+      body: "Seat {seat} was taken during payment. If any amount was debited, it is being refunded automatically."
+      action: "Choose another seat"

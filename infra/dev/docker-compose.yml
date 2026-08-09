@@ -1,0 +1,144 @@
+# BilletEnLigne — local development stack (ADR-0020).
+#
+# `docker compose up` and nothing else. No cloud credentials, no network
+# required, no way to accidentally reach a real project.
+#
+# Semantics deliberately mirror the CogitovaSchool Aspire AppHost, including
+# the two lessons that were learned the hard way there:
+#   1. the Firebase emulator exports to a SUBDIRECTORY of the bind mount,
+#      never the mount point itself (see firebase-auth below);
+#   2. a test run gets NO persistence anywhere, so a suite always starts from
+#      a known world.
+#
+# Test runs:  BEL_TEST_RUN=true docker compose --profile test up
+# Lean mode:  docker compose up postgres firebase-auth   (domain work needs neither)
+
+name: billetenligne-dev
+
+services:
+  # ---------------------------------------------------------------------------
+  # Postgres — inventory, ledger, bookings, audit. The system of record.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bel
+      POSTGRES_PASSWORD: bel
+      POSTGRES_DB: billetenligne
+      # Row-level security is the real tenancy boundary (ADR-0011), so the
+      # app role must NOT be a superuser — superusers bypass RLS silently.
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./seed/00-roles.sql:/docker-entrypoint-initdb.d/00-roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bel -d billetenligne"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Ephemeral twin used by the integration and E2E suites (ADR-0021 layers 3-4).
+  # tmpfs, no volume: the suite starts from nothing, every time.
+  postgres-test:
+    profiles: ["test"]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: bel
+      POSTGRES_PASSWORD: bel
+      POSTGRES_DB: billetenligne_test
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bel -d billetenligne_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # ---------------------------------------------------------------------------
+  # Firebase Auth emulator (ADR-0018).
+  #
+  # The `demo-` project prefix makes the emulator run fully offline: no
+  # credentials, no cloud project, and no way to reach a real one by accident.
+  #
+  # --import / --export-on-exit target firebase-data/DATA — a SUBDIRECTORY of
+  # the bind mount, never the mount point. The exporter clears its target
+  # directory first, which fails on a mount point with "Device or resource
+  # busy" and is swallowed during shutdown. Accounts then vanish on every
+  # restart while their Postgres rows survive, leaving user records pointing
+  # at Firebase UIDs that no longer exist. Do not "tidy" this path.
+  #
+  # `mkdir -p` because --import throws when the directory is absent.
+  # `exec` so the emulator keeps PID 1 and still receives the SIGTERM that
+  # triggers the export.
+  # ---------------------------------------------------------------------------
+  firebase-auth:
+    image: andreysenov/firebase-tools:latest-node-lts
+    restart: unless-stopped
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        mkdir -p /home/node/firebase-data/data &&
+        exec firebase emulators:start
+        --only auth,ui
+        --project ${FIREBASE_PROJECT_ID:-demo-billetenligne}
+        ${FIREBASE_PERSISTENCE:---import /home/node/firebase-data/data --export-on-exit /home/node/firebase-data/data}
+    ports:
+      - "9099:9099"   # auth
+      - "4000:4000"   # emulator UI
+      - "4400:4400"   # hub
+    volumes:
+      - ./firebase.json:/home/node/firebase.json:ro
+      - ./firebase-data:/home/node/firebase-data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4400/emulators || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ---------------------------------------------------------------------------
+  # Azurite — blob storage emulator. KYB documents, operator logos, ticket PDFs
+  # and operator statements. The most faithful storage emulator available;
+  # production swaps the implementation behind the same storage port.
+  # ---------------------------------------------------------------------------
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    restart: unless-stopped
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --location /data
+    ports:
+      - "10000:10000"   # blob
+      - "10001:10001"   # queue
+      - "10002:10002"   # table
+    volumes:
+      - azurite-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 10000 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ---------------------------------------------------------------------------
+  # Mailpit — catches outbound email so operator statements and KYB
+  # correspondence are VISIBLE during development rather than merely logged.
+  # SMS has no equivalent: with COMMS__CONNECTIONSTRING blank, the logging
+  # sender writes messages to the API log (ADR-0019), so nobody's handset ever
+  # receives an SMS from a developer's laptop.
+  # ---------------------------------------------------------------------------
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # web UI
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+volumes:
+  postgres-data:
+  azurite-data:

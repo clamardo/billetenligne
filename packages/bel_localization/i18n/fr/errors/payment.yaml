@@ -1,0 +1,51 @@
+# Un code d'échec = une phrase et un recours. Jamais « Le paiement a échoué ».
+# Les clés correspondent exactement aux codes du contrat API (04-payments.md §5).
+errors:
+  payment:
+    insufficient_funds:
+      title: "Solde insuffisant"
+      body: "Le solde de votre compte {operator} ne couvre pas {amount}."
+      action: "Payer avec un autre numéro"
+    wrong_pin:
+      title: "Code secret incorrect"
+      body: "Le code saisi n'est pas le bon. Vous pouvez réessayer."
+      action: "Réessayer"
+    user_declined:
+      title: "Paiement annulé"
+      body: "Vous avez refusé la demande sur votre téléphone. Votre place est toujours réservée."
+      action: "Choisir un autre moyen"
+    timeout_no_response:
+      title: "Vous n'avez pas répondu à temps"
+      body: "L'invite a expiré sur votre téléphone. Nous pouvons vous la renvoyer."
+      action: "Renvoyer l'invite"
+    wrong_operator_for_msisdn:
+      title: "Mauvais opérateur"
+      body: "Ce numéro n'est pas un compte {operator}. Nous avons détecté {detected}."
+      action: "Payer avec {detected}"
+    subscriber_not_found:
+      title: "Numéro introuvable"
+      body: "Aucun compte mobile money n'est associé à ce numéro."
+      action: "Corriger le numéro"
+    subscriber_barred:
+      title: "Compte bloqué"
+      body: "Votre compte {operator} n'autorise pas ce paiement. Contactez votre opérateur."
+      action: "Choisir un autre moyen"
+    limit_exceeded:
+      title: "Plafond dépassé"
+      body: "Ce paiement dépasse le plafond de votre compte {operator}."
+      action: "Choisir un autre moyen"
+    psp_unavailable:
+      title: "{operator} momentanément indisponible"
+      body: "Le service ne répond pas. Votre place reste réservée pendant {minutes} minutes."
+      action: "Choisir un autre moyen"
+    indeterminate:
+      title: "Paiement en cours de vérification"
+      body: "Nous vérifions auprès de {operator}. Vous recevrez un SMS dès que c'est confirmé."
+    network_lost:
+      title: "Connexion perdue"
+      body: "Nous vérifions votre paiement. Ne payez pas une deuxième fois."
+  hold:
+    expired_during_payment:
+      title: "Votre place a expiré"
+      body: "Le siège {seat} a été pris pendant le paiement. Si un montant a été débité, il vous est remboursé automatiquement."
+      action: "Choisir un autre siège"

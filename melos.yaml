@@ -1,0 +1,53 @@
+name: billetenligne
+
+packages:
+  - packages/**
+  - services/**
+  - apps/**
+
+command:
+  bootstrap:
+    runPubGetInParallel: true
+
+scripts:
+  analyze:
+    description: Static analysis across every package.
+    run: dart analyze --fatal-infos
+
+  layers:
+    description: >-
+      Enforce the onion dependency rule (ADR-0001). A rule that is not enforced
+      by CI is a comment.
+    run: dart run tool/check_layers.dart
+
+  test:domain:
+    description: >-
+      Pure Dart, no containers, under five seconds. Runs on save. If it is
+      slow, the code is in the wrong layer.
+    run: dart test packages/bel_domain packages/bel_localization packages/bel_contracts
+
+  test:api:
+    description: API unit tests — middleware, tenancy, idempotency.
+    run: dart test services/api
+
+  test:design:
+    description: >-
+      Kilo contrast gates. Accessibility is a build gate, not a review comment.
+    run: melos exec --scope=bel_design -- flutter test
+
+  test:schema:
+    description: >-
+      Applies every migration to a throwaway Postgres and asserts tenant
+      isolation, the append-only trail and the double-entry balance actually
+      hold. Requires Docker.
+    run: ./infra/migrations/check.sh
+
+  verify:
+    description: Everything a pull request must pass.
+    run: |
+      melos run analyze && \
+      melos run layers && \
+      melos run test:domain && \
+      melos run test:api && \
+      melos run test:design && \
+      melos run test:schema

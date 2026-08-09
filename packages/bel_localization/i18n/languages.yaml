@@ -1,0 +1,32 @@
+# Canonical supported-language list — the single source of truth for the resolver,
+# the onboarding language gate, and the SMS/PDF renderers on the server.
+#
+# LANGUAGE facts only. Country facts — dialling code, currency, carrier
+# prefixes, payment rails — live in config/markets.yaml, because they belong to
+# a COUNTRY and not to a language: French is spoken in Congo-Brazzaville (+242),
+# the DRC (+243), France (+33) and Canada (+1). Translated country *names* are
+# language data and live in i18n/{lang}/reference/countries.yaml.
+#
+# `code` is the folder name under i18n/ and the value stored on the traveller
+# account and on every operator staff account.
+# `culture` drives date/number formatting only — NEVER string lookup.
+#
+# French is the DEFAULT and the SOURCE language (ADR-0008): copy is authored in
+# French, English is the translation. A missing English key falls back to French,
+# which is the correct degradation for this market.
+defaultLanguage: fr
+languages:
+  - code: fr
+    culture: fr_CG
+    englishName: French
+    nativeName: Français
+    flag: "🇫🇷"
+    rtl: false
+    displayOrder: 1
+  - code: en
+    culture: en
+    englishName: English
+    nativeName: English
+    flag: "🇬🇧"
+    rtl: false
+    displayOrder: 2

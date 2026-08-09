@@ -1,0 +1,13 @@
+# Libellés des moyens de paiement. Les identifiants (cg.airtel_money) et les
+# codes USSD viennent de config/markets.yaml ; seuls les mots sont ici.
+enum:
+  PaymentRailKind:
+    mobileMoney: "Mobile Money"
+    card: "Carte bancaire"
+    cash: "Espèces"
+    bankTransfer: "Virement bancaire"
+payment:
+  rail:
+    comingSoon: "Bientôt disponible"
+    temporarilyUnavailable: "Momentanément indisponible"
+    notAvailableForNumber: "Indisponible pour ce numéro"

@@ -1,0 +1,54 @@
+# Domain enum labels. Rendered via `translator.enumLabel(...)`, which keeps a
+# switch over states out of every surface.
+enum:
+  PaymentState:
+    created: "Created"
+    pending: "Pending"
+    authorized: "Authorised"
+    captured: "Paid"
+    failed: "Failed"
+    expired: "Expired"
+    cancelled: "Cancelled"
+    indeterminate: "Verifying"
+  MobileOperator:
+    airtel: "Airtel Money"
+    mtn: "MTN MoMo"
+    orange: "Orange Money"
+    unknown: "Unknown operator"
+  TransportMode:
+    bus: "Coach"
+    air: "Flight"
+  RefundDestination:
+    source: "To your original payment method"
+    agencyCash: "In cash, at the agency"
+    creditNote: "Credit for a future trip"
+    travellerChoice: "Traveller's choice"
+  DisruptionKind:
+    delay: "Delay"
+    cancellation: "Cancellation"
+    breakdownEnRoute: "Breakdown en route"
+    equipmentSwap: "Vehicle change"
+    diversion: "Diversion"
+    routeSuspension: "Route suspended"
+  VerificationResult:
+    valid: "VALID"
+    alreadyBoarded: "ALREADY BOARDED"
+    wrongDeparture: "WRONG DEPARTURE"
+    invalid: "INVALID"
+    staleCode: "STALE CODE"
+  OperatorRole:
+    orgOwner: "Director"
+    orgAdmin: "Administrator"
+    finance: "Finance manager"
+    fleetManager: "Fleet manager"
+    dispatcher: "Dispatcher"
+    stationManager: "Station manager"
+    vendor: "Ticket agent"
+    conductor: "Conductor"
+    viewer: "Viewer"
+seat:
+  class:
+    standard: "Standard"
+    vip: "VIP"
+    first: "First"
+    economy: "Economy"

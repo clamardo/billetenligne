@@ -1,0 +1,10 @@
+name: billetenligne
+publish_to: none
+environment:
+  sdk: ^3.8.0
+workspace:
+  - packages/bel_domain
+  - packages/bel_localization
+  - packages/bel_design
+  - packages/bel_contracts
+  - services/api

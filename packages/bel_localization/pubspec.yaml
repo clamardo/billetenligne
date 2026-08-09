@@ -1,0 +1,14 @@
+name: bel_localization
+description: >-
+  One YAML translation catalog for every surface AND the server (ADR-0008).
+  Ported from the CogitovaSchool.Localization pattern: nested YAML flattened
+  to dotted keys at load, fr → default → key fallback, never throws.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.8.0
+dependencies:
+  yaml: ^3.1.2
+dev_dependencies:
+  test: ^1.25.0

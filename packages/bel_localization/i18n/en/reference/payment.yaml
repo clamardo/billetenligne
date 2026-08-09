@@ -1,0 +1,13 @@
+# Payment method labels. Identifiers (cg.airtel_money) and USSD codes come
+# from config/markets.yaml; only the words live here.
+enum:
+  PaymentRailKind:
+    mobileMoney: "Mobile Money"
+    card: "Card"
+    cash: "Cash"
+    bankTransfer: "Bank transfer"
+payment:
+  rail:
+    comingSoon: "Coming soon"
+    temporarilyUnavailable: "Temporarily unavailable"
+    notAvailableForNumber: "Not available for this number"

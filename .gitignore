@@ -1,0 +1,18 @@
+# Dart / Flutter
+.dart_tool/
+build/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+
+# Local dev secrets and emulator state (ADR-0020)
+infra/dev/.env
+infra/dev/firebase-data/data/*
+!infra/dev/firebase-data/data/.gitignore
+
+# Editors
+.idea/
+.vscode/
+*.swp
+.DS_Store

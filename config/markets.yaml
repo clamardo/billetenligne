@@ -1,0 +1,103 @@
+# Market configuration — the country-varying facts, as data.
+#
+# WHY THIS IS NOT IN i18n/languages.yaml
+# --------------------------------------
+# A dialling code is a property of a COUNTRY, not a LANGUAGE. French is spoken
+# in Congo-Brazzaville (+242), the DRC (+243), France (+33) and Canada (+1) —
+# so `fr: +242` would be wrong the moment we add our most likely second market,
+# which is exactly the thing this file exists to make smooth.
+#
+# The split:
+#   i18n/languages.yaml  →  which languages exist, and how to FORMAT in them
+#   config/markets.yaml  →  which countries we serve, and what is TRUE there
+#   i18n/*/reference/countries.yaml → the translated NAME of a country
+#
+# This file is loaded by the API at startup and served to clients, so enabling
+# a payment rail or correcting a renumbered carrier prefix is a config push,
+# not an app release (ADR-0006) — which matters in a market where many users
+# never update. `Market.congoBrazzaville` in bel_domain is the compiled-in
+# fallback so the app is never rail-less on first launch.
+
+defaultMarket: CG
+
+markets:
+  - code: CG
+    nameKey: reference.countries.CG
+    currency: XAF          # zero-decimal — see Currency.exponent
+    timeZone: Africa/Brazzaville
+    defaultLanguage: fr
+    languages: [fr, en]
+    serviceFeeMinor: 300   # flat per seat, never a percentage
+
+    phone:
+      diallingCode: "242"
+      nationalLength: 9    # including the leading 0, which Congo retains
+      # Carrier prefixes. DATA, deliberately: operators renumber, and when
+      # they do this is a config push rather than an app release (ADR-0005).
+      prefixes:
+        "06": mtn
+        "05": airtel
+        "04": airtel
+
+    rails:
+      - id: cg.airtel_money
+        kind: mobileMoney
+        operator: airtel
+        ussdCode: "*128#"
+        minAmountMinor: 100
+        maxAmountMinor: 1000000
+        enabled: true
+
+      - id: cg.mtn_momo
+        kind: mobileMoney
+        operator: mtn
+        ussdCode: "*105#"
+        minAmountMinor: 100
+        maxAmountMinor: 1000000
+        enabled: true
+
+      # Largest single wallet (~45%) and a fast-follow, not a launch rail
+      # (ADR-0006). Present and disabled so switching it on is one line here.
+      - id: cg.orange_money
+        kind: mobileMoney
+        operator: orange
+        ussdCode: "#150#"
+        enabled: false
+        disabledReasonKey: payment.rail.comingSoon
+
+      - id: cg.card
+        kind: card
+        enabled: false
+        disabledReasonKey: payment.rail.comingSoon
+
+      - id: cg.cash
+        kind: cash
+        enabled: true
+
+# ── Adding a country ────────────────────────────────────────────────────────
+#
+# Everything below is what a second market costs. It is a block in this file
+# plus a PaymentGateway adapter for any carrier we have not spoken to before —
+# no change to booking, holds, the ledger, the payment state machine,
+# ticketing, IRROPS or any screen. `market_test.dart` proves this by standing
+# up a complete DRC market in test code alone.
+#
+#  - code: CD
+#    nameKey: reference.countries.CD
+#    currency: CDF
+#    timeZone: Africa/Kinshasa
+#    defaultLanguage: fr
+#    languages: [fr, en]
+#    serviceFeeMinor: 1500
+#    phone:
+#      diallingCode: "243"
+#      nationalLength: 10        # one more digit than Congo-Brazzaville
+#      prefixes:
+#        "099": airtel           # already integrated — same adapter
+#        "097": orange           # needs one new adapter
+#        "081": vodacom_mpesa    # needs one new adapter
+#    rails:
+#      - { id: cd.airtel_money, kind: mobileMoney, operator: airtel,        ussdCode: "*501#",  enabled: true }
+#      - { id: cd.orange_money, kind: mobileMoney, operator: orange,        ussdCode: "*144#",  enabled: true }
+#      - { id: cd.mpesa,        kind: mobileMoney, operator: vodacom_mpesa, ussdCode: "*1122#", enabled: true }
+#      - { id: cd.cash,         kind: cash,                                                     enabled: true }

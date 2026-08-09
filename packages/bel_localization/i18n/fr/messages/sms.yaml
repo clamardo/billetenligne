@@ -1,0 +1,22 @@
+# SMS sortants. Le SMS est le canal de confiance de ce marché (ADR-0013) :
+# tout ce qui touche à l'argent y passe. Rester sous 160 caractères quand
+# c'est possible — un SMS multipart coûte plusieurs fois le prix.
+sms:
+  otp:
+    body: "Votre code BilletEnLigne est {code}. Il expire dans {minutes} minutes. Ne le communiquez à personne."
+  paymentConfirmed:
+    body: "Paiement confirmé. {route} le {date} a {time}, siege {seat}. Ref {reference}. Billet dans l'app BilletEnLigne."
+  paymentPending:
+    body: "Nous verifions votre paiement {operator} de {amount}. Votre place est reservee. Ref {reference}."
+  paymentFailed:
+    body: "Paiement non abouti pour {route}. Aucun montant n'a ete debite. Votre place est libre pendant {minutes} min."
+  refundIssued:
+    body: "Remboursement de {amount} envoye sur {destination}. Delai indicatif {hours}h. Ref {reference}."
+  ticketClaim:
+    body: "Votre billet {route} du {date} vous attend. Ouvrez BilletEnLigne et entrez le code {code}."
+  departureReminder:
+    body: "Rappel: {route} demarre a {time} depuis {station}. Siege {seat}. Presentez-vous 30 min avant."
+  disruptionDeclared:
+    body: "{operator}: votre depart {route} de {time} est perturbe. {summary} Aucun frais. Vos options: {link}"
+  disruptionResolved:
+    body: "{operator}: nouvelle solution pour {route}. Depart {time}, siege {seat}. Aucun frais. Details: {link}"

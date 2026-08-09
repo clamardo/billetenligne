@@ -1,0 +1,16 @@
+name: bel_design
+description: >-
+  "Kilo" — the BilletEnLigne design system. Consumed unchanged by the traveller
+  app, the operator console and the admin back office (ADR-0010).
+version: 0.1.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.24.0"
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

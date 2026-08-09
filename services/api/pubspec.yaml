@@ -1,0 +1,17 @@
+name: bel_api
+description: >-
+  BilletEnLigne HTTP API (Dart Frog). Three route surfaces with genuinely
+  different handlers — /public, /console and /admin — so a bug in one cannot
+  become a cross-tenant leak in another (ADR-0011).
+version: 0.1.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.8.0
+dependencies:
+  bel_contracts: ^0.1.0
+  bel_domain: ^0.1.0
+  bel_localization: ^0.1.0
+  dart_frog: ^1.1.0
+dev_dependencies:
+  test: ^1.25.0

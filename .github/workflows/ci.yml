@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Layers 1 and 2 of ADR-0021. Pure Dart, no containers, no Flutter — so it
+  # answers in under a minute and is the signal developers actually wait for.
+  domain:
+    name: Domain, contracts, layers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get
+
+      - name: Analyze
+        run: dart analyze --fatal-infos
+
+      - name: Formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      # The onion rule. Fails the build, not the review.
+      - name: Layer boundaries
+        run: dart run tool/check_layers.dart
+
+      - name: Domain, localization and contract tests
+        run: dart test packages/bel_domain packages/bel_localization packages/bel_contracts
+
+      - name: API tests
+        run: dart test services/api
+
+  # The design system's accessibility gates. Separate job because it needs the
+  # Flutter SDK, which is a slower checkout.
+  design:
+    name: Kilo contrast gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - name: Contrast and accent-hue gates
+        working-directory: packages/bel_design
+        run: flutter test
+
+  # Layer 3. A schema that compiles is not a schema that isolates tenants,
+  # balances a ledger or refuses to let someone edit an audit trail — so all
+  # three are executed against a real Postgres.
+  schema:
+    name: Schema guarantees
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Migrations, RLS, ledger and append-only checks
+        run: ./infra/migrations/check.sh
+
+  # Budgets from ADR-0009, enforced rather than hoped for. Skipped until the
+  # traveller app exists.
+  budgets:
+    name: Size and cold-start budgets
+    runs-on: ubuntu-latest
+    if: hashFiles('apps/traveller/pubspec.yaml') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - name: Build per-ABI release APK
+        working-directory: apps/traveller
+        run: flutter build apk --release --split-per-abi --target-platform android-arm64
+      - name: Assert APK is under 15 MB
+        run: |
+          apk=$(find apps/traveller/build -name '*arm64*.apk' | head -1)
+          size=$(stat -c%s "$apk")
+          echo "APK: $((size / 1024 / 1024)) MB"
+          # This is the market, not an edge case: users are on Android Go
+          # phones buying 500 MB data bundles.
+          test "$size" -le $((15 * 1024 * 1024))
