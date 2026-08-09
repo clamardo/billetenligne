@@ -10,5 +10,6 @@ workspace:
   - packages/bel_crypto
   - packages/bel_client
   - services/api
+  - services/worker
   - apps/scanner
   - apps/traveller

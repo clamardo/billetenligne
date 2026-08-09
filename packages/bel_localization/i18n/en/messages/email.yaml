@@ -16,3 +16,13 @@ email:
 
       If you did not ask for this code, ignore this message: nobody can reach
       your account without it.
+  booking:
+    subject: "Your BilletEnLigne ticket {reference}"
+    body: |
+      Your seat is confirmed.
+
+      {route} on {date} at {time}, seat {seat}.
+      Reference {reference}.
+
+      Your ticket is in the BilletEnLigne app. Show the QR code to the
+      conductor — it works with no network.

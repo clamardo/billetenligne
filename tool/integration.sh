@@ -89,11 +89,26 @@ done
 export DATABASE_URL="postgres://bel_api:bel_api@localhost:$PORT/$DB?sslmode=disable"
 export SEED_DATABASE_URL="postgres://postgres:postgres@localhost:$PORT/$DB?sslmode=disable"
 
-echo "── suite"
+# The worker reads the shared catalog from disk, and its working directory is
+# its own package rather than the repo root.
+export BEL_I18N_DIR="$HERE/packages/bel_localization/i18n"
+
+echo "── api"
 cd "$HERE/services/api"
-if dart test test/integration --concurrency=1 "$@"; then
-  green "── integration passed"
-else
+if ! dart test test/integration --concurrency=1 "$@"; then
   red "── integration failed"
   exit 1
 fi
+
+# Separate invocation, and deliberately so: the worker's suite writes rows the
+# API's suite would otherwise see mid-run — an expired hold appearing under a
+# test that is counting live ones. `--concurrency=1` keeps each suite
+# sequential; running them as one would not keep them apart.
+echo "── worker"
+cd "$HERE/services/worker"
+if ! dart test test --concurrency=1 "$@"; then
+  red "── integration failed"
+  exit 1
+fi
+
+green "── integration passed"

@@ -84,9 +84,16 @@ BEGIN
     RAISE EXCEPTION 'FAIL: the public role can read accounts or challenges';
   END IF;
 
-  -- Nor may the identity surface erase a challenge it got wrong.
+  -- Nor may the identity surface erase a challenge it got wrong. The sweeper
+  -- may (0010), and the two roles have exactly opposite privileges on this
+  -- table for that reason: issuing is identity, retiring is maintenance.
   IF has_table_privilege('bel_identity', 'auth_challenges', 'DELETE') THEN
     RAISE EXCEPTION 'FAIL: the identity role can delete its own audit trail';
+  END IF;
+
+  IF has_table_privilege('bel_admin', 'auth_challenges', 'INSERT')
+  OR has_table_privilege('bel_admin', 'auth_challenges', 'UPDATE') THEN
+    RAISE EXCEPTION 'FAIL: the sweeper can issue or edit a sign-in code';
   END IF;
 
   -- `operator_staff` left the list above in 0009, because resolving a bearer

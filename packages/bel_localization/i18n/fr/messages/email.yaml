@@ -16,3 +16,13 @@ email:
 
       Si vous n'avez pas demandé ce code, ignorez ce message : personne ne peut
       accéder à votre compte sans lui.
+  booking:
+    subject: "Votre billet BilletEnLigne {reference}"
+    body: |
+      Votre place est confirmée.
+
+      {route} le {date} à {time}, siège {seat}.
+      Référence {reference}.
+
+      Votre billet est dans l'application BilletEnLigne. Présentez le code QR
+      au contrôleur — il fonctionne sans réseau.

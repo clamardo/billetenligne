@@ -1,0 +1,18 @@
+name: bel_worker
+description: >-
+  Scheduled and background work: the outbox drain that delivers tickets, the
+  sweepers that tidy lapsed holds and spent sign-in codes. Deploys as cron
+  jobs, not as a service — every pass is run-once-and-exit.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.8.0
+dependencies:
+  bel_api: ^0.1.0
+  bel_contracts: ^0.1.0
+  bel_domain: ^0.1.0
+  bel_localization: ^0.1.0
+  postgres: ^3.5.0
+dev_dependencies:
+  test: ^1.25.0

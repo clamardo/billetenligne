@@ -67,6 +67,21 @@ final class DbScope {
   const DbScope.platform(String actorUserId)
     : this._(DbSurface.platform, userId: actorUserId);
 
+  /// Scheduled background work: the outbox drain and the sweepers.
+  ///
+  /// Cross-tenant like [DbScope.platform] and **deliberately without an actor
+  /// id**, because there is no human to attribute it to. Passing a label like
+  /// `'worker'` as the actor was the obvious thing to write and it does not
+  /// work: `app_user_id()` casts that setting to UUID, so the first query
+  /// under such a scope fails with `invalid input syntax for type uuid`. The
+  /// integration suite found it immediately, which is the correct place for a
+  /// scope mistake to surface.
+  ///
+  /// Nothing here is audited under a reason the way a platform read is —
+  /// these passes touch no cross-tenant *data*, only rows that have expired
+  /// on their own.
+  const DbScope.worker() : this._(DbSurface.platform);
+
   final DbSurface surface;
   final String? tenantId;
   final String? userId;
