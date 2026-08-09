@@ -11,12 +11,14 @@ import 'adapters/acs_notification_gateway.dart';
 import 'adapters/fake_auth_gateway.dart';
 import 'adapters/firebase_auth_gateway.dart';
 import 'adapters/logging_notification_gateway.dart';
+import 'adapters/unavailable_operator_console.dart';
 import 'adapters/memory_idempotency_store.dart';
 import 'application/hold_seats.dart';
 import 'adapters/ed25519_ticket_issuer.dart';
 import 'application/ports/booking_store.dart';
 import 'application/ports/ticket_issuer.dart';
 import 'application/ports/city_catalogue.dart';
+import 'application/ports/operator_console.dart';
 import 'application/ports/departure_catalogue.dart';
 import 'application/ports/notification_gateway.dart';
 import 'application/ports/seat_inventory.dart';
@@ -32,6 +34,7 @@ import 'infrastructure/memory/memory_seat_inventory.dart';
 import 'infrastructure/postgres/postgres_departure_catalogue.dart';
 import 'infrastructure/postgres/postgres_booking_store.dart';
 import 'infrastructure/postgres/postgres_identity.dart';
+import 'infrastructure/postgres/postgres_operator_console.dart';
 import 'infrastructure/postgres/postgres_idempotency_store.dart';
 import 'infrastructure/postgres/postgres_seat_inventory.dart';
 import 'middleware/idempotency.dart';
@@ -55,6 +58,7 @@ final class Services {
     required this.signIn,
     required this.reserveBooking,
     required this.bookings,
+    required this.console,
     required this.authGateway,
     required this.directory,
     required this.catalogue,
@@ -72,6 +76,12 @@ final class Services {
   final SignIn signIn;
   final ReserveBooking reserveBooking;
   final BookingStore bookings;
+
+  /// The operator surface. Backed by Postgres, or by an adapter that refuses
+  /// with a message naming `DATABASE_URL` — the console configures the world
+  /// the traveller browses, and a fake one would be a second definition of
+  /// every coach and route, kept in sync by hand.
+  final OperatorConsole console;
 
   /// Who the caller is. Firebase behind a real database, a deterministic fake
   /// otherwise — the same condition under which the inventory is a fake, so a
@@ -138,6 +148,7 @@ final class Services {
       ),
       reserveBooking: ReserveBooking(bookings: bookings),
       bookings: bookings,
+      console: PostgresOperatorConsole(db, timeZone: Market.current.timeZone),
       authGateway: FirebaseAuthGateway(
         config: FirebaseConfig.fromEnvironment(env),
         directory: directory,
@@ -205,6 +216,7 @@ final class Services {
       ),
       reserveBooking: ReserveBooking(bookings: memoryBookings),
       bookings: memoryBookings,
+      console: const UnavailableOperatorConsole(),
       // A demo traveller, so a fresh clone can hold a seat without standing up
       // Firebase first — and a fake, so this token cannot reach a real
       // database even by accident.

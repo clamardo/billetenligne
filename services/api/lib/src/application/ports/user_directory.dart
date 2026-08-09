@@ -15,6 +15,7 @@ final class Account {
     this.emailVerifiedAt,
     this.phoneVerifiedAt,
     this.disabledAt,
+    this.staff,
   });
 
   final String id;
@@ -37,7 +38,32 @@ final class Account {
   /// its tickets — this is a refusal to sign in, not an erasure.
   final DateTime? disabledAt;
 
+  /// The operator this person works for, if any. Null for a traveller, which
+  /// is almost everybody.
+  ///
+  /// Read from `operator_staff` on **every** authenticated request rather than
+  /// carried in the Firebase token. A custom claim is a hint for routing; the
+  /// database is the authority (ADR-0018), and the difference matters the hour
+  /// somebody is dismissed — their token is still valid for the rest of it.
+  final StaffMembership? staff;
+
   bool get isDisabled => disabledAt != null;
+}
+
+/// What somebody may do, and for whom.
+final class StaffMembership {
+  const StaffMembership({
+    required this.operatorId,
+    required this.roles,
+    this.stationIds = const [],
+  });
+
+  final String operatorId;
+  final List<String> roles;
+
+  /// A vendor is scoped to their station(s): the Pointe-Noire agent must not
+  /// be able to open the Brazzaville till. Empty means every station.
+  final List<String> stationIds;
 }
 
 /// Accounts, keyed the three ways they are actually looked up.
@@ -67,6 +93,24 @@ abstract interface class UserDirectory {
   Future<({Account account, bool created})> forVerifiedPhone({
     required String phone,
     required String language,
+  });
+
+  /// An account for somebody standing at a counter.
+  ///
+  /// **Deliberately not verified.** A vendor typing a traveller's number
+  /// identifies them; it does not authenticate them, and the difference is
+  /// what `phone_verified_at` exists to record. The stamp lands the first
+  /// time its owner answers a code — at which point this becomes their
+  /// account, with the ticket the vendor sold them already in it.
+  ///
+  /// This is what keeps agency and app sales in one reconciliation: a counter
+  /// sale takes the same hold through the same code path as a phone sale
+  /// (`0002_inventory_booking.sql`), and it can only do that if the buyer is
+  /// a user like any other.
+  Future<Account> forCounterSale({
+    required String phone,
+    String? fullName,
+    String language = 'fr',
   });
 
   /// Records that we saw them. Best-effort and deliberately not awaited on the

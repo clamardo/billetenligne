@@ -61,7 +61,7 @@ DECLARE
   forbidden TEXT[] := ARRAY[
     'seats', 'holds', 'bookings', 'booking_seats', 'tickets',
     'payment_intents', 'refunds', 'ledger_entries', 'payment_events',
-    'audit_log', 'operator_staff', 'kyb_documents', 'departures'
+    'audit_log', 'kyb_documents', 'departures'
   ];
 BEGIN
   FOREACH t IN ARRAY forbidden LOOP
@@ -89,7 +89,20 @@ BEGIN
     RAISE EXCEPTION 'FAIL: the identity role can delete its own audit trail';
   END IF;
 
-  RAISE NOTICE 'OK  the identity role cannot sell, and the sales role cannot read accounts';
+  -- `operator_staff` left the list above in 0009, because resolving a bearer
+  -- token has to answer "who is this AND what are they" and a role is part of
+  -- that answer. The rule being protected was never "cannot read a role" — it
+  -- was "cannot answer who-is-this and also take money" — so what matters is
+  -- that the read is read-only. Reading a role is identity; writing one is
+  -- administration, and they are not the same surface.
+  IF has_table_privilege('bel_identity', 'operator_staff', 'INSERT')
+  OR has_table_privilege('bel_identity', 'operator_staff', 'UPDATE')
+  OR has_table_privilege('bel_identity', 'operator_staff', 'DELETE')
+  OR has_table_privilege('bel_identity', 'operators', 'UPDATE') THEN
+    RAISE EXCEPTION 'FAIL: the identity role can grant itself a role';
+  END IF;
+
+  RAISE NOTICE 'OK  the identity role reads roles, cannot write them, and cannot sell';
 END
 $$;
 

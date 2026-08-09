@@ -1,3 +1,4 @@
+import '../money/money.dart';
 import 'transport_mode.dart';
 
 /// How seats in a section are labelled.
@@ -8,6 +9,23 @@ sealed class PriceModifier {
   const PriceModifier();
   const factory PriceModifier.multiplier(double value) = MultiplierModifier;
   const factory PriceModifier.supplementMinor(int value) = SupplementModifier;
+
+  /// The fare for a seat in this section, given the departure's base fare.
+  ///
+  /// Rounded to the nearest minor unit, once, here. Doing it at each call site
+  /// is how the seat map quotes 13 500 and the booking charges 13 499 — and a
+  /// traveller who spots a one-franc difference stops trusting every other
+  /// number on the screen.
+  Money applyTo(Money base) => switch (this) {
+    MultiplierModifier(:final value) => Money(
+      (base.minor * value).round(),
+      base.currency,
+    ),
+    SupplementModifier(:final minor) => Money(
+      base.minor + minor,
+      base.currency,
+    ),
+  };
 }
 
 final class MultiplierModifier extends PriceModifier {
@@ -136,6 +154,14 @@ final class SeatLayout {
     }
     return out;
   }
+
+  /// What one seat costs on a departure whose base fare is [base].
+  ///
+  /// The section owns the modifier, so a VIP row is priced by the layout
+  /// rather than by a special case in the sales path — which is what lets the
+  /// same code sell a 2+2 coach and a two-class cabin (ADR-0017).
+  Money fareFor(String label, Money base) =>
+      sectionForSeat(label)?.modifier?.applyTo(base) ?? base;
 
   CabinSection? sectionForSeat(String label) {
     var offset = 0;

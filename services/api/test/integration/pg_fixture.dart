@@ -1,6 +1,13 @@
 import 'dart:io';
 
+import 'package:bel_api/src/application/hold_seats.dart';
+import 'package:bel_api/src/application/ports/booking_store.dart';
 import 'package:bel_api/src/application/ports/seat_inventory.dart';
+import 'package:bel_api/src/application/reserve_booking.dart';
+import 'package:bel_api/src/infrastructure/db/database.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_booking_store.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_seat_inventory.dart';
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:postgres/postgres.dart';
 
 /// The world a booking test needs, seeded through the front door.
@@ -196,6 +203,74 @@ final class PgFixture {
       },
     );
     return rows.first.toColumnMap()['n'] as int;
+  }
+
+  /// A layout belonging to a DIFFERENT operator, so the ownership checks can
+  /// be tested against something that genuinely exists.
+  Future<String> foreignLayout() async {
+    const other = '22222222-2222-2222-2222-222222222222';
+    await _seed.execute('''
+      INSERT INTO operators (id, code, legal_name, market_code, status)
+      VALUES ('$other', 'TBV', 'Trans Bony Voyages', 'CG', 'active')
+      ON CONFLICT (id) DO NOTHING
+    ''');
+    final rows = await _seed.execute('''
+      INSERT INTO seat_layouts (operator_id, name, sections, capacity)
+      VALUES ('$other', 'Their coach', '[]'::jsonb, 40)
+      RETURNING id
+    ''');
+    return rows.first.toColumnMap()['id'] as String;
+  }
+
+  Future<int> seatCount(String departureId) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT count(*)::int AS n FROM seats WHERE departure_id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+    );
+    return rows.first.toColumnMap()['n'] as int;
+  }
+
+  Future<Map<String, int>> seatFares(String departureId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT seat_label, fare_minor::int AS fare
+          FROM seats WHERE departure_id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+    );
+    return {
+      for (final row in rows)
+        row.toColumnMap()['seat_label'] as String:
+            row.toColumnMap()['fare'] as int,
+    };
+  }
+
+  /// Holds one seat and reserves it, through the real path.
+  Future<BookingRecord> reserve({
+    required Database db,
+    required PostgresBookingStore bookings,
+    required String departureId,
+    required String seatLabel,
+    required String name,
+  }) async {
+    final userId = await traveller(
+      '${DateTime.now().microsecondsSinceEpoch % 1000000}',
+      name: name,
+    );
+
+    final held = await HoldSeats(inventory: PostgresSeatInventory(db))(
+      departureId: departureId,
+      seatLabels: [seatLabel],
+      userId: userId,
+      idempotencyKey: 'fixture-${DateTime.now().microsecondsSinceEpoch}',
+    );
+
+    final reserved = await ReserveBooking(bookings: bookings)(
+      holdId: held.valueOrNull!.id,
+      userId: userId,
+      passengers: [PassengerDto(fullName: name, seatLabel: seatLabel)],
+    );
+    return reserved.valueOrNull!;
   }
 
   /// A departure with [seatLabels] all available. Returns its id.

@@ -23,11 +23,41 @@ final class PostgresUserDirectory implements UserDirectory {
     email_verified_at, phone_verified_at, disabled_at
   ''';
 
+  /// Staff membership, read on every authenticated request.
+  ///
+  /// A LEFT JOIN rather than a second round trip: this runs before every
+  /// console request, and an extra query on the hot path of an authenticated
+  /// read is a cost paid by everybody to serve the few people who are staff.
+  ///
+  /// `revoked_at IS NULL` and `accepted_at IS NOT NULL`, so an invitation
+  /// nobody accepted grants nothing and a dismissal takes effect on the next
+  /// request rather than when a token happens to expire.
+  static const _staffJoin = '''
+    LEFT JOIN LATERAL (
+      SELECT s.operator_id, s.roles, s.station_ids
+        FROM operator_staff s
+        JOIN operators o ON o.id = s.operator_id
+       WHERE s.user_id = user_accounts.id
+         AND s.revoked_at IS NULL
+         AND s.accepted_at IS NOT NULL
+         AND o.status = 'active'
+       ORDER BY s.invited_at
+       LIMIT 1
+    ) staff ON TRUE
+  ''';
+
   @override
   Future<Account?> byAuthUid(String authUid) =>
       _db.transaction(const DbScope.identity(), (tx) async {
         final rows = await tx.execute(
-          Sql.named('SELECT $_columns FROM user_accounts WHERE auth_uid = @uid'),
+          Sql.named('''
+            SELECT $_columns,
+                   staff.operator_id AS staff_operator_id,
+                   staff.roles       AS staff_roles,
+                   staff.station_ids AS staff_station_ids
+              FROM user_accounts $_staffJoin
+             WHERE auth_uid = @uid
+          '''),
           parameters: {'uid': TypedValue(Type.text, authUid)},
         );
         return rows.isEmpty ? null : _account(rows.first.toColumnMap());
@@ -135,6 +165,60 @@ final class PostgresUserDirectory implements UserDirectory {
   }
 
   @override
+  Future<Account> forCounterSale({
+    required String phone,
+    String? fullName,
+    String language = 'fr',
+  }) => _db.transaction(const DbScope.identity(), (tx) async {
+    // No `phone_verified_at`, and that is the whole point. If they already
+    // have a verified account this finds it and leaves the stamp alone —
+    // a vendor must never be able to mark somebody's number as proved.
+    final rows = await tx.execute(
+      Sql.named('''
+        INSERT INTO user_accounts (phone_e164, full_name, language)
+        VALUES (@phone, @name, @language)
+        ON CONFLICT (phone_e164) DO UPDATE
+           SET full_name = COALESCE(user_accounts.full_name, EXCLUDED.full_name)
+        RETURNING $_columns
+      '''),
+      parameters: {
+        'phone': TypedValue(Type.text, phone),
+        'name': TypedValue(Type.text, fullName),
+        'language': TypedValue(Type.text, language),
+      },
+    );
+
+    var account = _account(rows.first.toColumnMap());
+
+    if (account.authUid == null) {
+      await tx.execute(
+        Sql.named(
+          'UPDATE user_accounts SET auth_uid = @uid WHERE id = @id '
+          'AND auth_uid IS NULL',
+        ),
+        parameters: {
+          'uid': TypedValue(Type.text, account.id),
+          'id': TypedValue(Type.uuid, account.id),
+        },
+        ignoreRows: true,
+      );
+      account = Account(
+        id: account.id,
+        authUid: account.id,
+        email: account.email,
+        phone: account.phone,
+        fullName: account.fullName,
+        language: account.language,
+        emailVerifiedAt: account.emailVerifiedAt,
+        phoneVerifiedAt: account.phoneVerifiedAt,
+        disabledAt: account.disabledAt,
+      );
+    }
+
+    return account;
+  });
+
+  @override
   Future<void> touch(String userId) =>
       _db.transaction(const DbScope.identity(), (tx) async {
         await tx.execute(
@@ -145,6 +229,16 @@ final class PostgresUserDirectory implements UserDirectory {
       });
 
   static Account _account(Map<String, dynamic> r) => Account(
+    staff: r['staff_operator_id'] == null
+        ? null
+        : StaffMembership(
+            operatorId: r['staff_operator_id'].toString(),
+            roles: (r['staff_roles'] as List?)?.cast<String>() ?? const [],
+            stationIds: [
+              for (final id in (r['staff_station_ids'] as List?) ?? const [])
+                id.toString(),
+            ],
+          ),
     id: r['id'].toString(),
     authUid: r['auth_uid'] as String?,
     email: r['email'] as String?,

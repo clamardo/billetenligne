@@ -198,10 +198,19 @@ final class FirebaseAuthGateway implements AuthGateway {
     // and authorisation did not.
     if (account == null || account.isDisabled) return null;
 
+    final staff = account.staff;
+
     return Principal(
       userId: account.id,
       authUid: uid,
       language: account.language,
+      // Read from `operator_staff` a moment ago, not from a claim in the
+      // token. A stale claim must never be able to authorise a refund
+      // (ADR-0018), and a dismissal has to take effect on the next request
+      // rather than when a token happens to expire.
+      tenantId: staff?.operatorId,
+      roles: staff?.roles ?? const [],
+      stationIds: staff?.stationIds ?? const [],
     );
   }
 

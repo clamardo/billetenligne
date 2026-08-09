@@ -102,6 +102,28 @@ final class MemoryUserDirectory implements UserDirectory {
   }
 
   @override
+  Future<Account> forCounterSale({
+    required String phone,
+    String? fullName,
+    String language = 'fr',
+  }) async {
+    for (final existing in _byId.values) {
+      if (existing.phone == phone) return existing;
+    }
+    // No verification stamp: a vendor identifies a traveller, they do not
+    // authenticate one.
+    final account = Account(
+      id: 'u-mem-${++_next}',
+      authUid: 'u-mem-$_next',
+      phone: phone,
+      fullName: fullName,
+      language: language,
+    );
+    _byId[account.id] = account;
+    return account;
+  }
+
+  @override
   Future<void> touch(String userId) async {}
 
   /// Test seam: put a known account in place, disabled or otherwise.
