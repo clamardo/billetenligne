@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bel_api/src/adapters/fake_auth_gateway.dart';
+import 'package:bel_api/src/composition.dart';
 import 'package:bel_api/src/middleware/problem.dart';
 import 'package:bel_api/src/ports/auth_gateway.dart';
 import 'package:bel_contracts/bel_contracts.dart';
@@ -27,12 +28,21 @@ import 'package:dart_frog/dart_frog.dart';
 Handler middleware(Handler handler) => handler
     .use(_authentication())
     .use(provider<AuthGateway>((_) => _authGateway))
+    .use(provider<Services>((_) => _services))
     .use(_errorBoundary())
     .use(_traceId());
 
+/// Resolved once, at startup. Postgres when DATABASE_URL is set, fakes
+/// otherwise — see composition.dart for why that fallback exists.
+final Services _services = Services.resolve();
+
 // Swapped for the Firebase Admin SDK adapter at startup in real environments
 // (ADR-0018). The port keeps the handlers unaware of either.
-final AuthGateway _authGateway = FakeAuthGateway();
+// A demo traveller only when the API is running on fakes; an empty registry
+// otherwise, so a token that works locally is worthless anywhere real.
+final AuthGateway _authGateway = _services.usingDatabase
+    ? FakeAuthGateway()
+    : FakeAuthGateway.demo();
 
 /// Nothing escapes as an untyped 500 with a stack trace in it.
 Middleware _errorBoundary() =>

@@ -10,6 +10,12 @@ final class Problem {
   const Problem._();
 
   static int statusFor(String code) => switch (code) {
+    // Malformed, or refused by a rule the client could have checked itself:
+    // too many seats, the same seat twice, no seats at all. 400 rather than
+    // the 422 default, because these are wrong *requests*, not requests the
+    // world happened to refuse. The distinction matters to a client deciding
+    // whether a retry could ever help.
+    ErrorCode.badRequest => 400,
     ErrorCode.unauthorized ||
     ErrorCode.otpIncorrect ||
     ErrorCode.otpExpired => 401,

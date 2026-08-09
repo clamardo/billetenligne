@@ -13,5 +13,6 @@ dependencies:
   bel_domain: ^0.1.0
   bel_localization: ^0.1.0
   dart_frog: ^1.1.0
+  postgres: ^3.5.0
 dev_dependencies:
   test: ^1.25.0

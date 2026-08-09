@@ -10,6 +10,18 @@ final class FakeAuthGateway implements AuthGateway {
 
   final Map<String, Principal> _principals;
 
+  /// One traveller, so a fresh clone can hold a seat without standing up
+  /// Firebase first. Used only when no DATABASE_URL is set — the same
+  /// condition under which the inventory is a fake — so this token cannot
+  /// reach a real database even by accident.
+  factory FakeAuthGateway.demo() => FakeAuthGateway({
+    'fake:traveller': const Principal(
+      userId: 'u-demo-traveller',
+      authUid: 'demo',
+      language: 'fr',
+    ),
+  });
+
   void register(String token, Principal principal) =>
       _principals[token] = principal;
 

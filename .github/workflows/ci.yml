@@ -75,6 +75,22 @@ jobs:
       - name: Migrations, RLS, ledger and append-only checks
         run: ./infra/migrations/check.sh
 
+  # The seat race, against the lock manager that will actually arbitrate it.
+  # A fake cannot prove that fifty concurrent claims produce one winner —
+  # there is no concurrency to lose to — so this job exists to make that one
+  # claim honestly.
+  integration:
+    name: Inventory under concurrency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get
+      - name: Holds against a real Postgres
+        run: ./tool/integration.sh
+
   # Budgets from ADR-0009, enforced rather than hoped for. Skipped until the
   # traveller app exists.
   budgets:

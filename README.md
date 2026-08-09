@@ -10,29 +10,37 @@ The wedge is not the traveller — it is the operator's cash leakage. **Travelle
 
 ## Status
 
-**Phase 0 (foundations) is complete.** 239 tests green, analyzer clean, layer
-boundaries enforced, schema guarantees executed against a real Postgres.
+**Phase 0 is complete. Phase 1 has begun with the piece everything else sits
+on: holding a seat.** A traveller's request now goes route → use case →
+Postgres, and fifty concurrent claims for the last seat produce exactly one
+ticket — proven against the lock manager that will actually arbitrate it, not
+against a fake.
+
+Per-feature detail, including what is deliberately unfinished:
+**[`docs/10-build-status.md`](docs/10-build-status.md)** — updated on every push.
 
 | | State |
 |---|---|
 | Product, architecture and design docs | ✅ `docs/` |
-| Architecture decision records (22) | ✅ `docs/adr/` |
+| Architecture decision records (23) | ✅ `docs/adr/` |
 | `bel_domain` — money, market, policies, layouts, payment state machine | ✅ 78 tests |
 | `bel_localization` — FR/EN YAML catalog | ✅ 15 tests |
 | `bel_contracts` — wire format, error codes | ✅ 29 tests |
 | `bel_design` — Kilo tokens + contrast gates | ✅ 38 tests |
-| `services/api` — Dart Frog skeleton, middleware | ✅ 41 tests |
-| Database — schema, RLS, ledger, append-only | ✅ 12 guarantees verified |
+| `services/api` — Dart Frog, middleware, **holds** | ✅ 57 tests + 27 smoke checks |
+| Database — schema, RLS, ledger, public sales boundary | ✅ 23 guarantees verified |
+| **Seat inventory under concurrency** | ✅ 14 integration tests on real Postgres |
 | Local dev stack | ✅ `infra/dev` |
-| CI — analyze, format, layers, tests, schema | ✅ `.github/workflows/ci.yml` |
-| Phase 1 — traveller app, console, cash-only pilot | ⬜ Next |
+| CI — analyze, format, layers, tests, schema, integration | ✅ `.github/workflows/ci.yml` |
+| Traveller app, operator console, admin back office | ⬜ Next |
 
 ```bash
-dart test packages/bel_domain packages/bel_localization \
-          packages/bel_contracts services/api   # ~3s, no containers
+dart test packages services/api                 # 241 tests, ~3 s, no containers
 cd packages/bel_design && flutter test          # Kilo contrast gates
 dart run tool/check_layers.dart                 # onion dependency rule
-./infra/migrations/check.sh                     # schema guarantees (needs Docker)
+./infra/migrations/check.sh                     # 23 schema guarantees (needs Docker)
+./tool/integration.sh                           # the seat race, on real Postgres
+./tool/smoke_api.sh                             # 27 checks over a real socket
 ```
 
 ---
@@ -67,7 +75,7 @@ Six surfaces, one domain, one language.
 | **Devices** | Android 5.0+, ≤ 15 MB APK, ≤ 2.5 s cold start on 2 GB | Enforced in CI. This is the market, not an edge case. |
 | **Design** | Forêt & Latérite + Inter | Built for direct equatorial sun on a scratched 720p panel. |
 
-Full reasoning: **[`docs/adr/`](docs/adr/)** — 22 records, each with the alternatives that were rejected and why.
+Full reasoning: **[`docs/adr/`](docs/adr/)** — 23 records, each with the alternatives that were rejected and why.
 
 ---
 
@@ -85,6 +93,7 @@ Full reasoning: **[`docs/adr/`](docs/adr/)** — 22 records, each with the alter
 | [`07-trip-sharing-tracking.md`](docs/07-trip-sharing-tracking.md) | Shareable trip links, live tracking tiers, maps |
 | [`08-disruption.md`](docs/08-disruption.md) | IRROPS — breakdown, re-accommodation, protection |
 | [`09-roadmap.md`](docs/09-roadmap.md) | Phased delivery and the five risks that decide this |
+| [`10-build-status.md`](docs/10-build-status.md) | **What is built, what is half-built, and what is missing** — updated every push |
 
 ---
 
@@ -147,6 +156,7 @@ Five layers, each answering a different question ([ADR-0021](docs/adr/0021-test-
 | Domain unit | Is the rule right? | ~2000 | < 5 s |
 | Widget / golden | Does the screen render, in fr + en, at 3 text scales? | ~400 | < 60 s |
 | **Integration** | Does this component talk to Postgres / Firebase / the PSP correctly? | ~250 | ~2 min |
+| ↳ *running today* | Does one seat go to exactly one of fifty simultaneous buyers? | 14 | ~3 s |
 | **End-to-end** | Can a real person complete a real journey? | ~40 | ~15 min |
 | Manual smoke | Real SIM, real money, real sunlight | — | pre-release |
 

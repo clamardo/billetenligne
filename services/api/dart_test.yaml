@@ -1,0 +1,8 @@
+# Integration tests carry a tag so they can be named, excluded, or run alone.
+#
+# They skip themselves when DATABASE_URL is unset, so `dart test` on a laptop
+# with no Docker is green rather than misleadingly red — see
+# test/integration/pg_fixture.dart.
+tags:
+  integration:
+    timeout: 2x

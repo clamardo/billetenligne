@@ -49,10 +49,25 @@ check() {
 status() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 
 echo "── building"
+# From scratch, every time. `dart_frog build` generates into build/ without
+# removing what is already there, so a route that has been renamed or moved
+# stays mounted from the previous run and the suite tests a server that no
+# longer exists in the source tree. That cost an hour once.
+rm -rf "$API_DIR/build"
 (cd "$API_DIR" && dart_frog build >/dev/null)
 
+# A server left over from an earlier run would answer every request below and
+# the suite would pass or fail against code that is no longer in the tree. It
+# happened: an orphan from the first run served forty minutes of misleading
+# results before anyone looked at `ps`.
+if curl -sf "$BASE/health" >/dev/null 2>&1; then
+  echo "something is already serving $BASE — stop it first"; exit 1
+fi
+
 echo "── starting on :$PORT"
-(cd "$API_DIR" && PORT="$PORT" dart build/bin/server.dart >/tmp/bel-smoke.log 2>&1) &
+# `exec` so the subshell is REPLACED by dart. Without it, $! is the subshell's
+# pid, the trap kills the shell, and dart is orphaned holding the port.
+(cd "$API_DIR" && exec env PORT="$PORT" dart build/bin/server.dart >/tmp/bel-smoke.log 2>&1) &
 server_pid=$!
 
 for _ in $(seq 1 40); do
@@ -114,6 +129,71 @@ check "rails are server-driven" "yes" \
   "$(grep -q '"cg.airtel_money"' <<<"$market" && echo yes || echo no)"
 check "USSD fallback is advertised" "yes" \
   "$(grep -q '\*128#' <<<"$market" && echo yes || echo no)"
+
+# ── Holding a seat, over a real socket ──────────────────────────────────────
+#
+# The unit and integration suites both build their own request context. What
+# neither exercises is the wire: header casing, the auth layer running before
+# the handler, and the idempotency key arriving as an actual HTTP header.
+AUTH='Authorization: Bearer fake:traveller'
+DEP='dep-demo-0001'
+
+hold() {  # $1 = idempotency key, $2 = seat labels JSON
+  curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/holds" \
+    -H "$AUTH" -H 'Content-Type: application/json' \
+    -H "Idempotency-Key: $1" \
+    -d "{\"departureId\":\"$DEP\",\"seatLabels\":$2}"
+}
+
+hold_body() {
+  curl -s -X POST "$BASE/public/v1/holds" \
+    -H "$AUTH" -H 'Content-Type: application/json' \
+    -H "Idempotency-Key: $1" \
+    -d "{\"departureId\":\"$DEP\",\"seatLabels\":$2}"
+}
+
+# Browsing needs no account; holding does. A hold with no owner is one nobody
+# can be warned about before it expires.
+check "anonymous hold is 401" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/holds" \
+     -H 'Content-Type: application/json' -H 'Idempotency-Key: anon' \
+     -d "{\"departureId\":\"$DEP\",\"seatLabels\":[\"1A\"]}")"
+
+# Missing the key is a 400, not a silently accepted duplicate charge waiting
+# to happen.
+check "hold without an idempotency key is 400" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/holds" \
+     -H "$AUTH" -H 'Content-Type: application/json' \
+     -d "{\"departureId\":\"$DEP\",\"seatLabels\":[\"1A\"]}")"
+
+smoke_key="smoke-$$"
+body="$(hold_body "$smoke_key" '["1A"]')"
+check "hold returns the seats" "yes" \
+  "$(grep -q '"seatLabels":\["1A"\]' <<<"$body" && echo yes || echo no)"
+check "hold prices in minor units" "yes" \
+  "$(grep -q '"total":{"minor":12300,"currency":"XAF"}' <<<"$body" && echo yes || echo no)"
+check "hold carries an expiry instant" "yes" \
+  "$(grep -q '"expiresAt"' <<<"$body" && echo yes || echo no)"
+
+# The retry that Congo's networks make routine. Same key, same answer, and a
+# header saying so — which is how support tells "held twice" from "asked
+# twice, held once".
+replay="$(curl -sD - -o /dev/null -X POST "$BASE/public/v1/holds" \
+  -H "$AUTH" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $smoke_key" \
+  -d "{\"departureId\":\"$DEP\",\"seatLabels\":[\"1A\"]}" | tr -d '\r')"
+check "a retry is flagged as a replay" "yes" \
+  "$(grep -qi '^idempotency-replayed: true' <<<"$replay" && echo yes || echo no)"
+
+# Same key, different body. Almost always a client bug, and worth failing
+# loudly rather than silently picking one of the two requests.
+check "key reused with a different body is 409" "409" \
+  "$(hold "$smoke_key" '["1B"]')"
+
+check "a seat already held is 409" "409" "$(hold "smoke-other-$$" '["1A"]')"
+check "a seat not on the coach is 404" "404" "$(hold "smoke-ghost-$$" '["99Z"]')"
+check "seven seats is 400" "400" \
+  "$(hold "smoke-many-$$" '["2A","2B","2C","2D","3A","3B","3C"]')"
 
 check "unknown route is 404" "404" "$(status "$BASE/public/v1/nope")"
 
