@@ -9,8 +9,8 @@
 
 ```
    ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-   │  Traveller   │  │  Conductor   │  │  Operator    │  │   Admin      │
-   │  iOS/Android │  │  (same bin)  │  │  console     │  │  back office │
+   │  Traveller   │  │   Scanner    │  │  Operator    │  │   Admin      │
+   │  iOS/Android │  │ (own app)    │  │  console     │  │  back office │
    │   Flutter    │  │   Flutter    │  │ Flutter Web  │  │ Flutter Web  │
    └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
           │                 │                 │                 │
@@ -57,9 +57,11 @@ billetenligne/
 │  ├─ bel_design/          "Kilo" design system. Flutter. Shared by all 3 UI apps.
 │  ├─ bel_client/          typed HTTP client over bel_contracts.
 │  ├─ bel_localization/    YAML i18n catalog + loader. Shared by apps AND server.
+│  ├─ bel_crypto/         Ed25519 + HMAC behind the domain's ports.
 │  └─ bel_testing/         fakes, builders, golden harness.
 ├─ apps/
-│  ├─ traveller/           Flutter mobile (+ conductor mode)
+│  ├─ traveller/           Flutter mobile — booking, wallet
+│  ├─ scanner/             Flutter mobile — boarding, offline (ADR-0022)
 │  ├─ console/             Flutter Web — operator
 │  └─ admin/               Flutter Web — BilletEnLigne
 ├─ services/

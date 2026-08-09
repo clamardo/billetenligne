@@ -12,7 +12,7 @@ Notation: **[P0]** must ship for launch · **[P1]** ships within 90 days · **[P
 | # | Surface | Platform | Primary user |
 |---|---|---|---|
 | S1 | Traveller app | Flutter, iOS + Android | Aline |
-| S2 | Conductor / boarding mode | Same binary, role-gated | Pascal |
+| S2 | Boarding scanner | **Standalone app** (ADR-0022), operator-owned device | Pascal |
 | S3 | Operator console | Flutter Web | Jean-Marc + staff |
 | S4 | Admin back office | Flutter Web | BilletEnLigne staff |
 | S5 | Notifications | SMS + push | everyone |
@@ -281,9 +281,9 @@ Cancellation by the *operator* (breakdown, cancelled departure) is a different p
 
 ---
 
-## 9. Conductor / boarding mode (S2) **[P0]**
+## 9. Boarding scanner (S2) **[P0]**
 
-Same binary, unlocked by a dispatcher-issued pairing code (ADR-0013). Designed for sunlight, gloves, noise and no network.
+A **separate application** on an operator-owned device, unlocked by a dispatcher-issued pairing code (ADR-0013) — not a mode inside the traveller app. The reasoning, and the reversal of the original decision, is ADR-0022. Designed for sunlight, gloves, noise and no network.
 
 - **Departure picker** → downloads the manifest (a few KB) and pins it.
 - **Scanner:** camera opens immediately, torch toggle prominent, large capture area. Verdict in **under 2 seconds**, offline.

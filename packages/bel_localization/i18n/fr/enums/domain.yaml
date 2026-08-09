@@ -36,6 +36,8 @@ enum:
     wrongDeparture: "MAUVAIS DÉPART"
     invalid: "INVALIDE"
     staleCode: "CODE PÉRIMÉ"
+    voided: "BILLET ANNULÉ"
+    notOnManifest: "ABSENT DE LA LISTE"
   OperatorRole:
     orgOwner: "Directeur"
     orgAdmin: "Administrateur"

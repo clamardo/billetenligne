@@ -36,6 +36,8 @@ enum:
     wrongDeparture: "WRONG DEPARTURE"
     invalid: "INVALID"
     staleCode: "STALE CODE"
+    voided: "TICKET VOIDED"
+    notOnManifest: "NOT ON MANIFEST"
   OperatorRole:
     orgOwner: "Director"
     orgAdmin: "Administrator"

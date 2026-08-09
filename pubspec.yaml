@@ -7,4 +7,6 @@ workspace:
   - packages/bel_localization
   - packages/bel_design
   - packages/bel_contracts
+  - packages/bel_crypto
   - services/api
+  - apps/scanner

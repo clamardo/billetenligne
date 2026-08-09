@@ -1,0 +1,27 @@
+name: bel_scanner
+description: >-
+  BilletEnLigne boarding scanner. A standalone, operator-owned app that
+  validates tickets at the coach door — offline, in direct sun, in under two
+  seconds (ADR-0022).
+publish_to: none
+version: 0.1.0+1
+resolution: workspace
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  bel_crypto: ^0.1.0
+  bel_design: ^0.1.0
+  bel_domain: ^0.1.0
+  bel_localization: ^0.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

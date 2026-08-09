@@ -16,7 +16,7 @@ boundaries enforced, schema guarantees executed against a real Postgres.
 | | State |
 |---|---|
 | Product, architecture and design docs | ✅ `docs/` |
-| Architecture decision records (21) | ✅ `docs/adr/` |
+| Architecture decision records (22) | ✅ `docs/adr/` |
 | `bel_domain` — money, market, policies, layouts, payment state machine | ✅ 78 tests |
 | `bel_localization` — FR/EN YAML catalog | ✅ 15 tests |
 | `bel_contracts` — wire format, error codes | ✅ 29 tests |
@@ -44,7 +44,7 @@ Six surfaces, one domain, one language.
 | Surface | Who | Built with |
 |---|---|---|
 | **Traveller app** | Aline, buys a seat from her phone | Flutter, iOS + Android |
-| **Conductor mode** | Pascal, boards 60 people in 10 min with no network | Same binary, role-gated |
+| **Boarding scanner** | Pascal, boards 60 people in 10 min with no network | **Separate app**, operator-owned device |
 | **Operator console** | Jean-Marc, runs 14 coaches | Flutter Web |
 | **Admin back office** | Us — approvals, payments, support | Flutter Web |
 | **API + workers** | | Dart Frog |
@@ -67,7 +67,7 @@ Six surfaces, one domain, one language.
 | **Devices** | Android 5.0+, ≤ 15 MB APK, ≤ 2.5 s cold start on 2 GB | Enforced in CI. This is the market, not an edge case. |
 | **Design** | Forêt & Latérite + Inter | Built for direct equatorial sun on a scratched 720p panel. |
 
-Full reasoning: **[`docs/adr/`](docs/adr/)** — 21 records, each with the alternatives that were rejected and why.
+Full reasoning: **[`docs/adr/`](docs/adr/)** — 22 records, each with the alternatives that were rejected and why.
 
 ---
 
@@ -97,9 +97,11 @@ billetenligne/
 │  ├─ bel_localization/   YAML i18n catalog. Shared by apps AND server.
 │  ├─ bel_design/         "Kilo" design system.
 │  ├─ bel_contracts/      wire DTOs + error codes.
+│  ├─ bel_crypto/        Ed25519 + HMAC behind the domain's ports.
 │  └─ bel_client/         typed API client.                   (planned)
 ├─ apps/
-│  ├─ traveller/          Flutter mobile + conductor mode.    (planned)
+│  ├─ traveller/          Flutter mobile — booking, wallet.    (planned)
+│  ├─ scanner/           Flutter mobile — boarding, offline.
 │  ├─ console/            Flutter Web — operator.             (planned)
 │  └─ admin/              Flutter Web — BilletEnLigne.        (planned)
 ├─ services/

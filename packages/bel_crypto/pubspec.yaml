@@ -1,0 +1,16 @@
+name: bel_crypto
+description: >-
+  Real Ed25519 and HMAC-SHA256 behind the ports bel_domain declares. Kept in
+  its own package so the domain stays dependency-free (ADR-0001) and the
+  primitives can be audited in one place.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.8.0
+dependencies:
+  bel_domain: ^0.1.0
+  crypto: ^3.0.0
+  cryptography: ^2.7.0
+dev_dependencies:
+  test: ^1.25.0
