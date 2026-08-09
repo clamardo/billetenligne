@@ -59,6 +59,22 @@ final class ChoosingSeats extends BookingStep {
   Money get total => fare + departure.serviceFee;
 }
 
+/// The seats are chosen and the traveller has no account yet.
+///
+/// This is the ONE moment sign-in is asked for (ADR-0013). Not at launch, not
+/// before the search, not before the price — by here they have seen the
+/// departure, the seat and the total, and are being asked for an address to
+/// send a ticket to rather than for permission to look around.
+///
+/// Carries the whole selection so that finishing sign-in resumes the hold
+/// rather than restarting the funnel.
+final class NeedsIdentity extends BookingStep {
+  const NeedsIdentity(this.departure, this.seatMap, this.selected);
+  final DepartureSummaryDto departure;
+  final SeatMapDto seatMap;
+  final Set<String> selected;
+}
+
 final class Holding extends BookingStep {
   const Holding(this.departure, this.seatMap, this.selected);
   final DepartureSummaryDto departure;
@@ -108,10 +124,20 @@ final class StepFailed extends BookingStep {
 ///   * **Selection is capped**, and the cap is stated before it is hit rather
 ///     than by a control that silently stops responding.
 final class BookingFlow {
-  BookingFlow({required TravelGateway gateway, this.maxSeats = 6})
-    : _gateway = gateway;
+  BookingFlow({
+    required TravelGateway gateway,
+    required bool Function() isSignedIn,
+    this.maxSeats = 6,
+  }) : _gateway = gateway,
+       _isSignedIn = isSignedIn;
 
   final TravelGateway _gateway;
+
+  /// Asked at the moment of holding, not held as a flag. A flag captured at
+  /// construction is wrong the instant somebody signs in or is signed out
+  /// mid-session, and the second of those happens on a revoked token.
+  final bool Function() _isSignedIn;
+
   final int maxSeats;
 
   final _steps = StreamController<BookingStep>.broadcast();
@@ -200,6 +226,13 @@ final class BookingFlow {
     final current = _step;
     if (current is! ChoosingSeats || current.selected.isEmpty) return;
 
+    // The gate. A hold has an owner — an anonymous one is a hold nobody can be
+    // warned about before it expires — so this is where browsing ends.
+    if (!_isSignedIn()) {
+      _emit(NeedsIdentity(current.departure, current.seatMap, current.selected));
+      return;
+    }
+
     // Minted here, at the start of the attempt. Every retry below reuses it,
     // which is the entire reason a duplicate tap on a flaky connection cannot
     // produce two holds.
@@ -229,6 +262,28 @@ final class BookingFlow {
         ),
       );
     }
+  }
+
+  /// Picks the funnel back up after signing in.
+  ///
+  /// Resumes rather than restarts: the traveller chose those seats before
+  /// being interrupted, and making them choose again is a good way to lose
+  /// them. The seats may of course have gone in the meantime — the hold
+  /// refusal below handles that, and it handles it better than a pre-emptive
+  /// re-fetch would, because it is one round trip rather than two.
+  Future<void> resumeAfterIdentity() async {
+    final current = _step;
+    if (current is! NeedsIdentity) return;
+
+    _emit(ChoosingSeats(current.departure, current.seatMap, current.selected));
+    await holdSelection();
+  }
+
+  /// The traveller backed out of signing in. Their seats are still selected.
+  void abandonIdentity() {
+    final current = _step;
+    if (current is! NeedsIdentity) return;
+    _emit(ChoosingSeats(current.departure, current.seatMap, current.selected));
   }
 
   /// Returns to the seat map after a refusal, so a traveller whose seat was

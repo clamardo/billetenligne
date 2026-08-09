@@ -1,5 +1,8 @@
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_traveller/src/application/booking_flow.dart';
+import 'package:bel_traveller/src/application/sign_in_flow.dart';
+import 'package:bel_traveller/src/infrastructure/demo_identity_gateway.dart';
 import 'package:bel_traveller/src/infrastructure/demo_travel_gateway.dart';
 import 'package:bel_traveller/src/presentation/app.dart';
 import 'package:bel_traveller/src/presentation/screens/search_screen.dart';
@@ -15,6 +18,7 @@ import 'catalog_fixture.dart';
 /// is exercised here rather than asserted about a fake that always says yes.
 void main() {
   late TranslationCatalog catalog;
+  late DemoIdentityGateway identity;
 
   setUpAll(() async {
     catalog = await loadTestCatalog();
@@ -39,16 +43,32 @@ void main() {
   Future<BookingFlow> pumpApp(
     WidgetTester tester, {
     String language = 'fr',
+    // Signed in by default, because most of these tests are about screens
+    // that live *after* the gate. The gate itself is exercised by the group
+    // that passes false.
+    bool signedIn = true,
   }) async {
     final gateway = DemoTravelGateway(now: DateTime.utc(2026, 8, 9, 6))
       // Instant, so the tests are about behaviour rather than about waiting.
       ..latency = Duration.zero;
-    final flow = BookingFlow(gateway: gateway);
+
+    identity = DemoIdentityGateway(
+      now: () => DateTime.utc(2026, 8, 9, 6),
+      signedInAs: signedIn
+          ? const AccountDto(id: 'u-test', language: 'fr', email: 'a@b.cg')
+          : null,
+    )..latency = Duration.zero;
+
+    final flow = BookingFlow(
+      gateway: gateway,
+      isSignedIn: () => identity.isSignedIn,
+    );
 
     await tester.pumpWidget(
       TravellerApp(
         catalog: catalog,
         flow: flow,
+        signIn: SignInFlow(gateway: identity),
         language: language,
         cities: const [
           CityOption('BZV', 'Brazzaville'),
@@ -126,6 +146,92 @@ void main() {
       expect(find.text('Votre place est réservée'), findsOneWidget);
       // The countdown is the point of this screen.
       expect(find.textContaining('Place réservée'), findsOneWidget);
+    });
+
+    testWidgets('signing in is asked for at the seat, not at launch', (
+      tester,
+    ) async {
+      final flow = await pumpApp(tester, signedIn: false);
+
+      // Everything up to here is open, and that is the point: forcing sign-up
+      // before somebody has seen a price is the largest avoidable drop-off in
+      // this funnel (ADR-0013).
+      await searchBzvToPnr(tester);
+      expect(find.textContaining('Ocean du Nord'), findsWidgets);
+
+      await tester.tap(find.textContaining('Ocean du Nord').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1A'));
+      await tester.pumpAndSettle();
+
+      // The gate opens here, and only here.
+      await tester.tap(find.textContaining('Continuer'));
+      await tester.pumpAndSettle();
+
+      expect(flow.step, isA<NeedsIdentity>());
+      expect(find.text('Presque à vous'), findsOneWidget);
+      // No password, and it says so — somebody expecting to have to remember
+      // one and unable to is somebody who abandons the purchase.
+      expect(find.textContaining('Pas de mot de passe'), findsOneWidget);
+    });
+
+    testWidgets('a code signs in and resumes the hold that was interrupted', (
+      tester,
+    ) async {
+      final flow = await pumpApp(tester, signedIn: false);
+      await searchBzvToPnr(tester);
+      await tester.tap(find.textContaining('Ocean du Nord').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1A'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Continuer'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).first, 'aline@example.cg');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Recevoir un code'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Entrez le code'), findsOneWidget);
+      expect(find.textContaining('a***e@example.cg'), findsOneWidget);
+
+      // A wrong code first: it must not throw them out of the screen, because
+      // the real code is sitting in their inbox.
+      await tester.enterText(find.byType(TextField).first, '000000');
+      await tester.pumpAndSettle();
+      expect(find.text('Entrez le code'), findsOneWidget);
+      expect(find.textContaining('Code incorrect'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField).first, '424242');
+      await settleHoldScreen(tester);
+      await settleHoldScreen(tester);
+
+      // Resumed, not restarted: the seat they chose before being interrupted
+      // is the seat they now hold.
+      expect(flow.step, isA<HoldReady>());
+      expect((flow.step as HoldReady).hold.seatLabels, ['1A']);
+    });
+
+    testWidgets('backing out of signing in keeps the seat selected', (
+      tester,
+    ) async {
+      final flow = await pumpApp(tester, signedIn: false);
+      await searchBzvToPnr(tester);
+      await tester.tap(find.textContaining('Ocean du Nord').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1A'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Continuer'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+
+      // Making somebody choose their seat again because they changed their
+      // mind about signing in is a good way to lose them.
+      expect(flow.step, isA<ChoosingSeats>());
+      expect((flow.step as ChoosingSeats).selected, {'1A'});
+      expect(find.text('1 place choisie'), findsOneWidget);
     });
 
     testWidgets('a seat somebody else has cannot be chosen', (tester) async {

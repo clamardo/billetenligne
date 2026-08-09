@@ -6,11 +6,13 @@ import 'package:bel_localization/bel_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../application/booking_flow.dart';
+import '../application/sign_in_flow.dart';
 import 'l10n.dart';
 import 'screens/hold_screen.dart';
 import 'screens/results_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/seat_map_screen.dart';
+import 'screens/sign_in_screen.dart';
 import 'widgets/failure_view.dart';
 
 /// The traveller app.
@@ -24,6 +26,7 @@ final class TravellerApp extends StatelessWidget {
   const TravellerApp({
     required this.catalog,
     required this.flow,
+    required this.signIn,
     required this.cities,
     this.language = 'fr',
     super.key,
@@ -31,6 +34,7 @@ final class TravellerApp extends StatelessWidget {
 
   final TranslationCatalog catalog;
   final BookingFlow flow;
+  final SignInFlow signIn;
   final List<CityOption> cities;
   final String language;
 
@@ -43,15 +47,20 @@ final class TravellerApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: KiloTheme.materialTheme(),
       darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
-      home: _Funnel(flow: flow, cities: cities),
+      home: _Funnel(flow: flow, signIn: signIn, cities: cities),
     ),
   );
 }
 
 class _Funnel extends StatefulWidget {
-  const _Funnel({required this.flow, required this.cities});
+  const _Funnel({
+    required this.flow,
+    required this.signIn,
+    required this.cities,
+  });
 
   final BookingFlow flow;
+  final SignInFlow signIn;
   final List<CityOption> cities;
 
   @override
@@ -146,6 +155,21 @@ class _FunnelState extends State<_Funnel> {
           onContinue: _flow.holdSelection,
           onBack: _backToResults,
         ),
+
+      // The one moment sign-in is asked for (ADR-0013). The seats stay
+      // selected behind it: finishing signs in and resumes the hold, backing
+      // out returns to exactly the seat map they left.
+      NeedsIdentity() => SignInScreen(
+        flow: widget.signIn,
+        onSignedIn: (_) {
+          widget.signIn.reset();
+          _flow.resumeAfterIdentity();
+        },
+        onCancel: () {
+          widget.signIn.reset();
+          _flow.abandonIdentity();
+        },
+      ),
 
       Holding(:final departure, :final seatMap, :final selected) =>
         SeatMapScreen(

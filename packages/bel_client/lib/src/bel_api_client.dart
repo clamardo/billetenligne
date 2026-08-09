@@ -85,6 +85,47 @@ final class BelApiClient {
     return MarketDto.fromJson(body);
   }
 
+  // ── Identity ──────────────────────────────────────────────────────────────
+
+  /// Ask for a one-time code. Open to anonymous callers, necessarily: this is
+  /// how somebody stops being one.
+  ///
+  /// No idempotency key, and that is not an omission. A repeat is a *resend*,
+  /// which is a different act with a different cost — the server's cooldown is
+  /// what decides whether it happens, and a key would quietly turn the second
+  /// tap into a replay of the first answer while the traveller waits for a
+  /// message that was never sent again.
+  Future<SignInChallengeDto> startSignIn(StartSignInRequest request) async {
+    final body = await _send(
+      'POST',
+      '/public/v1/auth/challenges',
+      body: request.toJson(),
+    );
+    return SignInChallengeDto.fromJson(body ?? const {});
+  }
+
+  /// Answer the code.
+  ///
+  /// **Not retried, ever.** Each attempt is counted by the server, so a silent
+  /// retry of a request whose answer was lost would spend a traveller's five
+  /// attempts on one typed code. `idempotent: false` here is load-bearing.
+  Future<SessionDto> verifySignIn(VerifySignInRequest request) async {
+    final body = await _send(
+      'POST',
+      '/public/v1/auth/sessions',
+      body: request.toJson(),
+    );
+    return SessionDto.fromJson(body ?? const {});
+  }
+
+  /// The signed-in traveller's own profile.
+  ///
+  /// How the app learns that a token it still holds is no longer good: a
+  /// refresh token survives a disabled account, so "I have a token" and "I am
+  /// still a customer" are different claims and only this settles the second.
+  Future<AccountDto> me() async =>
+      AccountDto.fromJson(await _get('/public/v1/me'));
+
   // ── Inventory ─────────────────────────────────────────────────────────────
 
   /// Claim seats.

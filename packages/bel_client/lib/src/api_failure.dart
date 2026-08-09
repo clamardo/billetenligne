@@ -102,3 +102,29 @@ final class UnreadableResponse extends ApiFailure {
   @override
   String toString() => 'UnreadableResponse($detail)';
 }
+
+/// Firebase refused the exchange or the refresh.
+///
+/// Its own failure taxonomy, kept separate from [ServerRefused] because the
+/// two mean different things: our API refusing is a fact about the booking,
+/// and Firebase refusing is a fact about the session. The recovery differs —
+/// the second one means sign in again.
+final class FirebaseRefused extends ApiFailure {
+  const FirebaseRefused(this.status, this.reason);
+
+  final int status;
+
+  /// Firebase's stable machine-readable reason, e.g. `TOKEN_EXPIRED`.
+  final String reason;
+
+  @override
+  String get messageKey => 'errors.auth.unauthorized';
+
+  /// Never. Every one of these needs the traveller to sign in again, and
+  /// "try again" on a dead refresh token is a loop.
+  @override
+  bool get retryable => false;
+
+  @override
+  String toString() => 'FirebaseRefused($status, $reason)';
+}

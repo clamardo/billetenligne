@@ -12,14 +12,16 @@ Per-feature state, updated on every push: **[`10-build-status.md`](10-build-stat
 
 ```
 Search → Seat map → Hold → Sign in → Book → Pay → Ticket → Board
-  ✅        ✅        ✅       ⬜       ⬜     ⬜      ⬜       ✅
+  ✅        ✅        ✅       ✅       ⬜     ⬜      ⬜       ✅
 ```
 
-Boarding is done because the scanner came early — it was the cheapest way to prove the ticket format was real. The gap is the middle: **there is no way to become a customer, and no way to pay.**
+Boarding is done because the scanner came early — it was the cheapest way to prove the ticket format was real. Sign-in is done as of this week, which unblocks everything to its right: until it existed, every hold in the system belonged to one demo user and nothing downstream of identity could be built honestly.
 
-**Done:** the domain, the schema with its tenancy and ledger guarantees, the public sales boundary, the API's browse-and-hold surface, the typed client, the Kilo component library, the traveller app's browse-and-hold funnel, the standalone boarding scanner, and CI that executes all of it.
+The gap is now squarely the middle: **there is no way to pay, and nobody can create a departure except by running SQL.**
 
-381 tests · 44 smoke checks · 23 executed schema guarantees · 28 of those tests against real Postgres.
+**Done:** the domain, the schema with its tenancy and ledger guarantees, the public sales boundary, the API's browse-and-hold surface, phone-less email sign-in end to end, the typed client, the Kilo component library, the traveller app's funnel through to a held seat, the standalone boarding scanner, and CI that executes all of it.
+
+456 tests · 57 smoke checks · 26 executed schema guarantees · 37 of those tests against real Postgres.
 
 ---
 
@@ -52,39 +54,39 @@ Ships without a PSP. The point is to prove inventory, ticketing, boarding and th
 - ✅ Search, seat map, hold, release — API and app, against real Postgres
 - ✅ The traveller app's browse-and-hold funnel, fr + en
 - ✅ Conductor mode: offline scan, five verdicts, standalone app
+- ✅ **Identity — sign in with a one-time code** (ADR-0024). Email leads, not phone: Firebase phone OTP needs a real billed project and we have no provisioned SMS sender, so we run the challenge over a rail we control and answer a correct code with a Firebase *custom token*. This is the fallback ADR-0018 already documented. Phone is a config value away — the channel is a column, an enum and a switch, and the SMS template is already written.
 
 ### Remaining, in dependency order
 
 Each slice below is blocked by the one above it. That ordering is not a preference — it is what the data model requires.
 
-**1. Identity — sign in with a phone number.**
-Firebase Auth adapter behind the existing port, OTP by SMS on the ACS rail, a `user_accounts` row per traveller, and a sign-in screen at the moment of holding rather than at app launch (ADR-0013).
-*Blocks everything below it: today every hold belongs to one demo user.*
-
-**2. Reference data — the cities endpoint.**
+**1. Reference data — the cities endpoint.**
 Small. The traveller app's city list is currently hardcoded in `main.dart`.
 
-**3. Operator console — the minimum that lets somebody sell.**
+**2. Operator console — the minimum that lets somebody sell.**
 Sign-in and RBAC · vehicles and the cabin-section seat-layout designer · routes · schedules and departure materialisation · the guichet (cash sale over the counter, through the *same* hold path) · manifests.
 *Blocks the pilot entirely: right now departures exist only because a SQL fixture created them.*
 
-**4. Booking and cash payment.**
+**3. Booking and cash payment.**
 Convert a hold into a booking, take cash, post the double-entry ledger rows that already have their tables and their balance trigger waiting.
 
-**5. Ticket issuing and delivery.**
+**4. Ticket issuing and delivery.**
 The payload, the signing, the rotating code and the verifier are all built and tested. What is missing is the endpoint that issues one, the SMS that delivers it, and the printable version.
 
-**6. Operator onboarding and admin approval.**
+**5. Operator onboarding and admin approval.**
 The admin back office, the KYB queue, approval and suspension (`03-operator-lifecycle.md`). Can trail the console: the anchor operator will be onboarded by hand.
 
-**7. The vitrine.**
+**6. The vitrine.**
 Logo, header text, accent from the closed set of eight. Cheap, and it is what makes an operator feel the platform is theirs.
 
-**8. Refund policy wizard and cash refunds.**
+**7. Refund policy wizard and cash refunds.**
 The policy engine is built and tested; the wizard and the execution path are not.
 
-**9. `services/worker`.**
-Hold sweeper, SMS outbox, scheduled departure materialisation. Not urgent: `claim()` already treats a lapsed hold as available, so nothing is stranded by its absence — this is a tidy-up, not a guarantee.
+**8. `services/worker`.**
+Hold sweeper, expired-challenge sweeper, SMS outbox, scheduled departure materialisation. Not urgent: `claim()` already treats a lapsed hold as available and an expired challenge is refused by the write that consumes it, so nothing is stranded by its absence — this is a tidy-up, not a guarantee.
+
+**9. Phone as the second sign-in channel, and a per-IP limit on codes.**
+The channel is plumbed and switched off for want of a provisioned ACS sender number. Ships with it: codes are rate-limited per *destination* today — 60 seconds between sends, five attempts per code — which bounds the cost of hammering one address, and nothing yet bounds one host asking for codes to a thousand different addresses. Every one of those is a message we pay for, so this is a cost control before it is a security control.
 
 **Exit:** the anchor operator sells real seats through our console for real cash, and conductors board with our scanner. *Revenue: zero. Learning: maximum.*
 
@@ -165,6 +167,7 @@ Each is reasonable, and each would dilute the one thing that has to be excellent
 | Mobile money success below 85% | Per-rail, per-hour dashboard | Rail fallback plus an aggregator escape hatch (ADR-0006) | Deferred to Phase 2 |
 | Travellers do not trust prepayment | Funnel drop at the payment screen | SMS receipts, honest scarcity, visible refund policy, cash retained | Design done; unproven |
 | Disruption overwhelms support | Support tickets per disruption | IRROPS is operator self-service and P0 in Phase 2 | Designed, not built |
-| **Nobody has used this on a real network** | — | Phase 3 manual smoke | **New. Everything so far is an emulator on a fast connection** |
+| **Nobody has used this on a real network** | — | Phase 3 manual smoke | Everything so far is an emulator on a fast connection |
+| **Sign-in email does not arrive** | Delivery rate per hour, from day one of the pilot | Phone as a second channel — which is why it is plumbed rather than someday (ADR-0024) | **New. Email is now on the critical path of becoming a customer, and it has no fallback yet** |
 
 The first two are commercial, and they are the ones that decide the outcome. Nothing in the engineering backlog above changes either of them.

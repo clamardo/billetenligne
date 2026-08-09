@@ -106,7 +106,7 @@ void main() {
   group('search', () {
     test('produces results', () async {
       final gateway = _ScriptedGateway(searchResult: [_departure()]);
-      final flow = BookingFlow(gateway: gateway);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
 
       await flow.search(_query);
 
@@ -118,7 +118,7 @@ void main() {
       'a lost connection keeps the previous results, marked stale',
       () async {
         final gateway = _ScriptedGateway(searchResult: [_departure()]);
-        final flow = BookingFlow(gateway: gateway);
+        final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
 
         await flow.search(_query);
         gateway.searchFailure = const NetworkUnreachable();
@@ -135,7 +135,7 @@ void main() {
     test('a first search with no signal fails honestly', () async {
       final gateway = _ScriptedGateway()
         ..searchFailure = const NetworkUnreachable();
-      final flow = BookingFlow(gateway: gateway);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
 
       await flow.search(_query);
 
@@ -145,7 +145,7 @@ void main() {
 
     test('a refusal is never dressed up as stale results', () async {
       final gateway = _ScriptedGateway(searchResult: [_departure()]);
-      final flow = BookingFlow(gateway: gateway);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
 
       await flow.search(_query);
       gateway.searchFailure = const ServerRefused(
@@ -163,7 +163,7 @@ void main() {
   group('choosing seats', () {
     Future<BookingFlow> onSeatMap([_ScriptedGateway? g]) async {
       final gateway = g ?? _ScriptedGateway(searchResult: [_departure()]);
-      final flow = BookingFlow(gateway: gateway);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
       await flow.search(_query);
       await flow.openSeatMap(_departure());
       return flow;
@@ -216,7 +216,7 @@ void main() {
 
   group('holding', () {
     Future<BookingFlow> ready(_ScriptedGateway gateway) async {
-      final flow = BookingFlow(gateway: gateway);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
       await flow.search(_query);
       await flow.openSeatMap(_departure());
       flow.toggleSeat('1A');
@@ -235,7 +235,7 @@ void main() {
 
     test('an empty selection does nothing at all', () async {
       final gateway = _ScriptedGateway(searchResult: [_departure()]);
-      final flow = BookingFlow(gateway: gateway);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
       await flow.search(_query);
       await flow.openSeatMap(_departure());
 
@@ -317,7 +317,7 @@ void main() {
   group('releasing and expiry', () {
     test('releasing returns to the start', () async {
       final gateway = _ScriptedGateway(searchResult: [_departure()]);
-      final flow = BookingFlow(gateway: gateway);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
       await flow.search(_query);
       await flow.openSeatMap(_departure());
       flow.toggleSeat('1A');
@@ -331,7 +331,7 @@ void main() {
 
     test('a failed release still returns to the start', () async {
       final gateway = _FailingRelease();
-      final flow = BookingFlow(gateway: gateway);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
       await flow.search(_query);
       await flow.openSeatMap(_departure());
       flow.toggleSeat('1A');
@@ -347,7 +347,7 @@ void main() {
 
     test('expiry lands on a failure the screen can explain', () async {
       final gateway = _ScriptedGateway(searchResult: [_departure()]);
-      final flow = BookingFlow(gateway: gateway);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
       await flow.search(_query);
       await flow.openSeatMap(_departure());
       flow.toggleSeat('1A');
@@ -361,7 +361,7 @@ void main() {
     });
 
     test('expiry outside a hold is ignored', () async {
-      final flow = BookingFlow(gateway: _ScriptedGateway());
+      final flow = BookingFlow(gateway: _ScriptedGateway(), isSignedIn: () => true);
 
       flow.holdExpired();
 

@@ -8,5 +8,7 @@ library;
 
 export 'src/api_failure.dart';
 export 'src/bel_api_client.dart';
+export 'src/firebase_identity_client.dart';
 export 'src/idempotency_key.dart';
 export 'src/retry_policy.dart';
+export 'src/session.dart';
