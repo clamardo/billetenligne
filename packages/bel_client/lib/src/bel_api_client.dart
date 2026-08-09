@@ -80,6 +80,15 @@ final class BelApiClient {
     return SeatMapDto.fromJson(body);
   }
 
+  /// Where you can go.
+  ///
+  /// The first call the app makes — the search screen cannot render without
+  /// it — and the one answer in the product safe to serve from cache.
+  Future<List<CityDto>> cities() async {
+    final body = await _get('/public/v1/cities');
+    return Wire.readList(body['items'], CityDto.fromJson, field: 'items');
+  }
+
   Future<MarketDto> market() async {
     final body = await _get('/public/v1/market');
     return MarketDto.fromJson(body);

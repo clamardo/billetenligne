@@ -27,7 +27,6 @@ final class TravellerApp extends StatelessWidget {
     required this.catalog,
     required this.flow,
     required this.signIn,
-    required this.cities,
     this.language = 'fr',
     super.key,
   });
@@ -35,7 +34,6 @@ final class TravellerApp extends StatelessWidget {
   final TranslationCatalog catalog;
   final BookingFlow flow;
   final SignInFlow signIn;
-  final List<CityOption> cities;
   final String language;
 
   @override
@@ -47,21 +45,16 @@ final class TravellerApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: KiloTheme.materialTheme(),
       darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
-      home: _Funnel(flow: flow, signIn: signIn, cities: cities),
+      home: _Funnel(flow: flow, signIn: signIn),
     ),
   );
 }
 
 class _Funnel extends StatefulWidget {
-  const _Funnel({
-    required this.flow,
-    required this.signIn,
-    required this.cities,
-  });
+  const _Funnel({required this.flow, required this.signIn});
 
   final BookingFlow flow;
   final SignInFlow signIn;
-  final List<CityOption> cities;
 
   @override
   State<_Funnel> createState() => _FunnelState();
@@ -86,6 +79,9 @@ class _FunnelState extends State<_Funnel> {
     _subscription = _flow.steps.listen((_) {
       if (mounted) setState(() {});
     });
+    // The city list is the first thing the search screen needs and the app
+    // holds no copy of it.
+    _flow.start();
   }
 
   @override
@@ -105,8 +101,14 @@ class _FunnelState extends State<_Funnel> {
     final step = _flow.step;
 
     return switch (step) {
+      Starting() => Scaffold(
+        body: KStateView(KLoading(context.t('common.state.loading'))),
+      ),
+
       Idle() => SearchScreen(
-        cities: widget.cities,
+        cities: [
+          for (final city in _flow.cities) CityOption(city.code, city.name),
+        ],
         initialQuery: _flow.lastQuery,
         onSearch: _flow.search,
       ),
@@ -219,6 +221,12 @@ class _FunnelState extends State<_Funnel> {
 
   void _retry() {
     final query = _flow.lastQuery;
-    if (query != null) _flow.search(query);
+    // No query yet means the city list is what failed, and retrying that is
+    // the only thing that can help.
+    if (query == null) {
+      _flow.start();
+    } else {
+      _flow.search(query);
+    }
   }
 }

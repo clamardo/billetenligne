@@ -13,6 +13,7 @@ import 'adapters/firebase_auth_gateway.dart';
 import 'adapters/logging_notification_gateway.dart';
 import 'adapters/memory_idempotency_store.dart';
 import 'application/hold_seats.dart';
+import 'application/ports/city_catalogue.dart';
 import 'application/ports/departure_catalogue.dart';
 import 'application/ports/notification_gateway.dart';
 import 'application/ports/seat_inventory.dart';
@@ -20,6 +21,7 @@ import 'application/ports/user_directory.dart';
 import 'application/search_departures.dart';
 import 'application/sign_in.dart';
 import 'infrastructure/db/database.dart';
+import 'infrastructure/memory/memory_city_catalogue.dart';
 import 'infrastructure/memory/memory_identity.dart';
 import 'infrastructure/memory/memory_seat_inventory.dart';
 import 'infrastructure/postgres/postgres_departure_catalogue.dart';
@@ -48,6 +50,7 @@ final class Services {
     required this.authGateway,
     required this.directory,
     required this.catalogue,
+    required this.cities,
     required this.inventory,
     required this.idempotency,
     required this.clock,
@@ -67,6 +70,7 @@ final class Services {
 
   final UserDirectory directory;
   final DepartureCatalogue catalogue;
+  final CityCatalogue cities;
   final SeatInventory inventory;
   final Idempotency idempotency;
   final Clock clock;
@@ -123,6 +127,7 @@ final class Services {
       ),
       directory: directory,
       catalogue: catalogue,
+      cities: PostgresCityCatalogue(db),
       inventory: inventory,
       // Scoped per request in the handler; this instance carries the anonymous
       // scope so a key written outside a signed-in request cannot masquerade
@@ -181,6 +186,7 @@ final class Services {
       authGateway: FakeAuthGateway.demo(),
       directory: directory,
       catalogue: catalogue,
+      cities: const MemoryCityCatalogue(),
       inventory: inventory,
       idempotency: Idempotency(MemoryIdempotencyStore()),
       clock: clock,

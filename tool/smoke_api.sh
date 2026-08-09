@@ -83,6 +83,26 @@ echo "── checks"
 
 check "health responds"            "200" "$(status "$BASE/health")"
 check "market is public"           "200" "$(status "$BASE/public/v1/market")"
+check "cities are public"          "200" "$(status "$BASE/public/v1/cities")"
+
+cities="$(curl -s "$BASE/public/v1/cities")"
+check "cities carry codes and names" "yes" \
+  "$(grep -q '"code":"BZV","name":"Brazzaville"' <<<"$cities" && echo yes || echo no)"
+# The SERVER resolves the name. A client choosing between nameFr and nameEn is
+# a client that will one day choose wrong for a language it does not know it
+# has (ADR-0008).
+check "the city name arrives resolved" "yes" \
+  "$(grep -q '"nameFr"' <<<"$cities" && echo no || echo yes)"
+check "cities answer in English when asked" "yes" \
+  "$(curl -s -H 'X-Language: en' "$BASE/public/v1/cities" \
+     | grep -q '"name":"Brazzaville"' && echo yes || echo no)"
+# Safe to be slightly out of date: a city added this morning appearing this
+# afternoon costs nobody a booking, and a round trip per launch costs every
+# traveller a slice of a prepaid bundle. The seat map is no-store for exactly
+# the opposite reason.
+check "cities are cacheable, and vary by language" "yes" \
+  "$(curl -sD - -o /dev/null "$BASE/public/v1/cities" | tr -d '\r' \
+     | grep -qi '^cache-control: public, max-age=3600' && echo yes || echo no)"
 check "POST to market is refused"  "405" "$(status -X POST "$BASE/public/v1/market")"
 
 # Browsing is deliberately open: forcing sign-up before the user sees value is

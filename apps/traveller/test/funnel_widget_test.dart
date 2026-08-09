@@ -5,7 +5,6 @@ import 'package:bel_traveller/src/application/sign_in_flow.dart';
 import 'package:bel_traveller/src/infrastructure/demo_identity_gateway.dart';
 import 'package:bel_traveller/src/infrastructure/demo_travel_gateway.dart';
 import 'package:bel_traveller/src/presentation/app.dart';
-import 'package:bel_traveller/src/presentation/screens/search_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -70,10 +69,6 @@ void main() {
         flow: flow,
         signIn: SignInFlow(gateway: identity),
         language: language,
-        cities: const [
-          CityOption('BZV', 'Brazzaville'),
-          CityOption('PNR', 'Pointe-Noire'),
-        ],
       ),
     );
     await tester.pumpAndSettle();

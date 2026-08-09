@@ -15,6 +15,9 @@ final class ApiTravelGateway implements TravelGateway {
   final BelApiClient _client;
 
   @override
+  Future<List<CityDto>> cities() => _client.cities();
+
+  @override
   Future<List<DepartureSummaryDto>> search(SearchDeparturesQuery query) =>
       _client.searchTrips(query);
 

@@ -82,6 +82,21 @@ final class DemoTravelGateway implements TravelGateway {
     }
   }
 
+  /// The same six the API's fakes composition serves. Congo's intercity
+  /// network is genuinely this small.
+  @override
+  Future<List<CityDto>> cities() async {
+    await Future<void>.delayed(latency);
+    return const [
+      CityDto(code: 'BZV', name: 'Brazzaville'),
+      CityDto(code: 'PNR', name: 'Pointe-Noire'),
+      CityDto(code: 'DLS', name: 'Dolisie'),
+      CityDto(code: 'NKY', name: 'Nkayi'),
+      CityDto(code: 'OWE', name: 'Owando'),
+      CityDto(code: 'OYO', name: 'Oyo'),
+    ];
+  }
+
   @override
   Future<List<DepartureSummaryDto>> search(SearchDeparturesQuery query) async {
     await Future<void>.delayed(latency);

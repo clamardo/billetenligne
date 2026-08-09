@@ -13,7 +13,6 @@ import 'src/infrastructure/demo_identity_gateway.dart';
 import 'src/infrastructure/demo_travel_gateway.dart';
 import 'src/presentation/app.dart';
 import 'src/presentation/l10n.dart';
-import 'src/presentation/screens/search_screen.dart';
 
 /// Composition root.
 ///
@@ -81,17 +80,6 @@ Future<void> main() async {
       flow: BookingFlow(gateway: gateway, isSignedIn: () => identity.isSignedIn),
       signIn: SignInFlow(gateway: identity),
       language: language,
-      // Hardcoded for now: the cities endpoint is Phase 1's next slice, and
-      // Congo's intercity network is genuinely this small. Wrong to leave
-      // permanently, harmless today.
-      cities: const [
-        CityOption('BZV', 'Brazzaville'),
-        CityOption('PNR', 'Pointe-Noire'),
-        CityOption('DLS', 'Dolisie'),
-        CityOption('NKY', 'Nkayi'),
-        CityOption('OWE', 'Owando'),
-        CityOption('OYO', 'Oyo'),
-      ],
     ),
   );
 }

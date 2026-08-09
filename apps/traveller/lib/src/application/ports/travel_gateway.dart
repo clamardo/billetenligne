@@ -11,6 +11,10 @@ import 'package:bel_contracts/bel_contracts.dart';
 /// screens: a screen that constructs a request cannot be tested without a
 /// server, and cannot be reused by the console.
 abstract interface class TravelGateway {
+  /// Where you can go. The first call the app makes, because the search
+  /// screen cannot render a picker without it.
+  Future<List<CityDto>> cities();
+
   Future<List<DepartureSummaryDto>> search(SearchDeparturesQuery query);
 
   Future<SeatMapDto> seatMap(String departureId);

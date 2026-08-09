@@ -16,6 +16,7 @@ library;
 
 export 'src/auth/auth_dto.dart';
 export 'src/booking/booking_dto.dart';
+export 'src/catalog/city_dto.dart';
 export 'src/catalog/seat_map_dto.dart';
 export 'src/catalog/trip_dto.dart';
 export 'src/common/headers.dart';

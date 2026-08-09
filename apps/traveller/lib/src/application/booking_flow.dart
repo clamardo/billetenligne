@@ -16,6 +16,18 @@ sealed class BookingStep {
   const BookingStep();
 }
 
+/// Before the first frame the traveller can act on.
+///
+/// The city list comes from the server (there is no copy in the app, and the
+/// hardcoded one this replaced was the kind of duplicate that silently
+/// disagrees with an operator's actual network), so there is a moment where
+/// the search screen cannot render its pickers. Modelled rather than papered
+/// over with an empty list, because an empty picker reads as "we do not serve
+/// anywhere" rather than as "still loading".
+final class Starting extends BookingStep {
+  const Starting();
+}
+
 final class Idle extends BookingStep {
   const Idle();
 }
@@ -153,6 +165,11 @@ final class BookingFlow {
   List<DepartureSummaryDto> _lastResults = const [];
   String? _attemptKey;
 
+  List<CityDto> _cities = const [];
+
+  /// Where you can go. Empty until [start] has run.
+  List<CityDto> get cities => _cities;
+
   /// The departure being booked, remembered independently of the step.
   ///
   /// Deriving it from the current step looked tidier and was wrong: after a
@@ -167,6 +184,29 @@ final class BookingFlow {
   void _emit(BookingStep next) {
     _step = next;
     if (!_steps.isClosed) _steps.add(next);
+  }
+
+  // ── Launch ────────────────────────────────────────────────────────────────
+
+  /// Loads the city list and opens the search screen.
+  ///
+  /// A failure here is fatal to the funnel in a way a failed search is not:
+  /// without cities there is no query to type. So it surfaces as a retryable
+  /// failure rather than as an empty picker, which would read as "we serve
+  /// nowhere".
+  Future<void> start() async {
+    if (_cities.isNotEmpty) {
+      _emit(const Idle());
+      return;
+    }
+
+    _emit(const Starting());
+    try {
+      _cities = await _gateway.cities();
+      _emit(const Idle());
+    } on ApiFailure catch (failure) {
+      _emit(StepFailed(failure));
+    }
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -326,7 +366,9 @@ final class BookingFlow {
   void reset() {
     _attemptKey = null;
     _activeDeparture = null;
-    _emit(const Idle());
+    // Idle only if we have something to render. Resetting into a search
+    // screen with no cities is the empty-picker state again, by another route.
+    _emit(_cities.isEmpty ? const Starting() : const Idle());
   }
 
   Future<void> dispose() => _steps.close();

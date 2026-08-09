@@ -13,12 +13,22 @@ final class _ScriptedGateway implements TravelGateway {
   _ScriptedGateway({this.searchResult});
 
   List<DepartureSummaryDto>? searchResult;
+  ApiFailure? citiesFailure;
   ApiFailure? searchFailure;
   ApiFailure? holdFailure;
 
   final holdKeys = <String>[];
   final released = <String>[];
   var searches = 0;
+
+  @override
+  Future<List<CityDto>> cities() async {
+    if (citiesFailure != null) throw citiesFailure!;
+    return const [
+      CityDto(code: 'BZV', name: 'Brazzaville'),
+      CityDto(code: 'PNR', name: 'Pointe-Noire'),
+    ];
+  }
 
   @override
   Future<List<DepartureSummaryDto>> search(SearchDeparturesQuery query) async {
@@ -103,6 +113,58 @@ final _query = SearchDeparturesQuery(
 );
 
 void main() {
+  group('launch', () {
+    test('loads the cities the search screen needs', () async {
+      final gateway = _ScriptedGateway();
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.start();
+
+      expect(flow.step, isA<Idle>());
+      expect(flow.cities.map((c) => c.code), ['BZV', 'PNR']);
+    });
+
+    test('a failed city load is a failure, not an empty picker', () async {
+      final gateway = _ScriptedGateway()
+        ..citiesFailure = const NetworkUnreachable();
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.start();
+
+      // An empty picker reads as "we serve nowhere". Without cities there is
+      // no query to type, so this is fatal to the funnel in a way a failed
+      // search is not — and it is offered with a retry.
+      expect(flow.step, isA<StepFailed>());
+      expect((flow.step as StepFailed).recoverable, isTrue);
+    });
+
+    test('starting twice does not refetch', () async {
+      final gateway = _ScriptedGateway();
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.start();
+      gateway.citiesFailure = const NetworkUnreachable();
+      await flow.start();
+
+      // The list changes a handful of times a year. Refetching on every
+      // return to the search screen would spend a prepaid bundle on an answer
+      // we already have.
+      expect(flow.step, isA<Idle>());
+    });
+
+    test('reset before the cities load does not strand on an empty picker',
+        () async {
+      final gateway = _ScriptedGateway()
+        ..citiesFailure = const NetworkUnreachable();
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.start();
+      flow.reset();
+
+      expect(flow.step, isA<Starting>());
+    });
+  });
+
   group('search', () {
     test('produces results', () async {
       final gateway = _ScriptedGateway(searchResult: [_departure()]);

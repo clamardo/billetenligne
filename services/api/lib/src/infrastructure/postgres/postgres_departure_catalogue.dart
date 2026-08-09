@@ -4,6 +4,7 @@ import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart';
 
+import '../../application/ports/city_catalogue.dart';
 import '../../application/ports/departure_catalogue.dart';
 import '../db/database.dart';
 
@@ -221,4 +222,54 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
+}
+
+/// Cities, on the public surface.
+///
+/// Lives beside the departure catalogue because it reads the same two tables,
+/// and stays a separate class because it answers a question with a completely
+/// different lifetime — see `CityCatalogue` for why that matters.
+final class PostgresCityCatalogue implements CityCatalogue {
+  const PostgresCityCatalogue(this._db);
+
+  final Database _db;
+
+  @override
+  Future<List<CityDto>> servedCities({required String language}) =>
+      _db.transaction(const DbScope.anonymous(), (tx) async {
+        // The join is what makes this "cities you can reach" rather than
+        // "rows in the cities table". An operator that has not opened a route
+        // to Ouesso yet means Ouesso is not offered, and a traveller never
+        // searches a pair that can only answer nothing.
+        //
+        // `active` on the route, not on the departure: a route with no coach
+        // scheduled this week is still a route, and hiding it would make the
+        // picker flicker as timetables are edited.
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT c.code,
+                   CASE WHEN @language = 'en' THEN c.name_en ELSE c.name_fr END
+                     AS name,
+                   c.lat, c.lng
+              FROM cities c
+             WHERE EXISTS (
+                     SELECT 1 FROM routes r
+                      WHERE r.active
+                        AND (r.origin_city = c.code OR r.destination_city = c.code)
+                   )
+             ORDER BY name
+          '''),
+          parameters: {'language': TypedValue(Type.text, language)},
+        );
+
+        return [
+          for (final row in rows)
+            CityDto(
+              code: row.toColumnMap()['code'] as String,
+              name: row.toColumnMap()['name'] as String,
+              lat: row.toColumnMap()['lat'] as double?,
+              lng: row.toColumnMap()['lng'] as double?,
+            ),
+        ];
+      });
 }
