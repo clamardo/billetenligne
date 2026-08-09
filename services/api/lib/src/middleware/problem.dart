@@ -15,7 +15,11 @@ final class Problem {
     // the 422 default, because these are wrong *requests*, not requests the
     // world happened to refuse. The distinction matters to a client deciding
     // whether a retry could ever help.
-    ErrorCode.badRequest => 400,
+    // An address the client could have checked itself, and a code that is
+    // wrong in a way retrying will not fix.
+    ErrorCode.badRequest ||
+    ErrorCode.emailInvalid ||
+    ErrorCode.phoneInvalid => 400,
     ErrorCode.unauthorized ||
     ErrorCode.otpIncorrect ||
     ErrorCode.otpExpired => 401,
@@ -29,7 +33,9 @@ final class Problem {
     // 410: the resource genuinely existed and is now gone. A hold that
     // timed out is not a 400 — the client did nothing wrong.
     ErrorCode.holdExpired || ErrorCode.holdExpiredDuringPayment => 410,
-    ErrorCode.rateLimited || ErrorCode.otpTooManyAttempts => 429,
+    ErrorCode.rateLimited ||
+    ErrorCode.otpTooManyAttempts ||
+    ErrorCode.otpResendTooSoon => 429,
     ErrorCode.unavailable || ErrorCode.paymentPspUnavailable => 503,
     ErrorCode.internal => 500,
     // 422: well-formed, but the rules refuse it. Refund windows, policy

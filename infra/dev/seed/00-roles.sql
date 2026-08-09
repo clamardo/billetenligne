@@ -19,12 +19,19 @@ CREATE ROLE bel_admin LOGIN PASSWORD 'bel_admin' NOSUPERUSER NOCREATEDB NOCREATE
 -- cannot reach.
 CREATE ROLE bel_public LOGIN PASSWORD 'bel_public' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
 
+-- bel_identity answers one question — "who is this?" — and holds the
+-- privileges to answer it and nothing else (0007). It exists because resolving
+-- a bearer token is a read of user_accounts that happens BEFORE the request has
+-- a surface, a tenant or a user id, so none of the three roles above can be the
+-- one that performs it. NOLOGIN: it is only ever reached with SET LOCAL ROLE.
+CREATE ROLE bel_identity NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+
 -- And the role the API actually connects as. NOINHERIT: it is a member of all
--- three surface roles and carries the privileges of none of them until a
+-- four surface roles and carries the privileges of none of them until a
 -- transaction says `SET LOCAL ROLE`. A connection that has not declared its
 -- surface can read nothing.
 CREATE ROLE bel_api LOGIN PASSWORD 'bel_api' NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
-GRANT bel_public, bel_app, bel_admin TO bel_api;
+GRANT bel_public, bel_app, bel_admin, bel_identity TO bel_api;
 
 -- Ledger and audit tables are append-only by grant, not by convention:
 -- migrations revoke UPDATE and DELETE from both roles on

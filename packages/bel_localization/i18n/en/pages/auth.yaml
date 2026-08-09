@@ -1,0 +1,30 @@
+# The sign-in screen. It appears at the moment of holding a seat, never at
+# launch: letting someone see the value before asking for an identity is what
+# avoids the most expensive drop-off in this funnel (ADR-0013).
+auth:
+  gate:
+    title: "Almost yours"
+    intro: "We need an address to send your ticket to."
+    reassurance: "No password. A one-time code, and that is all."
+  email:
+    label: "Email address"
+    hint: "you@example.cg"
+    submit: "Send me a code"
+  phone:
+    label: "Phone number"
+    hint: "06 123 45 67"
+    submit: "Send me a code by SMS"
+    unavailable: "SMS delivery is coming soon. Use your email for now."
+  code:
+    title: "Enter the code"
+    sentTo: "Code sent to {destination}."
+    label: "6-digit code"
+    submit: "Sign in"
+    resend: "Send it again"
+    resendIn: "Send again in {seconds}s"
+    expiresIn: "This code expires in {minutes} min."
+    wrongAddress: "Not the right address?"
+  signedIn:
+    welcome: "Welcome."
+    welcomeBack: "Good to see you again."
+  signOut: "Sign out"

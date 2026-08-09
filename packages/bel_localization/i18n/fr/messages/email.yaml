@@ -1,0 +1,18 @@
+# E-mails sortants. Rendus par le SERVEUR, dans la langue enregistrée du
+# destinataire (ADR-0019 règle 3) — c'est la seule raison pour laquelle ce
+# catalogue est partagé entre les clients et l'API.
+#
+# Pas de limite de 160 caractères ici, contrairement aux SMS : un e-mail ne
+# coûte pas au segment. Rester bref reste une bonne idée — beaucoup de gens
+# liront ça sur un écran de 5 pouces en 2G.
+email:
+  otp:
+    subject: "Votre code BilletEnLigne : {code}"
+    body: |
+      Votre code de connexion BilletEnLigne est {code}.
+
+      Il expire dans {minutes} minutes. Ne le communiquez à personne — nous ne
+      vous le demanderons jamais.
+
+      Si vous n'avez pas demandé ce code, ignorez ce message : personne ne peut
+      accéder à votre compte sans lui.

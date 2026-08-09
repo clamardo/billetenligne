@@ -11,7 +11,9 @@ environment:
 dependencies:
   bel_contracts: ^0.1.0
   bel_domain: ^0.1.0
+  bel_crypto: ^0.1.0
   bel_localization: ^0.1.0
+  crypto: ^3.0.0
   dart_frog: ^1.1.0
   postgres: ^3.5.0
 dev_dependencies:

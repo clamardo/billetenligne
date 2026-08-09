@@ -1,0 +1,16 @@
+# Identity errors. The server never sends prose — it sends a code and
+# parameters (ADR-0008).
+#
+# None of these sentences says whether an address is already known. Sign-up and
+# sign-in are one flow, and an API that will not say cannot be used to
+# enumerate our customers.
+errors:
+  email:
+    invalid: "That email address does not look valid."
+  phone:
+    invalid: "That number does not look valid. For example: 06 123 45 67."
+  otp:
+    incorrect: "Incorrect code. You have {remaining} attempt(s) left."
+    expired: "That code is no longer valid. Ask for a new one."
+    too_many_attempts: "Too many attempts. Ask for a new code."
+    resend_too_soon: "Wait another {seconds}s before asking for a new code."

@@ -20,7 +20,17 @@ enum DbSurface {
   tenant('bel_app'),
 
   /// Our own back office, reading across tenants. Every such read is audited.
-  platform('bel_admin');
+  platform('bel_admin'),
+
+  /// Answers one question — "who is this?" — and holds the privileges to
+  /// answer it and nothing else (migration 0007).
+  ///
+  /// It exists because of an ordering problem the other three cannot solve:
+  /// turning a bearer token into a user id is a read of `user_accounts` that
+  /// happens BEFORE the request has a surface, a tenant or a user. Doing it
+  /// as `bel_app` would run the traveller sign-in path with an operator's
+  /// authority, which is the trade migration 0005 refused.
+  identity('bel_identity');
 
   const DbSurface(this.roleName);
   final String roleName;
@@ -38,6 +48,11 @@ final class DbScope {
   /// A signed-in traveller.
   const DbScope.traveller(String userId)
     : this._(DbSurface.public, userId: userId);
+
+  /// Resolving or creating an account. Carries no user id on purpose: this is
+  /// the scope used *while* working out whose request this is, and one that
+  /// claimed to already know would be lying.
+  const DbScope.identity() : this._(DbSurface.identity);
 
   /// Browsing without an account. Sees public catalogue rows and nothing that
   /// belongs to anybody.
@@ -64,6 +79,7 @@ final class DbScope {
     'app.user_id': userId ?? '',
     'app.public': surface == DbSurface.public ? 'on' : 'off',
     'app.platform': surface == DbSurface.platform ? 'on' : 'off',
+    'app.identity': surface == DbSurface.identity ? 'on' : 'off',
   };
 }
 
@@ -143,13 +159,15 @@ final class Database {
         SELECT set_config('app.tenant_id', @tenant,   true),
                set_config('app.user_id',   @user,     true),
                set_config('app.public',    @public,   true),
-               set_config('app.platform',  @platform, true)
+               set_config('app.platform',  @platform, true),
+               set_config('app.identity',  @identity, true)
       '''),
       parameters: {
         'tenant': vars['app.tenant_id'],
         'user': vars['app.user_id'],
         'public': vars['app.public'],
         'platform': vars['app.platform'],
+        'identity': vars['app.identity'],
       },
       ignoreRows: true,
     );

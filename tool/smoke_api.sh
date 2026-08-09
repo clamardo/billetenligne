@@ -251,6 +251,83 @@ check "the seat is back on sale" "201" "$(hold "smoke-again-$$" '["4A"]')"
 
 check "unknown route is 404" "404" "$(status "$BASE/public/v1/nope")"
 
+# ── Signing in ──────────────────────────────────────────────────────────────
+#
+# The whole loop over a real socket: ask for a code, read the code the logging
+# sender wrote to the server's log (ADR-0019 — blank connection string means
+# the message goes to stdout, which is exactly what makes this checkable), and
+# answer it.
+#
+# The code is read from the LOG rather than from the response on purpose. If it
+# were ever in the response this suite would still pass, and the check below
+# that says it must not be is the one that would notice.
+SIGNIN_EMAIL="smoke-$$@example.cg"
+
+challenge_body="$(curl -s -X POST "$BASE/public/v1/auth/challenges" \
+  -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$SIGNIN_EMAIL\"}")"
+
+check "asking for a code is 202" "202" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/auth/challenges" \
+     -H 'Content-Type: application/json' -d '{"email":"other-'"$$"'@example.cg"}')"
+
+check "an address that cannot be one is 400" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/auth/challenges" \
+     -H 'Content-Type: application/json' -d '{"email":"not-an-address"}')"
+
+check "supplying both email and phone is 400" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/auth/challenges" \
+     -H 'Content-Type: application/json' \
+     -d '{"email":"a@b.cg","phone":"060000000"}')"
+
+check "the address is echoed masked" "yes" \
+  "$(grep -q '"sentTo":"s\*\*\*' <<<"$challenge_body" && echo yes || echo no)"
+
+# A second ask inside the cooldown. Every resend is a message we pay for, so
+# this limit is a cost control as much as a security control (ADR-0019).
+check "asking again immediately is 429" "429" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/auth/challenges" \
+     -H 'Content-Type: application/json' -d "{\"email\":\"$SIGNIN_EMAIL\"}")"
+
+challenge_id="$(sed 's/.*"challengeId":"\([^"]*\)".*/\1/' <<<"$challenge_body")"
+signin_code="$(grep -o "EMAIL → $SIGNIN_EMAIL\].*code de connexion BilletEnLigne est [0-9]\{6\}" \
+  /tmp/bel-smoke.log | tail -1 | grep -o '[0-9]\{6\}$' || true)"
+
+check "the code reached the sender, not the response" "yes" \
+  "$([[ -n "$signin_code" ]] && ! grep -q "$signin_code" <<<"$challenge_body" \
+    && echo yes || echo no)"
+
+check "a wrong code is 401" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/auth/sessions" \
+     -H 'Content-Type: application/json' \
+     -d "{\"challengeId\":\"$challenge_id\",\"code\":\"000000\"}")"
+
+session_body="$(curl -s -X POST "$BASE/public/v1/auth/sessions" \
+  -H 'Content-Type: application/json' \
+  -d "{\"challengeId\":\"$challenge_id\",\"code\":\"$signin_code\"}")"
+
+check "a correct code returns a credential" "yes" \
+  "$(grep -q '"customToken"' <<<"$session_body" && echo yes || echo no)"
+check "a first sign-in says so" "yes" \
+  "$(grep -q '"isNewAccount":true' <<<"$session_body" && echo yes || echo no)"
+
+# Replay. The consume is a conditional write, so the second answer loses.
+check "the same code cannot be used twice" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/auth/sessions" \
+     -H 'Content-Type: application/json' \
+     -d "{\"challengeId\":\"$challenge_id\",\"code\":\"$signin_code\"}")"
+
+session_token="$(sed 's/.*"customToken":"\([^"]*\)".*/\1/' <<<"$session_body")"
+
+check "the profile needs an account" "401" "$(status "$BASE/public/v1/me")"
+me="$(curl -s -H "Authorization: Bearer $session_token" "$BASE/public/v1/me")"
+check "the profile is the address that signed in" "yes" \
+  "$(grep -q "\"email\":\"$SIGNIN_EMAIL\"" <<<"$me" && echo yes || echo no)"
+# Roles here would be a claim the client could edit. What a caller may do is
+# decided server-side on every request (ADR-0018).
+check "the profile carries no roles" "yes" \
+  "$(grep -q '"roles"' <<<"$me" && echo no || echo yes)"
+
 # ── The Dart client against this same server ────────────────────────────────
 #
 # curl proves the HTTP surface; this proves the seam the *app* actually uses —

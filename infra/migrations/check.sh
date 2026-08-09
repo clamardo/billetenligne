@@ -62,6 +62,10 @@ echo "── public sales boundary"
 psql_run -v ON_ERROR_STOP=1 < "$HERE/verify_public.sql" 2>&1 \
   | grep -E 'NOTICE|PASSED' | sed 's/^NOTICE:  /   /'
 
+echo "── identity surface"
+psql_run -v ON_ERROR_STOP=1 < "$HERE/verify_identity.sql" 2>&1 \
+  | grep -E 'NOTICE|PASSED' | sed 's/^NOTICE:  /   /'
+
 # The balance trigger is DEFERRABLE INITIALLY DEFERRED, so it fires at COMMIT —
 # after any DO block has returned, and beyond the reach of a plpgsql handler.
 # It gets its own invocation, and must fail for the stated reason.

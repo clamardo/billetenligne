@@ -1,0 +1,30 @@
+# Écran de connexion. Il apparaît au moment de bloquer un siège, jamais au
+# lancement : laisser voir la valeur avant de demander une identité est ce qui
+# évite l'abandon le plus coûteux du parcours (ADR-0013).
+auth:
+  gate:
+    title: "Presque à vous"
+    intro: "Nous avons besoin d'une adresse pour vous envoyer votre billet."
+    reassurance: "Pas de mot de passe. Un code à usage unique, et c'est tout."
+  email:
+    label: "Adresse e-mail"
+    hint: "vous@exemple.cg"
+    submit: "Recevoir un code"
+  phone:
+    label: "Numéro de téléphone"
+    hint: "06 123 45 67"
+    submit: "Recevoir un code par SMS"
+    unavailable: "L'envoi par SMS arrive bientôt. Utilisez votre e-mail pour l'instant."
+  code:
+    title: "Entrez le code"
+    sentTo: "Code envoyé à {destination}."
+    label: "Code à 6 chiffres"
+    submit: "Se connecter"
+    resend: "Renvoyer le code"
+    resendIn: "Renvoyer dans {seconds} s"
+    expiresIn: "Ce code expire dans {minutes} min."
+    wrongAddress: "Ce n'est pas la bonne adresse ?"
+  signedIn:
+    welcome: "Bienvenue."
+    welcomeBack: "Content de vous revoir."
+  signOut: "Se déconnecter"

@@ -41,6 +41,21 @@ final class Principal {
 abstract interface class AuthGateway {
   Future<Principal?> verify(String bearerToken);
 
+  /// A credential for a traveller who has just answered a correct one-time
+  /// code, to be **exchanged** with Firebase for an ID token and a refresh
+  /// token — never presented to us as a bearer.
+  ///
+  /// This is ADR-0018's documented fallback, and it is the shape of it: we own
+  /// the challenge, so the code can travel over a channel we can measure and
+  /// price (email first, SMS second — ADR-0019), and Firebase still owns the
+  /// session, the refresh rotation and the revocation. Rolling our own session
+  /// token here would quietly take all four of those on.
+  Future<String> mintCustomToken({
+    required String uid,
+    Map<String, Object?> claims,
+    Duration ttl,
+  });
+
   /// Mints a short-lived credential for a conductor, scoped to their assigned
   /// departures and expiring at end of shift. No standing credential on a
   /// device that gets lost (ADR-0013).

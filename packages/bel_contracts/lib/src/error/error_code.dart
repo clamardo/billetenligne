@@ -63,6 +63,11 @@ final class ErrorCode {
   static const otpIncorrect = 'otp.incorrect';
   static const otpExpired = 'otp.expired';
   static const otpTooManyAttempts = 'otp.too_many_attempts';
+  static const emailInvalid = 'email.invalid';
+
+  /// Asked for a new code before the cooldown elapsed. Retryable, but only
+  /// after waiting — which is why it carries the wait rather than a bare 429.
+  static const otpResendTooSoon = 'otp.resend_too_soon';
 
   // ── Tenancy / operator lifecycle ───────────────────────────────────────
   static const operatorSuspended = 'operator.suspended';

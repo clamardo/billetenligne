@@ -8,3 +8,5 @@ library;
 
 export 'src/ed25519_verifier.dart';
 export 'src/hmac_authenticator.dart';
+export 'src/jwt.dart';
+export 'src/rsa_sha256.dart';

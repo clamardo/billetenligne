@@ -1,0 +1,18 @@
+# Outbound email. Rendered by the SERVER, in the recipient's stored language
+# (ADR-0019 rule 3) — which is the only reason this catalog is shared between
+# the clients and the API.
+#
+# No 160-character gate here, unlike SMS: email is not charged by the segment.
+# Brevity is still right — plenty of people read this on a five-inch screen
+# over 2G.
+email:
+  otp:
+    subject: "Your BilletEnLigne code: {code}"
+    body: |
+      Your BilletEnLigne sign-in code is {code}.
+
+      It expires in {minutes} minutes. Do not share it with anyone — we will
+      never ask you for it.
+
+      If you did not ask for this code, ignore this message: nobody can reach
+      your account without it.

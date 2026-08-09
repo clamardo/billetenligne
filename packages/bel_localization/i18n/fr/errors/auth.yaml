@@ -1,0 +1,16 @@
+# Erreurs d'identification. Le serveur n'envoie jamais de phrase : il envoie un
+# code et des paramètres (ADR-0008).
+#
+# Aucune de ces phrases ne dit si une adresse est déjà connue. L'inscription et
+# la connexion sont un seul parcours, et une API qui ne le dit pas ne peut pas
+# servir à énumérer nos clients.
+errors:
+  email:
+    invalid: "Cette adresse e-mail ne semble pas valide."
+  phone:
+    invalid: "Ce numéro ne semble pas valide. Exemple : 06 123 45 67."
+  otp:
+    incorrect: "Code incorrect. Il vous reste {remaining} essai(s)."
+    expired: "Ce code n'est plus valable. Demandez-en un nouveau."
+    too_many_attempts: "Trop d'essais. Demandez un nouveau code."
+    resend_too_soon: "Patientez encore {seconds} s avant de demander un nouveau code."
