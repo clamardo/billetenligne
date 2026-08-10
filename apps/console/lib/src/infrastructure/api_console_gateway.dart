@@ -151,6 +151,12 @@ final class ApiConsoleGateway implements ConsoleGateway {
   }) => _client.declareDisruption(departureId: departureId, request: request);
 
   @override
+  Future<RescueAppliedDto> assignRescueCoach({
+    required String departureId,
+    required RescueCoachRequest request,
+  }) => _client.assignRescueCoach(departureId: departureId, request: request);
+
+  @override
   Future<SeatMapDto> seatMap(String departureId) =>
       _client.seatMap(departureId);
 

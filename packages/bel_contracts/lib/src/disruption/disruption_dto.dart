@@ -202,3 +202,88 @@ DisruptionCause disruptionCauseFromWire(String value) => Wire.readEnum(
   field: 'cause',
   fallback: DisruptionCause.other,
 );
+
+/// Sending a different coach (`08-disruption.md` §2.2 option ①).
+final class RescueCoachRequest {
+  const RescueCoachRequest({required this.vehicleId, this.note});
+
+  final String vehicleId;
+  final String? note;
+
+  Map<String, Object?> toJson() =>
+      Wire.compact({'vehicleId': vehicleId, 'note': note});
+
+  factory RescueCoachRequest.fromJson(Map<String, Object?> json) =>
+      RescueCoachRequest(
+        vehicleId: Wire.requireString(json['vehicleId'], 'vehicleId'),
+        note: json['note'] as String?,
+      );
+}
+
+/// Where one passenger sat, and where they will sit.
+final class SeatMoveDto {
+  const SeatMoveDto({required this.from, required this.to});
+
+  final String from;
+  final String to;
+
+  bool get isUnchanged => from == to;
+
+  Map<String, Object?> toJson() => {'from': from, 'to': to};
+
+  factory SeatMoveDto.fromJson(Map<String, Object?> json) => SeatMoveDto(
+    from: Wire.requireString(json['from'], 'from'),
+    to: Wire.requireString(json['to'], 'to'),
+  );
+}
+
+/// What sending a rescue coach did.
+///
+/// The moves travel in full, including the seats that did not change. A
+/// dispatcher reading "3 moved" needs the other thirty-nine accounted for
+/// before they will believe the three.
+final class RescueAppliedDto {
+  const RescueAppliedDto({
+    required this.departureId,
+    required this.registration,
+    required this.moves,
+    required this.passengersTold,
+    required this.ticketsReissued,
+    required this.holdsReleased,
+  });
+
+  final String departureId;
+  final String registration;
+  final List<SeatMoveDto> moves;
+  final int passengersTold;
+  final int ticketsReissued;
+
+  /// Somebody mid-checkout whose seat may not exist on the new coach. Told,
+  /// not hidden: they have to choose again.
+  final int holdsReleased;
+
+  int get moved => moves.where((m) => !m.isUnchanged).length;
+
+  Map<String, Object?> toJson() => {
+    'departureId': departureId,
+    'registration': registration,
+    'moves': [for (final m in moves) m.toJson()],
+    'passengersTold': passengersTold,
+    'ticketsReissued': ticketsReissued,
+    'holdsReleased': holdsReleased,
+  };
+
+  factory RescueAppliedDto.fromJson(
+    Map<String, Object?> json,
+  ) => RescueAppliedDto(
+    departureId: Wire.requireString(json['departureId'], 'departureId'),
+    registration: Wire.requireString(json['registration'], 'registration'),
+    moves: Wire.readList(json['moves'], SeatMoveDto.fromJson, field: 'moves'),
+    passengersTold: Wire.requireInt(json['passengersTold'], 'passengersTold'),
+    ticketsReissued: Wire.requireInt(
+      json['ticketsReissued'],
+      'ticketsReissued',
+    ),
+    holdsReleased: Wire.requireInt(json['holdsReleased'], 'holdsReleased'),
+  );
+}

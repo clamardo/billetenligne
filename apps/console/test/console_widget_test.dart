@@ -313,6 +313,29 @@ final class _ScriptedConsole implements ConsoleGateway {
     );
   }
 
+  /// How many seats the rescue moved. Set per test — the console renders the
+  /// difference between "everybody keeps their seat" and "nine people move".
+  int rescueMoves = 0;
+
+  @override
+  Future<RescueAppliedDto> assignRescueCoach({
+    required String departureId,
+    required RescueCoachRequest request,
+  }) async {
+    saved.add('rescue:$departureId:${request.vehicleId}:${request.note ?? ''}');
+    return RescueAppliedDto(
+      departureId: departureId,
+      registration: 'ODN-902',
+      moves: [
+        for (var i = 0; i < rescueMoves; i++)
+          SeatMoveDto(from: '${i + 1}A', to: '${i + 1}E'),
+      ],
+      passengersTold: 1,
+      ticketsReissued: rescueMoves,
+      holdsReleased: 0,
+    );
+  }
+
   @override
   Future<SeatMapDto> seatMap(String departureId) => throw UnimplementedError();
 
@@ -707,6 +730,164 @@ void main() {
       // Beside the route name, so a dispatcher glancing at the day does not
       // have to open a row to find out one of their coaches is broken down.
       expect(find.text('Panne en route'), findsOneWidget);
+    });
+  });
+
+  group('sending a rescue coach', () {
+    /// A dispatcher whose coach has broken down, plus a fleet to pick from.
+    /// The 33-seater is deliberately too small for the 42 sold: the sheet has
+    /// to say so rather than offering a swap the server will refuse.
+    _ScriptedConsole stranded({int sold = 42, String? vehicle = 'ODN-001'}) =>
+        _ScriptedConsole(
+            capabilities: const ['booking.read', 'disruption.declare'],
+          )
+          ..vehicleList = const [
+            VehicleDto(
+              id: 'v-2',
+              registration: 'ODN-902',
+              layoutId: 'l-1',
+              layoutName: 'Car 2+3, 55 places',
+              capacity: 55,
+              status: 'active',
+              sellable: true,
+            ),
+            VehicleDto(
+              id: 'v-3',
+              registration: 'ODN-903',
+              layoutId: 'l-2',
+              layoutName: 'Minibus',
+              capacity: 33,
+              status: 'active',
+              sellable: true,
+            ),
+            VehicleDto(
+              id: 'v-4',
+              registration: 'ODN-904',
+              layoutId: 'l-1',
+              layoutName: 'Car 2+3, 55 places',
+              capacity: 55,
+              status: 'maintenance',
+              sellable: false,
+            ),
+          ]
+          ..boardList = [
+            DepartureBoardDto(
+              id: 'dep-1',
+              routeCode: 'BZV-PNR',
+              departsAt: DateTime.utc(2026, 8, 10, 5),
+              status: 'scheduled',
+              capacity: 49,
+              sold: sold,
+              held: 0,
+              available: 49 - sold,
+              vehicle: vehicle,
+              disruption: DisruptionDto(
+                id: 'd-1',
+                kind: DisruptionKind.breakdownEnRoute,
+                cause: DisruptionCause.mechanical,
+                declaredAt: DateTime.utc(2026, 8, 10, 5, 40),
+                marksInvoluntary: true,
+              ),
+            ),
+          ];
+
+    testWidgets('a coach that is running is not offered a swap', (
+      tester,
+    ) async {
+      final gateway = stranded()
+        ..boardList[0] = DepartureBoardDto(
+          id: 'dep-1',
+          routeCode: 'BZV-PNR',
+          departsAt: DateTime.utc(2026, 8, 10, 5),
+          status: 'scheduled',
+          capacity: 49,
+          sold: 42,
+          held: 0,
+          available: 7,
+          vehicle: 'ODN-001',
+        );
+
+      await pump(tester, gateway);
+
+      // Every row on a normal day would otherwise carry a button that
+      // re-signs forty-two tickets, and one of them gets pressed by mistake.
+      expect(find.text('Car de secours'), findsNothing);
+      expect(find.text('Signaler un incident'), findsOneWidget);
+    });
+
+    testWidgets('a departure with no coach at all offers one', (tester) async {
+      await pump(tester, stranded(vehicle: null));
+      expect(find.text('Car de secours'), findsOneWidget);
+    });
+
+    testWidgets('the sheet says which coaches everybody fits in', (
+      tester,
+    ) async {
+      await pump(tester, stranded());
+
+      await tester.tap(find.text('Car de secours'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('55 places'), findsOneWidget);
+      // Nine short of the forty-two sold, said as a number rather than as a
+      // greyed-out row nobody can explain.
+      expect(find.text('9 places de moins'), findsOneWidget);
+      // A coach in maintenance is not a rescue, and offering it here would be
+      // offering a swap the server is going to refuse.
+      expect(find.text('ODN-904'), findsNothing);
+    });
+
+    testWidgets('choosing a coach sends it, and says who moved', (
+      tester,
+    ) async {
+      final gateway = stranded()..rescueMoves = 9;
+      await pump(tester, gateway);
+
+      await tester.tap(find.text('Car de secours'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ODN-902'));
+      await tester.pumpAndSettle();
+
+      final button = find.widgetWithText(KButton, 'Envoyer ce car');
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('rescue:dep-1:v-2:'));
+      // Never a bare success: nine people are sitting somewhere else, and
+      // that is what the dispatcher is about to be asked about at the door.
+      expect(find.textContaining('9 passager'), findsOneWidget);
+    });
+
+    testWidgets('a coach that is too small cannot be chosen', (tester) async {
+      final gateway = stranded();
+      await pump(tester, gateway);
+
+      await tester.tap(find.text('Car de secours'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ODN-903'));
+      await tester.pumpAndSettle();
+
+      // The confirm button stays disabled rather than travelling to the
+      // server on 2G to be told the arithmetic the sheet already knows.
+      final button = tester.widget<KButton>(
+        find.widgetWithText(KButton, 'Envoyer ce car'),
+      );
+      expect(button.onPressed, isNull);
+      expect(gateway.saved, isEmpty);
+    });
+
+    testWidgets('an operator with no spare is told so', (tester) async {
+      final gateway = stranded()..vehicleList = const [];
+      await pump(tester, gateway);
+
+      await tester.tap(find.text('Car de secours'));
+      await tester.pumpAndSettle();
+
+      // The answer to a breakdown is then the counter, not this sheet — and
+      // an empty list would have left the dispatcher looking for a scrollbar.
+      expect(find.textContaining('Aucun car disponible'), findsOneWidget);
     });
   });
 

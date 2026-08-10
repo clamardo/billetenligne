@@ -3,7 +3,9 @@ import 'package:bel_domain/bel_domain.dart' as domain;
 import 'package:postgres/postgres.dart' hide Result;
 
 import '../../application/ports/disruption_desk.dart';
+import '../../application/ports/ticket_issuer.dart';
 import '../db/database.dart';
+import 'postgres_operator_console.dart';
 
 /// Declaring a disruption, on the tenant surface.
 ///
@@ -13,9 +15,16 @@ import '../db/database.dart';
 /// and nobody told — which is the situation we are already in today, and is
 /// strictly better than half of a re-accommodation.
 final class PostgresDisruptions implements DisruptionDesk {
-  const PostgresDisruptions(this._db);
+  const PostgresDisruptions(this._db, {TicketIssuer? issuer})
+    : _issuer = issuer;
 
   final Database _db;
+
+  /// Needed only by the rescue coach, which re-signs the tickets whose seat
+  /// changed. Optional so the read paths and the declaration path can be
+  /// built without a signing key — a desk that could not declare a breakdown
+  /// because no key was configured would fail at the worst moment.
+  final TicketIssuer? _issuer;
 
   @override
   Future<Result<DisruptionRecord, DeclarationRefusal>> declare({
@@ -260,6 +269,422 @@ final class PostgresDisruptions implements DisruptionDesk {
       ),
     );
   });
+
+  @override
+  Future<Result<RescueApplied, DeclarationRefusal>> assignRescueCoach({
+    required String operatorId,
+    required String departureId,
+    required String vehicleId,
+    required String actorUserId,
+    required DateTime now,
+    String? note,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final found = await tx.execute(
+      Sql.named('''
+        SELECT d.departs_at, d.status::text AS status, d.fare_minor,
+               d.currency::text AS currency, d.route_id,
+               l.sections, l.blocked, l.mode
+          FROM departures d
+          JOIN seat_layouts l ON l.id = d.seat_layout_id
+         WHERE d.id = @id AND d.operator_id = @operator
+           FOR UPDATE OF d
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'operator': TypedValue(Type.uuid, operatorId),
+      },
+    );
+
+    if (found.isEmpty) return const Err(UnknownDeparture());
+    final departure = found.first.toColumnMap();
+    if (departure['status'] == 'arrived') {
+      return const Err(DepartureAlreadyArrived());
+    }
+
+    final coach = await tx.execute(
+      Sql.named('''
+        SELECT v.registration, v.seat_layout_id,
+               l.sections, l.blocked, l.mode
+          FROM vehicles v
+          JOIN seat_layouts l ON l.id = v.seat_layout_id
+         WHERE v.id = @id AND v.operator_id = @operator
+           AND v.status = 'active'
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, vehicleId),
+        'operator': TypedValue(Type.uuid, operatorId),
+      },
+    );
+
+    // A coach that is off the road, blocked for compliance, or somebody
+    // else's is not a rescue. One answer for all three.
+    if (coach.isEmpty) return const Err(UnusableVehicle());
+    final rescue = coach.first.toColumnMap();
+
+    final oldLayout = PostgresOperatorConsole.decodeLayout(departure);
+    final newLayout = PostgresOperatorConsole.decodeLayout(rescue);
+
+    // Occupied means "has a booking behind it" — sold, or held against a
+    // reservation somebody is on their way to pay for. A plain hold is
+    // somebody mid-checkout and is released below.
+    final taken = await tx.execute(
+      Sql.named('''
+        SELECT seat_label, state::text AS state, booking_id, held_until
+          FROM seats
+         WHERE departure_id = @id AND booking_id IS NOT NULL
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+    );
+
+    final occupied = [
+      for (final row in taken) row.toColumnMap()['seat_label'] as String,
+    ];
+
+    final remap = remapSeats(
+      from: oldLayout,
+      to: newLayout,
+      occupied: occupied,
+    );
+
+    if (!remap.seatsEverybody) {
+      return Err(CannotSeatEverybody(remap.unplaceable.length));
+    }
+
+    // Holds with nothing behind them go back. Their seats may not exist on
+    // the new coach, and moving somebody's held seat under them mid-checkout
+    // is worse than telling them to choose again.
+    final released = await tx.execute(
+      Sql.named('''
+        UPDATE holds
+           SET state = 'released'
+         WHERE departure_id = @id AND state = 'active'
+           AND NOT EXISTS (
+             SELECT 1 FROM bookings b WHERE b.hold_id = holds.id
+           )
+        RETURNING id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+      queryMode: QueryMode.extended,
+    );
+
+    // The seat rows are rebuilt from the new coach's layout rather than
+    // renamed, because the new coach has different seats — different
+    // sections, different fares, possibly different blocked ones.
+    await tx.execute(
+      Sql.named('DELETE FROM seats WHERE departure_id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+      ignoreRows: true,
+    );
+
+    final currency = Currency.byCode((departure['currency'] as String).trim())!;
+    final baseFare = Money(departure['fare_minor'] as int, currency);
+
+    for (final label in newLayout.allSeatLabels()) {
+      if (newLayout.blocked.contains(label)) continue;
+      final fare = newLayout.fareFor(label, baseFare);
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO seats (departure_id, seat_label, operator_id,
+                             section_code, fare_minor, currency)
+          VALUES (@departure, @label, @operator, @section, @fare, @currency)
+          ON CONFLICT (departure_id, seat_label) DO NOTHING
+        '''),
+        parameters: {
+          'departure': TypedValue(Type.uuid, departureId),
+          'label': TypedValue(Type.text, label),
+          'operator': TypedValue(Type.uuid, operatorId),
+          'section': TypedValue(
+            Type.text,
+            newLayout.sectionForSeat(label)?.code ?? 'STD',
+          ),
+          'fare': TypedValue(Type.bigInteger, fare.minor),
+          'currency': TypedValue(Type.text, fare.currency.code),
+        },
+        ignoreRows: true,
+      );
+    }
+
+    // Everybody back into their seat. The state travels with them: a
+    // reservation that was held stays held with its own deadline, a paid seat
+    // stays sold. Flattening the two here would either sell an unpaid seat or
+    // put a paid one back on sale.
+    final movedBookings = <String>{};
+    for (final row in taken) {
+      final r = row.toColumnMap();
+      final from = r['seat_label'] as String;
+      final to = remap.destinationOf(from)!;
+      final bookingId = r['booking_id'].toString();
+
+      await tx.execute(
+        Sql.named('''
+          UPDATE seats
+             SET state = @state::seat_state, booking_id = @booking,
+                 held_until = @until
+           WHERE departure_id = @departure AND seat_label = @label
+        '''),
+        parameters: {
+          'departure': TypedValue(Type.uuid, departureId),
+          'label': TypedValue(Type.text, to),
+          'state': TypedValue(Type.text, r['state'] as String),
+          'booking': TypedValue(Type.uuid, bookingId),
+          'until': TypedValue(
+            Type.timestampWithTimezone,
+            r['held_until'] as DateTime?,
+          ),
+        },
+        ignoreRows: true,
+      );
+
+      if (from == to) continue;
+      movedBookings.add(bookingId);
+
+      await tx.execute(
+        Sql.named('''
+          UPDATE booking_seats SET seat_label = @to
+           WHERE booking_id = @booking AND seat_label = @from
+        '''),
+        parameters: {
+          'booking': TypedValue(Type.uuid, bookingId),
+          'from': TypedValue(Type.text, from),
+          'to': TypedValue(Type.text, to),
+        },
+        ignoreRows: true,
+      );
+    }
+
+    await tx.execute(
+      Sql.named('''
+        UPDATE departures
+           SET vehicle_id = @vehicle, seat_layout_id = @layout,
+               capacity = @capacity
+         WHERE id = @id
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'vehicle': TypedValue(Type.uuid, vehicleId),
+        'layout': TypedValue(Type.uuid, rescue['seat_layout_id'].toString()),
+        'capacity': TypedValue(Type.integer, newLayout.capacity),
+      },
+      ignoreRows: true,
+    );
+
+    final reissued = await _reissue(tx, movedBookings, departureId, operatorId);
+
+    // The swap is itself a disruption: it supersedes the breakdown that
+    // caused it, so "what is happening to my coach right now?" answers with
+    // the resolution rather than with the problem.
+    final declared = domain.declareDisruption(
+      kind: DisruptionKind.equipmentSwap,
+      cause: DisruptionCause.mechanical,
+      departsAt: departure['departs_at'] as DateTime,
+      now: now,
+      note: note,
+    );
+    final disruption = declared.valueOrNull!;
+
+    final superseded = await tx.execute(
+      Sql.named('''
+        UPDATE disruptions
+           SET resolved_at = @now
+         WHERE departure_id = @departure AND resolved_at IS NULL
+        RETURNING id
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, departureId),
+        'now': TypedValue(Type.timestampWithTimezone, now),
+      },
+    );
+
+    final inserted = await tx.execute(
+      Sql.named('''
+        INSERT INTO disruptions
+          (operator_id, departure_id, kind, cause, note, marks_involuntary,
+           bookings_affected, declared_by, declared_at)
+        VALUES (@operator, @departure, 'equipment_swap', 'mechanical', @note,
+                TRUE, @affected, @actor, @now)
+        RETURNING id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'departure': TypedValue(Type.uuid, departureId),
+        'note': TypedValue(Type.text, disruption.note),
+        'affected': TypedValue(Type.integer, taken.length),
+        'actor': TypedValue(Type.uuid, actorUserId),
+        'now': TypedValue(Type.timestampWithTimezone, now),
+      },
+    );
+    final disruptionId = inserted.first.toColumnMap()['id'].toString();
+
+    for (final row in superseded) {
+      await tx.execute(
+        Sql.named(
+          'UPDATE disruptions SET superseded_by = @new WHERE id = @old',
+        ),
+        parameters: {
+          'new': TypedValue(Type.uuid, disruptionId),
+          'old': TypedValue(Type.uuid, row.toColumnMap()['id'].toString()),
+        },
+        ignoreRows: true,
+      );
+    }
+
+    await tx.execute(
+      Sql.named('''
+        UPDATE bookings SET involuntary_change = TRUE
+         WHERE departure_id = @id AND state IN ('confirmed', 'pending_payment')
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+      ignoreRows: true,
+    );
+
+    // A different event type from a declaration, and a different sentence:
+    // this one carries the seat, because "votre place est déjà réservée,
+    // siège 14A" is what turns an anxious passenger into a calm one (§3.1).
+    await tx.execute(
+      Sql.named('''
+        INSERT INTO outbox (aggregate, aggregate_id, event_type, payload,
+                            dedupe_key)
+        SELECT 'disruption', b.id, 'disruption.resolved',
+               jsonb_build_object('bookingId', b.id::text,
+                                  'disruptionId', @id::text),
+               'disruption.resolved:' || @id::text || ':' || b.id::text
+          FROM bookings b
+         WHERE b.departure_id = @departure
+           AND b.state IN ('confirmed', 'pending_payment')
+        ON CONFLICT (dedupe_key) DO NOTHING
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, disruptionId),
+        'departure': TypedValue(Type.uuid, departureId),
+      },
+      ignoreRows: true,
+    );
+
+    await tx.execute(
+      Sql.named('''
+        INSERT INTO audit_log
+          (actor_id, actor_type, action, subject_type, subject_id,
+           operator_id, reason, after_state)
+        VALUES (@actor, 'operator_staff', 'disruption.rescue', 'departure',
+                @departure, @operator, @reason, @after)
+      '''),
+      parameters: {
+        'actor': TypedValue(Type.uuid, actorUserId),
+        'departure': TypedValue(Type.text, departureId),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'reason': TypedValue(
+          Type.text,
+          note == null
+              ? 'rescue coach ${rescue['registration']}'
+              : 'rescue coach ${rescue['registration']}: $note',
+        ),
+        'after': TypedValue(Type.jsonb, {
+          'vehicleId': vehicleId,
+          'registration': rescue['registration'],
+          'seatsMoved': remap.movedCount,
+          'ticketsReissued': reissued,
+        }),
+      },
+      ignoreRows: true,
+    );
+
+    return Ok(
+      RescueApplied(
+        disruptionId: disruptionId,
+        departureId: departureId,
+        registration: rescue['registration'] as String,
+        remap: remap,
+        passengersTold: taken.length,
+        ticketsReissued: reissued,
+        holdsReleased: released.length,
+      ),
+    );
+  });
+
+  /// Re-signs the tickets of the bookings whose seats actually changed.
+  ///
+  /// The seat is inside the signed payload, so a moved passenger with an old
+  /// ticket scans as somebody else's seat at the door. An unmoved passenger
+  /// is left alone on purpose: their QR still says the truth, and reissuing
+  /// it would break the screenshot they already sent to whoever is meeting
+  /// them.
+  Future<int> _reissue(
+    TxSession tx,
+    Set<String> bookingIds,
+    String departureId,
+    String operatorId,
+  ) async {
+    if (bookingIds.isEmpty || _issuer == null) return 0;
+
+    var reissued = 0;
+    for (final bookingId in bookingIds) {
+      final rows = await tx.execute(
+        Sql.named('''
+          SELECT b.ref, bs.seat_label, bs.passenger_name,
+                 d.departs_at, r.code AS route_code, o.code AS operator_code
+            FROM bookings b
+            JOIN booking_seats bs ON bs.booking_id = b.id
+            JOIN departures d ON d.id = b.departure_id
+            JOIN routes r ON r.id = d.route_id
+            JOIN operators o ON o.id = b.operator_id
+           WHERE b.id = @id
+           ORDER BY bs.seat_label
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, bookingId)},
+      );
+      if (rows.isEmpty) continue;
+
+      final first = rows.first.toColumnMap();
+      final signed = await _issuer.issue(
+        bookingRef: BookingRef.trusted(first['ref'] as String),
+        departureId: departureId,
+        departsAt: first['departs_at'] as DateTime,
+        routeCode: first['route_code'] as String,
+        operatorCode: first['operator_code'] as String,
+        seats: [
+          for (final row in rows)
+            (
+              seatLabel: row.toColumnMap()['seat_label'] as String,
+              passengerName: row.toColumnMap()['passenger_name'] as String,
+            ),
+        ],
+      );
+
+      // Replaced rather than added to. Two live tickets for one booking is
+      // two people boarding on one fare, and `redemptions` would let the
+      // second through because it is a different ticket id.
+      await tx.execute(
+        Sql.named('DELETE FROM tickets WHERE booking_id = @id'),
+        parameters: {'id': TypedValue(Type.uuid, bookingId)},
+        ignoreRows: true,
+      );
+
+      for (final ticket in signed) {
+        await tx.execute(
+          Sql.named('''
+            INSERT INTO tickets
+              (booking_id, operator_id, departure_id, seat_label,
+               payload, signature, key_id, rotating_secret)
+            VALUES (@booking, @operator, @departure, @seat,
+                    @payload, @signature, @keyId, @secret)
+          '''),
+          parameters: {
+            'booking': TypedValue(Type.uuid, bookingId),
+            'operator': TypedValue(Type.uuid, operatorId),
+            'departure': TypedValue(Type.uuid, departureId),
+            'seat': TypedValue(Type.text, ticket.seatLabel),
+            'payload': TypedValue(Type.text, ticket.payload),
+            'signature': TypedValue(Type.byteArray, ticket.signature),
+            'keyId': TypedValue(Type.integer, ticket.keyId),
+            'secret': TypedValue(Type.byteArray, ticket.rotatingSecret),
+          },
+          ignoreRows: true,
+        );
+        reissued++;
+      }
+    }
+    return reissued;
+  }
 
   @override
   Future<Map<String, DisruptionRecord>> openFor({

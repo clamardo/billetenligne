@@ -24,6 +24,7 @@ console:
     emptyTitle: "No departures on this day"
     emptyBody: "Publish a timetable from the Timetables tab to put departures on sale."
     declare: "Report an incident"
+    rescue: "Rescue coach"
   # The dispatcher's form: at a roadside, on a phone, on 2G, possibly in the
   # rain (08-disruption.md §2.1). Four large targets, a cause, and nothing
   # else required.
@@ -44,6 +45,18 @@ console:
     notFree: "Under an hour late: no automatic refund."
     needsTime: "Choose the new departure time."
     badge: "Disrupted"
+  # The rescue coach (08-disruption.md §2.2, option ①). The dispatcher picks a
+  # coach that actually exists, and the seat count is said before the choice.
+  rescue:
+    title: "Replace {vehicle}"
+    none: "No coach available. Take the passengers to the counter to be rebooked."
+    seats: "{count} seats"
+    short: "{count} seats short"
+    note: "Note (optional)"
+    noteHint: "Passengers see this alongside the templated message."
+    willMove: "{count} passenger(s) will get a new ticket and a new seat."
+    back: "Back"
+    confirm: "Send this coach"
   manifest:
     summary: "{sold} sold · {boarded} boarded · {capacity} seats"
     empty: "No passengers yet."
@@ -321,5 +334,7 @@ console:
     materialise.skipped: "{a1} departure(s) created. {a2} date(s) skipped: {a3}."
     disruption.declared: "Reported. {a1} passenger(s) told."
     disruption.declaredFree: "Reported. {a1} passenger(s) told, exchange or refund with no fees."
+    rescue.applied: "{a1} assigned. {a2} passenger(s) move seats."
+    rescue.appliedSameSeats: "{a1} assigned. Everybody keeps their seat."
     counter.collected: "Collected. Reference {a1}."
     counter.sold: "Sold. Reference {a1}."

@@ -259,6 +259,16 @@ final class UnavailableDisruptionDesk implements DisruptionDesk {
   }) async => throw const ConsoleRequiresDatabase();
 
   @override
+  Future<Result<RescueApplied, DeclarationRefusal>> assignRescueCoach({
+    required String operatorId,
+    required String departureId,
+    required String vehicleId,
+    required String actorUserId,
+    required DateTime now,
+    String? note,
+  }) async => throw const ConsoleRequiresDatabase();
+
+  @override
   Future<Map<String, DisruptionRecord>> openFor({
     required String operatorId,
     required DateTime from,

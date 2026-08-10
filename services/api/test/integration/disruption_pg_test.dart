@@ -4,10 +4,13 @@ library;
 import 'dart:math';
 
 import 'package:bel_api/src/adapters/ed25519_ticket_issuer.dart';
+import 'package:bel_api/src/application/hold_seats.dart';
 import 'package:bel_api/src/application/ports/disruption_desk.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_booking_store.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_disruptions.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_operator_console.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_seat_inventory.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart' hide Result;
 import 'package:test/test.dart';
@@ -34,6 +37,7 @@ void main() {
   late Database db;
   late PostgresBookingStore bookings;
   late PostgresDisruptions desk;
+  late PostgresOperatorConsole console;
   late String operatorId;
   late String dispatcherId;
   late String stationId;
@@ -45,7 +49,11 @@ void main() {
       db,
       issuer: await Ed25519TicketIssuer.development(random: Random(31)),
     );
-    desk = PostgresDisruptions(db);
+    console = PostgresOperatorConsole(db, timeZone: PgFixture.timeZone);
+    desk = PostgresDisruptions(
+      db,
+      issuer: await Ed25519TicketIssuer.development(random: Random(41)),
+    );
     operatorId = PgFixture.operatorId;
     dispatcherId = await fixture.traveller('irrops-actor', name: 'Régulateur');
     stationId = await fixture.station('BZV', 'Agence IRROPS');
@@ -57,12 +65,17 @@ void main() {
   });
 
   /// A departure with one paid passenger on it.
+  ///
+  /// [seats] is the whole coach as far as the seat rows are concerned, and
+  /// [seat] is the one that gets sold — a rescue coach has to be tested
+  /// against a departure that has somewhere else to put somebody.
   Future<({String departureId, String bookingId, String travellerId})> sold({
     Duration lead = const Duration(hours: 8),
     String seat = '1A',
+    List<String> seats = const ['1A', '1B', '1C', '1D', '2A', '2B'],
   }) async {
     final departureId = await fixture.departure(
-      seatLabels: [seat],
+      seatLabels: seats,
       fromNow: lead,
       fareMinor: 9000,
     );
@@ -110,6 +123,245 @@ void main() {
     note: note,
     location: location,
   );
+
+  /// A second paid passenger on a departure that already exists.
+  Future<String> sell(String departureId, String seat, String name) async {
+    final booking = await fixture.reserve(
+      db: db,
+      bookings: bookings,
+      departureId: departureId,
+      seatLabel: seat,
+      name: name,
+    );
+    await bookings.captureCash(
+      bookingId: booking.id,
+      operatorId: operatorId,
+      stationId: stationId,
+      soldByUserId: dispatcherId,
+      posting: Postings.cashSale(
+        operatorId: operatorId,
+        stationId: stationId,
+        fare: booking.fare,
+        serviceFee: booking.serviceFee,
+      ).valueOrNull!,
+    );
+    return booking.id;
+  }
+
+  /// The rescue coach: a real vehicle of this operator's, with its own layout.
+  Future<String> rescueCoach(SeatLayout layout) async {
+    final saved = await console.saveLayout(
+      operatorId: operatorId,
+      name: 'Rescue ${DateTime.now().microsecondsSinceEpoch}',
+      layout: layout,
+    );
+    final vehicle = await console.saveVehicle(
+      operatorId: operatorId,
+      registration: 'RSC${DateTime.now().microsecondsSinceEpoch % 100000}',
+      layoutId: saved.id,
+    );
+    return vehicle!.id;
+  }
+
+  group('the rescue coach', () {
+    test(
+      'a coach of the same shape moves nobody and reissues nothing',
+      () async {
+        final trip = await sold(seat: '1A');
+        final vehicleId = await rescueCoach(SeatLayout.busStandard49());
+
+        final applied = await desk.assignRescueCoach(
+          operatorId: operatorId,
+          departureId: trip.departureId,
+          vehicleId: vehicleId,
+          actorUserId: dispatcherId,
+          now: DateTime.now().toUtc(),
+        );
+
+        final result = applied.valueOrNull!;
+        // An operator's spare is usually the same model, and a swap that
+        // reissued forty-two tickets for nothing would invalidate every
+        // screenshot a passenger has already sent to whoever is meeting them.
+        expect(result.remap.movedCount, 0);
+        expect(result.ticketsReissued, 0);
+        expect(result.passengersTold, 1);
+        expect(
+          await fixture.seatStates(trip.departureId),
+          containsPair('1A', 'sold'),
+        );
+      },
+    );
+
+    test(
+      'a different shape moves the passenger and re-signs the ticket',
+      () async {
+        final trip = await sold(seat: '1D');
+        // 1A is sold as well, so the window at the front of the rescue coach
+        // is taken and 1D's answer is the *other* window rather than a tie.
+        await sell(trip.departureId, '1A', 'Serge N.');
+        // 1D is a window on a 2+2 and a middle seat on a 2+3, so this
+        // passenger has to move — and their QR carries the seat.
+        final vehicleId = await rescueCoach(
+          const SeatLayout(
+            version: 1,
+            mode: TransportMode.bus,
+            sections: [
+              CabinSection(
+                code: 'STD',
+                labelKey: 'seat.class.standard',
+                rows: 12,
+                abreast: '2+3',
+              ),
+            ],
+          ),
+        );
+
+        final applied = await desk.assignRescueCoach(
+          operatorId: operatorId,
+          departureId: trip.departureId,
+          vehicleId: vehicleId,
+          actorUserId: dispatcherId,
+          now: DateTime.now().toUtc(),
+        );
+
+        final result = applied.valueOrNull!;
+        expect(result.remap.destinationOf('1D'), '1E');
+        expect(result.ticketsReissued, 1);
+
+        // One live ticket, on the seat the manifest now says. Two would be two
+        // people boarding on one fare.
+        expect(await fixture.ticketCount(trip.bookingId), 1);
+        expect(await fixture.ticketSeats(trip.bookingId), ['1E']);
+        expect(await fixture.bookingSeatLabels(trip.bookingId), ['1E']);
+        expect(
+          await fixture.seatStates(trip.departureId),
+          containsPair('1E', 'sold'),
+        );
+      },
+    );
+
+    test(
+      'a coach that is too small is refused, with the number short',
+      () async {
+        final trip = await sold(seat: '1A');
+        final vehicleId = await rescueCoach(
+          const SeatLayout(
+            version: 1,
+            mode: TransportMode.bus,
+            sections: [
+              CabinSection(
+                code: 'STD',
+                labelKey: 'seat.class.standard',
+                rows: 1,
+                abreast: '1',
+                startRow: 40,
+              ),
+            ],
+          ),
+        );
+
+        // One seat, and it is 40A — so the passenger in 1A has somewhere to go
+        // and the refusal has to come from the count rather than the labels.
+        await sell(trip.departureId, '1B', 'Serge N.');
+
+        final refused = await desk.assignRescueCoach(
+          operatorId: operatorId,
+          departureId: trip.departureId,
+          vehicleId: vehicleId,
+          actorUserId: dispatcherId,
+          now: DateTime.now().toUtc(),
+        );
+
+        final failure = refused.failureOrNull! as CannotSeatEverybody;
+        expect(failure.short, 1);
+        // Nothing happened. A half-applied swap is a manifest that disagrees
+        // with the tickets, at a roadside, in front of the people it disagrees
+        // about.
+        expect(
+          await fixture.seatStates(trip.departureId),
+          containsPair('1A', 'sold'),
+        );
+      },
+    );
+
+    test('somebody else\'s coach is not a rescue', () async {
+      final trip = await sold(seat: '1A');
+
+      final refused = await desk.assignRescueCoach(
+        operatorId: operatorId,
+        departureId: trip.departureId,
+        vehicleId: '00000000-0000-0000-0000-0000000000ff',
+        actorUserId: dispatcherId,
+        now: DateTime.now().toUtc(),
+      );
+
+      expect(refused.failureOrNull, isA<UnusableVehicle>());
+    });
+
+    test('the swap supersedes the breakdown that caused it', () async {
+      final trip = await sold(seat: '1A');
+      await declare(trip.departureId);
+      final vehicleId = await rescueCoach(SeatLayout.busStandard49());
+
+      await desk.assignRescueCoach(
+        operatorId: operatorId,
+        departureId: trip.departureId,
+        vehicleId: vehicleId,
+        actorUserId: dispatcherId,
+        now: DateTime.now().toUtc(),
+      );
+
+      // "What is happening to my coach right now?" answers with the
+      // resolution, not with the problem.
+      final open = await desk.openFor(
+        operatorId: operatorId,
+        from: DateTime.now().toUtc().subtract(const Duration(days: 1)),
+        to: DateTime.now().toUtc().add(const Duration(days: 2)),
+      );
+      expect(
+        open[trip.departureId]!.disruption.kind,
+        DisruptionKind.equipmentSwap,
+      );
+
+      // And everybody is told again, on the event that carries their seat.
+      expect(
+        await fixture.outboxCount('disruption.resolved', trip.bookingId),
+        1,
+      );
+    });
+
+    test('a hold with nothing behind it is released, not moved', () async {
+      final trip = await sold(seat: '1A');
+      final holder = await fixture.traveller(
+        'holder-${DateTime.now().microsecondsSinceEpoch % 100000}',
+        name: 'Passant',
+      );
+      await HoldSeats(inventory: PostgresSeatInventory(db))(
+        departureId: trip.departureId,
+        seatLabels: ['2A'],
+        userId: holder,
+        idempotencyKey: 'rescue-${DateTime.now().microsecondsSinceEpoch}',
+      );
+
+      final vehicleId = await rescueCoach(SeatLayout.busStandard49());
+      final applied = await desk.assignRescueCoach(
+        operatorId: operatorId,
+        departureId: trip.departureId,
+        vehicleId: vehicleId,
+        actorUserId: dispatcherId,
+        now: DateTime.now().toUtc(),
+      );
+
+      // Somebody mid-checkout on a coach that has just been swapped loses
+      // their seat and chooses again. Moving a held seat under them silently
+      // is worse than telling them.
+      expect(applied.valueOrNull!.holdsReleased, 1);
+      expect(
+        await fixture.seatStates(trip.departureId),
+        containsPair('2A', 'available'),
+      );
+    });
+  });
 
   test('a breakdown records, exempts and queues, in one transaction', () async {
     final trip = await sold();

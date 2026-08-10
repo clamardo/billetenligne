@@ -555,6 +555,38 @@ void main() {
       expect(json.containsKey('disruption'), isFalse);
       expect(BookingDto.fromJson(json).disruption, isNull);
     });
+
+    test('a rescue reports who moved, and who did not', () {
+      final applied = const RescueAppliedDto(
+        departureId: 'dep-1',
+        registration: 'ODN-902',
+        moves: [
+          SeatMoveDto(from: '1A', to: '1A'),
+          SeatMoveDto(from: '1D', to: '1E'),
+        ],
+        passengersTold: 2,
+        ticketsReissued: 1,
+        holdsReleased: 1,
+      );
+
+      // The unchanged seats travel too. A dispatcher reading "1 moved" needs
+      // the other one accounted for before they will believe it — and a
+      // client that counted the list would report both.
+      final back = RescueAppliedDto.fromJson(applied.toJson());
+      expect(back.moves, hasLength(2));
+      expect(back.moved, 1);
+      expect(back.moves.first.isUnchanged, isTrue);
+      expect(back.holdsReleased, 1);
+    });
+
+    test('a rescue with no coach named is refused', () {
+      // The one field the server cannot guess. A swap onto "whatever is
+      // free" is a swap onto a coach nobody has looked at.
+      expect(
+        () => RescueCoachRequest.fromJson({'note': 'le car de secours'}),
+        throwsA(isA<WireFormatException>()),
+      );
+    });
   });
 
   group('nulls are omitted', () {

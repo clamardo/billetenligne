@@ -574,6 +574,17 @@ final class BelApiClient {
     ),
   );
 
+  /// Sends a different coach, and answers with where everybody now sits.
+  Future<RescueAppliedDto> assignRescueCoach({
+    required String departureId,
+    required RescueCoachRequest request,
+  }) async => RescueAppliedDto.fromJson(
+    await _postJson(
+      '/console/v1/departures/$departureId/rescue',
+      request.toJson(),
+    ),
+  );
+
   Future<ManifestDto> manifest(String departureId) async =>
       ManifestDto.fromJson(
         await _get('/console/v1/departures/$departureId/manifest'),

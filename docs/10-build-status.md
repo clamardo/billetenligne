@@ -49,7 +49,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Traveller app — reserve and pay | ✅ done | Passenger names → payment code → agency. 54 app tests |
 | **Traveller app — tickets and history** | ✅ done | Upcoming and past, unpaid reservations included with their code. The QR and its rotating secret travel inside the booking, so opening a ticket costs no request. 11 flow and widget tests |
 | **Operator console — API** | ✅ done | Fleet, routes, timetables, materialisation, guichet, manifests |
-| **Operator console — the app** | ✅ done | Flutter web. Fleet, routes, timetables, the dispatcher's day with its disruption form, the guichet, manifests, refund terms and refunds — and, for somebody who belongs to no operator yet, the onboarding wizard instead of the console. 50 tests |
+| **Operator console — the app** | ✅ done | Flutter web. Fleet, routes, timetables, the dispatcher's day with its disruption form and its rescue-coach sheet, the guichet, manifests, refund terms and refunds — and, for somebody who belongs to no operator yet, the onboarding wizard instead of the console. 56 tests |
 | Admin back office — API | ✅ done | `/admin/v1`: the queue, one operator's page, six lifecycle decisions, the negotiated commission. Every read and every write audited with actor and reason. 8 integration tests |
 | **Admin back office — the app** | ✅ done | Flutter web. The review queue, one operator's file with its documents and trail, six lifecycle decisions, the negotiated commission, and the reconciliation queue. The reason lives in the frame and no write happens without one. 15 tests |
 | **The vitrine** | ✅ done | Title, tagline, accent, header pattern and logo, with a live preview drawn by the real widgets — and the public storefront at `/public/v1/operators/{code}` |
@@ -82,7 +82,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **`indeterminate` reconciliation — the screen** | ✅ done | In the back office. Longest-waiting first, everything needed to decide in the row, three exits — and captured/failed demand a sentence about *that* payment, which becomes the `payment_events` row |
 | Payout runs and operator statements | ⬜ not started | `payable:operator:<id>` is correct and derived; nothing pays it out |
 | **IRROPS — declaring, and telling everybody** | ✅ done | The dispatcher declares one of six kinds and everything downstream is derived: the departure's new status, the exemption on every booking, one message per passenger. All of it in **one transaction** — bookings marked involuntary with no declaration behind them is a refund entitlement nobody can account for. A disruption is **public** (the follower of a shared trip link holds no account and is exactly the person who otherwise phones the agency), **not editable afterwards** by a column-level grant, and **one open per departure** by a partial unique index, so "what is happening to my coach?" has one answer. A short delay entitles nobody to anything — the threshold is an hour, it lives in the domain, and the console asks it rather than restating it. 16 domain · 6 contract · 12 Postgres · 5 worker · 7 smoke · 6 console · 2 traveller tests |
-| IRROPS — the re-accommodation plan | ⬜ not started | Ranked options, seat remapping onto a different layout, protection on another operator, the passenger's own choice, the rebooking wave. `08-disruption.md` §2.2 onwards, and the larger half |
+| **IRROPS — the rescue coach** | ✅ done | Option ① of `08-disruption.md` §2.2: a different vehicle, the same journey. The seats are **remapped by the domain** — a passenger keeps their label only when the new coach has one of the same kind, because `1D` is a window on a 2+2 and the middle of the back block on a 2+3. Every ticket is **re-signed** in the same transaction as the new manifest, since the QR carries the seat (ADR-0007). A coach that cannot seat everybody is refused **with the number short**, so a dispatcher knows which coach to look for next. Holds with nothing behind them are released rather than slid onto a different seat under somebody who is looking at a seat map. The swap supersedes the breakdown that caused it. 9 domain · 2 contract · 6 Postgres · 5 smoke · 6 console tests |
+| IRROPS — the rest of the re-accommodation plan | ⬜ not started | Ranked options beyond the swap: the next departure, protection on another operator, the passenger's own choice, and the rebooking wave. `08-disruption.md` §2.2 options ②③⑤ onwards |
 
 ## Phase 3 and beyond
 
@@ -199,21 +200,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 315 tests
+         packages/bel_contracts packages/bel_crypto     # 326 tests
 dart test packages/bel_client                           # 32 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 177 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 87 app tests
-cd apps/console   && flutter test        # 50 console tests
+cd apps/console   && flutter test        # 56 console tests
 cd apps/admin     && flutter test        # 18 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 283 files
+dart run tool/check_layers.dart          # the onion rule, 286 files
 ./infra/migrations/check.sh              # 32 schema guarantees
-./tool/integration.sh                    # 159 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 181 checks, incl. the Dart client
+./tool/integration.sh                    # 165 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 186 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -222,8 +223,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**774 tests in total**, plus 181 smoke checks, 32 executed schema guarantees,
-159 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**791 tests in total**, plus 186 smoke checks, 32 executed schema guarantees,
+165 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -238,6 +239,44 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+The rescue coach: a different vehicle, the same journey, everybody remapped
+onto whatever seats it actually has. Option ① of `08-disruption.md` §2.2, and
+the resolution a Congolese operator reaches for first — the spare, or a coach
+pulled off a quieter duty.
+
+**The remap is a domain rule, not a database update.** `remapSeats` keeps a
+passenger's seat number when the new coach has one of the same kind, and
+otherwise places them by how far they were down the coach and whether they had
+a window. A 2+2 and a 2+3 both have a `1D`; on one it is a window and on the
+other it is the middle of the back block, and handing somebody the same label
+would be handing them a worse seat while telling them nothing changed.
+
+**A coach that cannot seat everybody is refused, with the number short.** Not
+"no": a dispatcher told "9 short" knows which coach to look for next. Seating
+thirty-nine of forty-two would mean three people finding out at the door, and
+there is nowhere to put them until the re-accommodation desk exists.
+
+**Every ticket is re-signed.** The QR carries the seat (ADR-0007), so a swap
+that moved somebody and left their ticket alone is a ticket the scanner
+accepts for a seat the manifest gives to someone else. The old rows are
+replaced inside the same transaction that writes the new manifest.
+
+**Holds are released rather than moved.** Somebody mid-checkout on a coach
+that has just been swapped loses their seat and chooses again — silently
+sliding them onto a different one, while they are looking at a seat map that
+says otherwise, is worse than telling them.
+
+**The swap supersedes the breakdown that caused it.** "What is happening to my
+coach right now?" answers with the resolution, not with the problem, because
+the disruption row that is still open is the one the passenger's ticket shows.
+
+**What it cost:** six more tests against real Postgres, five smoke checks, nine
+domain tests for the remap alone, and one console row that had to become a
+`Wrap` — three buttons on a disrupted departure overflowed the row at 1000 px,
+which a widget test found and no amount of reading would have.
+
+## What the disruption push changed, and what it cost
 
 Disruption: a dispatcher declares one, and everybody on the coach is told.
 `08-disruption.md` has existed since week one and nothing implemented a line
@@ -287,9 +326,10 @@ real string rather than asserting on a DateTime.
 
 **What it cost:** two schema guarantees, seventeen more tests against real
 Postgres, and a public grant that had to be argued for rather than assumed.
-What is *not* built is the larger half — the re-accommodation plan, seat
-remapping, protection on another operator, the passenger's own choice, the
-rebooking wave. Named in the table above rather than implied by silence.
+What is *not* built is the larger half — the re-accommodation plan, protection
+on another operator, the passenger's own choice, the rebooking wave. Named in
+the table above rather than implied by silence. (Seat remapping was on this
+list when it was written; the push above built it.)
 
 ## What the logo push changed, and what it cost
 

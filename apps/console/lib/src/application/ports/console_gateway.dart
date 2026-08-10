@@ -48,6 +48,13 @@ abstract interface class ConsoleGateway {
     int? version,
   });
 
+  /// Send a different coach on a departure that has lost its own, remapping
+  /// everybody who is already on it.
+  Future<RescueAppliedDto> assignRescueCoach({
+    required String departureId,
+    required RescueCoachRequest request,
+  });
+
   Future<List<VehicleDto>> vehicles();
 
   Future<VehicleDto> saveVehicle({

@@ -532,7 +532,7 @@ final class PostgresOperatorConsole implements OperatorConsole {
       );
     }
 
-    final layout = _decodeLayout(p);
+    final layout = decodeLayout(p);
     final baseFare = Money(
       p['fare_minor'] as int,
       Currency.byCode((p['currency'] as String).trim())!,
@@ -1419,7 +1419,10 @@ final class PostgresOperatorConsole implements OperatorConsole {
       {'type': f.type.name, 'row': f.row, 'col': f.col},
   ];
 
-  static SeatLayout _decodeLayout(Map<String, dynamic> p) {
+  /// Row → layout. Public because the disruption desk decodes the same JSON
+  /// when it puts one coach's passengers into another, and two decoders of
+  /// one column is two ways to read a blocked seat.
+  static SeatLayout decodeLayout(Map<String, dynamic> p) {
     final raw = p['sections'];
     final decoded = raw is String ? jsonDecode(raw) : raw;
     final sections = <CabinSection>[];

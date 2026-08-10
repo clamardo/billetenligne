@@ -257,6 +257,50 @@ final class ConsoleWorkspace {
     await _loadSection();
   });
 
+  /// The coaches that could be sent out to a stranded departure.
+  ///
+  /// Loaded on demand rather than kept warm: the today screen has no other
+  /// reason to hold the fleet, and a dispatcher looking for a spare is doing
+  /// it once, at a moment when a stale list is worse than a round trip. Only
+  /// sellable ones — a coach in maintenance is not a rescue, and offering it
+  /// here would be offering a swap the server is going to refuse.
+  Future<List<VehicleDto>> spareCoaches({String? excluding}) async {
+    var spares = const <VehicleDto>[];
+    await _run(() async {
+      vehicles = await _gateway.vehicles();
+      spares = [
+        for (final v in vehicles)
+          if (v.sellable && v.registration != excluding) v,
+      ];
+    });
+    return spares;
+  }
+
+  /// Option ① of ADR-0016 §2.2: a different coach, the same journey.
+  ///
+  /// Never a bare success. What a dispatcher needs to hear back is how many
+  /// people are now sitting somewhere else — that is the number they are
+  /// about to be asked about at the door — and whether anybody mid-checkout
+  /// lost their seat to the swap.
+  Future<void> assignRescueCoach({
+    required String departureId,
+    required String vehicleId,
+    String? note,
+  }) => _run(() async {
+    final applied = await _gateway.assignRescueCoach(
+      departureId: departureId,
+      request: RescueCoachRequest(vehicleId: vehicleId, note: note),
+    );
+    // `moved`, not `moves.length`: the moves carry every passenger on the
+    // coach, including the ones whose seat number did not change. Reporting
+    // the list length would tell a dispatcher forty-two people moved when
+    // nobody did.
+    _notice = applied.moved == 0
+        ? 'rescue.appliedSameSeats|${applied.registration}'
+        : 'rescue.applied|${applied.registration}|${applied.moved}';
+    await _loadSection();
+  });
+
   Future<void> saveVehicle({
     required String registration,
     required String layoutId,

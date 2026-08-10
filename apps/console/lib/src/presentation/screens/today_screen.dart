@@ -6,6 +6,7 @@ import '../../application/console_workspace.dart';
 import '../l10n.dart';
 import '../widgets/disruption_sheet.dart';
 import '../widgets/manifest_sheet.dart';
+import '../widgets/rescue_sheet.dart';
 
 /// The dispatcher's day.
 ///
@@ -186,23 +187,49 @@ class _DepartureRow extends StatelessWidget {
           ),
 
           SizedBox(width: kilo.space.s3),
-          KButton(
-            label: context.t('console.today.manifest'),
-            tone: KButtonTone.secondary,
-            fullWidth: false,
-            onPressed: () => _showManifest(context),
-          ),
-          // Only for somebody who holds the capability. Cancelling a coach
-          // and telling everybody on it is not a counter agent's authority.
-          if (workspace.can('disruption.declare')) ...[
-            SizedBox(width: kilo.space.s2),
-            KButton(
-              label: context.t('console.today.declare'),
-              tone: KButtonTone.secondary,
-              fullWidth: false,
-              onPressed: () => _declare(context),
+          // Flexible around a Wrap, for the same reason the route line is a
+          // Wrap: a disrupted row carries three buttons and the console runs
+          // in whatever window an agency happens to have open. Wrapping onto
+          // a second line at 1000px is a row that still reads; a Row there is
+          // an overflow stripe across the screen somebody watches every
+          // morning.
+          Flexible(
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: kilo.space.s2,
+              runSpacing: kilo.space.s2,
+              children: [
+                KButton(
+                  label: context.t('console.today.manifest'),
+                  tone: KButtonTone.secondary,
+                  fullWidth: false,
+                  onPressed: () => _showManifest(context),
+                ),
+                // Only for somebody who holds the capability. Cancelling a
+                // coach and telling everybody on it is not a counter agent's
+                // authority.
+                if (workspace.can('disruption.declare'))
+                  KButton(
+                    label: context.t('console.today.declare'),
+                    tone: KButtonTone.secondary,
+                    fullWidth: false,
+                    onPressed: () => _declare(context),
+                  ),
+                // Only on a departure that has actually lost its coach —
+                // after a breakdown was declared, or after the vehicle was
+                // taken off the road. A swap button on every one of the day's
+                // rows is a button pressed by accident on the wrong row, and
+                // this one re-signs forty-two tickets.
+                if (workspace.can('disruption.declare') &&
+                    (row.disruption != null || row.vehicle == null))
+                  KButton(
+                    label: context.t('console.today.rescue'),
+                    fullWidth: false,
+                    onPressed: () => _rescue(context),
+                  ),
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -234,6 +261,31 @@ class _DepartureRow extends StatelessWidget {
       cause: draft.cause,
       note: draft.note,
       revisedDepartsAt: draft.revisedDepartsAt,
+    );
+  }
+
+  Future<void> _rescue(BuildContext context) async {
+    // The fleet is fetched at the moment of asking rather than held warm: a
+    // dispatcher looking for a spare is doing it once, and a list that is ten
+    // minutes stale can offer a coach that has since been sent somewhere else.
+    final coaches = await workspace.spareCoaches(excluding: row.vehicle);
+    if (!context.mounted) return;
+
+    final draft = await showDialog<RescueDraft>(
+      context: context,
+      builder: (_) => RescueSheet(
+        routeCode: row.routeCode,
+        sold: row.sold,
+        coaches: coaches,
+        currentVehicle: row.vehicle,
+      ),
+    );
+    if (draft == null) return;
+
+    await workspace.assignRescueCoach(
+      departureId: row.id,
+      vehicleId: draft.vehicleId,
+      note: draft.note,
     );
   }
 

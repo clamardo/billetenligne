@@ -973,6 +973,32 @@ check "an unknown cause is absorbed rather than refused" "503" \
 check "GET is not a way to declare one" "405" \
   "$(status -H "$OP_AUTH" "$BASE/console/v1/departures/$DEP/disruptions")"
 
+echo
+echo "── sending a rescue coach"
+
+rescue_as() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST \
+    "$BASE/console/v1/departures/$DEP/rescue" -H "$1" \
+    -H 'Content-Type: application/json' -d "$2"
+}
+
+check "an anonymous caller cannot swap a coach" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/departures/$DEP/rescue" \
+     -H 'Content-Type: application/json' \
+     -d '{"vehicleId":"00000000-0000-0000-0000-0000000000v1"}')"
+# The same authority as declaring the breakdown: a swap moves forty-two people
+# onto different seats and re-signs every ticket.
+check "a traveller cannot swap somebody's coach" "403" \
+  "$(rescue_as "$AUTH" '{"vehicleId":"00000000-0000-0000-0000-000000000001"}')"
+check "a rescue with no vehicle named is refused" "400" \
+  "$(rescue_as "$OP_AUTH" '{"note":"le car de secours"}')"
+check "a well-formed rescue gets past validation" "503" \
+  "$(rescue_as "$OP_AUTH" \
+     '{"vehicleId":"00000000-0000-0000-0000-000000000001","note":"spare"}')"
+check "GET is not a way to swap a coach" "405" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/departures/$DEP/rescue")"
+
 # ── The Dart client against this same server ────────────────────────────────
 #
 # curl proves the HTTP surface; this proves the seam the *app* actually uses —

@@ -60,6 +60,32 @@ final class DepartureAlreadyArrived extends DeclarationRefusal {
   String get code => 'disruption.already_arrived';
 }
 
+/// No such coach under this operator, or one that is off the road. A rescue
+/// coach that is itself blocked for compliance is not a rescue.
+final class UnusableVehicle extends DeclarationRefusal {
+  const UnusableVehicle();
+  @override
+  String get code => 'disruption.unusable_vehicle';
+}
+
+/// The rescue coach is smaller than the load.
+///
+/// Refused rather than applied-and-flagged, and the reason is that there is
+/// nowhere for the displaced passengers to go yet: putting them on another
+/// departure or another operator's coach is the re-accommodation plan
+/// (`08-disruption.md` §2.2), which is not built. A swap that seats
+/// thirty-nine of forty-two and says so is three people who find out at the
+/// door — worse than a dispatcher being told to find a bigger coach.
+final class CannotSeatEverybody extends DeclarationRefusal {
+  const CannotSeatEverybody(this.short);
+
+  /// How many passengers would have nowhere to sit.
+  final int short;
+
+  @override
+  String get code => 'disruption.cannot_seat_everybody';
+}
+
 /// The domain refused it — a delay with no new time, a revised time that is
 /// not later, an estimate already in the past.
 final class DeclarationInvalid extends DeclarationRefusal {
@@ -87,6 +113,41 @@ final class DeclarationInvalid extends DeclarationRefusal {
 /// The one that must never commit alone is the fourth: bookings marked
 /// involuntary with no disruption row to justify it is a refund entitlement
 /// nobody can account for.
+/// What a rescue coach did.
+final class RescueApplied {
+  const RescueApplied({
+    required this.disruptionId,
+    required this.departureId,
+    required this.registration,
+    required this.remap,
+    required this.passengersTold,
+    required this.ticketsReissued,
+    required this.holdsReleased,
+  });
+
+  final String disruptionId;
+  final String departureId;
+  final String registration;
+
+  /// Every occupied seat and where it went, including the ones that did not
+  /// move — a dispatcher reading "3 moved" needs the other thirty-nine
+  /// accounted for.
+  final SeatRemap remap;
+
+  final int passengersTold;
+
+  /// A ticket is reissued only where the seat actually changed. The QR
+  /// carries the seat, so an unchanged seat means an unchanged ticket, and
+  /// reissuing all forty-two would invalidate every screenshot a passenger
+  /// has already shown a family member.
+  final int ticketsReissued;
+
+  /// Holds with no booking behind them, released because their seats may not
+  /// exist on the new coach. Somebody mid-checkout loses their seat and can
+  /// pick again, which is honest; silently moving them is not.
+  final int holdsReleased;
+}
+
 abstract interface class DisruptionDesk {
   Future<Result<DisruptionRecord, DeclarationRefusal>> declare({
     required String operatorId,
@@ -99,6 +160,25 @@ abstract interface class DisruptionDesk {
     String? location,
     DateTime? revisedDepartsAt,
     DateTime? estimatedResolution,
+  });
+
+  /// Option ① of `08-disruption.md` §2.2: the coach the operator sends
+  /// instead.
+  ///
+  /// One transaction again, and the ordering is the same argument: the
+  /// departure takes the new coach, the seats are rebuilt from its layout,
+  /// every passenger is put back into the closest seat the new coach has, the
+  /// tickets whose seat actually changed are reissued, and everybody is told.
+  /// Any prefix of that committing alone is a coach whose manifest and whose
+  /// tickets disagree, at a roadside, in front of the people it disagrees
+  /// about.
+  Future<Result<RescueApplied, DeclarationRefusal>> assignRescueCoach({
+    required String operatorId,
+    required String departureId,
+    required String vehicleId,
+    required String actorUserId,
+    required DateTime now,
+    String? note,
   });
 
   /// What is open on this operator's departures, keyed by departure id.

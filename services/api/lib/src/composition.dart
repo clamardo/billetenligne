@@ -265,7 +265,7 @@ final class Services {
       reserveBooking: ReserveBooking(bookings: bookings),
       bookings: bookings,
       console: PostgresOperatorConsole(db, timeZone: Market.current.timeZone),
-      disruptions: PostgresDisruptions(db),
+      disruptions: PostgresDisruptions(db, issuer: _ticketIssuer),
       platform: PostgresPlatformConsole(db),
       storefronts: PostgresStorefronts(db),
       applications: PostgresOperatorApplications(db),

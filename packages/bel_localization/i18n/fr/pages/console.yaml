@@ -24,6 +24,7 @@ console:
     emptyTitle: "Aucun départ ce jour"
     emptyBody: "Publiez un horaire depuis l'onglet Horaires pour mettre des départs en vente."
     declare: "Signaler un incident"
+    rescue: "Car de secours"
   # Le formulaire du régulateur, au bord de la route, sur un téléphone, en 2G,
   # parfois sous la pluie (08-disruption.md §2.1). Quatre grandes cibles, une
   # cause, et rien d'autre d'obligatoire.
@@ -44,6 +45,18 @@ console:
     notFree: "Moins d'une heure de retard : pas de remboursement automatique."
     needsTime: "Choisissez le nouveau départ."
     badge: "Perturbé"
+  # Le car de secours (08-disruption.md §2.2, option ①). Le régulateur choisit
+  # un car qui existe vraiment, et le nombre de places est dit avant le choix.
+  rescue:
+    title: "Remplacer {vehicle}"
+    none: "Aucun car disponible. Voyez le guichet pour reloger les passagers."
+    seats: "{count} places"
+    short: "{count} places de moins"
+    note: "Précision (facultatif)"
+    noteHint: "Ce que verront les passagers, en plus du message type."
+    willMove: "{count} passager(s) recevront un nouveau billet et une nouvelle place."
+    back: "Retour"
+    confirm: "Envoyer ce car"
   manifest:
     summary: "{sold} vendus · {boarded} embarqués · {capacity} places"
     empty: "Aucun passager pour l'instant."
@@ -321,5 +334,7 @@ console:
     materialise.skipped: "{a1} départ(s) créé(s). {a2} date(s) ignorée(s) : {a3}."
     disruption.declared: "Signalé. {a1} passager(s) prévenu(s)."
     disruption.declaredFree: "Signalé. {a1} passager(s) prévenu(s), échange ou remboursement sans frais."
+    rescue.applied: "{a1} affecté. {a2} passager(s) changent de place."
+    rescue.appliedSameSeats: "{a1} affecté. Chacun garde sa place."
     counter.collected: "Encaissé. Référence {a1}."
     counter.sold: "Vendu. Référence {a1}."

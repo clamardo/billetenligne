@@ -88,10 +88,16 @@ final class PgFixture {
       VALUES ('$routeId', '$operatorId', 'BZV', 'PNR', 'BZV-PNR', 450)
       ON CONFLICT (id) DO NOTHING
     ''');
+    // A real 2+2, thirteen rows, rather than the empty `[]` this fixture used
+    // to carry. Most tests insert the seat rows they need directly and never
+    // look at the sections — but a coach swap has to know **where** somebody
+    // was sitting, and a layout with no sections says nobody sat anywhere.
     await _seed.execute('''
       INSERT INTO seat_layouts (id, operator_id, name, sections, capacity)
-      VALUES ('$layoutId', '$operatorId', 'Coach 2+2', '[]'::jsonb, 52)
-      ON CONFLICT (id) DO NOTHING
+      VALUES ('$layoutId', '$operatorId', 'Coach 2+2',
+              '[{"code":"STD","labelKey":"seat.class.standard",
+                 "rows":13,"abreast":"2+2","startRow":1}]'::jsonb, 52)
+      ON CONFLICT (id) DO UPDATE SET sections = EXCLUDED.sections
     ''');
   }
 
@@ -568,6 +574,31 @@ final class PgFixture {
       parameters: {'id': TypedValue(Type.uuid, bookingId)},
     );
     return rows.first.toColumnMap()['purchaser_user_id'].toString();
+  }
+
+  /// The seats the live tickets are for. A moved passenger whose ticket still
+  /// names the old seat scans as somebody else at the door.
+  Future<List<String>> ticketSeats(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT seat_label FROM tickets
+         WHERE booking_id = @id ORDER BY seat_label
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return [for (final r in rows) r.toColumnMap()['seat_label'] as String];
+  }
+
+  /// What the manifest will print.
+  Future<List<String>> bookingSeatLabels(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT seat_label FROM booking_seats
+         WHERE booking_id = @id ORDER BY seat_label
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return [for (final r in rows) r.toColumnMap()['seat_label'] as String];
   }
 
   /// A layout belonging to a DIFFERENT operator, so the ownership checks can
