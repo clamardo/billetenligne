@@ -257,7 +257,9 @@ final class PostgresUserDirectory implements UserDirectory {
   Future<void> touch(String userId) =>
       _db.transaction(const DbScope.identity(), (tx) async {
         await tx.execute(
-          Sql.named('UPDATE user_accounts SET last_seen_at = now() WHERE id = @id'),
+          Sql.named(
+            'UPDATE user_accounts SET last_seen_at = now() WHERE id = @id',
+          ),
           parameters: {'id': TypedValue(Type.uuid, userId)},
           ignoreRows: true,
         );

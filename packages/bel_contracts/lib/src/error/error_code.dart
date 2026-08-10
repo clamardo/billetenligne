@@ -54,6 +54,21 @@ final class ErrorCode {
   static const refundOutsideWindow = 'refund.outside_window';
   static const refundFareNotRefundable = 'refund.fare_not_refundable';
   static const refundAlreadyDeparted = 'refund.already_departed';
+
+  /// Sold before the operator wrote any terms. Refusing is the honest answer:
+  /// applying today's policy to a booking made under none is inventing a
+  /// contract after the fact (ADR-0015 rule 1).
+  static const refundNoPolicy = 'refund.no_policy';
+
+  /// A reservation nobody paid for is cancelled, not refunded.
+  static const refundNotConfirmed = 'refund.not_confirmed';
+
+  static const refundNotPossible = 'refund.not_possible';
+
+  /// One answer for unknown, already collected and expired. A counter that
+  /// distinguishes them tells somebody holding a guessed code which guess was
+  /// closer.
+  static const refundClaimNotOpen = 'refund.claim_not_open';
   static const rescheduleTooCloseToDeparture =
       'reschedule.too_close_to_departure';
   static const rescheduleSameDeparture = 'reschedule.same_departure';

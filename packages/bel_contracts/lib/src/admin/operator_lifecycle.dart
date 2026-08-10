@@ -51,6 +51,7 @@ abstract final class OperatorLifecycle {
   /// and `offboarded` are terminal, and a screen that offers a button there
   /// is a screen that teaches people our buttons lie.
   static List<String> decisionsFrom(String status) => [
-    for (final d in decisions) if (allows(d, status)) d,
+    for (final d in decisions)
+      if (allows(d, status)) d,
   ];
 }

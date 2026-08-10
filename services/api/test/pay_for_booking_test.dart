@@ -140,24 +140,26 @@ void main() {
       expect(rail.requests.single.payerMsisdn, '242069999999');
     });
 
-    test('a number on the wrong carrier is refused before anything is sent',
-        () async {
-      final result = await pay.start(
-        bookingId: await aReservation(),
-        userId: 'u-1',
-        // The fake rail is registered under its own id, so ask for a real
-        // one the number does not match.
-        railId: 'cg.mtn_momo',
-        payerMsisdn: mtnNumber,
-        accountMsisdn: null,
-        idempotencyKey: 'wrong-rail',
-      );
+    test(
+      'a number on the wrong carrier is refused before anything is sent',
+      () async {
+        final result = await pay.start(
+          bookingId: await aReservation(),
+          userId: 'u-1',
+          // The fake rail is registered under its own id, so ask for a real
+          // one the number does not match.
+          railId: 'cg.mtn_momo',
+          payerMsisdn: mtnNumber,
+          accountMsisdn: null,
+          idempotencyKey: 'wrong-rail',
+        );
 
-      // Not a generic decline thirty seconds later. The traveller can fix
-      // this by switching a toggle, and only a specific failure says so.
-      expect(result.failureOrNull, isA<RailNotAvailable>());
-      expect(rail.requests, isEmpty);
-    });
+        // Not a generic decline thirty seconds later. The traveller can fix
+        // this by switching a toggle, and only a specific failure says so.
+        expect(result.failureOrNull, isA<RailNotAvailable>());
+        expect(rail.requests, isEmpty);
+      },
+    );
 
     test('an unparseable number never reaches the rail', () async {
       final result = await start(payer: '12');
@@ -178,9 +180,7 @@ void main() {
     test('a booking that is already paid cannot be paid again', () async {
       final bookingId = await aReservation();
       await start(bookingId: bookingId, key: 'first');
-      rail.statusScript.add(
-        const PaymentOutcome(state: PaymentState.captured),
-      );
+      rail.statusScript.add(const PaymentOutcome(state: PaymentState.captured));
       await pay.reconcile(intentId: 'pi-mem-1', railId: railId);
 
       final again = await start(bookingId: bookingId, key: 'second');
@@ -204,10 +204,7 @@ void main() {
       final intent = (await start(bookingId: bookingId)).valueOrNull!;
 
       rail.settlesAfter(0);
-      final settled = await pay.reconcile(
-        intentId: intent.id,
-        railId: railId,
-      );
+      final settled = await pay.reconcile(intentId: intent.id, railId: railId);
 
       expect(settled!.state, PaymentState.captured);
 
@@ -344,10 +341,7 @@ void main() {
       final intent = (await start()).valueOrNull!;
       rail.declinesWith(PaymentFailureCode.wrongPin);
 
-      final declined = await pay.reconcile(
-        intentId: intent.id,
-        railId: railId,
-      );
+      final declined = await pay.reconcile(intentId: intent.id, railId: railId);
 
       expect(declined!.state, PaymentState.failed);
       expect(declined.failureCode, PaymentFailureCode.wrongPin);

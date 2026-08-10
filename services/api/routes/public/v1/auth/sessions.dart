@@ -76,7 +76,9 @@ Future<Response> _issue(
   // Firebase mint one, because the alternative is a round trip to Firebase in
   // the middle of the sign-in transaction — and a failure there would leave an
   // account nobody can ever sign in to.
-  final token = await gateway.mintCustomToken(uid: account.authUid ?? account.id);
+  final token = await gateway.mintCustomToken(
+    uid: account.authUid ?? account.id,
+  );
 
   return _session(
     SessionDto(

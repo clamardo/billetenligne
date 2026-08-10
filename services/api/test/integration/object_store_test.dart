@@ -100,10 +100,9 @@ void main() {
   // operators.
   test('the container cannot be listed anonymously', () async {
     final listing = await client.get(
-      store.publicUrl('').replace(queryParameters: {
-        'restype': 'container',
-        'comp': 'list',
-      }),
+      store
+          .publicUrl('')
+          .replace(queryParameters: {'restype': 'container', 'comp': 'list'}),
     );
     expect(listing.statusCode, isNot(200));
   });

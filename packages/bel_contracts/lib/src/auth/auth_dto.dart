@@ -17,10 +17,8 @@ enum SignInChannel { email, phone }
 /// that shape lets a client claim `channel: email` with a phone number in the
 /// address and pushes the validation somewhere less obvious.
 final class StartSignInRequest {
-  const StartSignInRequest.email(String this.email)
-    : phone = null;
-  const StartSignInRequest.phone(String this.phone)
-    : email = null;
+  const StartSignInRequest.email(String this.email) : phone = null;
+  const StartSignInRequest.phone(String this.phone) : email = null;
 
   const StartSignInRequest._({this.email, this.phone});
 
@@ -30,10 +28,8 @@ final class StartSignInRequest {
   SignInChannel get channel =>
       email != null ? SignInChannel.email : SignInChannel.phone;
 
-  Map<String, Object?> toJson() => Wire.compact({
-    'email': email,
-    'phone': phone,
-  });
+  Map<String, Object?> toJson() =>
+      Wire.compact({'email': email, 'phone': phone});
 
   factory StartSignInRequest.fromJson(Map<String, Object?> json) {
     final email = json['email'] as String?;
@@ -117,10 +113,7 @@ final class VerifySignInRequest {
   final String challengeId;
   final String code;
 
-  Map<String, Object?> toJson() => {
-    'challengeId': challengeId,
-    'code': code,
-  };
+  Map<String, Object?> toJson() => {'challengeId': challengeId, 'code': code};
 
   factory VerifySignInRequest.fromJson(Map<String, Object?> json) =>
       VerifySignInRequest(

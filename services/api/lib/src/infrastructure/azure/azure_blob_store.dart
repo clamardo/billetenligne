@@ -109,9 +109,7 @@ final class AzureBlobStore implements ObjectStore {
     final response = await _send(
       'PUT',
       _blobUrl('').replace(queryParameters: {'restype': 'container'}),
-      extraHeaders: {
-        if (publicRead) 'x-ms-blob-public-access': 'blob',
-      },
+      extraHeaders: {if (publicRead) 'x-ms-blob-public-access': 'blob'},
     );
 
     // 409 is "already there", which is the expected answer on every restart
@@ -305,11 +303,11 @@ final class AzureBlobStore implements ObjectStore {
   }) {
     final canonicalHeaders =
         (headers.entries
-              .where((e) => e.key.startsWith('x-ms-'))
-              .map((e) => '${e.key.toLowerCase()}:${e.value.trim()}')
-              .toList()
-          ..sort())
-        .join('\n');
+                .where((e) => e.key.startsWith('x-ms-'))
+                .map((e) => '${e.key.toLowerCase()}:${e.value.trim()}')
+                .toList()
+              ..sort())
+            .join('\n');
 
     final query =
         url.queryParameters.entries
@@ -347,8 +345,18 @@ final class AzureBlobStore implements ObjectStore {
 
   static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
 
   /// RFC 1123, in English, always. A locale-aware formatter would sign "lun."

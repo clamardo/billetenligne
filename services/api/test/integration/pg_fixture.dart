@@ -304,6 +304,66 @@ final class PgFixture {
     );
   }
 
+  Future<String?> seatState(String bookingId, String label) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT state::text AS state FROM seats
+         WHERE seat_label = @label
+           AND departure_id = (SELECT departure_id FROM bookings WHERE id = @id)
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, bookingId),
+        'label': TypedValue(Type.text, label),
+      },
+    );
+    return rows.isEmpty ? null : rows.first.toColumnMap()['state'] as String?;
+  }
+
+  Future<int> voidedTickets(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named(
+        'SELECT count(*)::int AS n FROM tickets '
+        'WHERE booking_id = @id AND voided_at IS NOT NULL',
+      ),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return rows.first.toColumnMap()['n'] as int;
+  }
+
+  Future<String> bookingState(String ref) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT state::text AS state FROM bookings WHERE ref = @ref'),
+      parameters: {'ref': TypedValue(Type.text, ref)},
+    );
+    return rows.first.toColumnMap()['state'] as String;
+  }
+
+  Future<int> refundCount(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named(
+        'SELECT count(*)::int AS n FROM refunds WHERE booking_id = @id',
+      ),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return rows.first.toColumnMap()['n'] as int;
+  }
+
+  /// Signed balance of one account: debits positive, credits negative.
+  ///
+  /// Read from `account_balances`, the view the payout run will use, rather
+  /// than summed by the test — a test that computes the balance its own way
+  /// proves the arithmetic it wrote, not the arithmetic that ships.
+  Future<int> accountBalance(String account) async {
+    final rows = await _seed.execute(
+      Sql.named(
+        'SELECT COALESCE(balance_minor, 0)::int AS b FROM account_balances '
+        'WHERE account = @account',
+      ),
+      parameters: {'account': TypedValue(Type.text, account)},
+    );
+    return rows.isEmpty ? 0 : rows.first.toColumnMap()['b'] as int;
+  }
+
   Future<Map<String, Object?>> intentColumns(String intentId) async {
     final rows = await _seed.execute(
       Sql.named('''

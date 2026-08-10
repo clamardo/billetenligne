@@ -39,15 +39,10 @@ void main() {
     );
     bookings = MemoryBookingStore(
       inventory: inventory,
-      issuer: await Ed25519TicketIssuer.development(
-        random: Random(7),
-      ),
+      issuer: await Ed25519TicketIssuer.development(random: Random(7)),
       clock: clock,
     );
-    reserve = ReserveBooking(
-      bookings: bookings,
-      random: Random(11),
-    );
+    reserve = ReserveBooking(bookings: bookings, random: Random(11));
     hold = HoldSeats(inventory: inventory);
   });
 

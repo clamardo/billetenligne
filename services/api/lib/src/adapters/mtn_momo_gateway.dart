@@ -69,10 +69,7 @@ final class MtnMomoGateway implements PaymentGateway {
           // Ours, echoed back on every status query. MTN calls it
           // externalId; it is what a support agent matches on.
           'externalId': request.reference,
-          'payer': {
-            'partyIdType': 'MSISDN',
-            'partyId': request.payerMsisdn,
-          },
+          'payer': {'partyIdType': 'MSISDN', 'partyId': request.payerMsisdn},
           // Both appear in the USSD prompt on the handset. Short, because a
           // feature phone shows a couple of lines.
           'payerMessage': request.description,
@@ -89,10 +86,7 @@ final class MtnMomoGateway implements PaymentGateway {
       // 202 means the prompt is on its way, not that money moved. Anything
       // else is a refusal by the rail before the handset was ever involved.
       if (response.status == HttpStatus.accepted) {
-        return PaymentOutcome(
-          state: PaymentState.pending,
-          raw: response.body,
-        );
+        return PaymentOutcome(state: PaymentState.pending, raw: response.body);
       }
 
       return PaymentOutcome(
@@ -164,8 +158,7 @@ final class MtnMomoGateway implements PaymentGateway {
         'PAYER_NOT_FOUND' => PaymentFailureCode.subscriberNotFound,
         'PAYER_NOT_ALLOWED_TO_RECEIVE' ||
         'NOT_ALLOWED' ||
-        'NOT_ALLOWED_TARGET_ENVIRONMENT' =>
-          PaymentFailureCode.subscriberBarred,
+        'NOT_ALLOWED_TARGET_ENVIRONMENT' => PaymentFailureCode.subscriberBarred,
         'APPROVAL_REJECTED' => PaymentFailureCode.userDeclined,
         'EXPIRED' => PaymentFailureCode.timeoutNoResponse,
         'INTERNAL_PROCESSING_ERROR' ||
@@ -185,8 +178,7 @@ final class MtnMomoGateway implements PaymentGateway {
   ///
   /// XAF has no minor unit, so 9 300 francs is `"9300"` and not `"93.00"`.
   /// Sending the latter would pay ninety-three francs, and it would succeed.
-  static String _amount(Money amount) =>
-      amount.currency.exponent == 0
+  static String _amount(Money amount) => amount.currency.exponent == 0
       ? '${amount.minor}'
       : (amount.minor / _pow10(amount.currency.exponent)).toStringAsFixed(
           amount.currency.exponent,

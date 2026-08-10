@@ -141,10 +141,7 @@ final class AirtelMoneyGateway implements PaymentGateway {
         ),
         'TF' => PaymentOutcome(
           state: PaymentState.failed,
-          failureCode: _failureCode(
-            _statusCode(response.body),
-            response.body,
-          ),
+          failureCode: _failureCode(_statusCode(response.body), response.body),
           raw: response.body,
         ),
         'TA' || 'TIP' => PaymentOutcome(

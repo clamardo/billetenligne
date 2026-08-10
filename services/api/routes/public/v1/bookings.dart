@@ -32,7 +32,11 @@ Future<Response> onRequest(RequestContext context) async {
   final services = context.read<Services>();
 
   if (principal.isAnonymous) {
-    return _error(HttpStatus.unauthorized, Problem.unauthorized(traceId: trace), trace);
+    return _error(
+      HttpStatus.unauthorized,
+      Problem.unauthorized(traceId: trace),
+      trace,
+    );
   }
 
   return switch (context.request.method) {
@@ -49,7 +53,9 @@ Future<Response> _list(
 ) async {
   final bookings = await services.bookings.forTraveller(principal.userId);
   return Response.json(
-    body: {'items': [for (final b in bookings) _toDto(b).toJson()]},
+    body: {
+      'items': [for (final b in bookings) _toDto(b).toJson()],
+    },
     headers: {
       BelHeaders.traceId: trace,
       // A booking list contains a payment code and a passenger's name. A

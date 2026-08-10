@@ -148,7 +148,10 @@ final class RouteDto {
       json['destinationCity'],
       'destinationCity',
     ),
-    durationMinutes: Wire.requireInt(json['durationMinutes'], 'durationMinutes'),
+    durationMinutes: Wire.requireInt(
+      json['durationMinutes'],
+      'durationMinutes',
+    ),
     active: json['active'] != false,
   );
 }
@@ -193,7 +196,9 @@ final class ScheduleDto {
     rrule: Wire.requireString(json['rrule'], 'rrule'),
     departureTime: Wire.requireString(json['departureTime'], 'departureTime'),
     fare: Wire.readMoney(json['fare'], field: 'fare'),
-    validFrom: DateTime.parse(Wire.requireString(json['validFrom'], 'validFrom')),
+    validFrom: DateTime.parse(
+      Wire.requireString(json['validFrom'], 'validFrom'),
+    ),
     validUntil: json['validUntil'] == null
         ? null
         : DateTime.parse(json['validUntil']! as String),
@@ -228,10 +233,7 @@ final class MaterialisationDto {
         skipped: [
           for (final entry in (json['skipped'] as List? ?? const []))
             if (entry is Map)
-              (
-                date: '${entry['date']}',
-                reason: '${entry['reason']}',
-              ),
+              (date: '${entry['date']}', reason: '${entry['reason']}'),
         ],
       );
 }
@@ -296,21 +298,16 @@ final class ManifestPassengerDto {
   final String? phone;
   final DateTime? boardedAt;
 
-  factory ManifestPassengerDto.fromJson(Map<String, Object?> json) =>
-      ManifestPassengerDto(
-        seatLabel: Wire.requireString(json['seatLabel'], 'seatLabel'),
-        passengerName: Wire.requireString(
-          json['passengerName'],
-          'passengerName',
-        ),
-        bookingRef: Wire.requireString(json['bookingRef'], 'bookingRef'),
-        boarded: json['boarded'] == true,
-        phone: json['phone'] as String?,
-        boardedAt: Wire.readInstantOrNull(
-          json['boardedAt'],
-          field: 'boardedAt',
-        ),
-      );
+  factory ManifestPassengerDto.fromJson(
+    Map<String, Object?> json,
+  ) => ManifestPassengerDto(
+    seatLabel: Wire.requireString(json['seatLabel'], 'seatLabel'),
+    passengerName: Wire.requireString(json['passengerName'], 'passengerName'),
+    bookingRef: Wire.requireString(json['bookingRef'], 'bookingRef'),
+    boarded: json['boarded'] == true,
+    phone: json['phone'] as String?,
+    boardedAt: Wire.readInstantOrNull(json['boardedAt'], field: 'boardedAt'),
+  );
 }
 
 /// The document a conductor carries and a station manager signs.

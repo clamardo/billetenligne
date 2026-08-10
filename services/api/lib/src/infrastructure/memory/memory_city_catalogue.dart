@@ -24,11 +24,6 @@ final class MemoryCityCatalogue implements CityCatalogue {
   @override
   Future<List<CityDto>> servedCities({required String language}) async => [
     for (final (code, fr, en, lat, lng) in _cities)
-      CityDto(
-        code: code,
-        name: language == 'en' ? en : fr,
-        lat: lat,
-        lng: lng,
-      ),
+      CityDto(code: code, name: language == 'en' ? en : fr, lat: lat, lng: lng),
   ];
 }

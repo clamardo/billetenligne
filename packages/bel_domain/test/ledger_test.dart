@@ -7,6 +7,7 @@ int balanceOf(LedgerTransaction txn) =>
     txn.entries.fold(0, (sum, e) => sum + e.signedMinor);
 
 void main() {
+  _refundPostings();
   group('the balance invariant', () {
     test('a balanced transaction is accepted', () {
       final result = LedgerTransaction.balanced([
@@ -74,9 +75,7 @@ void main() {
       expect(balanceOf(txn), 0);
       expect(txn.total, xaf(9300));
 
-      final byAccount = {
-        for (final e in txn.entries) e.account: e,
-      };
+      final byAccount = {for (final e in txn.entries) e.account: e};
       expect(byAccount['cash:ODN:BZV:till']!.direction, LedgerDirection.debit);
       expect(byAccount['cash:ODN:BZV:till']!.amount, xaf(9300));
       expect(byAccount['payable:operator:ODN']!.amount, xaf(9000));
@@ -199,5 +198,114 @@ void main() {
     expect(LedgerAccount.payableOperator('ODN'), 'payable:operator:ODN');
     expect(LedgerAccount.payableRefund('bk-1'), 'payable:refund:bk-1');
     expect(LedgerAccount.suspenseUnreconciled, 'suspense:unreconciled');
+  });
+}
+
+/// The two movements a cash refund is made of.
+void _refundPostings() {
+  group('a refund moves a debt, it does not undo a sale', () {
+    test('approval takes only what the policy actually gives back', () {
+      // A 90% band on a 9 000 fare with a 300 fee the operator keeps.
+      final txn = Postings.refundApproved(
+        operatorId: 'op-1',
+        bookingId: 'b-1',
+        fromOperator: const Money.xaf(8100),
+        fromServiceFee: const Money.xaf(0),
+      );
+
+      final entries = txn.valueOrNull!.entries;
+      expect(entries, hasLength(2));
+      // The retained 900 stays credited to the operator exactly where it was.
+      // Posting the whole sale back and re-charging the retained share would
+      // be two lies that happen to cancel.
+      expect(
+        entries.firstWhere((e) => e.direction == LedgerDirection.debit).amount,
+        const Money.xaf(8100),
+      );
+      expect(
+        entries
+            .firstWhere((e) => e.direction == LedgerDirection.credit)
+            .account,
+        'payable:refund:b-1',
+      );
+    });
+
+    test('a refunded service fee is a debit to our own revenue', () {
+      final entries = Postings.refundApproved(
+        operatorId: 'op-1',
+        bookingId: 'b-1',
+        fromOperator: const Money.xaf(9000),
+        fromServiceFee: const Money.xaf(300),
+      ).valueOrNull!.entries;
+
+      // There is no negative-revenue row anywhere in this ledger: giving back
+      // a fee is a debit to the account that earned it.
+      final fee = entries.firstWhere((e) => e.account == 'revenue:service_fee');
+      expect(fee.direction, LedgerDirection.debit);
+      expect(fee.amount, const Money.xaf(300));
+      expect(
+        entries.firstWhere((e) => e.account == 'payable:refund:b-1').amount,
+        const Money.xaf(9300),
+      );
+    });
+
+    test('a refund of nothing is not a transaction', () {
+      // The strict policy inside its no-refund window. Writing a zero-amount
+      // pair would fail the schema's positive-amount CHECK and mean nothing.
+      expect(
+        Postings.refundApproved(
+          operatorId: 'op-1',
+          bookingId: 'b-1',
+          fromOperator: const Money.xaf(0),
+          fromServiceFee: const Money.xaf(0),
+        ).isOk,
+        isFalse,
+      );
+    });
+
+    test('paying the claim empties the till, not the operator', () {
+      final entries = Postings.refundPaidInCash(
+        operatorId: 'op-1',
+        stationId: 'st-bzv',
+        bookingId: 'b-1',
+        amount: const Money.xaf(8100),
+      ).valueOrNull!.entries;
+
+      // Scoped to the station, like the sale that filled the drawer: a till is
+      // counted at the end of a shift by the person who closed it.
+      expect(
+        entries
+            .firstWhere((e) => e.direction == LedgerDirection.credit)
+            .account,
+        'cash:op-1:st-bzv:till',
+      );
+      expect(
+        entries.firstWhere((e) => e.direction == LedgerDirection.debit).account,
+        'payable:refund:b-1',
+      );
+    });
+
+    test('approve then claim leaves the refund debt at zero', () {
+      // The property that matters across the pair: what we owe the traveller
+      // is created and extinguished exactly, with nothing stranded.
+      final approved = Postings.refundApproved(
+        operatorId: 'op-1',
+        bookingId: 'b-1',
+        fromOperator: const Money.xaf(8100),
+        fromServiceFee: const Money.xaf(300),
+      ).valueOrNull!;
+      final paid = Postings.refundPaidInCash(
+        operatorId: 'op-1',
+        stationId: 'st-bzv',
+        bookingId: 'b-1',
+        amount: const Money.xaf(8400),
+      ).valueOrNull!;
+
+      var balance = 0;
+      for (final entry in [...approved.entries, ...paid.entries]) {
+        if (entry.account == 'payable:refund:b-1') balance += entry.signedMinor;
+      }
+      expect(balance, 0);
+    });
   });
 }

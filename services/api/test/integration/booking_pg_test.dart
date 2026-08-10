@@ -285,9 +285,10 @@ void main() {
     expect(mine, isNotEmpty);
     expect(theirs, hasLength(1));
     expect(
-      mine.map((b) => b.id).toSet().intersection(
-        theirs.map((b) => b.id).toSet(),
-      ),
+      mine
+          .map((b) => b.id)
+          .toSet()
+          .intersection(theirs.map((b) => b.id).toSet()),
       isEmpty,
     );
   });

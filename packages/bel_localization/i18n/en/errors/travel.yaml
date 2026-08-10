@@ -20,6 +20,14 @@ errors:
   server:
     internal: "Something went wrong on our side. Try again."
     unavailable: "Service temporarily unavailable. Try again in a moment."
+  refund:
+    outside_window: "This ticket is no longer refundable under the terms it was sold with."
+    fare_not_refundable: "The \"{fareCode}\" fare is not refundable."
+    already_departed: "That departure has already left."
+    no_policy: "This ticket was sold with no refund terms. A refund has to be decided by hand."
+    not_confirmed: "This ticket was never paid for — there is nothing to refund."
+    not_possible: "This ticket cannot be refunded."
+    claim_not_open: "This refund code is not valid: unknown, already collected, or expired."
   hold:
     seat_unavailable: "Seat {seats} was just taken. Please choose another."
     expired: "Your reservation expired."

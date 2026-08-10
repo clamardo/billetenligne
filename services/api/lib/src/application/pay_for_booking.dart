@@ -137,7 +137,8 @@ final class PayForBooking {
       // Recorded, never enforced. It is the difference between "paid from
       // their own wallet" and "a relative paid", which matters in a dispute
       // and matters not at all to whether the payment may proceed.
-      payerIsAccountHolder: accountMsisdn != null && accountMsisdn == payer.e164,
+      payerIsAccountHolder:
+          accountMsisdn != null && accountMsisdn == payer.e164,
       idempotencyKey: idempotencyKey,
       window: window,
     );
@@ -291,7 +292,8 @@ final class PayForBooking {
     // whole fare costs us our cut on one sale and is visible in the ledger;
     // inventing a rate would take money from somebody under an agreement they
     // never made, and would be invisible.
-    final term = await _operators.commissionFor(intent.operatorId) ??
+    final term =
+        await _operators.commissionFor(intent.operatorId) ??
         CommissionTerm.none;
     final commission = term.on(booking.fare);
 

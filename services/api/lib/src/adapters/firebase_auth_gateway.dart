@@ -69,9 +69,11 @@ abstract interface class FirebasePublicKeys {
 /// ways, and `n` and `e` are one parse where a certificate is a walk through
 /// ASN.1 to reach the same two integers.
 final class GoogleSecureTokenKeys implements FirebasePublicKeys {
-  GoogleSecureTokenKeys({Clock clock = const SystemClock(), HttpClient? httpClient})
-    : _clock = clock,
-      _http = httpClient ?? HttpClient();
+  GoogleSecureTokenKeys({
+    Clock clock = const SystemClock(),
+    HttpClient? httpClient,
+  }) : _clock = clock,
+       _http = httpClient ?? HttpClient();
 
   static final _jwkUrl = Uri.parse(
     'https://www.googleapis.com/service_accounts/v1/jwk/'
@@ -125,7 +127,9 @@ final class GoogleSecureTokenKeys implements FirebasePublicKeys {
 
       if (keys.isEmpty) return;
       _keys = keys;
-      _freshUntil = _clock.now().add(_maxAge(response.headers.value('cache-control')));
+      _freshUntil = _clock.now().add(
+        _maxAge(response.headers.value('cache-control')),
+      );
     } on SocketException {
       // Keep serving the cached keys. They are valid for hours after the
       // header says to refresh, and an unreachable Google must not become an
@@ -142,7 +146,9 @@ final class GoogleSecureTokenKeys implements FirebasePublicKeys {
   static Duration _maxAge(String? cacheControl) {
     final match = RegExp(r'max-age=(\d+)').firstMatch(cacheControl ?? '');
     final seconds = int.tryParse(match?.group(1) ?? '') ?? 0;
-    return seconds < 300 ? const Duration(minutes: 5) : Duration(seconds: seconds);
+    return seconds < 300
+        ? const Duration(minutes: 5)
+        : Duration(seconds: seconds);
   }
 
   void close() => _http.close(force: true);
@@ -273,7 +279,8 @@ final class FirebaseAuthGateway implements AuthGateway {
     Duration ttl = const Duration(hours: 1),
   }) async {
     final now = _clock.now();
-    final issuer = config.serviceAccountEmail ?? 'firebase-adminsdk@${config.projectId}';
+    final issuer =
+        config.serviceAccountEmail ?? 'firebase-adminsdk@${config.projectId}';
 
     final payload = <String, Object?>{
       'iss': issuer,

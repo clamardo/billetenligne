@@ -168,7 +168,9 @@ final class PostgresPaymentStore implements PaymentStore {
     );
 
     final current = await tx.execute(
-      Sql.named('SELECT $_columns FROM payment_intents WHERE id = @id FOR UPDATE'),
+      Sql.named(
+        'SELECT $_columns FROM payment_intents WHERE id = @id FOR UPDATE',
+      ),
       parameters: {'id': TypedValue(Type.uuid, intentId)},
     );
     if (current.isEmpty) return null;

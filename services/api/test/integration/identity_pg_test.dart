@@ -44,7 +44,8 @@ void main() {
   /// account created by an earlier test would make a later one pass for the
   /// wrong reason.
   var seq = 0;
-  String freshEmail() => 'traveller${++seq}.${DateTime.now().microsecondsSinceEpoch}@example.cg';
+  String freshEmail() =>
+      'traveller${++seq}.${DateTime.now().microsecondsSinceEpoch}@example.cg';
 
   setUpAll(() async {
     fixture = await PgFixture.open();
@@ -59,12 +60,13 @@ void main() {
       challenges: challenges,
       directory: directory,
       notifications: notifications,
-      render: ({
-        required SignInChannel channel,
-        required String language,
-        required String code,
-        required int minutes,
-      }) => (subject: 'code:$code', body: code),
+      render:
+          ({
+            required SignInChannel channel,
+            required String language,
+            required String code,
+            required int minutes,
+          }) => (subject: 'code:$code', body: code),
       mac: const HmacSha256Authenticator(),
       codeKey: utf8.encode('an-integration-key-of-32-characters'),
     );
@@ -113,13 +115,19 @@ void main() {
     ]);
 
     expect(both[0].account.id, both[1].account.id);
-    expect(both.where((r) => r.created).length, 1,
-        reason: 'exactly one of the two may report having created it');
+    expect(
+      both.where((r) => r.created).length,
+      1,
+      reason: 'exactly one of the two may report having created it',
+    );
   });
 
   test('case is not an account', () async {
     final email = freshEmail();
-    final lower = await directory.forVerifiedEmail(email: email, language: 'fr');
+    final lower = await directory.forVerifiedEmail(
+      email: email,
+      language: 'fr',
+    );
     final upper = await directory.forVerifiedEmail(
       email: email.toUpperCase(),
       language: 'fr',
@@ -146,8 +154,10 @@ void main() {
     // `UPDATE ... WHERE consumed_at IS NULL` is what settles it. Checking in
     // Dart first would leave both requests believing they were the first.
     expect(both.where((r) => r.isOk).length, 1);
-    expect(both.where((r) => r.isErr).single.failureOrNull,
-        isA<ChallengeNoLongerValid>());
+    expect(
+      both.where((r) => r.isErr).single.failureOrNull,
+      isA<ChallengeNoLongerValid>(),
+    );
   });
 
   test('concurrent wrong guesses each cost an attempt', () async {
@@ -175,31 +185,43 @@ void main() {
     expect(stored.codeHash, hasLength(64));
   });
 
-  test('an expiry is decided by Postgres, not by three disagreeing clocks',
-      () async {
-    final started = await signIn.start(StartSignInRequest.email(freshEmail()));
-    final stored = await challenges.byId(started.valueOrNull!.challengeId);
+  test(
+    'an expiry is decided by Postgres, not by three disagreeing clocks',
+    () async {
+      final started = await signIn.start(
+        StartSignInRequest.email(freshEmail()),
+      );
+      final stored = await challenges.byId(started.valueOrNull!.challengeId);
 
-    // `created_at` comes from `now()` and the CHECK constraint refuses a row
-    // whose expiry precedes it — so a fast API instance cannot issue a code
-    // that was already dead when it was written.
-    expect(stored!.expiresAt.isAfter(stored.createdAt), isTrue);
-  });
+      // `created_at` comes from `now()` and the CHECK constraint refuses a row
+      // whose expiry precedes it — so a fast API instance cannot issue a code
+      // that was already dead when it was written.
+      expect(stored!.expiresAt.isAfter(stored.createdAt), isTrue);
+    },
+  );
 
-  test('an operator-created account is verified the first time its owner signs in',
-      () async {
-    // The guichet path: an agent types an address to send a ticket to. That
-    // identifies the traveller; it does not authenticate them. The stamp only
-    // lands when they answer a code.
-    final email = freshEmail();
-    final seeded = await directory.forVerifiedEmail(email: email, language: 'fr');
-    expect(seeded.created, isTrue);
+  test(
+    'an operator-created account is verified the first time its owner signs in',
+    () async {
+      // The guichet path: an agent types an address to send a ticket to. That
+      // identifies the traveller; it does not authenticate them. The stamp only
+      // lands when they answer a code.
+      final email = freshEmail();
+      final seeded = await directory.forVerifiedEmail(
+        email: email,
+        language: 'fr',
+      );
+      expect(seeded.created, isTrue);
 
-    final again = await directory.forVerifiedEmail(email: email, language: 'en');
-    expect(again.created, isFalse);
-    // The original verification time is kept, not overwritten on every visit.
-    expect(again.account.emailVerifiedAt, seeded.account.emailVerifiedAt);
-  });
+      final again = await directory.forVerifiedEmail(
+        email: email,
+        language: 'en',
+      );
+      expect(again.created, isFalse);
+      // The original verification time is kept, not overwritten on every visit.
+      expect(again.account.emailVerifiedAt, seeded.account.emailVerifiedAt);
+    },
+  );
 
   test('the logging gateway is what runs when nothing is configured', () async {
     expect(

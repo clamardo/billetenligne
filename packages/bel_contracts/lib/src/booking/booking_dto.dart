@@ -216,8 +216,9 @@ final class BookingDto {
     'fare': fare == null ? null : Wire.money(fare!),
     'serviceFee': serviceFee == null ? null : Wire.money(serviceFee!),
     'paymentCode': paymentCode,
-    'paymentDeadline':
-        paymentDeadline == null ? null : Wire.instant(paymentDeadline!),
+    'paymentDeadline': paymentDeadline == null
+        ? null
+        : Wire.instant(paymentDeadline!),
   });
 
   factory BookingDto.fromJson(Map<String, Object?> json) => BookingDto(
@@ -334,17 +335,13 @@ final class TicketDto {
   );
 }
 
-
 /// Turn a hold into an unpaid reservation.
 ///
 /// The passenger list is the body; the *price* is not, and never is. A seat
 /// can carry its own fare — a VIP row is a price modifier on the layout — and
 /// a client-supplied number is a client-supplied discount.
 final class CreateBookingRequest {
-  const CreateBookingRequest({
-    required this.holdId,
-    required this.passengers,
-  });
+  const CreateBookingRequest({required this.holdId, required this.passengers});
 
   final String holdId;
   final List<PassengerDto> passengers;

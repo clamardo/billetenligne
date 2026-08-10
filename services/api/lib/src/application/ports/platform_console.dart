@@ -244,7 +244,8 @@ final class UnresolvedPayment {
   /// it goes, resolving the payment is a refund conversation rather than a
   /// boarding one.
   bool isUrgentAt(DateTime now) =>
-      departsAt != null && departsAt!.difference(now) < const Duration(hours: 1);
+      departsAt != null &&
+      departsAt!.difference(now) < const Duration(hours: 1);
 }
 
 /// The cross-tenant surface: our own back office.

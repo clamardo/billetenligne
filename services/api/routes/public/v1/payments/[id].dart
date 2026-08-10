@@ -41,11 +41,7 @@ Future<Response> onRequest(RequestContext context, String id) async {
   // Not theirs, or not an intent. One answer: telling a stranger which would
   // confirm the id exists.
   if (own == null) {
-    return _error(
-      HttpStatus.notFound,
-      Problem.notFound(traceId: trace),
-      trace,
-    );
+    return _error(HttpStatus.notFound, Problem.notFound(traceId: trace), trace);
   }
 
   // Terminal already — no rail call. Asking a PSP about a settled transaction

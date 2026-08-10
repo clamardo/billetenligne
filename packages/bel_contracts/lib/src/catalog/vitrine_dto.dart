@@ -118,8 +118,7 @@ final class VitrineDto {
   String titleFor(String language) =>
       _pick(language, titleFr, titleEn) ?? tradingName ?? legalName;
 
-  String? taglineFor(String language) =>
-      _pick(language, taglineFr, taglineEn);
+  String? taglineFor(String language) => _pick(language, taglineFr, taglineEn);
 
   static String? _pick(String language, String? fr, String? en) {
     final first = language.startsWith('en') ? en : fr;

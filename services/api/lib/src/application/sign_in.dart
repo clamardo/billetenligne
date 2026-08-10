@@ -180,12 +180,13 @@ final class SignIn {
 
     return switch (address) {
       Err(:final failure) => Err(failure),
-      Ok(value: (final destination, final masked, final channel)) => await _issue(
-        channel: channel,
-        destination: destination,
-        masked: masked,
-        language: language,
-      ),
+      Ok(value: (final destination, final masked, final channel)) =>
+        await _issue(
+          channel: channel,
+          destination: destination,
+          masked: masked,
+          language: language,
+        ),
     };
   }
 
@@ -315,8 +316,7 @@ final class SignIn {
   /// `nextInt(1000000)` and pad — not six independent digits, which is the
   /// same thing written less clearly, and not `nextInt(900000) + 100000`,
   /// which quietly removes a tenth of the keyspace to avoid the padding.
-  String _generateCode() =>
-      _random.nextInt(1000000).toString().padLeft(6, '0');
+  String _generateCode() => _random.nextInt(1000000).toString().padLeft(6, '0');
 
   /// HMAC-SHA256 under a server-side key, hex encoded.
   ///

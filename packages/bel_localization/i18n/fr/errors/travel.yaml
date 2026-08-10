@@ -20,6 +20,14 @@ errors:
   server:
     internal: "Une erreur est survenue de notre côté. Réessayez."
     unavailable: "Service momentanément indisponible. Réessayez dans quelques instants."
+  refund:
+    outside_window: "Ce billet n'est plus remboursable selon les conditions de vente."
+    fare_not_refundable: "Le tarif « {fareCode} » n'est pas remboursable."
+    already_departed: "Ce départ a déjà eu lieu."
+    no_policy: "Ce billet a été vendu sans conditions de remboursement. Le remboursement doit être décidé à la main."
+    not_confirmed: "Ce billet n'a pas été payé — il n'y a rien à rembourser."
+    not_possible: "Ce billet ne peut pas être remboursé."
+    claim_not_open: "Ce code de remboursement n'est pas valable : inconnu, déjà encaissé ou expiré."
   hold:
     seat_unavailable: "La place {seats} vient d'être prise. Choisissez-en une autre."
     expired: "Votre réservation a expiré."

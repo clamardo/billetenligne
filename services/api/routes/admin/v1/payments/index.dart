@@ -41,7 +41,9 @@ Future<Response> onRequest(RequestContext context) async {
   );
 
   return Response.json(
-    body: {'items': [for (final p in queue) unresolvedDto(p).toJson()]},
+    body: {
+      'items': [for (final p in queue) unresolvedDto(p).toJson()],
+    },
     headers: {
       BelHeaders.traceId: trace,
       // Phone numbers, amounts and booking references, across every tenant.

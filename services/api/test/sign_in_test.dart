@@ -91,7 +91,10 @@ void main() {
 
       // Nothing in the response resembles the code. This is the field a debug
       // branch leaks, so it is asserted rather than assumed.
-      expect(jsonEncode(challenge.toJson()), isNot(contains(codeFromMessage())));
+      expect(
+        jsonEncode(challenge.toJson()),
+        isNot(contains(codeFromMessage())),
+      );
     });
 
     test('masks the address it echoes back', () async {
@@ -119,21 +122,27 @@ void main() {
       expect(notifications.sent, isEmpty);
     });
 
-    test('a second request within the cooldown is refused with the wait', () async {
-      await signIn.start(const StartSignInRequest.email('aline@example.cg'));
-      clock.advance(const Duration(seconds: 20));
+    test(
+      'a second request within the cooldown is refused with the wait',
+      () async {
+        await signIn.start(const StartSignInRequest.email('aline@example.cg'));
+        clock.advance(const Duration(seconds: 20));
 
-      final again = await signIn.start(
-        const StartSignInRequest.email('aline@example.cg'),
-      );
+        final again = await signIn.start(
+          const StartSignInRequest.email('aline@example.cg'),
+        );
 
-      final failure = again.failureOrNull;
-      expect(failure, isA<ResendTooSoon>());
-      expect((failure! as ResendTooSoon).retryAfter, const Duration(seconds: 40));
-      // The cooldown is a cost control as much as a security one: the message
-      // that was not sent is the point (ADR-0019).
-      expect(notifications.sent, hasLength(1));
-    });
+        final failure = again.failureOrNull;
+        expect(failure, isA<ResendTooSoon>());
+        expect(
+          (failure! as ResendTooSoon).retryAfter,
+          const Duration(seconds: 40),
+        );
+        // The cooldown is a cost control as much as a security one: the message
+        // that was not sent is the point (ADR-0019).
+        expect(notifications.sent, hasLength(1));
+      },
+    );
 
     test('the cooldown keys on the address, not on the challenge', () async {
       // Otherwise "ask again" with a fresh challenge id sidesteps it, which is
@@ -147,33 +156,41 @@ void main() {
       expect(capitalised.failureOrNull, isA<ResendTooSoon>());
     });
 
-    test('a different address is not held up by another address cooldown', () async {
-      await signIn.start(const StartSignInRequest.email('aline@example.cg'));
-      final other = await signIn.start(
-        const StartSignInRequest.email('serge@example.cg'),
-      );
-      expect(other.isOk, isTrue);
-    });
+    test(
+      'a different address is not held up by another address cooldown',
+      () async {
+        await signIn.start(const StartSignInRequest.email('aline@example.cg'));
+        final other = await signIn.start(
+          const StartSignInRequest.email('serge@example.cg'),
+        );
+        expect(other.isOk, isTrue);
+      },
+    );
 
-    test('an unreachable rail is reported, and the challenge still exists', () async {
-      notifications.failWith = NotifyFailure.railUnavailable;
+    test(
+      'an unreachable rail is reported, and the challenge still exists',
+      () async {
+        notifications.failWith = NotifyFailure.railUnavailable;
 
-      final result = await signIn.start(
-        const StartSignInRequest.email('aline@example.cg'),
-      );
+        final result = await signIn.start(
+          const StartSignInRequest.email('aline@example.cg'),
+        );
 
-      expect((result.failureOrNull! as CouldNotDeliver).code,
-          ErrorCode.unavailable);
+        expect(
+          (result.failureOrNull! as CouldNotDeliver).code,
+          ErrorCode.unavailable,
+        );
 
-      // Deleting the challenge would let a bounced address be retried
-      // instantly, turning a delivery failure into a way around the cooldown.
-      clock.advance(const Duration(seconds: 5));
-      notifications.failWith = null;
-      final retry = await signIn.start(
-        const StartSignInRequest.email('aline@example.cg'),
-      );
-      expect(retry.failureOrNull, isA<ResendTooSoon>());
-    });
+        // Deleting the challenge would let a bounced address be retried
+        // instantly, turning a delivery failure into a way around the cooldown.
+        clock.advance(const Duration(seconds: 5));
+        notifications.failWith = null;
+        final retry = await signIn.start(
+          const StartSignInRequest.email('aline@example.cg'),
+        );
+        expect(retry.failureOrNull, isA<ResendTooSoon>());
+      },
+    );
 
     test('the same answer for a stranger and a returning customer', () async {
       final first = await signIn.start(
@@ -198,9 +215,11 @@ void main() {
       // Field for field identical apart from the id, the address and the
       // clock. An API that answered differently could be used to ask "is this
       // person a customer of yours?" one address at a time.
-      final a = returning.valueOrNull!.toJson()..remove('challengeId')
+      final a = returning.valueOrNull!.toJson()
+        ..remove('challengeId')
         ..remove('sentTo');
-      final b = stranger.valueOrNull!.toJson()..remove('challengeId')
+      final b = stranger.valueOrNull!.toJson()
+        ..remove('challengeId')
         ..remove('sentTo');
       expect(a, b);
     });
@@ -247,22 +266,25 @@ void main() {
       expect(failure.params['remaining'], 4);
     });
 
-    test('five wrong codes ends it, and the right code no longer works', () async {
-      final id = await startAndGetId();
-      final correct = codeFromMessage();
+    test(
+      'five wrong codes ends it, and the right code no longer works',
+      () async {
+        final id = await startAndGetId();
+        final correct = codeFromMessage();
 
-      for (var i = 0; i < 5; i++) {
-        await signIn.complete(
-          VerifySignInRequest(challengeId: id, code: '00000$i'),
+        for (var i = 0; i < 5; i++) {
+          await signIn.complete(
+            VerifySignInRequest(challengeId: id, code: '00000$i'),
+          );
+        }
+
+        final result = await signIn.complete(
+          VerifySignInRequest(challengeId: id, code: correct),
         );
-      }
-
-      final result = await signIn.complete(
-        VerifySignInRequest(challengeId: id, code: correct),
-      );
-      expect(result.failureOrNull, isA<TooManyAttempts>());
-      expect(result.failureOrNull!.code, ErrorCode.otpTooManyAttempts);
-    });
+        expect(result.failureOrNull, isA<TooManyAttempts>());
+        expect(result.failureOrNull!.code, ErrorCode.otpTooManyAttempts);
+      },
+    );
 
     test('an expired code is refused', () async {
       final id = await startAndGetId();
@@ -280,9 +302,12 @@ void main() {
       final id = await startAndGetId();
       final correct = codeFromMessage();
 
-      expect((await signIn.complete(
-        VerifySignInRequest(challengeId: id, code: correct),
-      )).isOk, isTrue);
+      expect(
+        (await signIn.complete(
+          VerifySignInRequest(challengeId: id, code: correct),
+        )).isOk,
+        isTrue,
+      );
 
       final replay = await signIn.complete(
         VerifySignInRequest(challengeId: id, code: correct),
@@ -304,7 +329,11 @@ void main() {
       clock.advance(const Duration(minutes: 6));
 
       final answers = <String>{};
-      for (final id in [spentId, expiredId, '11111111-0000-0000-0000-000000000000']) {
+      for (final id in [
+        spentId,
+        expiredId,
+        '11111111-0000-0000-0000-000000000000',
+      ]) {
         final result = await signIn.complete(
           VerifySignInRequest(challengeId: id, code: '123456'),
         );

@@ -305,6 +305,51 @@ abstract interface class OperatorConsole {
     required int? version,
   });
 
+  /// What cancelling this booking would give back, under the terms it was
+  /// sold with.
+  ///
+  /// A **quote**, not a refund: the vendor reads it to the traveller before
+  /// anybody agrees to anything, and the number they read is computed by the
+  /// same `quoteRefund` the execution path calls a moment later (ADR-0004).
+  /// Null when the reference is not this operator's — which is also what a
+  /// reference that does not exist looks like, deliberately.
+  Future<RefundOffer?> quoteRefund({
+    required String operatorId,
+    required String bookingRef,
+    required DateTime now,
+  });
+
+  /// Cancels the booking and records what is owed.
+  ///
+  /// Everything in one transaction: the booking state, the seats going back
+  /// on sale, the tickets voided, the ledger movement and the claim code. A
+  /// refund that released a seat but failed to post the debt would be a seat
+  /// sold twice and a traveller owed nothing.
+  ///
+  /// Returns the issued refund, or null when the booking cannot be refunded —
+  /// wrong tenant, wrong state, or a policy that gives nothing back. The
+  /// caller re-quotes to find out which.
+  Future<IssuedRefund?> refundBooking({
+    required String operatorId,
+    required String bookingRef,
+    required String actorUserId,
+    required String reason,
+    required DateTime now,
+  });
+
+  /// Pays a claim out of a station's drawer and closes it.
+  ///
+  /// Single-use by construction: the state moves `claim_issued → claimed` in
+  /// the same statement that reads it, so two vendors scanning the same code
+  /// at two counters cannot both pay it out.
+  Future<ClaimedRefund?> claimRefund({
+    required String operatorId,
+    required String claimCode,
+    required String stationId,
+    required String actorUserId,
+    required DateTime now,
+  });
+
   // ── Getting paid ──────────────────────────────────────────────────────────
 
   /// Where this operator collects, per rail.
@@ -412,4 +457,77 @@ final class RefundPolicySummary {
   /// is the honest answer to "can I just change this?" — every one of these
   /// is somebody who is entitled to these terms and not to the new ones.
   final int bookingCount;
+}
+
+/// What a booking would get back, and under whose terms.
+final class RefundOffer {
+  const RefundOffer({
+    required this.bookingRef,
+    required this.state,
+    required this.departsAt,
+    required this.fare,
+    required this.serviceFee,
+    required this.policy,
+    required this.policyName,
+    this.quote,
+    this.failureCode,
+  });
+
+  final String bookingRef;
+  final String state;
+  final DateTime departsAt;
+  final Money fare;
+  final Money serviceFee;
+
+  /// The version the booking was **sold under**, not the operator's current
+  /// default. Null when it was sold before the operator wrote any terms, which
+  /// is the honest answer rather than applying today's policy retroactively.
+  final RefundPolicy? policy;
+  final String? policyName;
+
+  /// Null when the policy refuses — outside the window, a non-refundable
+  /// fare, already departed. [failureCode] then says which.
+  final RefundQuote? quote;
+  final String? failureCode;
+
+  bool get isRefundable => quote != null && quote!.refundable.minor > 0;
+}
+
+/// A refund that has been approved and is waiting to be collected.
+final class IssuedRefund {
+  const IssuedRefund({
+    required this.id,
+    required this.bookingRef,
+    required this.amount,
+    required this.destination,
+    required this.state,
+    this.claimCode,
+    this.claimExpiresAt,
+  });
+
+  final String id;
+  final String bookingRef;
+  final Money amount;
+  final String destination;
+  final String state;
+
+  /// What the traveller shows at the counter. Null for destinations that do
+  /// not end at a counter.
+  final String? claimCode;
+  final DateTime? claimExpiresAt;
+}
+
+/// A claim that has just been paid out of a drawer.
+final class ClaimedRefund {
+  const ClaimedRefund({
+    required this.id,
+    required this.bookingRef,
+    required this.amount,
+    required this.stationId,
+  });
+
+  final String id;
+  final String bookingRef;
+  final Money amount;
+  final String stationId;
 }

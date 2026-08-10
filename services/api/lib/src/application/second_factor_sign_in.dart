@@ -226,9 +226,7 @@ final class SecondFactorSignIn {
       (_) => _random.nextInt(256),
     );
     final encoded = Base32.encode(secret);
-    final codes = [
-      for (var i = 0; i < recoveryCodeCount; i++) _recoveryCode(),
-    ];
+    final codes = [for (var i = 0; i < recoveryCodeCount; i++) _recoveryCode()];
 
     final stored = await _factors.beginEnrolment(
       userId: account.id,
@@ -281,10 +279,7 @@ final class SecondFactorSignIn {
   // ── The half-session ──────────────────────────────────────────────────────
 
   String _mintHalfSession(String userId) {
-    final expires = _clock
-        .now()
-        .add(halfSessionTtl)
-        .millisecondsSinceEpoch;
+    final expires = _clock.now().add(halfSessionTtl).millisecondsSinceEpoch;
     final payload = base64Url.encode(utf8.encode('$userId|$expires'));
     return '$payload.${_sign(payload)}';
   }

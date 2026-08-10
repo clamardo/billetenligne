@@ -45,8 +45,7 @@ Future<Response> onRequest(RequestContext context) async {
     );
   }
 
-  final language =
-      context.request.headers[BelHeaders.language] ?? 'fr';
+  final language = context.request.headers[BelHeaders.language] ?? 'fr';
 
   final result = await services.signIn.start(request, language: language);
 

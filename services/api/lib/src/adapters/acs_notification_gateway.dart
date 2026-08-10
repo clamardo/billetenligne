@@ -51,7 +51,8 @@ final class AcsNotificationGateway implements NotificationGateway {
     String? smsFrom,
     HttpClient? httpClient,
   }) {
-    if (connectionString == null || connectionString.trim().isEmpty) return null;
+    if (connectionString == null || connectionString.trim().isEmpty)
+      return null;
     if (emailFrom == null || emailFrom.isEmpty) return null;
 
     String? endpoint;
@@ -89,20 +90,18 @@ final class AcsNotificationGateway implements NotificationGateway {
   }
 
   @override
-  Future<NotifyFailure?> send(OutboundMessage message) => switch (message.channel) {
-    SignInChannel.email => _sendEmail(message),
-    SignInChannel.phone => _sendSms(message),
-  };
+  Future<NotifyFailure?> send(OutboundMessage message) =>
+      switch (message.channel) {
+        SignInChannel.email => _sendEmail(message),
+        SignInChannel.phone => _sendSms(message),
+      };
 
   Future<NotifyFailure?> _sendEmail(OutboundMessage message) => _post(
     '/emails:send',
     'api-version=2023-03-31',
     {
       'senderAddress': emailFrom,
-      'content': {
-        'subject': message.subject ?? '',
-        'plainText': message.body,
-      },
+      'content': {'subject': message.subject ?? '', 'plainText': message.body},
       'recipients': {
         'to': [
           {'address': message.to},

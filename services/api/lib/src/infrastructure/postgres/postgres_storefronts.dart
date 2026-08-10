@@ -134,10 +134,7 @@ final class PostgresStorefronts implements Storefronts {
 
         return StorefrontDto(
           vitrine: _vitrine(row),
-          routes: [
-            for (final r in routes)
-              _route(r.toColumnMap()),
-          ],
+          routes: [for (final r in routes) _route(r.toColumnMap())],
         );
       });
 

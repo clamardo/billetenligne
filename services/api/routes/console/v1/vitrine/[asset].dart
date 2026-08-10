@@ -33,11 +33,7 @@ Future<Response> onRequest(RequestContext context, String asset) async {
     _ => null,
   };
   if (kind == null) {
-    return _json(
-      HttpStatus.notFound,
-      Problem.notFound(traceId: trace),
-      trace,
-    );
+    return _json(HttpStatus.notFound, Problem.notFound(traceId: trace), trace);
   }
 
   final denied = Require.capability(context, Capability.vitrineManage);
@@ -71,7 +67,8 @@ Future<Response> _upload(
   final bytes = await context.request.bytes().expand((chunk) => chunk).toList();
 
   final inspected = BrandAsset.inspect(bytes, kind: kind);
-  if (inspected.problem case final problem?) return _refused(problem, kind, trace);
+  if (inspected.problem case final problem?)
+    return _refused(problem, kind, trace);
 
   final accepted = inspected.asset!;
 
@@ -79,7 +76,8 @@ Future<Response> _upload(
   // versioned key would leave every old logo readable forever by anybody who
   // had ever seen its URL — and the extension is part of the key because a
   // browser fetching `logo` with no extension is a browser guessing.
-  final key = 'operators/${scope.operatorId}/${kind.name}.${accepted.extension}';
+  final key =
+      'operators/${scope.operatorId}/${kind.name}.${accepted.extension}';
 
   await services.storage.put(
     key: key,

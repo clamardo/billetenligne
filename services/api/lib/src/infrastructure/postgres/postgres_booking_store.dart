@@ -118,10 +118,7 @@ final class PostgresBookingStore implements BookingStore {
     // Per seat, flat, never a percentage — a percentage feels like a tax and
     // is harder to trust. Four seats is four fees, which is what the departure
     // summary already quoted on the seat map.
-    final serviceFee = Money(
-      serviceFeePerSeat.minor * seats.length,
-      currency,
-    );
+    final serviceFee = Money(serviceFeePerSeat.minor * seats.length, currency);
     final total = fare + serviceFee;
 
     final booking = await tx.execute(
@@ -667,8 +664,7 @@ final class PostgresBookingStore implements BookingStore {
   /// A reference is generated here rather than by the database, because
   /// `BookingRef` owns the alphabet and the length and a `DEFAULT` expression
   /// in SQL would be a second, silently diverging implementation of both.
-  static String _generateRef() =>
-      BookingRef.generate(_secure.nextInt).value;
+  static String _generateRef() => BookingRef.generate(_secure.nextInt).value;
 
   static final _secure = Random.secure();
 }

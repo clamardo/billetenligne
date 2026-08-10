@@ -119,17 +119,20 @@ void main() {
     return (booking: booking, intentId: started.valueOrNull!.id);
   }
 
-  test('a started payment is pending, and the booking is not yet paid', () async {
-    final it = await pending();
+  test(
+    'a started payment is pending, and the booking is not yet paid',
+    () async {
+      final it = await pending();
 
-    final intent = await fixture.intentColumns(it.intentId);
-    expect(intent['state'], 'pending');
-    expect(intent['msisdn'], payer);
-    expect(intent['amount_minor'], 12300);
-    // Nobody has typed a PIN. A ticket here would be a free journey.
-    expect(await fixture.ticketCount(it.booking.id), 0);
-    expect(await fixture.ledgerRowsFor(it.booking.id), 0);
-  });
+      final intent = await fixture.intentColumns(it.intentId);
+      expect(intent['state'], 'pending');
+      expect(intent['msisdn'], payer);
+      expect(intent['amount_minor'], 12300);
+      // Nobody has typed a PIN. A ticket here would be a free journey.
+      expect(await fixture.ticketCount(it.booking.id), 0);
+      expect(await fixture.ledgerRowsFor(it.booking.id), 0);
+    },
+  );
 
   test('settling nets the commission THIS operator negotiated', () async {
     // 7.5%. Arbitrary on purpose: nothing in the code knows this number, and
@@ -345,8 +348,10 @@ void main() {
       );
 
       expect(refused, isNull);
-      expect((await fixture.intentColumns(it.intentId))['state'],
-          'indeterminate');
+      expect(
+        (await fixture.intentColumns(it.intentId))['state'],
+        'indeterminate',
+      );
     });
   });
 

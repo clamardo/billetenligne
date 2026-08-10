@@ -61,7 +61,8 @@ Future<Response> onRequest(RequestContext context, String id) async {
             'bookingRef': row.bookingRef,
             'boarded': row.boarded,
             if (row.passengerPhone != null) 'phone': row.passengerPhone,
-            if (row.boardedAt != null) 'boardedAt': Wire.instant(row.boardedAt!),
+            if (row.boardedAt != null)
+              'boardedAt': Wire.instant(row.boardedAt!),
           },
       ],
     },

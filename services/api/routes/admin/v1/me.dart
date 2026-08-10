@@ -26,9 +26,9 @@ Response onRequest(RequestContext context) {
     body: AdminIdentityDto(
       userId: principal.userId,
       role: principal.platformRole!,
-      capabilities:
-          Capability.forRoles([principal.platformRole!], platform: true).toList()
-            ..sort(),
+      capabilities: Capability.forRoles([
+        principal.platformRole!,
+      ], platform: true).toList()..sort(),
     ).toJson(),
     headers: {
       BelHeaders.traceId: context.read<String>(),

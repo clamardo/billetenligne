@@ -1,6 +1,13 @@
 import 'dart:convert';
+import 'dart:math';
 
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
+// The domain's `quoteRefund` is the one function both the app and the server
+// call (ADR-0004), and this class has a method of the same name that fetches
+// the booking first. The prefix keeps the two apart in the one place where
+// the shadowing would silently pick the wrong one.
+import 'package:bel_domain/bel_domain.dart' as domain;
 import 'package:postgres/postgres.dart';
 
 import '../../application/ports/operator_console.dart';
@@ -256,8 +263,7 @@ final class PostgresOperatorConsole implements OperatorConsole {
               id: row.toColumnMap()['id'].toString(),
               code: row.toColumnMap()['code'] as String,
               originCity: row.toColumnMap()['origin_city'] as String,
-              destinationCity:
-                  row.toColumnMap()['destination_city'] as String,
+              destinationCity: row.toColumnMap()['destination_city'] as String,
               durationMinutes: row.toColumnMap()['duration_minutes'] as int,
               active: row.toColumnMap()['active'] as bool,
             ),
@@ -334,8 +340,9 @@ final class PostgresOperatorConsole implements OperatorConsole {
 
         return [
           for (final row in rows)
-            if (Recurrence.parse(row.toColumnMap()['rrule'] as String)
-                case Ok(value: final recurrence))
+            if (Recurrence.parse(row.toColumnMap()['rrule'] as String) case Ok(
+              value: final recurrence,
+            ))
               PatternSummary(
                 id: row.toColumnMap()['id'].toString(),
                 routeId: row.toColumnMap()['route_id'].toString(),
@@ -351,8 +358,7 @@ final class PostgresOperatorConsole implements OperatorConsole {
                 validFrom: row.toColumnMap()['valid_from'] as DateTime,
                 validUntil: row.toColumnMap()['valid_until'] as DateTime?,
                 active: row.toColumnMap()['active'] as bool,
-                vehicleId:
-                    row.toColumnMap()['default_vehicle_id']?.toString(),
+                vehicleId: row.toColumnMap()['default_vehicle_id']?.toString(),
               ),
         ];
       });
@@ -574,10 +580,9 @@ final class PostgresOperatorConsole implements OperatorConsole {
           'fare': TypedValue(Type.bigInteger, baseFare.minor),
           'currency': TypedValue(Type.text, baseFare.currency.code),
           'mode': TypedValue(Type.text, p['mode'] as String? ?? 'bus'),
-          'amenities': TypedValue(
-            Type.textArray,
-            [for (final a in (p['amenities'] as List?) ?? const []) '$a'],
-          ),
+          'amenities': TypedValue(Type.textArray, [
+            for (final a in (p['amenities'] as List?) ?? const []) '$a',
+          ]),
         },
       );
 
@@ -748,6 +753,354 @@ final class PostgresOperatorConsole implements OperatorConsole {
 
   // ── Getting paid ──────────────────────────────────────────────────────────
 
+  // ── Refunds ───────────────────────────────────────────────────────────────
+
+  @override
+  Future<RefundOffer?> quoteRefund({
+    required String operatorId,
+    required String bookingRef,
+    required DateTime now,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final row = await _bookingForRefund(tx, bookingRef);
+    return row == null ? null : _offer(row, now);
+  });
+
+  @override
+  Future<IssuedRefund?> refundBooking({
+    required String operatorId,
+    required String bookingRef,
+    required String actorUserId,
+    required String reason,
+    required DateTime now,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final row = await _bookingForRefund(tx, bookingRef);
+    if (row == null) return null;
+
+    final offer = _offer(row, now);
+    if (!offer.isRefundable) return null;
+
+    final quote = offer.quote!;
+    final bookingId = row['id'].toString();
+
+    // Confirmed → refunded, conditionally. Two vendors refunding the same
+    // booking at two windows of one agency is not hypothetical, and the
+    // condition is what makes the second one a no-op rather than a second
+    // payout.
+    final moved = await tx.execute(
+      Sql.named('''
+        UPDATE bookings SET state = 'refunded'
+         WHERE id = @id AND state = 'confirmed'
+        RETURNING id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    if (moved.isEmpty) return null;
+
+    // Voided at approval, not at collection: a ticket whose money is already
+    // owed back must not board while the cash is still in the drawer. The
+    // schema comment on `voided_at` asks for exactly this.
+    await tx.execute(
+      Sql.named('''
+        UPDATE tickets SET voided_at = now()
+         WHERE booking_id = @id AND voided_at IS NULL
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+      ignoreRows: true,
+    );
+
+    // Back on sale in the same transaction. A seat left sold after a refund is
+    // a seat nobody can buy and nobody is sitting in.
+    await tx.execute(
+      Sql.named('''
+        UPDATE seats
+           SET state = 'available', booking_id = NULL, hold_id = NULL,
+               held_until = NULL
+         WHERE booking_id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+      ignoreRows: true,
+    );
+
+    // Whose pocket it comes out of. The service fee is ours, and it only
+    // moves when the operator's policy says it does.
+    final fromServiceFee = offer.policy!.refundServiceFee
+        ? offer.serviceFee
+        : Money(0, quote.refundable.currency);
+    final fromOperator = quote.refundable - fromServiceFee;
+    if (fromOperator.minor < 0) return null;
+
+    final posting = Postings.refundApproved(
+      operatorId: operatorId,
+      bookingId: bookingId,
+      fromOperator: fromOperator,
+      fromServiceFee: fromServiceFee,
+    );
+    if (posting.valueOrNull == null) return null;
+
+    final destination = quote.destination;
+    // A claim is the counter path. `source` — a disbursement back down a
+    // mobile-money rail — is a different API with a separately funded float
+    // and is not built, so it stops at `approved` and says so rather than
+    // pretending money moved.
+    final wantsClaim =
+        destination == RefundDestination.agencyCash ||
+        destination == RefundDestination.travellerChoice;
+    final claimCode = wantsClaim ? _claimCode() : null;
+
+    final refund = await tx.execute(
+      Sql.named('''
+        INSERT INTO refunds
+          (booking_id, operator_id, amount_minor, currency, rate_bps,
+           destination, state, involuntary, claim_code, claim_expires_at,
+           requested_by, approved_by, reason)
+        VALUES (@booking, @operator, @amount, @currency, @rate, @destination,
+                @state::refund_state, @involuntary, @claim,
+                CASE WHEN @claim::text IS NULL THEN NULL
+                     ELSE now() + interval '90 days' END,
+                @actor, @actor, @reason)
+        RETURNING id, state::text AS state, claim_code, claim_expires_at
+      '''),
+      parameters: {
+        'booking': TypedValue(Type.uuid, bookingId),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'amount': TypedValue(Type.bigInteger, quote.refundable.minor),
+        'currency': TypedValue(Type.text, quote.refundable.currency.code),
+        'rate': TypedValue(Type.integer, quote.rateBps),
+        'destination': TypedValue(Type.text, destination.name),
+        'state': TypedValue(
+          Type.text,
+          wantsClaim ? 'claim_issued' : 'approved',
+        ),
+        'involuntary': TypedValue(Type.boolean, quote.involuntary),
+        'claim': TypedValue(Type.text, claimCode),
+        'actor': TypedValue(Type.uuid, actorUserId),
+        'reason': TypedValue(Type.text, reason),
+      },
+    );
+
+    final refundRow = refund.first.toColumnMap();
+    await _postRefundLedger(
+      tx,
+      posting.valueOrNull!,
+      operatorId: operatorId,
+      bookingId: bookingId,
+      refundId: refundRow['id'].toString(),
+    );
+
+    return IssuedRefund(
+      id: refundRow['id'].toString(),
+      bookingRef: row['ref'] as String,
+      amount: quote.refundable,
+      destination: destination.name,
+      state: refundRow['state'] as String,
+      claimCode: refundRow['claim_code'] as String?,
+      claimExpiresAt: refundRow['claim_expires_at'] as DateTime?,
+    );
+  });
+
+  @override
+  Future<ClaimedRefund?> claimRefund({
+    required String operatorId,
+    required String claimCode,
+    required String stationId,
+    required String actorUserId,
+    required DateTime now,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // Read and close in one statement. Two vendors scanning the same code at
+    // two counters is exactly the race a separate SELECT would lose, and the
+    // thing it would lose is cash.
+    final rows = await tx.execute(
+      Sql.named('''
+        UPDATE refunds
+           SET state = 'claimed', claimed_by = @actor, completed_at = now()
+         WHERE claim_code = @code
+           AND state = 'claim_issued'
+           AND (claim_expires_at IS NULL OR claim_expires_at > now())
+        RETURNING id, booking_id, amount_minor, currency,
+                  (SELECT ref FROM bookings b WHERE b.id = booking_id) AS ref
+      '''),
+      parameters: {
+        'code': TypedValue(Type.text, claimCode.trim().toUpperCase()),
+        'actor': TypedValue(Type.uuid, actorUserId),
+      },
+    );
+    if (rows.isEmpty) return null;
+
+    final row = rows.first.toColumnMap();
+    final amount = Money(
+      row['amount_minor'] as int,
+      Currency.byCode((row['currency'] as String).trim())!,
+    );
+
+    final posting = Postings.refundPaidInCash(
+      operatorId: operatorId,
+      stationId: stationId,
+      bookingId: row['booking_id'].toString(),
+      amount: amount,
+    );
+    if (posting.valueOrNull == null) return null;
+
+    await _postRefundLedger(
+      tx,
+      posting.valueOrNull!,
+      operatorId: operatorId,
+      bookingId: row['booking_id'].toString(),
+      refundId: row['id'].toString(),
+    );
+
+    return ClaimedRefund(
+      id: row['id'].toString(),
+      bookingRef: row['ref'] as String,
+      amount: amount,
+      stationId: stationId,
+    );
+  });
+
+  /// The booking, its money, and the policy version it was **sold under**.
+  Future<Map<String, Object?>?> _bookingForRefund(
+    TxSession tx,
+    String bookingRef,
+  ) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT b.id, b.ref, b.state::text AS state,
+               b.fare_minor, b.service_fee_minor, b.currency,
+               d.departs_at,
+               b.refund_policy_id, b.refund_policy_version,
+               p.name AS policy_name, p.tiers, p.destination,
+               p.processing_hours, p.refund_service_fee,
+               p.non_refundable_fares
+          FROM bookings b
+          JOIN departures d ON d.id = b.departure_id
+          -- The version stamped on the booking, never the operator's current
+          -- default. ADR-0015 rule 1 is this join.
+          LEFT JOIN refund_policies p
+                 ON p.id = b.refund_policy_id
+                AND p.version = b.refund_policy_version
+         WHERE upper(b.ref) = upper(@ref)
+      '''),
+      parameters: {'ref': TypedValue(Type.text, bookingRef.trim())},
+    );
+    return rows.isEmpty ? null : rows.first.toColumnMap();
+  }
+
+  RefundOffer _offer(Map<String, Object?> row, DateTime now) {
+    final currency = Currency.byCode((row['currency'] as String).trim())!;
+    final fare = Money(row['fare_minor'] as int, currency);
+    final serviceFee = Money(row['service_fee_minor'] as int, currency);
+    final departsAt = row['departs_at'] as DateTime;
+    final state = row['state'] as String;
+    final ref = row['ref'] as String;
+
+    // Sold before the operator wrote any terms. "No policy" is the honest
+    // answer; today's policy applied backwards is the dishonest one.
+    if (row['refund_policy_id'] == null) {
+      return RefundOffer(
+        bookingRef: ref,
+        state: state,
+        departsAt: departsAt,
+        fare: fare,
+        serviceFee: serviceFee,
+        policy: null,
+        policyName: null,
+        failureCode: ErrorCode.refundNoPolicy,
+      );
+    }
+
+    final policy = _policyFrom({
+      ...row,
+      'id': row['refund_policy_id'],
+      'version': row['refund_policy_version'],
+      'name': row['policy_name'],
+    }).policy;
+
+    // Only a confirmed booking has money to give back. A reservation nobody
+    // paid for is cancelled, not refunded, and saying so here keeps the
+    // counter from offering zero francs with a straight face.
+    if (state != 'confirmed') {
+      return RefundOffer(
+        bookingRef: ref,
+        state: state,
+        departsAt: departsAt,
+        fare: fare,
+        serviceFee: serviceFee,
+        policy: policy,
+        policyName: row['policy_name'] as String?,
+        failureCode: ErrorCode.refundNotConfirmed,
+      );
+    }
+
+    final quoted = domain.quoteRefund(
+      faceValue: fare,
+      serviceFee: serviceFee,
+      departsAt: departsAt,
+      now: now,
+      policy: policy,
+    );
+
+    return RefundOffer(
+      bookingRef: ref,
+      state: state,
+      departsAt: departsAt,
+      fare: fare,
+      serviceFee: serviceFee,
+      policy: policy,
+      policyName: row['policy_name'] as String?,
+      quote: quoted.valueOrNull,
+      failureCode: quoted.failureOrNull?.code,
+    );
+  }
+
+  Future<void> _postRefundLedger(
+    TxSession tx,
+    LedgerTransaction posting, {
+    required String operatorId,
+    required String bookingId,
+    required String refundId,
+  }) async {
+    // ONE txn_id for the whole movement. A uuid per row would give every
+    // entry its own transaction, each of them unbalanced, and the deferred
+    // constraint trigger would refuse the lot at COMMIT — which is the good
+    // outcome, and still an outage rather than a refund.
+    final generated = await tx.execute('SELECT gen_random_uuid() AS id');
+    final txn = generated.first.toColumnMap()['id'].toString();
+
+    for (final entry in posting.entries) {
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO ledger_entries
+            (txn_id, account, direction, amount_minor, currency,
+             operator_id, booking_id, refund_id, memo)
+          VALUES (@txn, @account, @direction::ledger_direction,
+                  @amount, @currency, @operator, @booking, @refund, @memo)
+        '''),
+        parameters: {
+          'txn': TypedValue(Type.uuid, txn),
+          'account': TypedValue(Type.text, entry.account),
+          'direction': TypedValue(Type.text, entry.direction.name),
+          'amount': TypedValue(Type.bigInteger, entry.amount.minor),
+          'currency': TypedValue(Type.text, entry.amount.currency.code),
+          'operator': TypedValue(Type.uuid, entry.operatorId ?? operatorId),
+          'booking': TypedValue(Type.uuid, bookingId),
+          'refund': TypedValue(Type.uuid, refundId),
+          'memo': TypedValue(Type.text, entry.memo),
+        },
+        ignoreRows: true,
+      );
+    }
+  }
+
+  /// Six characters from the booking-reference alphabet, which already
+  /// excludes the pairs a human confuses reading one out across a counter.
+  static String _claimCode() {
+    const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+    final random = Random.secure();
+    return List.generate(
+      6,
+      (_) => alphabet[random.nextInt(alphabet.length)],
+    ).join();
+  }
+
   // ── Terms ─────────────────────────────────────────────────────────────────
 
   @override
@@ -914,7 +1267,8 @@ final class PostgresOperatorConsole implements OperatorConsole {
       version: row['version'] as int,
       name: row['name'] as String,
       isDefault: row['is_default'] as bool? ?? false,
-      effectiveFrom: row['effective_from'] as DateTime? ?? DateTime.now().toUtc(),
+      effectiveFrom:
+          row['effective_from'] as DateTime? ?? DateTime.now().toUtc(),
       bookingCount: row['booking_count'] as int? ?? 0,
       policy: RefundPolicy(
         id: row['id'].toString(),
@@ -923,7 +1277,9 @@ final class PostgresOperatorConsole implements OperatorConsole {
           (d) => d.name == row['destination'],
           orElse: () => RefundDestination.source,
         ),
-        processingWindow: Duration(hours: row['processing_hours'] as int? ?? 72),
+        processingWindow: Duration(
+          hours: row['processing_hours'] as int? ?? 72,
+        ),
         refundServiceFee: row['refund_service_fee'] as bool? ?? false,
         nonRefundableFareCodes: {
           ...?(row['non_refundable_fares'] as List?)?.map((f) => '$f'),

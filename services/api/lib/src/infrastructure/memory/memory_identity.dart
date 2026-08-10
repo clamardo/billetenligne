@@ -190,20 +190,17 @@ final class MemoryAuthChallenges implements AuthChallenges {
     return true;
   }
 
-  static Challenge _copy(
-    Challenge c, {
-    int? attempts,
-    DateTime? consumedAt,
-  }) => Challenge(
-    id: c.id,
-    channel: c.channel,
-    destination: c.destination,
-    codeHash: c.codeHash,
-    language: c.language,
-    attempts: attempts ?? c.attempts,
-    maxAttempts: c.maxAttempts,
-    createdAt: c.createdAt,
-    expiresAt: c.expiresAt,
-    consumedAt: consumedAt ?? c.consumedAt,
-  );
+  static Challenge _copy(Challenge c, {int? attempts, DateTime? consumedAt}) =>
+      Challenge(
+        id: c.id,
+        channel: c.channel,
+        destination: c.destination,
+        codeHash: c.codeHash,
+        language: c.language,
+        attempts: attempts ?? c.attempts,
+        maxAttempts: c.maxAttempts,
+        createdAt: c.createdAt,
+        expiresAt: c.expiresAt,
+        consumedAt: consumedAt ?? c.consumedAt,
+      );
 }

@@ -105,9 +105,12 @@ void main() {
     // The rollout decision, asserted rather than described: staff with nothing
     // enrolled still get a session. Refusing one would have locked out every
     // existing staff account the hour this shipped.
-    test('staff with nothing enrolled sign in, and are told to enrol', () async {
-      expect(await mfa.stepFor(vendor), isA<SecondFactorMustEnrol>());
-    });
+    test(
+      'staff with nothing enrolled sign in, and are told to enrol',
+      () async {
+        expect(await mfa.stepFor(vendor), isA<SecondFactorMustEnrol>());
+      },
+    );
 
     test('an unconfirmed enrolment is not a second factor', () async {
       await mfa.beginEnrolment(vendor);
@@ -124,7 +127,10 @@ void main() {
     test('hands back a scannable secret and eight recovery codes', () async {
       final enrolment = (await mfa.beginEnrolment(vendor))!;
 
-      expect(Base32.decode(enrolment.secretBase32), hasLength(Totp.secretBytes));
+      expect(
+        Base32.decode(enrolment.secretBase32),
+        hasLength(Totp.secretBytes),
+      );
       expect(enrolment.recoveryCodes, hasLength(8));
       expect(enrolment.recoveryCodes.toSet(), hasLength(8));
       expect(
@@ -245,8 +251,8 @@ void main() {
         userId: vendor.id,
         code: codeFor(factor, clock.now()),
       );
-      final half = ((await mfa.stepFor(vendor)) as SecondFactorProve)
-          .halfSession;
+      final half =
+          ((await mfa.stepFor(vendor)) as SecondFactorProve).halfSession;
       final code = enrolment.recoveryCodes.first;
 
       expect(
@@ -267,12 +273,13 @@ void main() {
         userId: vendor.id,
         code: codeFor(factor, clock.now()),
       );
-      final half = ((await mfa.stepFor(vendor)) as SecondFactorProve)
-          .halfSession;
+      final half =
+          ((await mfa.stepFor(vendor)) as SecondFactorProve).halfSession;
 
-      final typed = enrolment.recoveryCodes.first
-          .toLowerCase()
-          .replaceAll('-', ' ');
+      final typed = enrolment.recoveryCodes.first.toLowerCase().replaceAll(
+        '-',
+        ' ',
+      );
       expect(
         await mfa.prove(halfSession: half, recoveryCode: typed),
         isA<Ok<String, SecondFactorFailure>>(),

@@ -31,7 +31,9 @@ Future<Response> onRequest(RequestContext context) async {
   );
 
   return Response.json(
-    body: {'items': [for (final city in cities) city.toJson()]},
+    body: {
+      'items': [for (final city in cities) city.toJson()],
+    },
     headers: {
       BelHeaders.traceId: trace,
       // Varies by language, and a shared cache that ignored that would serve

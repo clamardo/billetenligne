@@ -141,7 +141,8 @@ final class LedgerTransaction {
     final currency = entries.first.amount.currency;
     var sum = 0;
     for (final entry in entries) {
-      if (entry.amount.currency != currency) return const Err(MixedCurrencies());
+      if (entry.amount.currency != currency)
+        return const Err(MixedCurrencies());
       if (entry.amount.minor <= 0) {
         // The schema's CHECK says the same thing. A negative amount is always
         // a direction expressed twice, and it makes every balance query lie.
@@ -198,6 +199,84 @@ abstract final class Postings {
         LedgerEntry.credit(LedgerAccount.revenueServiceFee, serviceFee),
     ]);
   }
+
+  /// Approving a refund: we stop owing the operator and start owing the
+  /// traveller (`04-payments.md` §4.6).
+  ///
+  /// ```
+  /// DR  payable:operator:<id>          8 100   (what comes out of their share)
+  /// DR  revenue:service_fee              300   (only when the policy refunds it)
+  ///     CR  payable:refund:<booking>           8 400
+  /// ```
+  ///
+  /// **Nothing is reversed that the policy retained.** A 90% band leaves 10%
+  /// credited to the operator exactly where it was, because they earned it
+  /// under terms the traveller agreed to. Posting the whole sale back and then
+  /// re-charging the retained share would be two lies that happen to cancel.
+  ///
+  /// The debt is to the **booking**, not to a person: a claim is collected by
+  /// whoever holds the code, and the ledger should say what is owed rather
+  /// than guess who will walk in.
+  static Result<LedgerTransaction, DomainFailure> refundApproved({
+    required String operatorId,
+    required String bookingId,
+    required Money fromOperator,
+    required Money fromServiceFee,
+  }) {
+    final owed = fromOperator + fromServiceFee;
+    if (owed.minor <= 0) return const Err(UnbalancedTransaction(0));
+
+    return LedgerTransaction.balanced([
+      if (fromOperator.minor > 0)
+        LedgerEntry.debit(
+          LedgerAccount.payableOperator(operatorId),
+          fromOperator,
+          operatorId: operatorId,
+          memo: 'refund approved',
+        ),
+      // Our own revenue, given back, and only when the operator's policy says
+      // so. Debiting a revenue account is how a refund of a fee is expressed;
+      // there is no "negative revenue" row anywhere in this ledger.
+      if (fromServiceFee.minor > 0)
+        LedgerEntry.debit(LedgerAccount.revenueServiceFee, fromServiceFee),
+      LedgerEntry.credit(
+        LedgerAccount.payableRefund(bookingId),
+        owed,
+        operatorId: operatorId,
+        memo: 'owed to traveller',
+      ),
+    ]);
+  }
+
+  /// Paying a refund claim out of the drawer (ADR-0015 rule 5).
+  ///
+  /// ```
+  /// DR  payable:refund:<booking>       8 400
+  ///     CR  cash:<operator>:<station>:till     8 400
+  /// ```
+  ///
+  /// Scoped to the **station**, like the sale that filled the drawer, because
+  /// a till is counted at the end of a shift by the person who closed it. A
+  /// refund paid from "the operator's cash" is a number nobody can reconcile
+  /// against anything they physically counted.
+  static Result<LedgerTransaction, DomainFailure> refundPaidInCash({
+    required String operatorId,
+    required String stationId,
+    required String bookingId,
+    required Money amount,
+  }) => LedgerTransaction.balanced([
+    LedgerEntry.debit(
+      LedgerAccount.payableRefund(bookingId),
+      amount,
+      operatorId: operatorId,
+      memo: 'refund claimed',
+    ),
+    LedgerEntry.credit(
+      LedgerAccount.till(operatorId, stationId),
+      amount,
+      operatorId: operatorId,
+    ),
+  ]);
 
   /// A digital capture on a mobile-money or card rail (`04-payments.md` §2).
   ///

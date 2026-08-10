@@ -54,9 +54,7 @@ void main() {
     await factors.beginEnrolment(
       userId: id,
       secretBase32: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
-      recoveryHashes: [
-        for (var i = 0; i < recoveryCodes; i++) 'hash-$id-$i',
-      ],
+      recoveryHashes: [for (var i = 0; i < recoveryCodes; i++) 'hash-$id-$i'],
     );
     await factors.confirm(userId: id, window: 1000);
     return id;

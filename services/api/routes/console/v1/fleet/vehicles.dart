@@ -31,7 +31,9 @@ Future<Response> onRequest(RequestContext context) async {
 
       final vehicles = await console.vehicles(scope.operatorId);
       return Response.json(
-        body: {'items': [for (final v in vehicles) _json(v)]},
+        body: {
+          'items': [for (final v in vehicles) _json(v)],
+        },
         headers: {BelHeaders.traceId: trace},
       );
 

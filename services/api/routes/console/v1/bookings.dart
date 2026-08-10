@@ -198,11 +198,7 @@ Future<Response> _capture(
   // purpose: this one gives a typed failure, that one guarantees no path can
   // write a half-entry.
   if (posting case Err()) {
-    return _error(
-      HttpStatus.internalServerError,
-      ErrorCode.internal,
-      trace,
-    );
+    return _error(HttpStatus.internalServerError, ErrorCode.internal, trace);
   }
 
   final confirmed = await services.bookings.captureCash(

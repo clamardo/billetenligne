@@ -119,8 +119,9 @@ void main() {
       // Fourteen coaches is one template and fourteen rows. Drawing the seat
       // map once is the difference between a twenty-minute setup and a
       // two-hour one (`06-fleet-and-routes.md` §1).
-      final listed = (await console.layouts(operatorId))
-          .firstWhere((l) => l.id == layout.id);
+      final listed = (await console.layouts(
+        operatorId,
+      )).firstWhere((l) => l.id == layout.id);
       expect(listed.vehicleCount, 3);
       expect(listed.capacity, SeatLayout.busStandard49().capacity);
     });
@@ -156,27 +157,29 @@ void main() {
       expect(vehicle, isNull);
     });
 
-    test('taking a coach off the road names the departures it was on',
-        () async {
-      final f = await fleet();
-      final patternId = await pattern(vehicleId: f.vehicleId);
-      await console.materialise(
-        operatorId: operatorId,
-        patternId: patternId,
-        from: DateTime.utc(2027, 3, 1),
-        to: DateTime.utc(2027, 3, 3),
-      );
+    test(
+      'taking a coach off the road names the departures it was on',
+      () async {
+        final f = await fleet();
+        final patternId = await pattern(vehicleId: f.vehicleId);
+        await console.materialise(
+          operatorId: operatorId,
+          patternId: patternId,
+          from: DateTime.utc(2027, 3, 1),
+          to: DateTime.utc(2027, 3, 3),
+        );
 
-      final affected = await console.setVehicleStatus(
-        operatorId: operatorId,
-        vehicleId: f.vehicleId,
-        status: 'maintenance',
-      );
+        final affected = await console.setVehicleStatus(
+          operatorId: operatorId,
+          vehicleId: f.vehicleId,
+          status: 'maintenance',
+        );
 
-      // Never silently: these departures now have no coach, and somebody has
-      // to reassign one or declare a disruption before the passengers arrive.
-      expect(affected, hasLength(3));
-    });
+        // Never silently: these departures now have no coach, and somebody has
+        // to reassign one or declare a disruption before the passengers arrive.
+        expect(affected, hasLength(3));
+      },
+    );
   });
 
   group('materialising a timetable', () {
@@ -348,10 +351,7 @@ void main() {
 
     test('a VIP section is priced by the layout, per seat', () async {
       final f = await fleet(layout: SeatLayout.busVipFront());
-      final patternId = await pattern(
-        vehicleId: f.vehicleId,
-        fareMinor: 10000,
-      );
+      final patternId = await pattern(vehicleId: f.vehicleId, fareMinor: 10000);
 
       await console.materialise(
         operatorId: operatorId,

@@ -33,8 +33,7 @@ final class MemoryStorefronts implements Storefronts {
   final Map<String, VitrineDto> _byId;
 
   @override
-  Future<VitrineDto?> forOperator(String operatorId) async =>
-      _byId[operatorId];
+  Future<VitrineDto?> forOperator(String operatorId) async => _byId[operatorId];
 
   @override
   Future<VitrineDto?> save({

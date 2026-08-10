@@ -57,11 +57,7 @@ final class MemorySecondFactors implements SecondFactors {
     final existing = _factors[userId];
     if (existing == null || existing.isConfirmed) return false;
 
-    _factors[userId] = _with(
-      existing,
-      confirmedAt: _now(),
-      lastWindow: window,
-    );
+    _factors[userId] = _with(existing, confirmedAt: _now(), lastWindow: window);
     return true;
   }
 

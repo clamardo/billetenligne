@@ -36,10 +36,7 @@ Future<Response> onRequest(RequestContext context) async {
   if (!confirmed) {
     return Response.json(
       statusCode: HttpStatus.unauthorized,
-      body: ApiError(
-        code: ErrorCode.mfaIncorrect,
-        traceId: trace,
-      ).toJson(),
+      body: ApiError(code: ErrorCode.mfaIncorrect, traceId: trace).toJson(),
       headers: {BelHeaders.traceId: trace},
     );
   }

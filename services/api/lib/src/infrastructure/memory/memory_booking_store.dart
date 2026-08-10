@@ -74,10 +74,7 @@ final class MemoryBookingStore implements BookingStore {
 
     final currency = seats.first.fare.currency;
     final fare = seats.fold(Money(0, currency), (sum, s) => sum + s.fare);
-    final serviceFee = Money(
-      serviceFeePerSeat.minor * seats.length,
-      currency,
-    );
+    final serviceFee = Money(serviceFeePerSeat.minor * seats.length, currency);
 
     final record = BookingRecord(
       id: 'bk-mem-${++_next}',

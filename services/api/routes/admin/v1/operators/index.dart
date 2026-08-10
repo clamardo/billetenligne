@@ -35,7 +35,8 @@ Future<Response> onRequest(RequestContext context) async {
 
   final raw = context.request.uri.queryParameters['status'];
   final statuses = <String>{
-    for (final s in (raw ?? '').split(',')) if (s.trim().isNotEmpty) s.trim(),
+    for (final s in (raw ?? '').split(','))
+      if (s.trim().isNotEmpty) s.trim(),
   };
 
   final operators = await services.platform.operators(

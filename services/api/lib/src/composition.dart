@@ -500,8 +500,7 @@ final class Services {
         apiUser: env['MTN__APIUSER'] ?? '',
         apiKey: env['MTN__APIKEY'] ?? '',
         targetEnvironment: env['MTN__TARGETENVIRONMENT'] ?? 'sandbox',
-        callbackUrl:
-            '${env['PUBLIC_BASE_URL'] ?? ''}/hooks/payments/mtn',
+        callbackUrl: '${env['PUBLIC_BASE_URL'] ?? ''}/hooks/payments/mtn',
       );
     }
 
@@ -543,9 +542,7 @@ final class Services {
   static String _findI18nDirectory() {
     var dir = Directory.current;
     for (var up = 0; up < 5; up++) {
-      final candidate = Directory(
-        '${dir.path}/packages/bel_localization/i18n',
-      );
+      final candidate = Directory('${dir.path}/packages/bel_localization/i18n');
       if (candidate.existsSync()) return candidate.path;
       final parent = dir.parent;
       if (parent.path == dir.path) break;
@@ -556,7 +553,6 @@ final class Services {
     );
   }
 }
-
 
 /// Defers key generation until the first ticket is issued.
 ///

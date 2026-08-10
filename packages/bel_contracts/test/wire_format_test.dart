@@ -413,8 +413,10 @@ void main() {
       final back = OperatorDecisionRequest.fromJson(request.toJson());
       expect(back.decision, 'suspend');
       expect(back.reason, 'insurance lapsed');
-      expect(() => OperatorDecisionRequest.fromJson(const {'decision': 'x'}),
-          throwsA(isA<WireFormatException>()));
+      expect(
+        () => OperatorDecisionRequest.fromJson(const {'decision': 'x'}),
+        throwsA(isA<WireFormatException>()),
+      );
     });
 
     test('the audit trail is readable and carries no secrets', () {
@@ -428,9 +430,16 @@ void main() {
       final json = entry.toJson();
       // Before/after states stay server-side: they can hold a settlement
       // account number, and a trail rendered in a browser does not need one.
-      expect(json.keys, unorderedEquals([
-        'action', 'actorType', 'actorId', 'reason', 'createdAt',
-      ]));
+      expect(
+        json.keys,
+        unorderedEquals([
+          'action',
+          'actorType',
+          'actorId',
+          'reason',
+          'createdAt',
+        ]),
+      );
       expect(AuditEntryDto.fromJson(json).reason, 'documents complete');
     });
   });

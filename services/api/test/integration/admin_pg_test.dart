@@ -49,37 +49,44 @@ void main() {
   var seq = 0;
   String code() => 'AP${++seq}${DateTime.now().microsecondsSinceEpoch % 10000}';
 
-  test('the queue lists applicants oldest first, with what decides them', () async {
-    final id = await fixture.applicant(
-      code: code(),
-      legalName: 'Trans Bony Voyages',
-    );
-    await fixture.kybDocument(
-      operatorId: id,
-      docType: 'insurance',
-      // Expired. Selling seats on an uninsured coach is a liability we will
-      // not carry, so this number belongs in the queue rather than a report.
-      expiresAt: DateTime.now().toUtc().subtract(const Duration(days: 3)),
-    );
-    await fixture.kybDocument(operatorId: id, docType: 'rccm');
+  test(
+    'the queue lists applicants oldest first, with what decides them',
+    () async {
+      final id = await fixture.applicant(
+        code: code(),
+        legalName: 'Trans Bony Voyages',
+      );
+      await fixture.kybDocument(
+        operatorId: id,
+        docType: 'insurance',
+        // Expired. Selling seats on an uninsured coach is a liability we will
+        // not carry, so this number belongs in the queue rather than a report.
+        expiresAt: DateTime.now().toUtc().subtract(const Duration(days: 3)),
+      );
+      await fixture.kybDocument(operatorId: id, docType: 'rccm');
 
-    final queue = await platform.operators(
-      actorUserId: reviewer,
-      statuses: const {'registered'},
-    );
+      final queue = await platform.operators(
+        actorUserId: reviewer,
+        statuses: const {'registered'},
+      );
 
-    final mine = queue.firstWhere((o) => o.id == id);
-    expect(mine.legalName, 'Trans Bony Voyages');
-    expect(mine.documentCount, 2);
-    expect(mine.expiringDocumentCount, 1);
-    expect(mine.isPending, isTrue);
-    // Whatever the seed default is, it arrives as a term rather than a float.
-    expect(mine.commission.bps, isA<int>());
+      final mine = queue.firstWhere((o) => o.id == id);
+      expect(mine.legalName, 'Trans Bony Voyages');
+      expect(mine.documentCount, 2);
+      expect(mine.expiringDocumentCount, 1);
+      expect(mine.isPending, isTrue);
+      // Whatever the seed default is, it arrives as a term rather than a float.
+      expect(mine.commission.bps, isA<int>());
 
-    final createdAts = [for (final o in queue) o.createdAt];
-    final sorted = [...createdAts]..sort();
-    expect(createdAts, sorted, reason: 'a queue worked newest-first has a tail');
-  });
+      final createdAts = [for (final o in queue) o.createdAt];
+      final sorted = [...createdAts]..sort();
+      expect(
+        createdAts,
+        sorted,
+        reason: 'a queue worked newest-first has a tail',
+      );
+    },
+  );
 
   test('approving moves the operator and writes the trail with it', () async {
     final id = await fixture.applicant(code: code(), legalName: 'Sotrapo');
@@ -150,35 +157,38 @@ void main() {
     expect(await fixture.auditFor(id), hasLength(1));
   });
 
-  test('suspending records the reason on the operator and in the trail', () async {
-    final id = await fixture.applicant(
-      code: code(),
-      legalName: 'Suspendu',
-      status: 'active',
-    );
+  test(
+    'suspending records the reason on the operator and in the trail',
+    () async {
+      final id = await fixture.applicant(
+        code: code(),
+        legalName: 'Suspendu',
+        status: 'active',
+      );
 
-    await platform.decide(
-      operatorId: id,
-      decision: OperatorDecision.suspend,
-      actorUserId: reviewer,
-      reason: 'insurance lapsed',
-    );
-    expect(await fixture.operatorStatus(id), 'suspended');
+      await platform.decide(
+        operatorId: id,
+        decision: OperatorDecision.suspend,
+        actorUserId: reviewer,
+        reason: 'insurance lapsed',
+      );
+      expect(await fixture.operatorStatus(id), 'suspended');
 
-    await platform.decide(
-      operatorId: id,
-      decision: OperatorDecision.reinstate,
-      actorUserId: reviewer,
-      reason: 'new certificate received',
-    );
-    expect(await fixture.operatorStatus(id), 'active');
+      await platform.decide(
+        operatorId: id,
+        decision: OperatorDecision.reinstate,
+        actorUserId: reviewer,
+        reason: 'new certificate received',
+      );
+      expect(await fixture.operatorStatus(id), 'active');
 
-    final trail = await fixture.auditFor(id);
-    expect(
-      trail.map((e) => e['action']),
-      ['operator.suspend', 'operator.reinstate'],
-    );
-  });
+      final trail = await fixture.auditFor(id);
+      expect(trail.map((e) => e['action']), [
+        'operator.suspend',
+        'operator.reinstate',
+      ]);
+    },
+  );
 
   test('a commission change carries the old rate and the new one', () async {
     final id = await fixture.applicant(

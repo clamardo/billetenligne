@@ -239,7 +239,6 @@ final class RefundQuoteDto {
   );
 }
 
-
 /// A way to pay this operator, as the app renders it.
 ///
 /// **Server-driven** (ADR-0006): enabling Orange Money must be a config push

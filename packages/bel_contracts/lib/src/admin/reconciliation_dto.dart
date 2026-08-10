@@ -103,7 +103,10 @@ final class UnresolvedPaymentDto {
         railTransactionId: json['railTransactionId'] as String?,
         travellerPhone: json['travellerPhone'] as String?,
         travellerEmail: json['travellerEmail'] as String?,
-        departsAt: Wire.readInstantOrNull(json['departsAt'], field: 'departsAt'),
+        departsAt: Wire.readInstantOrNull(
+          json['departsAt'],
+          field: 'departsAt',
+        ),
         originCity: json['originCity'] as String?,
         destinationCity: json['destinationCity'] as String?,
       );

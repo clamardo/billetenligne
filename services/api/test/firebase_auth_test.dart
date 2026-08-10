@@ -190,7 +190,9 @@ void main() {
     test('an expired token is refused', () async {
       expect(
         await production().verify(
-          signed(goodClaims(expiresAt: now.subtract(const Duration(minutes: 1)))),
+          signed(
+            goodClaims(expiresAt: now.subtract(const Duration(minutes: 1))),
+          ),
         ),
         isNull,
       );
@@ -298,23 +300,25 @@ void main() {
       );
     });
 
-    test('a conductor token carries its scope as a hint, not as authority',
-        () async {
-      final decoded = Jwt.decode(
-        await emulator().mintConductorToken(
-          staffUserId: 'staff-1',
-          operatorId: 'op-ocean',
-          departureIds: const ['dep-1', 'dep-2'],
-          ttl: const Duration(hours: 8),
-        ),
-      );
+    test(
+      'a conductor token carries its scope as a hint, not as authority',
+      () async {
+        final decoded = Jwt.decode(
+          await emulator().mintConductorToken(
+            staffUserId: 'staff-1',
+            operatorId: 'op-ocean',
+            departureIds: const ['dep-1', 'dep-2'],
+            ttl: const Duration(hours: 8),
+          ),
+        );
 
-      final claims = decoded.claims['claims']! as Map<String, Object?>;
-      expect(claims['tenantId'], 'op-ocean');
-      expect(claims['roles'], ['conductor']);
-      expect(claims['departures'], ['dep-1', 'dep-2']);
-      expect(decoded.expiresAt, now.add(const Duration(hours: 8)));
-    });
+        final claims = decoded.claims['claims']! as Map<String, Object?>;
+        expect(claims['tenantId'], 'op-ocean');
+        expect(claims['roles'], ['conductor']);
+        expect(claims['departures'], ['dep-1', 'dep-2']);
+        expect(decoded.expiresAt, now.add(const Duration(hours: 8)));
+      },
+    );
   });
 
   test('the private key survives a service-account JSON round trip', () {

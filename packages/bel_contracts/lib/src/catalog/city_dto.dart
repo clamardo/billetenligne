@@ -8,12 +8,7 @@ import '../json/json_codec.dart';
 /// app release, and a client that picks a field is a client that will one day
 /// pick the wrong one for a language it does not know it has.
 final class CityDto {
-  const CityDto({
-    required this.code,
-    required this.name,
-    this.lat,
-    this.lng,
-  });
+  const CityDto({required this.code, required this.name, this.lat, this.lng});
 
   /// The IATA-ish three-letter code — `BZV`, `PNR`. Stable, and what every
   /// other table references.
@@ -27,12 +22,8 @@ final class CityDto {
   final double? lat;
   final double? lng;
 
-  Map<String, Object?> toJson() => Wire.compact({
-    'code': code,
-    'name': name,
-    'lat': lat,
-    'lng': lng,
-  });
+  Map<String, Object?> toJson() =>
+      Wire.compact({'code': code, 'name': name, 'lat': lat, 'lng': lng});
 
   factory CityDto.fromJson(Map<String, Object?> json) => CityDto(
     code: Wire.requireString(json['code'], 'code'),

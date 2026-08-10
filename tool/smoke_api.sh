@@ -681,6 +681,55 @@ check "a traveller cannot redirect an operator's terms" "403" \
      "$BASE/console/v1/policies/default" -H "$AUTH" \
      -H 'Content-Type: application/json' -d '{"policyId":null,"version":null}')"
 
+# ── Refunds refuse before they reach the money ──────────────────────────────
+#
+# The execution path is proven against real Postgres in `refund_pg_test.dart`,
+# where a transaction, a race and a balance can actually be observed. What a
+# socket proves is the ordering above it: who may quote, who may pay out, and
+# that a payout without a station or a reason never reaches a drawer.
+check "a traveller cannot quote somebody else's refund" "403" \
+  "$(status -H "$AUTH" "$BASE/console/v1/bookings/BEL-ABC123/refund")"
+check "an anonymous caller cannot either" "401" \
+  "$(status "$BASE/console/v1/bookings/BEL-ABC123/refund")"
+check "quoting an unknown booking is a 503, not a leak" "503" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/bookings/BEL-ABC123/refund")"
+# A refund with no reason is refused before anything is read. "Why did we give
+# this person money?" is the question an audit answers, and it cannot be
+# reconstructed afterwards.
+check "a refund without a reason is refused" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/bookings/BEL-ABC123/refund" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d '{}')"
+check "a one-word reason is not a reason" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/bookings/BEL-ABC123/refund" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d '{"reason":"x"}')"
+check "a traveller cannot refund a booking" "403" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/bookings/BEL-ABC123/refund" -H "$AUTH" \
+     -H 'Content-Type: application/json' -d '{"reason":"give me the money"}')"
+
+# Paying out a claim is cash leaving a specific drawer, so it needs the
+# station as well as the code — and a vendor is scoped to their own.
+check "a claim without a code is refused" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/refunds/claim" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d '{"stationId":"st-bzv"}')"
+check "a claim without a station is refused" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/refunds/claim" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d '{"claimCode":"K4M2QX"}')"
+check "a traveller cannot open a till" "403" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/refunds/claim" -H "$AUTH" \
+     -H 'Content-Type: application/json' \
+     -d '{"claimCode":"K4M2QX","stationId":"st-bzv"}')"
+check "a well-formed claim gets past validation" "503" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/refunds/claim" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' \
+     -d '{"claimCode":"K4M2QX","stationId":"st-bzv"}')"
+
 # ── The back office refuses everybody it should ─────────────────────────────
 #
 # The admin surface cannot be *exercised* against the fakes composition — it
