@@ -11,6 +11,7 @@ import 'screens/fleet_screen.dart';
 import 'screens/network_screen.dart';
 import 'screens/timetable_screen.dart';
 import 'screens/today_screen.dart';
+import 'screens/vitrine_screen.dart';
 import 'widgets/console_shell.dart';
 
 /// The operator console.
@@ -105,6 +106,7 @@ class _ConsoleState extends State<_Console> {
         ConsoleSection.fleet => FleetScreen(workspace: _work),
         ConsoleSection.network => NetworkScreen(workspace: _work),
         ConsoleSection.timetable => TimetableScreen(workspace: _work),
+        ConsoleSection.vitrine => VitrineScreen(workspace: _work),
       },
     );
   }

@@ -511,6 +511,30 @@ check "the ticket names its passenger and seat" "yes" \
 check "the payment code is gone once paid" "yes" \
   "$(grep -q '"paymentCode"' <<<"$paid" && echo no || echo yes)"
 
+# ── The storefront ──────────────────────────────────────────────────────────
+#
+# `blt.cg/o/ODN`, over real HTTP. The demo composition seeds one operator, so
+# what can be proven here is the shape and the caching — the route listing and
+# the "not selling means not found" rule are covered against real Postgres in
+# `vitrine_pg_test.dart`, where the policy that decides it actually exists.
+storefront="$(curl -s "$BASE/public/v1/operators/ODN")"
+check "a storefront is public" "200" \
+  "$(status "$BASE/public/v1/operators/ODN")"
+check "the storefront carries the vitrine" "yes" \
+  "$(grep -q '"accentHue"' <<<"$storefront" && echo yes || echo no)"
+# A code read off an agency poster is typed however it is typed.
+check "a code is matched case-insensitively" "200" \
+  "$(status "$BASE/public/v1/operators/odn")"
+check "an unknown operator is a 404" "404" \
+  "$(status "$BASE/public/v1/operators/NOPE")"
+# Five minutes: a vitrine changes a few times a year, the next departure
+# changes hourly, and this is the shorter of the two clocks.
+check "the storefront is cacheable" "yes" \
+  "$(curl -sD - -o /dev/null "$BASE/public/v1/operators/ODN" | tr -d '\r' \
+     | grep -qi '^cache-control: public, max-age=300' && echo yes || echo no)"
+check "the vitrine editor is closed to anonymous" "401" \
+  "$(status "$BASE/console/v1/vitrine")"
+
 # ── The back office refuses everybody it should ─────────────────────────────
 #
 # The admin surface cannot be *exercised* against the fakes composition — it

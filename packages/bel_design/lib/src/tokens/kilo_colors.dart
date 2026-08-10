@@ -183,4 +183,15 @@ enum AccentHue {
 
   const AccentHue(this.color);
   final Color color;
+
+  /// Falls back to the house hue rather than throwing. An accent that fails
+  /// to parse is a storefront that should still render — the row came from a
+  /// database column with a CHECK constraint, and if it ever disagrees with
+  /// this enum the honest failure is a green header, not a blank screen.
+  static AccentHue byName(String? raw) {
+    for (final hue in values) {
+      if (hue.name == raw) return hue;
+    }
+    return foret;
+  }
 }

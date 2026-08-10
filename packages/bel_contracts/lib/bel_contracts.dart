@@ -22,6 +22,7 @@ export 'src/booking/booking_dto.dart';
 export 'src/catalog/city_dto.dart';
 export 'src/catalog/seat_map_dto.dart';
 export 'src/catalog/trip_dto.dart';
+export 'src/catalog/vitrine_dto.dart';
 export 'src/common/headers.dart';
 export 'src/common/page.dart';
 export 'src/config/market_dto.dart';

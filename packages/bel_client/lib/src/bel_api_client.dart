@@ -417,6 +417,28 @@ final class BelApiClient {
     }, idempotencyKey: idempotencyKey ?? IdempotencyKey.generate()),
   );
 
+  // ── The vitrine ───────────────────────────────────────────────────────────
+
+  /// The operator's own storefront, for the editor.
+  Future<VitrineDto> vitrine() async =>
+      VitrineDto.fromJson(await _get('/console/v1/vitrine'));
+
+  /// Saves it. A `PUT` because it is one record replaced whole — an operator
+  /// clearing their English tagline is sending a field, not omitting one, and
+  /// a PATCH shape would make "cleared" and "unchanged" the same request.
+  Future<VitrineDto> saveVitrine(SaveVitrineRequest request) async =>
+      VitrineDto.fromJson(
+        await _send(
+          'PUT',
+          '/console/v1/vitrine',
+          body: request.toJson(),
+        ).then((body) => body ?? const {}),
+      );
+
+  /// The public storefront behind `blt.cg/o/<code>`. Anonymous, and cacheable.
+  Future<StorefrontDto> storefront(String code) async =>
+      StorefrontDto.fromJson(await _get('/public/v1/operators/$code'));
+
   // ── Back office ───────────────────────────────────────────────────────────
 
   /// Every call below carries [BelHeaders.reason].

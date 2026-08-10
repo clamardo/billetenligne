@@ -76,6 +76,16 @@ abstract interface class ConsoleGateway {
     required String stationId,
   });
 
+  /// The operator's storefront, and the change they made to it.
+  ///
+  /// On this port rather than a second one because the vitrine editor is a
+  /// console screen like any other — and because its live preview is the
+  /// reason the screen sells the platform in a demo, which only works if the
+  /// preview and the save go through the same conversation.
+  Future<VitrineDto> vitrine();
+
+  Future<VitrineDto> saveVitrine(SaveVitrineRequest request);
+
   Future<CounterSaleDto> sell({
     required String departureId,
     required String buyerPhone,

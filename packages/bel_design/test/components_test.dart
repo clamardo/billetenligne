@@ -423,6 +423,122 @@ void main() {
     });
   });
 
+  group('KChip', () {
+    testWidgets('a long label narrows the chip, it does not break the card', (
+      tester,
+    ) async {
+      // The case that used to break: a trip card at a phone's width with a
+      // seats label spelled out. The chip has to ellipsise, because a chip
+      // that overflows takes the whole row with it — and the row is the
+      // search result somebody is trying to buy.
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 360,
+            child: KTripCard(
+              departureTime: '06:00',
+              arrivalTime: '13:30',
+              operatorName: 'Ocean du Nord',
+              durationLabel: '7 h',
+              totalFormatted: '9 000 FCFA',
+              seatsLabel: '12 places restantes',
+              onTap: null,
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('KBrandHeader', () {
+    testWidgets('an operator with no logo still gets a mark', (tester) async {
+      await tester.pumpWidget(
+        host(
+          const KBrandHeader(
+            title: 'Océan du Nord SARL',
+            tagline: 'Le confort sur toutes les routes',
+            accent: AccentHue.ocean,
+          ),
+        ),
+      );
+
+      // The documented default: a generated monogram rather than an empty
+      // square, so an operator who never opened the vitrine editor still
+      // looks maintained rather than abandoned.
+      expect(find.byType(KMonogram), findsOneWidget);
+      expect(find.text('ON'), findsOneWidget);
+    });
+
+    testWidgets('a supplied logo replaces the monogram entirely', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          const KBrandHeader(
+            title: 'Océan du Nord',
+            accent: AccentHue.ocean,
+            logo: SizedBox.shrink(key: Key('logo')),
+          ),
+        ),
+      );
+
+      expect(find.byKey(const Key('logo')), findsOneWidget);
+      expect(find.byType(KMonogram), findsNothing);
+    });
+
+    testWidgets('the compact header drops the tagline, not the title', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          const KBrandHeader(
+            title: 'Océan du Nord',
+            tagline: 'Le confort sur toutes les routes',
+            accent: AccentHue.laterite,
+            compact: true,
+          ),
+        ),
+      );
+
+      // The console wears this all day above a table. A tagline there is a
+      // line of vertical space taken from the work.
+      expect(find.text('Océan du Nord'), findsOneWidget);
+      expect(find.text('Le confort sur toutes les routes'), findsNothing);
+    });
+
+    testWidgets('every pattern paints without throwing', (tester) async {
+      for (final pattern in HeaderPattern.values) {
+        await tester.pumpWidget(
+          host(
+            KBrandHeader(
+              title: 'Sotrapo',
+              accent: AccentHue.prune,
+              pattern: pattern,
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(tester.takeException(), isNull, reason: pattern.name);
+      }
+    });
+
+    test('a monogram skips the words that identify nobody', () {
+      // Every second operator in Congo is a SARL.
+      expect(KMonogram.initialsOf('Océan du Nord SARL'), 'ON');
+      expect(KMonogram.initialsOf('Sotrapo'), 'SO');
+      expect(KMonogram.initialsOf('Trans Bony Voyages'), 'TB');
+      expect(KMonogram.initialsOf(''), '?');
+    });
+
+    test('an unknown hue or pattern falls back rather than throwing', () {
+      expect(AccentHue.byName('chartreuse'), AccentHue.foret);
+      expect(AccentHue.byName(null), AccentHue.foret);
+      expect(HeaderPattern.byName('hexagones'), HeaderPattern.flat);
+    });
+  });
+
   group('both themes', () {
     testWidgets('components render in dark without throwing', (tester) async {
       await tester.pumpWidget(

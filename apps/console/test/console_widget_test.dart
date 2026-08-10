@@ -1,4 +1,5 @@
 import 'package:bel_client/bel_client.dart';
+import 'package:bel_design/bel_design.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_console/src/application/console_workspace.dart';
 import 'package:bel_console/src/application/ports/console_gateway.dart';
@@ -188,6 +189,38 @@ final class _ScriptedConsole implements ConsoleGateway {
   }) async {
     saved.add('collect:$paymentCode:$stationId');
     return _sale;
+  }
+
+  VitrineDto vitrineRow = const VitrineDto(
+    operatorId: 'op-1',
+    code: 'ODN',
+    legalName: 'Ocean du Nord SARL',
+    tradingName: 'Ocean du Nord',
+    accentHue: 'foret',
+    headerPattern: 'flat',
+  );
+
+  @override
+  Future<VitrineDto> vitrine() async => vitrineRow;
+
+  @override
+  Future<VitrineDto> saveVitrine(SaveVitrineRequest request) async {
+    saved.add(
+      'vitrine:${request.accentHue}:${request.headerPattern}:'
+      '${request.titleFr}:${request.taglineFr}',
+    );
+    return vitrineRow = VitrineDto(
+      operatorId: vitrineRow.operatorId,
+      code: vitrineRow.code,
+      legalName: vitrineRow.legalName,
+      tradingName: vitrineRow.tradingName,
+      accentHue: request.accentHue,
+      headerPattern: request.headerPattern,
+      titleFr: request.titleFr,
+      titleEn: request.titleEn,
+      taglineFr: request.taglineFr,
+      taglineEn: request.taglineEn,
+    );
   }
 
   @override
@@ -445,5 +478,79 @@ void main() {
     // has to reassign one before the passengers arrive.
     expect(gateway.saved, contains('status:v-1:maintenance'));
     expect(find.textContaining("n'ont plus de car"), findsOneWidget);
+  });
+
+  group('the vitrine', () {
+    testWidgets('the closed sets are the ones the server refuses by', (
+      tester,
+    ) async {
+      // The design system paints the hues and the contract lists them,
+      // because the server cannot import Flutter. Two lists is the price of
+      // that; this is what stops them drifting apart.
+      expect(AccentHue.values.map((h) => h.name).toList(), Vitrine.accents);
+      expect(
+        HeaderPattern.values.map((p) => p.name).toList(),
+        Vitrine.patterns,
+      );
+    });
+
+    testWidgets('the preview is drawn from the form, before anything saves', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'vitrine.manage'],
+      );
+      final workspace = await pump(tester, gateway);
+
+      workspace.openSection(ConsoleSection.vitrine);
+      await tester.pumpAndSettle();
+
+      // The default: no title, so the trading name carries the header, and a
+      // generated monogram carries the mark.
+      expect(find.text('Ocean du Nord'), findsWidgets);
+      expect(find.byType(KMonogram), findsWidgets);
+
+      await tester.enterText(find.byType(TextField).first, 'Ocean Express');
+      await tester.pumpAndSettle();
+
+      // Rendered by the same widget the public page uses, and rendered
+      // before the save — which is the whole point of the screen.
+      expect(find.text('Ocean Express'), findsWidgets);
+      expect(gateway.saved, isEmpty);
+    });
+
+    testWidgets('an accent is chosen from eight, and sent by name', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'vitrine.manage'],
+      );
+      final workspace = await pump(tester, gateway);
+
+      workspace.openSection(ConsoleSection.vitrine);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Indigo'));
+      await tester.pumpAndSettle();
+
+      // The form is taller than a laptop viewport, so the save button lives
+      // below the fold on a 1280x800 screen — which is the screen an agency
+      // actually has.
+      await tester.ensureVisible(find.text('Enregistrer la vitrine'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Enregistrer la vitrine'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('vitrine:indigo:flat::'));
+    });
+
+    testWidgets('a vendor gets no vitrine tab, and no editor', (tester) async {
+      await pump(
+        tester,
+        _ScriptedConsole(capabilities: const ['booking.read', 'booking.sell']),
+      );
+
+      expect(find.text('Vitrine'), findsNothing);
+    });
   });
 }

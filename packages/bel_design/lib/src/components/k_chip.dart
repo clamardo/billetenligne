@@ -55,7 +55,19 @@ final class KChip extends StatelessWidget {
             Icon(icon, size: 13, color: foreground),
             SizedBox(width: kilo.space.s1),
           ],
-          Text(label, style: kilo.text.caption.copyWith(color: foreground)),
+          // Flexible, so a chip narrows instead of overflowing its row. The
+          // French string fits; the English one is a third longer, and a
+          // label an operator typed is any length at all. A row that breaks
+          // on a long word is a row that breaks in exactly the language we
+          // test least.
+          Flexible(
+            child: Text(
+              label,
+              style: kilo.text.caption.copyWith(color: foreground),
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );

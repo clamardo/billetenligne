@@ -122,6 +122,13 @@ final class ApiConsoleGateway implements ConsoleGateway {
   );
 
   @override
+  Future<VitrineDto> vitrine() => _client.vitrine();
+
+  @override
+  Future<VitrineDto> saveVitrine(SaveVitrineRequest request) =>
+      _client.saveVitrine(request);
+
+  @override
   Future<CounterSaleDto> sell({
     required String departureId,
     required String buyerPhone,

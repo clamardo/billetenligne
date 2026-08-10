@@ -100,6 +100,7 @@ final class ConsoleShell extends StatelessWidget {
     if (w.can('fleet.manage')) ConsoleSection.fleet,
     if (w.can('route.manage')) ConsoleSection.network,
     if (w.can('departure.manage')) ConsoleSection.timetable,
+    if (w.can('vitrine.manage')) ConsoleSection.vitrine,
   ];
 
   static IconData _icon(ConsoleSection s) => switch (s) {
@@ -108,6 +109,7 @@ final class ConsoleShell extends StatelessWidget {
     ConsoleSection.fleet => Icons.directions_bus,
     ConsoleSection.network => Icons.alt_route,
     ConsoleSection.timetable => Icons.schedule,
+    ConsoleSection.vitrine => Icons.storefront,
   };
 
   static String _labelKey(ConsoleSection s) => switch (s) {
@@ -116,6 +118,7 @@ final class ConsoleShell extends StatelessWidget {
     ConsoleSection.fleet => 'console.nav.fleet',
     ConsoleSection.network => 'console.nav.network',
     ConsoleSection.timetable => 'console.nav.timetable',
+    ConsoleSection.vitrine => 'console.nav.vitrine',
   };
 
   /// Notices travel as `key|arg|arg`, so the *workspace* never holds prose.

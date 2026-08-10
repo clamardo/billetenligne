@@ -28,6 +28,7 @@ import 'application/ports/platform_console.dart';
 import 'application/ports/departure_catalogue.dart';
 import 'application/ports/notification_gateway.dart';
 import 'application/ports/seat_inventory.dart';
+import 'application/ports/storefronts.dart';
 import 'application/ports/user_directory.dart';
 import 'application/pay_for_booking.dart';
 import 'application/reserve_booking.dart';
@@ -40,6 +41,7 @@ import 'infrastructure/memory/memory_payment_store.dart';
 import 'infrastructure/memory/memory_city_catalogue.dart';
 import 'infrastructure/memory/memory_identity.dart';
 import 'infrastructure/memory/memory_seat_inventory.dart';
+import 'infrastructure/memory/memory_storefronts.dart';
 import 'infrastructure/postgres/postgres_departure_catalogue.dart';
 import 'infrastructure/postgres/postgres_booking_store.dart';
 import 'infrastructure/postgres/postgres_identity.dart';
@@ -49,6 +51,7 @@ import 'infrastructure/postgres/postgres_payment_store.dart';
 import 'infrastructure/postgres/postgres_platform_console.dart';
 import 'infrastructure/postgres/postgres_idempotency_store.dart';
 import 'infrastructure/postgres/postgres_seat_inventory.dart';
+import 'infrastructure/postgres/postgres_storefronts.dart';
 import 'middleware/idempotency.dart';
 import 'ports/auth_gateway.dart';
 
@@ -72,6 +75,7 @@ final class Services {
     required this.bookings,
     required this.console,
     required this.platform,
+    required this.storefronts,
     required this.payments,
     required this.payForBooking,
     required this.railIds,
@@ -103,6 +107,11 @@ final class Services {
   /// operator console does — and more so: every read here is meant to cross
   /// tenants, and a fake with no tenants to cross would be theatre.
   final PlatformConsole platform;
+
+  /// An operator's storefront, on both surfaces: the editor they configure it
+  /// from and the public page a stranger opens. One port, because the live
+  /// preview in that editor is only honest if it previews the same record.
+  final Storefronts storefronts;
 
   final PaymentStore payments;
   final PayForBooking payForBooking;
@@ -181,6 +190,7 @@ final class Services {
       bookings: bookings,
       console: PostgresOperatorConsole(db, timeZone: Market.current.timeZone),
       platform: PostgresPlatformConsole(db),
+      storefronts: PostgresStorefronts(db),
       payments: paymentStore,
       payForBooking: PayForBooking(
         payments: paymentStore,
@@ -264,6 +274,7 @@ final class Services {
       bookings: memoryBookings,
       console: const UnavailableOperatorConsole(),
       platform: const UnavailablePlatformConsole(),
+      storefronts: MemoryStorefronts.demo(),
       payments: memoryPayments,
       payForBooking: PayForBooking(
         payments: memoryPayments,

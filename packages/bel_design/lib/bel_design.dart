@@ -9,6 +9,7 @@
 /// condition, not an edge case.
 library;
 
+export 'src/components/k_brand_header.dart';
 export 'src/components/k_button.dart';
 export 'src/components/k_card.dart';
 export 'src/components/k_chip.dart';

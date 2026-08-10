@@ -10,7 +10,7 @@ import 'ports/console_gateway.dart';
 /// Ordered the way an operator's day is: today's departures first, the till
 /// second, and configuration behind both. A fleet manager opens this app
 /// twice a month; a vendor opens it every morning.
-enum ConsoleSection { today, counter, fleet, network, timetable }
+enum ConsoleSection { today, counter, fleet, network, timetable, vitrine }
 
 /// Everything the console has loaded, and what it is doing.
 ///
@@ -55,6 +55,11 @@ final class ConsoleWorkspace {
   List<ScheduleDto> schedules = const [];
   List<DepartureBoardDto> board = const [];
 
+  /// The operator's storefront. Null until the vitrine section is opened —
+  /// nothing else on the console needs it, and loading it on every start
+  /// would be a request per morning for a screen most people open twice.
+  VitrineDto? vitrine;
+
   DateTime day = DateTime.now();
 
   void _emit() {
@@ -97,6 +102,8 @@ final class ConsoleWorkspace {
       case ConsoleSection.network:
         routes = await _gateway.routes();
         cities = await _gateway.cities();
+      case ConsoleSection.vitrine:
+        vitrine = await _gateway.vitrine();
       case ConsoleSection.timetable:
         schedules = await _gateway.schedules();
         // The editor cannot offer a route or a coach it has not loaded, and
@@ -224,6 +231,18 @@ final class ConsoleWorkspace {
       _notice = 'materialise.created|${report.created}';
     }
     await _loadSection();
+  });
+
+  /// Saves the storefront.
+  ///
+  /// The notice repeats the title rather than saying "saved", for the same
+  /// reason the layout notice repeats the version: this is the name a
+  /// traveller will see, and a confirmation that shows it is a confirmation
+  /// somebody can catch a typo in.
+  Future<void> saveVitrine(SaveVitrineRequest request) => _run(() async {
+    final saved = await _gateway.saveVitrine(request);
+    vitrine = saved;
+    _notice = 'vitrine.saved|${saved.titleFor('fr')}';
   });
 
   Future<ManifestDto?> manifest(String departureId) async {
