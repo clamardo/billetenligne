@@ -9,6 +9,7 @@ workspace:
   - packages/bel_contracts
   - packages/bel_crypto
   - packages/bel_client
+  - packages/bel_backoffice
   - services/api
   - services/worker
   - apps/admin

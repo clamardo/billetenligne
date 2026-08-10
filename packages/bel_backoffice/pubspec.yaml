@@ -1,0 +1,21 @@
+name: bel_backoffice
+description: >-
+  The screens the operator console and the admin back office must not
+  implement twice — sign-in, the second factor, and enrolling one. Two copies
+  of a security control is two chances for one of them to forget a step.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.24.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  bel_client: ^0.1.0
+  bel_contracts: ^0.1.0
+  bel_design: ^0.1.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0

@@ -23,7 +23,7 @@ What remains before a pilot is **commercial, not technical**, which is what this
 
 **Done:** the domain, the schema with its tenancy and ledger guarantees, the public sales boundary, the whole traveller API surface, email sign-in, booking and cash payment with double-entry postings, ticket issuing, the operator console's API, `services/worker`, the typed client, the Kilo component library, the traveller app through to a payment code, the standalone boarding scanner, and CI that executes all of it.
 
-699 tests · 103 smoke checks · 26 executed schema guarantees · 97 of those tests against real Postgres.
+1,061 tests · 113 smoke checks · 27 executed schema guarantees · 111 further tests against real Postgres.
 
 ---
 
@@ -69,14 +69,17 @@ Ships without a PSP. The point is to prove inventory, ticketing, boarding and th
 - ✅ **The operator console** — Flutter web: fleet, routes, timetables, the dispatcher's day, the guichet, manifests
 - 🔨 **The vitrine** — title, tagline, accent from the closed set of eight and a header pattern, with a live preview drawn by the real widgets, plus the public storefront behind `blt.cg/o/<code>`. **Logo upload is not built**: it needs object storage, and it is named on the screen rather than hidden behind a control that does nothing
 - ✅ **The admin back office** — Flutter web: the review queue, one operator's file with its documents and trail, the six decisions, the negotiated commission, and the `indeterminate` reconciliation queue with its three exits. The stated reason lives in the frame and nothing writes without one
+- ✅ **TOTP on both back-office surfaces** (ADR-0013) — RFC 6238, proved against the RFC's own Appendix B vectors before a line of the flow existed. Taken ahead of logo upload because it is a control on a live cross-tenant surface and needed no infrastructure that did not already exist. Three decisions worth restating: **travellers are never asked** (a second factor in front of a coach ticket protects one person's own bookings); **enrolment is not enforced by refusing to sign in** — staff with nothing enrolled get a session and land on the enrolment screen and nowhere else, because the alternative locked out every existing staff account the hour it shipped; and the half-session between the emailed code and the authenticator code is a **signed claim, not a row**. The flow lives in `bel_backoffice` so the console and the admin app cannot drift into asking differently
 
 ### Remaining, in dependency order
 
 **1. Logo upload, and the object storage it needs.**
 The vitrine ships without it. An operator gets a generated monogram in their accent — the documented default, and good enough that nobody looks abandoned — but a logo is the one part of a storefront that is genuinely *theirs*, and it needs a place to put a file: a storage port, an adapter, short-lived signed URLs, and downscaling to the sizes ADR-0009 budgets for. The same plumbing is what a KYB document scan will need, which is why it is worth building once and properly.
 
-**2. TOTP on both back-office surfaces, and the section builder.**
-The console and the admin app both sign in with a one-time code, and ADR-0013 says back office is email + password + mandatory TOTP. This moved up the list when the admin app shipped: the console's blast radius is one operator's own inventory, while the admin app reaches across every tenant and can approve an operator, change what we charge them and declare a payment captured. **It must land before refunds and payouts do**, and before the admin app leaves the pilot. The seat-layout section builder is the other half of this slice: four presets cover what runs in Congo today, and an operator whose coach matches none of them can only adjust a row count.
+**2. The seat-layout section builder.**
+Four presets cover what runs in Congo today, and an operator whose coach matches none of them can only adjust a row count. Was bundled with TOTP; TOTP shipped without it, because a security control and a layout editor have nothing to do with each other and pairing them only delayed one of them.
+
+Two things TOTP left behind, both small and both stated rather than buried: there is **no QR code** on the enrolment screen — a QR encoder is a few hundred lines of Reed–Solomon and this repository has no independent decoder to check one against, so a bug would ship as a code that scans cleanly and produces a factor that never matches; the setup key is typed instead, which every authenticator app accepts. And the TOTP **seed is not encrypted at rest**: a KMS key living in the same environment as the database is reassurance rather than a control, and claiming otherwise would be worse than naming the gap.
 
 **3. Refund policy wizard and cash refunds.**
 The policy engine is built and tested; the wizard and the execution path are not.

@@ -13,6 +13,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  bel_backoffice: ^0.1.0
   bel_client: ^0.1.0
   bel_contracts: ^0.1.0
   bel_design: ^0.1.0

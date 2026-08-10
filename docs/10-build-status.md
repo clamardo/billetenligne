@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-10 · after commit *The vitrine*
+**Updated:** 2026-08-10 · after commit *TOTP on both back offices*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -14,8 +14,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 | Feature | State | Notes |
 |---|---|---|
-| Monorepo, Melos, pub workspace | ✅ done | 6 packages, 2 services and 4 apps, one `dart pub get` |
-| Layer-boundary check in CI | ✅ done | `tool/check_layers.dart`, 5 rules, 237 files |
+| Monorepo, Melos, pub workspace | ✅ done | 7 packages, 2 services and 4 apps, one `dart pub get` |
+| Layer-boundary check in CI | ✅ done | `tool/check_layers.dart`, 5 rules, 248 files |
 | `bel_domain` — money, market, policies, state machines | ✅ done | Zero dependencies; DRC stood up entirely in test code |
 | `bel_localization` — YAML catalogs, fr + en | ✅ done | Missing-key, orphan, placeholder and SMS-length guards |
 | `bel_contracts` — wire format | ✅ done | Money is always `{minor, currency}` |
@@ -44,6 +44,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Boarding scanner (standalone app) | ✅ done | Camera, five verdicts, offline, debug simulator |
 | **Traveller app — browse and hold** | ✅ done | Onboardingless search → results → seat map → hold → release. 45 tests |
 | **Identity — sign in with an emailed code** | ✅ done | Challenge → Firebase custom token → ID token. Server, client and app. ADR-0024 |
+| **TOTP on both back-office surfaces** | ✅ done | RFC 6238, proved against the RFC's own Appendix B vectors. Travellers are never asked; staff with nothing enrolled sign in and land on the enrolment screen and nowhere else. Replay refused by a conditional `UPDATE` on `last_window`, and three simultaneous identical codes produce one sign-in. Shared by both apps via `bel_backoffice`. 22 unit · 15 vector · 17 integration · 10 widget tests |
 | `bel_client` — typed API client | ✅ done | Retries, idempotency keys, offline taxonomy, Firebase session refresh. 32 tests |
 | Traveller app — reserve and pay | ✅ done | Passenger names → payment code → agency. 54 app tests |
 | **Traveller app — tickets and history** | ✅ done | Upcoming and past, unpaid reservations included with their code. The QR and its rotating secret travel inside the booking, so opening a ticket costs no request. 11 flow and widget tests |
@@ -80,10 +81,10 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 ## Phase 3 and beyond
 
 Not started. `09-roadmap.md` has the remaining Phase 1 work in **dependency
-order**. With both consoles rendered and the vitrine shipped, the top of it is
-the object storage a logo upload needs — the same plumbing a KYB document scan
-will want — followed by TOTP, the refund policy wizard and a scheduler for the
-worker.
+order**. With both consoles rendered, the vitrine shipped and TOTP in front of
+both back offices, the top of it is the object storage a logo upload needs —
+the same plumbing a KYB document scan will want — followed by the seat-layout
+section builder, the refund policy wizard and a scheduler for the worker.
 
 ---
 
@@ -124,17 +125,23 @@ These are true today and each one is a decision, not an oversight.
    are onboarded in a room, and the queue is what makes the decision
    auditable afterwards — and it stops being acceptable the moment an
    eleventh applies without a phone call.
-7. **Both back-office surfaces sign in with a one-time code, not a password
-   and TOTP.** ADR-0013 specifies email + password + mandatory TOTP. The
-   deviation is documented in each app's `sign_in.dart`, and it is now the
-   larger of the two gaps here: the console's blast radius is one operator's
-   own inventory, while the admin app reaches across every tenant and can
-   approve an operator, change what we charge them and declare a payment
-   captured. What holds today is that everything on that surface is audited
-   with an actor and a reason, and that nothing on it moves money *out* —
-   payout approval and settlement-account editing are not endpoints at all.
-   **TOTP lands before they are, and before the admin app leaves the pilot.**
-   If a payout run ships first, those comments are the bug report.
+7. **Back-office sign-in is an emailed code plus TOTP, not a password plus
+   TOTP.** ADR-0013 specifies email + password + mandatory TOTP; the
+   authenticator half now exists on both surfaces and the password half does
+   not. That is a narrowing rather than a closing, and the argument for it is
+   that a password on top of a one-time code adds a secret to phish rather
+   than a factor to hold — the two things somebody would have to compromise
+   are already an inbox and a device. Three smaller edges of the same gap,
+   each stated rather than buried:
+   **enrolment is compulsory on next sign-in rather than retroactive**, so an
+   account that never signs in again keeps no factor;
+   **the TOTP seed is not encrypted at rest** — a KMS key living in the same
+   environment as the database is reassurance rather than a control;
+   and **there is no QR code** on the enrolment screen, because a QR encoder
+   is a few hundred lines of Reed–Solomon with no independent decoder here to
+   check it against, and a bug in one would ship as a code that scans cleanly
+   and produces a factor that never matches. The setup key is typed instead,
+   in groups of four, which every authenticator app accepts.
 8. **The seat-layout section builder is not built.** Four presets cover what
    actually runs in Congo and picking one takes ninety seconds, which is the
    path most operators take anyway (`06-fleet-and-routes.md` §3.2). An
@@ -160,27 +167,29 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 225 tests
+         packages/bel_contracts packages/bel_crypto     # 240 tests
 dart test packages/bel_client                           # 32 tests
-dart test services/api -x integration                   # 150 tests
-cd packages/bel_design && flutter test   # 65 component and contrast tests
+dart test services/api -x integration                   # 584 tests
+cd packages/bel_design     && flutter test  # 65 component and contrast tests
+cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 80 app tests
 cd apps/console   && flutter test        # 15 console tests
 cd apps/admin     && flutter test        # 15 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 237 files
-./infra/migrations/check.sh              # 26 schema guarantees
-./tool/integration.sh                    # 97 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 103 checks, incl. the Dart client
+dart run tool/check_layers.dart          # the onion rule, 248 files
+./infra/migrations/check.sh              # 27 schema guarantees
+./tool/integration.sh                    # 111 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 113 checks, incl. the Dart client
 ```
 
 Remove `services/api/build` before counting: `dart_frog build` copies the
 whole workspace into it, and `dart test services/api` then runs every suite
-twice and reports 414.
+twice — and, worse, runs a *stale copy* of a package's tests, which is how a
+green suite reported a failure in a file that no longer existed.
 
-**699 tests in total**, plus 103 smoke checks and 26 executed schema
-guarantees. The smoke run now includes the *typed client* against the running
+**1,061 tests in total**, plus 113 smoke checks, 27 executed schema guarantees
+and 111 further tests against real Postgres. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -188,6 +197,60 @@ the screens render. Both halves of that seam have broken here before.
 ---
 
 ## What the last push changed, and what it cost
+
+TOTP, in front of both back offices. It was item 2 on the roadmap and it was
+taken ahead of item 1: logo upload needs object storage that does not exist
+yet, while this is a control on a surface that is live and reaches across
+every tenant, and it needed nothing that was not already here.
+
+**The RFC's own vectors came before the flow.** RFC 6238 Appendix B, against
+real HMAC-SHA1, written and green before a single route existed. A base32
+alphabet off by one character or a window computed from local time fails
+there rather than on the first vendor's phone — and neither of those is
+visible in a test that checks its own arithmetic against itself.
+
+**Travellers are never asked, and the line is drawn from the database.** A
+second factor in front of a coach ticket is a barrier whose whole reward is
+protecting one person's own bookings. Operator staff and platform staff are
+asked; everybody else is not; and the decision is read from `operator_staff`
+and `platform_staff` rather than from anything a client sends.
+
+**Enrolment is not enforced by refusing to sign in.** That would have locked
+out every existing staff account the hour it shipped, including the people who
+would have to fix it. Staff with nothing enrolled get a real session and land
+on the enrolment screen and nowhere else. It is the honest reading of
+"mandatory" for a rollout, and it is stated in the use case rather than
+discovered in the behaviour.
+
+**The half-session is a signed claim, not a row.** Between "the emailed code
+was right" and "the authenticator code was right" there is a caller we have
+half-authenticated. Five minutes, single-purpose, worthless without a code the
+holder still has to compute — so a table to remember it would buy nothing but
+a table. What it must not be is forgeable, which is what the HMAC and the
+constant-time compare are for.
+
+**Two defects the tests found, not review.** `beginEnrolment` deleted retired
+recovery codes, but `bel_identity` is deliberately granted no `DELETE` there —
+a burned code is evidence. Retirement became `superseded_at`, and a schema
+check now asserts that column exists precisely because the missing grant
+depends on it. And a successful recovery code cleared the lock in the memory
+adapter but not in Postgres, which would have left somebody who *proved*
+themselves with a recovery code still locked out — in the one situation
+recovery codes exist for.
+
+**`bel_backoffice` is a new package, and the reason is the control rather than
+tidiness.** The console and the admin app had near-identical sign-in screens
+already; adding a second factor to each would have made two implementations of
+one security control, and two chances for one of them to forget the enrolment
+gate. It takes a translate function rather than reading an inherited scope,
+because the Flutter half of the catalog lives in each app — `bel_localization`
+is pure Dart so the API can read the same YAML from disk.
+
+**The console and back-office widget tests were running nowhere.** They were
+listed only under `melos test:apps`, and nothing in the CI workflow installs
+melos. Both are now named steps, as is the new package.
+
+## What the push before that changed
 
 The vitrine. The columns have been in the schema since migration 0001 and
 nothing had ever read or written one of them.
@@ -221,7 +284,7 @@ Logo upload is not built and is named on the screen rather than hidden behind
 a control that does nothing. Until it lands, an operator gets a generated
 monogram in their accent — which is the documented default anyway.
 
-## What the push before that changed
+## And the push before that
 
 The back office is an app. `/admin/v1` had been complete for two pushes and
 nothing rendered any of it — the queue, six decisions, the commission and the
@@ -336,7 +399,7 @@ reach a confirmed booking, a ticket or a QR — the whole reason the fake
 exists. It now settles on the second poll, and six smoke checks walk
 prompt → poll → capture → ticket over a real socket with no credentials.
 
-## And the push before that
+## Earlier pushes
 
 Mobile money, end to end — the part that sells this product.
 

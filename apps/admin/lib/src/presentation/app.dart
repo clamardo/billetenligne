@@ -22,12 +22,18 @@ final class AdminApp extends StatelessWidget {
     required this.catalog,
     required this.workspace,
     this.language = 'fr',
+    this.onManageSecondFactor,
     super.key,
   });
 
   final TranslationCatalog catalog;
   final AdminWorkspace workspace;
   final String language;
+
+  /// Opens the authenticator screen. Null in tests and in any composition
+  /// that has no client to enrol against — the shell omits the entry rather
+  /// than showing one that does nothing.
+  final VoidCallback? onManageSecondFactor;
 
   @override
   Widget build(BuildContext context) => Localized(
@@ -38,14 +44,18 @@ final class AdminApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: KiloTheme.materialTheme(),
       darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
-      home: _Admin(workspace: workspace),
+      home: _Admin(
+        workspace: workspace,
+        onManageSecondFactor: onManageSecondFactor,
+      ),
     ),
   );
 }
 
 class _Admin extends StatefulWidget {
-  const _Admin({required this.workspace});
+  const _Admin({required this.workspace, this.onManageSecondFactor});
   final AdminWorkspace workspace;
+  final VoidCallback? onManageSecondFactor;
 
   @override
   State<_Admin> createState() => _AdminState();
@@ -93,6 +103,7 @@ class _AdminState extends State<_Admin> {
 
     return AdminShell(
       workspace: _work,
+      onManageSecondFactor: widget.onManageSecondFactor,
       // An operator's file renders *over* whichever list it was opened from,
       // rather than as a fourth section. It is a step into a row, and a
       // navigation rail that changes under somebody who drilled into

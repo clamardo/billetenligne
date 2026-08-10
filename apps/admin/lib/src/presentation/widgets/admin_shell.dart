@@ -23,11 +23,17 @@ final class AdminShell extends StatefulWidget {
   const AdminShell({
     required this.workspace,
     required this.child,
+    this.onManageSecondFactor,
     super.key,
   });
 
   final AdminWorkspace workspace;
   final Widget child;
+
+  /// Somebody who replaced a phone has to be able to move their
+  /// authenticator, and the only alternative to a button here is a support
+  /// call — which is the cost this whole control was meant to avoid.
+  final VoidCallback? onManageSecondFactor;
 
   @override
   State<AdminShell> createState() => _AdminShellState();
@@ -89,6 +95,21 @@ class _AdminShellState extends State<AdminShell> {
                   label: Text(context.t(_labelKey(section))),
                 ),
             ],
+            trailing: widget.onManageSecondFactor == null
+                ? null
+                : Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: kilo.space.s4),
+                        child: IconButton(
+                          icon: const Icon(Icons.lock_outline),
+                          tooltip: context.t('auth.enrol.manage'),
+                          onPressed: widget.onManageSecondFactor,
+                        ),
+                      ),
+                    ),
+                  ),
           ),
           const VerticalDivider(width: 1),
           Expanded(

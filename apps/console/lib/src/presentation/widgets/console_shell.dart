@@ -18,11 +18,17 @@ final class ConsoleShell extends StatelessWidget {
   const ConsoleShell({
     required this.workspace,
     required this.child,
+    this.onManageSecondFactor,
     super.key,
   });
 
   final ConsoleWorkspace workspace;
   final Widget child;
+
+  /// Somebody who replaced a phone has to be able to move their
+  /// authenticator, and the only alternative to a button here is a support
+  /// call — which is the cost this whole control was meant to avoid.
+  final VoidCallback? onManageSecondFactor;
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +61,21 @@ final class ConsoleShell extends StatelessWidget {
                   label: Text(context.t(_labelKey(section))),
                 ),
             ],
+            trailing: onManageSecondFactor == null
+                ? null
+                : Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: kilo.space.s4),
+                        child: IconButton(
+                          icon: const Icon(Icons.lock_outline),
+                          tooltip: context.t('auth.enrol.manage'),
+                          onPressed: onManageSecondFactor,
+                        ),
+                      ),
+                    ),
+                  ),
           ),
           const VerticalDivider(width: 1),
           Expanded(

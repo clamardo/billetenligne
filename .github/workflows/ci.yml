@@ -75,6 +75,26 @@ jobs:
         working-directory: apps/traveller
         run: flutter test
 
+      # The shared back-office flow: sign-in, the second factor, and enrolling
+      # one. Tested here rather than twice over, which is the whole reason it
+      # is a package — two implementations of one security control is two
+      # chances for one of them to forget the enrolment gate.
+      - name: Back-office sign-in
+        working-directory: packages/bel_backoffice
+        run: flutter test
+
+      # These two ran only under `melos test:apps`, and nothing in this file
+      # installs melos — so the console and the back office had widget tests
+      # that no pipeline executed. Named explicitly, for the same reason the
+      # traveller app is.
+      - name: Operator console
+        working-directory: apps/console
+        run: flutter test
+
+      - name: Back office
+        working-directory: apps/admin
+        run: flutter test
+
   # Layer 3. A schema that compiles is not a schema that isolates tenants,
   # balances a ledger or refuses to let someone edit an audit trail — so all
   # three are executed against a real Postgres.

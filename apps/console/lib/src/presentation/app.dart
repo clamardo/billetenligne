@@ -29,12 +29,18 @@ final class ConsoleApp extends StatelessWidget {
     required this.catalog,
     required this.workspace,
     this.language = 'fr',
+    this.onManageSecondFactor,
     super.key,
   });
 
   final TranslationCatalog catalog;
   final ConsoleWorkspace workspace;
   final String language;
+
+  /// Opens the authenticator screen. Null in tests and in any composition
+  /// that has no client to enrol against — the shell simply omits the entry
+  /// rather than showing one that does nothing.
+  final VoidCallback? onManageSecondFactor;
 
   @override
   Widget build(BuildContext context) => Localized(
@@ -45,14 +51,18 @@ final class ConsoleApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: KiloTheme.materialTheme(),
       darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
-      home: _Console(workspace: workspace),
+      home: _Console(
+        workspace: workspace,
+        onManageSecondFactor: onManageSecondFactor,
+      ),
     ),
   );
 }
 
 class _Console extends StatefulWidget {
-  const _Console({required this.workspace});
+  const _Console({required this.workspace, this.onManageSecondFactor});
   final ConsoleWorkspace workspace;
+  final VoidCallback? onManageSecondFactor;
 
   @override
   State<_Console> createState() => _ConsoleState();
@@ -100,6 +110,7 @@ class _ConsoleState extends State<_Console> {
 
     return ConsoleShell(
       workspace: _work,
+      onManageSecondFactor: widget.onManageSecondFactor,
       child: switch (_work.section) {
         ConsoleSection.today => TodayScreen(workspace: _work),
         ConsoleSection.counter => CounterScreen(workspace: _work),
