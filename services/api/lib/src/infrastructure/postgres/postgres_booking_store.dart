@@ -4,8 +4,10 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart';
 
 import '../../application/ports/booking_store.dart';
+import '../../application/ports/disruption_desk.dart';
 import '../../application/ports/ticket_issuer.dart';
 import '../db/database.dart';
+import 'postgres_disruptions.dart';
 
 /// Bookings, tickets and the ledger — written together or not at all.
 ///
@@ -416,7 +418,8 @@ final class PostgresBookingStore implements BookingStore {
       Sql.named('''
         SELECT id, ref, departure_id, state::text AS state, fare_minor,
                service_fee_minor,
-               total_minor, currency::text AS currency, payment_code, payment_deadline, created_at
+               total_minor, currency::text AS currency, payment_code,
+               payment_deadline, created_at, involuntary_change
           FROM bookings
          WHERE payment_code = @code
            AND operator_id = @operator
@@ -441,7 +444,8 @@ final class PostgresBookingStore implements BookingStore {
       Sql.named('''
         SELECT id, ref, departure_id, state::text AS state, fare_minor,
                service_fee_minor,
-               total_minor, currency::text AS currency, payment_code, payment_deadline, created_at
+               total_minor, currency::text AS currency, payment_code,
+               payment_deadline, created_at, involuntary_change
           FROM bookings WHERE id = @id AND operator_id = @operator
       '''),
       parameters: {
@@ -461,7 +465,7 @@ final class PostgresBookingStore implements BookingStore {
             SELECT id, ref, operator_id, departure_id, state::text AS state,
                    fare_minor,
                    service_fee_minor, total_minor, currency::text AS currency, payment_code,
-                   payment_deadline, created_at
+                   payment_deadline, created_at, involuntary_change
               FROM bookings
              WHERE purchaser_user_id = app_user_id()
              ORDER BY created_at DESC
@@ -505,7 +509,35 @@ final class PostgresBookingStore implements BookingStore {
       paymentCode: row['payment_code'] as String?,
       paymentDeadline: row['payment_deadline'] as DateTime?,
       tickets: await _readTickets(tx, bookingId),
+      involuntaryChange: row['involuntary_change'] as bool? ?? false,
+      disruption: await _disruption(tx, row['departure_id'].toString()),
     );
+  }
+
+  /// The open disruption on this departure, if there is one.
+  ///
+  /// One row at most, guaranteed by the partial unique index rather than by
+  /// `LIMIT 1` and hope — a traveller looking at their ticket during a
+  /// breakdown must not be shown whichever of two answers sorted first.
+  Future<DisruptionRecord?> _disruption(
+    TxSession tx,
+    String departureId,
+  ) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT x.id, x.departure_id, x.kind::text AS kind, x.cause, x.note,
+               x.location, x.revised_departs_at, x.estimated_resolution,
+               x.marks_involuntary, x.bookings_affected, x.declared_at,
+               x.resolved_at, d.departs_at
+          FROM disruptions x
+          JOIN departures d ON d.id = x.departure_id
+         WHERE x.departure_id = @id AND x.resolved_at IS NULL
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+    );
+
+    if (rows.isEmpty) return null;
+    return PostgresDisruptions.readDisruption(rows.first.toColumnMap());
   }
 
   Future<void> _insertBookingSeats(

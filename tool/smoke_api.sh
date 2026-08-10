@@ -928,6 +928,51 @@ check "and locks behind the review" "yes" \
 check "an applicant is not yet an operator" "403" \
   "$(status -H "Authorization: Bearer $session_token" "$BASE/console/v1/me")"
 
+
+# ── Declaring a disruption (08-disruption.md §2.1) ──────────────────────────
+#
+# What a socket can prove here is the ordering above the transaction: who may
+# declare, and which declarations are refused before anything is written. The
+# transaction itself — record, exempt, queue, or none of it — is proved
+# against real Postgres in `disruption_pg_test.dart`, because atomicity is not
+# a thing a status code can show.
+echo "── declaring a disruption"
+
+DEP="00000000-0000-0000-0000-0000000000d1"
+
+declare_as() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST \
+    "$BASE/console/v1/departures/$DEP/disruptions" -H "$1" \
+    -H 'Content-Type: application/json' -d "$2"
+}
+
+check "an anonymous caller cannot declare one" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/departures/$DEP/disruptions" \
+     -H 'Content-Type: application/json' \
+     -d '{"kind":"cancellation","cause":"noVehicle"}')"
+# Cancelling a coach and telling forty-two people about it is not the same
+# authority as selling a seat, and it is certainly not a traveller's.
+check "a traveller cannot cancel somebody's coach" "403" \
+  "$(declare_as "$AUTH" '{"kind":"cancellation","cause":"noVehicle"}')"
+check "a kind nobody knows is refused, not guessed at" "400" \
+  "$(declare_as "$OP_AUTH" '{"kind":"volcano","cause":"weather"}')"
+# The one refusal that is a domain rule rather than a syntax check: a delay
+# with no new time is an apology, and a passenger cannot decide anything with
+# it.
+check "a delay with no new time is refused" "400" \
+  "$(declare_as "$OP_AUTH" '{"kind":"delay","cause":"checkpoint"}')"
+check "a well-formed breakdown gets past validation" "503" \
+  "$(declare_as "$OP_AUTH" \
+     '{"kind":"breakdownEnRoute","cause":"mechanical","note":"km 180 RN1"}')"
+# An unknown cause is not refused — it becomes `other`. The cause feeds
+# statistics; the kind decides entitlements, and only one of those is worth
+# failing a roadside request over.
+check "an unknown cause is absorbed rather than refused" "503" \
+  "$(declare_as "$OP_AUTH" '{"kind":"cancellation","cause":"locusts"}')"
+check "GET is not a way to declare one" "405" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/departures/$DEP/disruptions")"
+
 # ── The Dart client against this same server ────────────────────────────────
 #
 # curl proves the HTTP surface; this proves the seam the *app* actually uses —

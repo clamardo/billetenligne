@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bel_api/src/application/ports/booking_store.dart';
+import 'package:bel_api/src/application/ports/disruption_desk.dart';
 import 'package:bel_api/src/application/reserve_booking.dart';
 import 'package:bel_api/src/composition.dart';
 import 'package:bel_api/src/middleware/idempotency.dart';
@@ -187,6 +188,8 @@ BookingDto _toDto(BookingRecord record) => BookingDto(
   createdAt: record.createdAt,
   paymentCode: record.paymentCode,
   paymentDeadline: record.paymentDeadline,
+  involuntaryChange: record.involuntaryChange,
+  disruption: _disruptionOf(record.disruption),
   // Everything needed to render and verify this ticket offline travels in
   // the response, including the rotating secret. A ticket that needs the
   // network to display is not a ticket (ADR-0003), and a device that cannot
@@ -211,6 +214,27 @@ BookingDto _toDto(BookingRecord record) => BookingDto(
       ),
   ],
 );
+
+/// The open disruption, if the departure has one.
+///
+/// Sent on the booking even when [BookingDto.involuntaryChange] is already
+/// true, because they answer different questions: the flag says what this
+/// traveller is entitled to, and this says what is happening to their coach.
+DisruptionDto? _disruptionOf(DisruptionRecord? record) {
+  if (record == null) return null;
+  final declared = record.disruption;
+  return DisruptionDto(
+    id: record.id,
+    kind: declared.kind,
+    cause: declared.cause,
+    declaredAt: declared.declaredAt,
+    marksInvoluntary: record.marksInvoluntary,
+    note: declared.note,
+    location: declared.location,
+    revisedDepartsAt: declared.revisedDepartsAt,
+    estimatedResolution: declared.estimatedResolution,
+  );
+}
 
 String _passengerOn(BookingRecord record, String seatLabel) {
   for (final seat in record.seats) {

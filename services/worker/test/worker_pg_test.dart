@@ -4,6 +4,7 @@ library;
 import 'dart:io';
 
 import 'package:bel_api/src/adapters/logging_notification_gateway.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_disruptions.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_operator_console.dart';
 import 'package:bel_domain/bel_domain.dart';
@@ -65,6 +66,7 @@ void main() {
         Platform.environment['BEL_I18N_DIR'] ??
             'packages/bel_localization/i18n',
       ),
+      timeZone: 'Africa/Brazzaville',
     );
   });
 
@@ -183,6 +185,68 @@ void main() {
     return rows.first.toColumnMap()['s'] as String;
   }
 
+  Future<String> aStation() async {
+    final rows = await seed.execute(
+      Sql.named('''
+        INSERT INTO stations (operator_id, city_code, name)
+        VALUES (@o, 'BZV', @n) RETURNING id
+      '''),
+      parameters: {
+        'o': TypedValue(Type.uuid, operatorId),
+        'n': TypedValue(Type.text, unique('Agence ')),
+      },
+    );
+    return rows.first.toColumnMap()['id'] as String;
+  }
+
+  /// A paid booking on a departure that already exists, so a test can put two
+  /// passengers on one coach — which is the case a disruption is about.
+  Future<String> aConfirmedBookingOn(
+    String departureId, {
+    String seat = '1A',
+  }) async {
+    final rows = await seed.execute(
+      Sql.named('''
+        INSERT INTO bookings
+          (ref, operator_id, departure_id, purchaser_user_id, state,
+           fare_minor, service_fee_minor, total_minor, currency,
+           payment_method, paid_at, station_id)
+        VALUES (@ref, @operator, @departure, @user, 'confirmed',
+                12000, 300, 12300, 'XAF', 'cash', now(), @station)
+        RETURNING id
+      '''),
+      parameters: {
+        'ref': TypedValue(Type.text, unique('R').substring(0, 6).toUpperCase()),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'departure': TypedValue(Type.uuid, departureId),
+        'user': TypedValue(Type.uuid, await aTraveller()),
+        'station': TypedValue(Type.uuid, await aStation()),
+      },
+    );
+    final bookingId = rows.first.toColumnMap()['id'] as String;
+
+    await seed.execute(
+      Sql.named('''
+        INSERT INTO booking_seats
+          (booking_id, seat_label, passenger_name, fare_minor)
+        VALUES (@b, @seat, 'Aline M.', 12000)
+      '''),
+      parameters: {
+        'b': TypedValue(Type.uuid, bookingId),
+        'seat': TypedValue(Type.text, seat),
+      },
+    );
+    return bookingId;
+  }
+
+  Future<DateTime> departureTime(String departureId) async {
+    final rows = await seed.execute(
+      Sql.named('SELECT departs_at FROM departures WHERE id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+    );
+    return rows.first.toColumnMap()['departs_at'] as DateTime;
+  }
+
   group('lapsed holds', () {
     test('are expired and their seats go back on sale', () async {
       final departureId = await aDeparture();
@@ -270,57 +334,8 @@ void main() {
       return rows.first.toColumnMap()['id'] as int;
     }
 
-    Future<String> aStation() async {
-      final rows = await seed.execute(
-        Sql.named('''
-          INSERT INTO stations (operator_id, city_code, name)
-          VALUES (@o, 'BZV', @n) RETURNING id
-        '''),
-        parameters: {
-          'o': TypedValue(Type.uuid, operatorId),
-          'n': TypedValue(Type.text, unique('Agence ')),
-        },
-      );
-      return rows.first.toColumnMap()['id'] as String;
-    }
-
-    Future<String> aConfirmedBooking() async {
-      final departureId = await aDeparture();
-      final userId = await aTraveller();
-
-      final rows = await seed.execute(
-        Sql.named('''
-          INSERT INTO bookings
-            (ref, operator_id, departure_id, purchaser_user_id, state,
-             fare_minor, service_fee_minor, total_minor, currency,
-             payment_method, paid_at, station_id)
-          VALUES (@ref, @operator, @departure, @user, 'confirmed',
-                  12000, 300, 12300, 'XAF', 'cash', now(), @station)
-          RETURNING id
-        '''),
-        parameters: {
-          'ref': TypedValue(
-            Type.text,
-            unique('R').substring(0, 6).toUpperCase(),
-          ),
-          'operator': TypedValue(Type.uuid, operatorId),
-          'departure': TypedValue(Type.uuid, departureId),
-          'user': TypedValue(Type.uuid, userId),
-          'station': TypedValue(Type.uuid, await aStation()),
-        },
-      );
-      final bookingId = rows.first.toColumnMap()['id'] as String;
-
-      await seed.execute(
-        Sql.named('''
-          INSERT INTO booking_seats
-            (booking_id, seat_label, passenger_name, fare_minor)
-          VALUES (@b, '1A', 'Aline M.', 12000)
-        '''),
-        parameters: {'b': TypedValue(Type.uuid, bookingId)},
-      );
-      return bookingId;
-    }
+    Future<String> aConfirmedBooking() async =>
+        aConfirmedBookingOn(await aDeparture());
 
     test('delivers a confirmation and marks it delivered', () async {
       final bookingId = await aConfirmedBooking();
@@ -336,6 +351,29 @@ void main() {
       // Marked in the same transaction the send was attempted in. The window
       // between the two is the one where a crash sends twice.
       expect(row.first.toColumnMap()['delivered_at'], isNotNull);
+    });
+
+    test('a confirmation states the time in the market, not in UTC', () async {
+      final sent = FakeNotificationGateway();
+      final recording = OutboxDrain(
+        db: db,
+        notifications: sent,
+        catalog: CatalogLoader.fromDirectory(
+          Platform.environment['BEL_I18N_DIR'] ??
+              'packages/bel_localization/i18n',
+        ),
+        timeZone: 'Africa/Brazzaville',
+      );
+
+      await queue(await aConfirmedBooking());
+      await recording.drain();
+
+      // The pattern is the 06:00 from Brazzaville, which is 05:00 UTC — and
+      // `timestamptz` arrives in Dart as UTC. Formatting it here would tell a
+      // traveller their coach leaves an hour before it does, which is the one
+      // failure in this file somebody actually misses a coach over. Postgres
+      // has the zone database; Dart does not.
+      expect(sent.last.body, contains('06h00'));
     });
 
     test('draining twice does not send twice', () async {
@@ -368,6 +406,127 @@ void main() {
          WHERE event_type = 'nobody.handles.this' AND delivered_at IS NULL
       ''');
       expect(stuck.first.toColumnMap()['n'], 0);
+    });
+  });
+
+  /// The message a passenger actually receives when their coach breaks down.
+  ///
+  /// Composed here rather than at the moment of declaration (ADR-0019 rule 1):
+  /// a dispatcher standing at a roadside must not wait on an SMS gateway to
+  /// find out whether their declaration was recorded.
+  group('a disruption reaches the passenger', () {
+    late FakeNotificationGateway sent;
+    late OutboxDrain recording;
+    late PostgresDisruptions desk;
+
+    setUp(() {
+      sent = FakeNotificationGateway();
+      recording = OutboxDrain(
+        db: db,
+        notifications: sent,
+        catalog: CatalogLoader.fromDirectory(
+          Platform.environment['BEL_I18N_DIR'] ??
+              'packages/bel_localization/i18n',
+        ),
+        timeZone: 'Africa/Brazzaville',
+      );
+      desk = PostgresDisruptions(db);
+    });
+
+    Future<String> declared({
+      required DisruptionKind kind,
+      required DisruptionCause cause,
+      Duration? later,
+      String? note,
+    }) async {
+      final departureId = await aDeparture();
+      await aConfirmedBookingOn(departureId);
+      final departsAt = await departureTime(departureId);
+
+      final result = await desk.declare(
+        operatorId: operatorId,
+        departureId: departureId,
+        kind: kind,
+        cause: cause,
+        actorUserId: await aTraveller(),
+        now: DateTime.now().toUtc(),
+        note: note,
+        revisedDepartsAt: later == null ? null : departsAt.add(later),
+      );
+      expect(result.isOk, isTrue, reason: '${result.failureOrNull?.code}');
+      return departureId;
+    }
+
+    test('a cancellation says who, which route, and that it is free', () async {
+      await declared(
+        kind: DisruptionKind.cancellation,
+        cause: DisruptionCause.noVehicle,
+      );
+
+      await recording.drain();
+
+      final body = sent.sent.last.body;
+      // The operator's name, because a traveller with two bookings that
+      // morning needs to know which coach this is about.
+      expect(body, contains('Ocean du Nord'));
+      expect(body, contains('BZV–PNR'));
+      expect(body, contains("n'aura pas lieu"));
+      // The first question in every passenger's mind.
+      expect(body, contains('Aucun frais'));
+    });
+
+    test('a short delay carries the new time and promises nothing', () async {
+      await declared(
+        kind: DisruptionKind.delay,
+        cause: DisruptionCause.checkpoint,
+        later: const Duration(minutes: 20),
+      );
+
+      await recording.drain();
+
+      final body = sent.sent.last.body;
+      expect(body, contains('06h20'));
+      // Twenty minutes entitles nobody to anything, and saying "aucun frais"
+      // is a promise a counter agent has to refuse to somebody's face.
+      expect(body, isNot(contains('Aucun frais')));
+    });
+
+    test("the dispatcher's own words are carried through", () async {
+      await declared(
+        kind: DisruptionKind.breakdownEnRoute,
+        cause: DisruptionCause.mechanical,
+        note: 'pont coupe a Loufoulakari',
+      );
+
+      await recording.drain();
+
+      // No catalog can hold this sentence, which is exactly why the field
+      // exists — and it is the part the passenger acts on.
+      expect(sent.sent.last.body, contains('pont coupe a Loufoulakari'));
+    });
+
+    test('one message per passenger, and only once', () async {
+      final departureId = await aDeparture();
+      await aConfirmedBookingOn(departureId, seat: '1A');
+      await aConfirmedBookingOn(departureId, seat: '1B');
+
+      await desk.declare(
+        operatorId: operatorId,
+        departureId: departureId,
+        kind: DisruptionKind.cancellation,
+        cause: DisruptionCause.roadClosed,
+        actorUserId: await aTraveller(),
+        now: DateTime.now().toUtc(),
+      );
+
+      await recording.drain();
+      final afterFirst = sent.sent.length;
+      await recording.drain();
+
+      expect(afterFirst, 2);
+      // The dedupe key is per disruption per booking, so a drain that runs
+      // twice — or two drains at once — is still one message each.
+      expect(sent.sent.length, afterFirst);
     });
   });
 

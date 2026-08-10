@@ -114,3 +114,34 @@ application:
     settlementAccountName: "Nom du titulaire du compte"
     settlementAccountRef: "Numéro du compte ou du portefeuille"
     agreement: "Acceptation des conditions"
+
+# Perturbations (08-disruption.md). Le libellé et la cause voyagent en clés,
+# jamais en prose : le serveur envoie `disruption.kind.delay`, le client rend
+# la phrase dans la langue du lecteur (ADR-0008).
+disruption:
+  kind:
+    delay: "Retard"
+    cancellation: "Annulation"
+    breakdownEnRoute: "Panne en route"
+    equipmentSwap: "Changement de car"
+    diversion: "Déviation"
+    routeSuspension: "Ligne suspendue"
+  cause:
+    mechanical: "Panne mécanique"
+    roadClosed: "Route coupée"
+    weather: "Météo"
+    security: "Sécurité"
+    noDriver: "Pas de chauffeur"
+    noVehicle: "Pas de car disponible"
+    checkpoint: "Barrage / contrôle"
+    lateInbound: "Car entrant en retard"
+    other: "Autre"
+  # La phrase envoyée au passager. Courte : elle part en SMS, et un SMS long
+  # coûte plusieurs fois le prix d'un court.
+  summary:
+    delay: "Nouveau départ prévu à {time}."
+    cancellation: "Ce départ n'aura pas lieu."
+    breakdownEnRoute: "Le car est immobilisé."
+    equipmentSwap: "Un autre car est affecté."
+    diversion: "L'itinéraire est modifié."
+    routeSuspension: "La ligne est suspendue."

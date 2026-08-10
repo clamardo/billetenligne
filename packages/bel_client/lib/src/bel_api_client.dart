@@ -558,6 +558,22 @@ final class BelApiClient {
         field: 'items',
       );
 
+  /// Declares a disruption on a departure (`08-disruption.md` §2.1).
+  ///
+  /// The request is validated by the same domain function the server runs, so
+  /// the console can refuse a delay with no new time before spending a round
+  /// trip on it — at a roadside, on 2G, that round trip is the whole latency
+  /// budget.
+  Future<DeclaredDisruptionDto> declareDisruption({
+    required String departureId,
+    required DeclareDisruptionRequest request,
+  }) async => DeclaredDisruptionDto.fromJson(
+    await _postJson(
+      '/console/v1/departures/$departureId/disruptions',
+      request.toJson(),
+    ),
+  );
+
   Future<ManifestDto> manifest(String departureId) async =>
       ManifestDto.fromJson(
         await _get('/console/v1/departures/$departureId/manifest'),

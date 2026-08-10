@@ -1,5 +1,6 @@
 import 'package:bel_domain/bel_domain.dart';
 
+import '../disruption/disruption_dto.dart';
 import '../json/json_codec.dart';
 
 final class PassengerDto {
@@ -142,6 +143,7 @@ final class BookingDto {
     required this.createdAt,
     this.tickets = const [],
     this.involuntaryChange = false,
+    this.disruption,
     this.refundPolicySummaryKey,
     this.fare,
     this.serviceFee,
@@ -170,6 +172,14 @@ final class BookingDto {
   /// delay). Permanently exempts the booking from fees and fare differences,
   /// and shows as "Modifié par l'opérateur" in the traveller's history.
   final bool involuntaryChange;
+
+  /// What is happening to this coach right now, when something is.
+  ///
+  /// Carried on the booking rather than fetched separately, because during a
+  /// breakdown the traveller's ticket *is* the information channel
+  /// (`08-disruption.md` §3.3) and a second round trip on 2G is eight seconds
+  /// somebody spends staring at a spinner at the roadside.
+  final DisruptionDto? disruption;
 
   final String? refundPolicySummaryKey;
 
@@ -212,6 +222,7 @@ final class BookingDto {
     'createdAt': Wire.instant(createdAt),
     'tickets': tickets.isEmpty ? null : [for (final t in tickets) t.toJson()],
     'involuntaryChange': involuntaryChange,
+    'disruption': disruption?.toJson(),
     'refundPolicySummaryKey': refundPolicySummaryKey,
     'fare': fare == null ? null : Wire.money(fare!),
     'serviceFee': serviceFee == null ? null : Wire.money(serviceFee!),
@@ -247,6 +258,11 @@ final class BookingDto {
       field: 'tickets',
     ),
     involuntaryChange: json['involuntaryChange'] as bool? ?? false,
+    disruption: json['disruption'] == null
+        ? null
+        : DisruptionDto.fromJson(
+            (json['disruption'] as Map).cast<String, Object?>(),
+          ),
     refundPolicySummaryKey: json['refundPolicySummaryKey'] as String?,
     fare: json['fare'] == null
         ? null

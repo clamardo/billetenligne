@@ -4,6 +4,7 @@ import 'package:bel_api/src/adapters/acs_notification_gateway.dart';
 import 'package:bel_api/src/adapters/logging_notification_gateway.dart';
 import 'package:bel_api/src/application/ports/notification_gateway.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
+import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_api/src/composition.dart';
 import 'package:bel_worker/src/outbox_drain.dart';
@@ -78,6 +79,10 @@ Future<int> main(List<String> args) async {
     catalog: CatalogLoader.fromDirectory(
       Platform.environment['BEL_I18N_DIR'] ?? 'packages/bel_localization/i18n',
     ),
+    // Every time in every message is rendered in this zone. The market's, not
+    // the host's: a container in Europe would otherwise tell a traveller in
+    // Brazzaville that their 06:00 coach leaves at 05:00.
+    timeZone: Market.current.timeZone,
   );
 
   final passes = <String, Future<SweepResult> Function()>{

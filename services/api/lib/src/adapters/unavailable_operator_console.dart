@@ -1,5 +1,6 @@
 import 'package:bel_domain/bel_domain.dart';
 
+import '../application/ports/disruption_desk.dart';
 import '../application/ports/operator_console.dart';
 import '../application/ports/platform_console.dart';
 
@@ -232,4 +233,35 @@ final class UnavailablePlatformConsole implements PlatformConsole {
     String? operatorId,
     String? traceId,
   }) async => _refuse();
+}
+
+/// What the dispatcher's disruption desk resolves to with no database.
+///
+/// Same argument as the console above, and one more: declaring a disruption
+/// marks bookings, moves a departure and queues a message to every passenger
+/// on it. A fake that accepted one would answer "42 passagers prévenus" to a
+/// dispatcher standing at a roadside, having told nobody.
+final class UnavailableDisruptionDesk implements DisruptionDesk {
+  const UnavailableDisruptionDesk();
+
+  @override
+  Future<Result<DisruptionRecord, DeclarationRefusal>> declare({
+    required String operatorId,
+    required String departureId,
+    required DisruptionKind kind,
+    required DisruptionCause cause,
+    required String actorUserId,
+    required DateTime now,
+    String? note,
+    String? location,
+    DateTime? revisedDepartsAt,
+    DateTime? estimatedResolution,
+  }) async => throw const ConsoleRequiresDatabase();
+
+  @override
+  Future<Map<String, DisruptionRecord>> openFor({
+    required String operatorId,
+    required DateTime from,
+    required DateTime to,
+  }) async => throw const ConsoleRequiresDatabase();
 }

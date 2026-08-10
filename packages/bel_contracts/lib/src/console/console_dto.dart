@@ -1,6 +1,7 @@
 import 'package:bel_domain/bel_domain.dart';
 
 import '../booking/booking_dto.dart';
+import '../disruption/disruption_dto.dart';
 import '../json/json_codec.dart';
 
 /// Who the console is talking to, and what they may do.
@@ -250,6 +251,7 @@ final class DepartureBoardDto {
     required this.held,
     required this.available,
     this.vehicle,
+    this.disruption,
   });
 
   final String id;
@@ -267,6 +269,11 @@ final class DepartureBoardDto {
   final int available;
   final String? vehicle;
 
+  /// What is happening to this coach, when something is. Present on the board
+  /// itself rather than a row away, because the dispatcher's day view is the
+  /// screen somebody is looking at when the phone call comes in.
+  final DisruptionDto? disruption;
+
   factory DepartureBoardDto.fromJson(Map<String, Object?> json) =>
       DepartureBoardDto(
         id: Wire.requireString(json['id'], 'id'),
@@ -278,6 +285,11 @@ final class DepartureBoardDto {
         held: Wire.requireInt(json['held'], 'held'),
         available: Wire.requireInt(json['available'], 'available'),
         vehicle: json['vehicle'] as String?,
+        disruption: json['disruption'] == null
+            ? null
+            : DisruptionDto.fromJson(
+                (json['disruption'] as Map).cast<String, Object?>(),
+              ),
       );
 }
 

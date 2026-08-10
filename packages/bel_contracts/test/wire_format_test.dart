@@ -444,6 +444,119 @@ void main() {
     });
   });
 
+  group('a disruption on the wire', () {
+    test('a declaration round-trips through the wire and back', () {
+      final request = DeclareDisruptionRequest(
+        kind: DisruptionKind.breakdownEnRoute,
+        cause: DisruptionCause.mechanical,
+        note: 'moteur, km 180 RN1',
+        location: 'RN1 près de Dolisie',
+        estimatedResolution: t0.add(const Duration(hours: 3)),
+      );
+
+      final back = DeclareDisruptionRequest.fromJson(request.toJson());
+      expect(back.kind, DisruptionKind.breakdownEnRoute);
+      expect(back.cause, DisruptionCause.mechanical);
+      expect(back.note, 'moteur, km 180 RN1');
+      expect(back.estimatedResolution, request.estimatedResolution);
+    });
+
+    test('a kind nobody knows is refused rather than guessed at', () {
+      // A delay is the one kind that entitles nobody to anything, so an
+      // unreadable kind quietly becoming one is the worst available default.
+      expect(
+        () => DeclareDisruptionRequest.fromJson({
+          'kind': 'volcano',
+          'cause': 'weather',
+        }),
+        throwsA(isA<WireFormatException>()),
+      );
+    });
+
+    test('a cause nobody knows becomes "other"', () {
+      // The asymmetry is the point: the cause feeds statistics and the kind
+      // decides entitlements. A slightly wrong chart is not a passenger told
+      // the wrong thing.
+      final back = DeclareDisruptionRequest.fromJson({
+        'kind': 'cancellation',
+        'cause': 'locusts',
+      });
+      expect(back.cause, DisruptionCause.other);
+    });
+
+    test('what the passenger is sent carries keys, never prose', () {
+      final dto = DisruptionDto(
+        id: 'd-1',
+        kind: DisruptionKind.delay,
+        cause: DisruptionCause.checkpoint,
+        declaredAt: t0,
+        marksInvoluntary: false,
+        revisedDepartsAt: t0.add(const Duration(minutes: 40)),
+      );
+
+      // ADR-0008: the server emits keys and the client renders the sentence
+      // in the reader's own language.
+      expect(dto.kindKey, 'disruption.kind.delay');
+      expect(dto.causeKey, 'disruption.cause.checkpoint');
+      expect(dto.isOpen, isTrue);
+
+      final back = DisruptionDto.fromJson(dto.toJson());
+      expect(back.revisedDepartsAt, dto.revisedDepartsAt);
+      expect(back.marksInvoluntary, isFalse);
+    });
+
+    test('a booking carries what is happening to its coach', () {
+      final json = BookingDto(
+        id: 'b-1',
+        ref: 'BEL-7QK4M2',
+        state: 'confirmed',
+        departureId: 'dep-1',
+        operatorName: 'Océan du Nord',
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        departsAt: t0,
+        arrivesAt: t0.add(const Duration(hours: 8)),
+        passengers: const [PassengerDto(fullName: 'Aline M.')],
+        total: const Money.xaf(9300),
+        createdAt: t0,
+        involuntaryChange: true,
+        disruption: DisruptionDto(
+          id: 'd-1',
+          kind: DisruptionKind.breakdownEnRoute,
+          cause: DisruptionCause.mechanical,
+          declaredAt: t0,
+          marksInvoluntary: true,
+        ),
+      ).toJson();
+
+      final back = BookingDto.fromJson(json);
+      expect(back.disruption!.kind, DisruptionKind.breakdownEnRoute);
+      // Two different questions: what this traveller is entitled to, and what
+      // is happening to their coach.
+      expect(back.involuntaryChange, isTrue);
+    });
+
+    test('a booking with nothing wrong carries no disruption', () {
+      final json = BookingDto(
+        id: 'b-1',
+        ref: 'BEL-7QK4M2',
+        state: 'confirmed',
+        departureId: 'dep-1',
+        operatorName: 'Océan du Nord',
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        departsAt: t0,
+        arrivesAt: t0.add(const Duration(hours: 8)),
+        passengers: const [PassengerDto(fullName: 'Aline M.')],
+        total: const Money.xaf(9300),
+        createdAt: t0,
+      ).toJson();
+
+      expect(json.containsKey('disruption'), isFalse);
+      expect(BookingDto.fromJson(json).disruption, isNull);
+    });
+  });
+
   group('nulls are omitted', () {
     test('absent optional fields do not travel', () {
       // Absent and null mean the same thing to every client, and omitting

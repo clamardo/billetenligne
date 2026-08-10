@@ -194,7 +194,8 @@ final class PgFixture {
   Future<List<Map<String, dynamic>>> auditFor(String operatorId) async {
     final rows = await _seed.execute(
       Sql.named('''
-        SELECT action, actor_id, actor_type, reason, before_state, after_state
+        SELECT action, actor_id, actor_type, subject_type, subject_id,
+               reason, before_state, after_state
           FROM audit_log WHERE operator_id = @id ORDER BY created_at
       '''),
       parameters: {'id': TypedValue(Type.uuid, operatorId)},
@@ -506,6 +507,67 @@ final class PgFixture {
       },
     );
     return rows.first.toColumnMap()['n'] as int;
+  }
+
+  /// How many bookings on this departure carry the operator-caused exemption.
+  Future<int> involuntaryBookings(String departureId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT count(*)::int AS n FROM bookings
+         WHERE departure_id = @id AND involuntary_change
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+    );
+    return rows.first.toColumnMap()['n'] as int;
+  }
+
+  Future<DateTime> departsAt(String departureId) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT departs_at FROM departures WHERE id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+    );
+    return rows.first.toColumnMap()['departs_at'] as DateTime;
+  }
+
+  Future<String> departureStatus(String departureId) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT status::text AS s FROM departures WHERE id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+    );
+    return rows.first.toColumnMap()['s'] as String;
+  }
+
+  /// Puts a departure into a state the fixture cannot reach by selling — a
+  /// coach that has left, or one that arrived yesterday.
+  Future<void> setDepartureStatus(String departureId, String status) async {
+    await _seed.execute(
+      Sql.named('''
+        UPDATE departures SET status = @status::departure_status
+         WHERE id = @id
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'status': TypedValue(Type.text, status),
+      },
+    );
+  }
+
+  Future<String?> supersededBy(String disruptionId) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT superseded_by FROM disruptions WHERE id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, disruptionId)},
+    );
+    return rows.first.toColumnMap()['superseded_by']?.toString();
+  }
+
+  /// Who bought it. The reserve helper mints a traveller per call, and every
+  /// public-surface read is keyed to that user rather than to the operator.
+  Future<String> purchaserOf(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT purchaser_user_id FROM bookings WHERE id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return rows.first.toColumnMap()['purchaser_user_id'].toString();
   }
 
   /// A layout belonging to a DIFFERENT operator, so the ownership checks can

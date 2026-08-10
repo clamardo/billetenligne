@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:bel_api/src/application/ports/disruption_desk.dart';
 import 'package:bel_api/src/composition.dart';
 import 'package:bel_api/src/middleware/require.dart';
 import 'package:bel_api/src/middleware/tenant_scope.dart';
@@ -39,12 +40,26 @@ Future<Response> onRequest(RequestContext context) async {
     );
   }
 
-  final rows = await context.read<Services>().console.board(
+  final services = context.read<Services>();
+
+  final rows = await services.console.board(
     operatorId: scope.operatorId,
     // A LOCAL calendar day. "Departures on the 15th" is a local question, and
     // a UTC comparison puts the 06:00 coach on the wrong day.
     localDate: date,
   );
+
+  // The window comes from the rows themselves rather than from a second
+  // rendering of "which local day is this?". The board already answered that
+  // question in the market's own zone, and asking it twice in two places is
+  // how the two eventually disagree by an hour.
+  final open = rows.isEmpty
+      ? const <String, DisruptionRecord>{}
+      : await services.disruptions.openFor(
+          operatorId: scope.operatorId,
+          from: rows.first.departsAt,
+          to: rows.last.departsAt.add(const Duration(seconds: 1)),
+        );
 
   return Response.json(
     body: {
@@ -62,6 +77,8 @@ Future<Response> onRequest(RequestContext context) async {
             'available': row.available,
             if (row.vehicleRegistration != null)
               'vehicle': row.vehicleRegistration,
+            if (open[row.id] != null)
+              'disruption': _disruptionJson(open[row.id]!),
           },
       ],
     },
@@ -72,3 +89,17 @@ Future<Response> onRequest(RequestContext context) async {
     },
   );
 }
+
+/// The declaration, as the board renders it. No prose: the kind and the cause
+/// are catalog keys, and the note is the dispatcher's own words.
+Map<String, Object?> _disruptionJson(DisruptionRecord record) => DisruptionDto(
+  id: record.id,
+  kind: record.disruption.kind,
+  cause: record.disruption.cause,
+  declaredAt: record.disruption.declaredAt,
+  marksInvoluntary: record.marksInvoluntary,
+  note: record.disruption.note,
+  location: record.disruption.location,
+  revisedDepartsAt: record.disruption.revisedDepartsAt,
+  estimatedResolution: record.disruption.estimatedResolution,
+).toJson();

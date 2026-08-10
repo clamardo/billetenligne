@@ -16,7 +16,12 @@ sms:
     body: "Votre billet {route} du {date} vous attend. Ouvrez BilletEnLigne et entrez le code {code}."
   departureReminder:
     body: "Rappel: {route} demarre a {time} depuis {station}. Siege {seat}. Presentez-vous 30 min avant."
+  # Deux versions, et la difference n'est pas cosmetique. "Aucun frais" n'est
+  # vrai que si la perturbation ouvre droit a un echange ou un remboursement :
+  # un retard de quinze minutes n'ouvre rien, et l'annoncer serait une
+  # promesse que le guichet devra refuser.
   disruptionDeclared:
-    body: "{operator}: votre depart {route} de {time} est perturbe. {summary} Aucun frais. Vos options: {link}"
+    body: "{operator}: {route} de {time}. {summary}"
+    involuntary: "{operator}: {route} de {time} est perturbe. {summary} Aucun frais: echange ou remboursement integral."
   disruptionResolved:
     body: "{operator}: nouvelle solution pour {route}. Depart {time}, siege {seat}. Aucun frais. Details: {link}"

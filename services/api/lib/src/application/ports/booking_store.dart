@@ -1,5 +1,7 @@
 import 'package:bel_domain/bel_domain.dart';
 
+import 'disruption_desk.dart';
+
 /// Who is travelling in which seat.
 ///
 /// Carries no price, and that is deliberate: the fare is read from the seat
@@ -96,6 +98,8 @@ final class BookingRecord {
     this.paymentCode,
     this.paymentDeadline,
     this.tickets = const [],
+    this.involuntaryChange = false,
+    this.disruption,
   });
 
   final String id;
@@ -130,6 +134,20 @@ final class BookingRecord {
   /// Empty until the money is taken. A ticket that exists before payment is a
   /// ticket that can board before payment.
   final List<IssuedTicket> tickets;
+
+  /// The operator caused a change to this journey, so it is permanently
+  /// exempt from fees and fare differences (ADR-0016). A column rather than a
+  /// derivation from [disruption]: the exemption outlives the incident, and a
+  /// resolved disruption must not quietly withdraw it.
+  final bool involuntaryChange;
+
+  /// What is happening to this coach right now, if anything.
+  ///
+  /// Read on the traveller's own booking list, because during a breakdown
+  /// that list *is* the information channel (`08-disruption.md` §3.3) — and a
+  /// passenger who has to phone the agency to find out why nothing has moved
+  /// is the cost this whole subsystem exists to remove.
+  final DisruptionRecord? disruption;
 
   bool get isConfirmed => state == 'confirmed';
 }

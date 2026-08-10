@@ -337,3 +337,102 @@ BEGIN
   RAISE NOTICE 'OK  the review queue sees every application and an operator sees only its own';
 END
 $$;
+
+-- ── 10. A breakdown is public, and it is not editable afterwards ────────────
+--
+-- 0017 makes two claims that are easy to lose. The first is a grant: the
+-- follower of a shared trip link holds no account, and if they cannot read
+-- why the coach is late they phone the agency — which is the cost this
+-- subsystem exists to remove. The second is the absence of a grant: the
+-- record is the operator's own evidence in a dispute, and evidence that its
+-- owner can edit afterwards is not evidence.
+DO $$
+DECLARE
+  visible INT;
+  declaration UUID := 'dddddddd-0000-0000-0000-000000000001';
+BEGIN
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.public', 'off', true);
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', '11111111-1111-1111-1111-111111111111', true);
+
+  INSERT INTO disruptions
+    (id, operator_id, departure_id, kind, cause, note, marks_involuntary,
+     bookings_affected)
+  VALUES
+    (declaration,
+     '11111111-1111-1111-1111-111111111111',
+     'cccccccc-0000-0000-0000-000000000001',
+     'breakdown_en_route', 'mechanical', 'moteur, km 180 RN1', TRUE, 2);
+
+  -- Resolving is allowed: that is the column the operator is meant to write.
+  UPDATE disruptions SET resolved_at = now() WHERE id = declaration;
+
+  -- Rewriting what was declared is not. The grant does not include the
+  -- column, so this fails whatever the policies say.
+  BEGIN
+    UPDATE disruptions SET cause = 'weather' WHERE id = declaration;
+    RAISE EXCEPTION 'FAIL: an operator rewrote a declared cause';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  BEGIN
+    DELETE FROM disruptions WHERE id = declaration;
+    RAISE EXCEPTION 'FAIL: an operator deleted a breakdown record';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  -- And a signed-out follower can read it.
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+  PERFORM set_config('app.user_id', '', true);
+
+  SELECT count(*) INTO visible FROM disruptions WHERE id = declaration;
+  IF visible <> 1 THEN
+    RAISE EXCEPTION 'FAIL: a trip follower cannot see the disruption';
+  END IF;
+
+  -- Reading only. Declaring one is an operator's act.
+  IF has_table_privilege('bel_public', 'disruptions', 'INSERT')
+  OR has_table_privilege('bel_public', 'disruptions', 'UPDATE')
+  OR has_table_privilege('bel_public', 'disruptions', 'DELETE') THEN
+    RAISE EXCEPTION 'FAIL: the public role can declare or edit a disruption';
+  END IF;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  a disruption is readable by anyone, editable by no one, and declared only by its operator';
+END
+$$;
+
+-- ── 11. One open disruption per departure ───────────────────────────────────
+-- "What is happening to my coach right now?" must have exactly one answer.
+DO $$
+BEGIN
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.public', 'off', true);
+  PERFORM set_config('app.tenant_id', '11111111-1111-1111-1111-111111111111', true);
+
+  INSERT INTO disruptions
+    (operator_id, departure_id, kind, cause, marks_involuntary)
+  VALUES
+    ('11111111-1111-1111-1111-111111111111',
+     'cccccccc-0000-0000-0000-000000000001', 'delay', 'checkpoint', FALSE);
+
+  BEGIN
+    INSERT INTO disruptions
+      (operator_id, departure_id, kind, cause, marks_involuntary)
+    VALUES
+      ('11111111-1111-1111-1111-111111111111',
+       'cccccccc-0000-0000-0000-000000000001', 'cancellation', 'no_vehicle', TRUE);
+    RAISE EXCEPTION 'FAIL: a departure carries two open disruptions at once';
+  EXCEPTION WHEN unique_violation THEN
+    NULL;
+  END;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  a departure has at most one open disruption';
+END
+$$;

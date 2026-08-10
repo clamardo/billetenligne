@@ -32,6 +32,7 @@ final class OutboxDrain {
     required Database db,
     required NotificationGateway notifications,
     required TranslationCatalog catalog,
+    required this.timeZone,
     this.maxAttempts = 6,
   }) : _db = db,
        _notifications = notifications,
@@ -45,6 +46,15 @@ final class OutboxDrain {
   /// arriving, and a queue that retries forever is a queue that hides a dead
   /// address behind a growing number.
   final int maxAttempts;
+
+  /// The market's zone, and every time in every message is rendered in it.
+  ///
+  /// **By Postgres, not by Dart.** `timestamptz` arrives here as UTC, and a
+  /// message that says "départ 05h00" for the 06:00 from Brazzaville is a
+  /// passenger who misses their coach by an hour — the one failure in this
+  /// file a traveller would actually be harmed by. Dart's own library has no
+  /// zone database; the database next to us does.
+  final String timeZone;
 
   Future<SweepResult> drain({int limit = 100}) async {
     var sent = 0;
@@ -143,7 +153,11 @@ final class OutboxDrain {
         final rows = await tx.execute(
           Sql.named('''
             SELECT b.ref, u.phone_e164, u.email, u.language,
-                   r.origin_city, r.destination_city, d.departs_at,
+                   r.origin_city, r.destination_city,
+                   to_char(d.departs_at AT TIME ZONE @tz, 'DD/MM')
+                     AS departs_date,
+                   to_char(d.departs_at AT TIME ZONE @tz, 'HH24"h"MI')
+                     AS departs_time,
                    (SELECT string_agg(bs.seat_label, ', ' ORDER BY bs.seat_label)
                       FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats
               FROM bookings b
@@ -152,7 +166,10 @@ final class OutboxDrain {
               LEFT JOIN user_accounts u ON u.id = b.purchaser_user_id
              WHERE b.id = @id
           '''),
-          parameters: {'id': TypedValue(Type.uuid, bookingId)},
+          parameters: {
+            'id': TypedValue(Type.uuid, bookingId),
+            'tz': TypedValue(Type.text, timeZone),
+          },
         );
 
         if (rows.isEmpty) return null;
@@ -168,11 +185,10 @@ final class OutboxDrain {
         if (to == null) return null;
 
         final t = CatalogTranslator(_catalog, b['language'] as String? ?? 'fr');
-        final departsAt = b['departs_at'] as DateTime;
         final params = <String, Object?>{
           'route': '${b['origin_city']}–${b['destination_city']}',
-          'date': _date(departsAt),
-          'time': _time(departsAt),
+          'date': b['departs_date'],
+          'time': b['departs_time'],
           'seat': b['seats'] ?? '',
           'reference': 'BEL-${b['ref']}',
         };
@@ -185,6 +201,89 @@ final class OutboxDrain {
           // Matches the dedupe key the writer used, so a message composed by
           // two drains is still one message.
           eventId: 'booking.confirmed:$bookingId',
+        );
+
+      case 'disruption.declared':
+        final bookingId = payload['bookingId'];
+        final disruptionId = payload['disruptionId'];
+        if (bookingId is! String || disruptionId is! String) return null;
+
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT u.phone_e164, u.email, u.language,
+                   r.origin_city, r.destination_city,
+                   o.trading_name, o.legal_name,
+                   x.kind::text AS kind, x.note, x.location,
+                   x.marks_involuntary,
+                   to_char(d.departs_at AT TIME ZONE @tz, 'HH24"h"MI')
+                     AS departs_time,
+                   to_char(COALESCE(x.revised_departs_at, d.departs_at)
+                             AT TIME ZONE @tz, 'HH24"h"MI') AS revised_time
+              FROM bookings b
+              JOIN departures d ON d.id = b.departure_id
+              JOIN routes r ON r.id = d.route_id
+              JOIN operators o ON o.id = b.operator_id
+              JOIN disruptions x ON x.id = @disruption
+              LEFT JOIN user_accounts u ON u.id = b.purchaser_user_id
+             WHERE b.id = @booking
+          '''),
+          parameters: {
+            'booking': TypedValue(Type.uuid, bookingId),
+            'disruption': TypedValue(Type.uuid, disruptionId),
+            'tz': TypedValue(Type.text, timeZone),
+          },
+        );
+
+        if (rows.isEmpty) return null;
+        final b = rows.first.toColumnMap();
+
+        final phone = b['phone_e164'] as String?;
+        final email = b['email'] as String?;
+        final to = phone ?? email;
+        // A counter sale to somebody who left no address. Nothing to send is
+        // not a failure — but it is the case that makes the *manifest* the
+        // conductor's fallback rather than an optimisation.
+        if (to == null) return null;
+
+        final t = CatalogTranslator(_catalog, b['language'] as String? ?? 'fr');
+        final involuntary = b['marks_involuntary'] as bool? ?? false;
+        final kind = _kindName(b['kind'] as String);
+
+        // The kind's own sentence, rendered first and passed into the
+        // template as one argument. Nesting rather than six templates: the
+        // envelope — who, which route, whether it costs anything — is the
+        // same whatever happened to the coach.
+        final summary = t('disruption.summary.$kind', {
+          'time': b['revised_time'],
+        });
+        final note = b['note'] as String?;
+        final place = b['location'] as String?;
+
+        final body = t(
+          involuntary
+              ? 'sms.disruptionDeclared.involuntary'
+              : 'sms.disruptionDeclared.body',
+          {
+            'operator': b['trading_name'] ?? b['legal_name'] ?? '',
+            'route': '${b['origin_city']}–${b['destination_city']}',
+            'time': b['departs_time'],
+            // The dispatcher's own words come after the templated sentence,
+            // because "le pont est coupé à Loufoulakari" is the part no
+            // catalog can hold and the part the passenger acts on.
+            'summary': [
+              summary,
+              if (place != null) '($place)',
+              if (note != null) note,
+            ].join(' '),
+          },
+        );
+
+        return OutboundMessage(
+          channel: phone != null ? SignInChannel.phone : SignInChannel.email,
+          to: to,
+          subject: phone != null ? null : summary,
+          body: body,
+          eventId: 'disruption.declared:$disruptionId:$bookingId',
         );
 
       default:
@@ -205,11 +304,14 @@ final class OutboxDrain {
     return const {};
   }
 
-  static String _date(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/'
-      '${d.month.toString().padLeft(2, '0')}';
-
-  static String _time(DateTime d) =>
-      '${d.hour.toString().padLeft(2, '0')}h'
-      '${d.minute.toString().padLeft(2, '0')}';
+  /// `breakdown_en_route` → `breakdownEnRoute`. The column is SQL's naming
+  /// and the catalog key is the domain enum's, and this is the seam.
+  static String _kindName(String column) {
+    final parts = column.split('_');
+    return [
+      parts.first,
+      for (final p in parts.skip(1))
+        p.isEmpty ? p : p[0].toUpperCase() + p.substring(1),
+    ].join();
+  }
 }

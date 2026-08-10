@@ -21,6 +21,7 @@ import 'adapters/mtn_momo_gateway.dart';
 import 'application/ports/booking_store.dart';
 import 'application/ports/ticket_issuer.dart';
 import 'application/ports/city_catalogue.dart';
+import 'application/ports/disruption_desk.dart';
 import 'application/ports/operator_console.dart';
 import 'application/ports/payment_gateway.dart';
 import 'application/ports/payment_store.dart';
@@ -53,6 +54,7 @@ import 'infrastructure/postgres/postgres_departure_catalogue.dart';
 import 'infrastructure/postgres/postgres_booking_store.dart';
 import 'infrastructure/postgres/postgres_identity.dart';
 import 'infrastructure/postgres/postgres_operator_applications.dart';
+import 'infrastructure/postgres/postgres_disruptions.dart';
 import 'infrastructure/postgres/postgres_operator_console.dart';
 import 'infrastructure/postgres/postgres_operator_directory.dart';
 import 'infrastructure/postgres/postgres_payment_store.dart';
@@ -84,6 +86,7 @@ final class Services {
     required this.reserveBooking,
     required this.bookings,
     required this.console,
+    required this.disruptions,
     required this.platform,
     required this.storefronts,
     required this.applications,
@@ -121,6 +124,12 @@ final class Services {
   /// the traveller browses, and a fake one would be a second definition of
   /// every coach and route, kept in sync by hand.
   final OperatorConsole console;
+
+  /// The dispatcher's disruption desk (`08-disruption.md`). Separate from
+  /// [console] because it is the one operator surface a passenger feels
+  /// within seconds: declaring writes a record, moves the departure, marks
+  /// the bookings and queues a message to everybody on board.
+  final DisruptionDesk disruptions;
 
   /// Our own back office. Refuses without a database for the same reason the
   /// operator console does — and more so: every read here is meant to cross
@@ -256,6 +265,7 @@ final class Services {
       reserveBooking: ReserveBooking(bookings: bookings),
       bookings: bookings,
       console: PostgresOperatorConsole(db, timeZone: Market.current.timeZone),
+      disruptions: PostgresDisruptions(db),
       platform: PostgresPlatformConsole(db),
       storefronts: PostgresStorefronts(db),
       applications: PostgresOperatorApplications(db),
@@ -380,6 +390,7 @@ final class Services {
       reserveBooking: ReserveBooking(bookings: memoryBookings),
       bookings: memoryBookings,
       console: const UnavailableOperatorConsole(),
+      disruptions: const UnavailableDisruptionDesk(),
       platform: const UnavailablePlatformConsole(),
       storefronts: MemoryStorefronts.demo(),
       applications: MemoryOperatorApplications(clock: clock),

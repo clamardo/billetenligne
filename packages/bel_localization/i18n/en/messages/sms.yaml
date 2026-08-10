@@ -16,7 +16,12 @@ sms:
     body: "Your ticket for {route} on {date} is waiting. Open BilletEnLigne and enter code {code}."
   departureReminder:
     body: "Reminder: {route} departs at {time} from {station}. Seat {seat}. Please arrive 30 min early."
+  # Two versions, and the difference is not cosmetic. "No fees" is only true
+  # when the disruption entitles the passenger to an exchange or a refund: a
+  # fifteen-minute delay entitles them to nothing, and saying otherwise is a
+  # promise the counter has to refuse.
   disruptionDeclared:
-    body: "{operator}: your {route} departure at {time} is disrupted. {summary} No fees. Your options: {link}"
+    body: "{operator}: {route} at {time}. {summary}"
+    involuntary: "{operator}: your {route} departure at {time} is disrupted. {summary} No fees: exchange or full refund."
   disruptionResolved:
     body: "{operator}: new arrangement for {route}. Departs {time}, seat {seat}. No fees. Details: {link}"

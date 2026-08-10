@@ -114,3 +114,34 @@ application:
     settlementAccountName: "Account holder name"
     settlementAccountRef: "Account or wallet number"
     agreement: "Terms accepted"
+
+# Disruptions (08-disruption.md). The label and the cause travel as keys and
+# never as prose: the server sends `disruption.kind.delay` and the client
+# renders the sentence in the reader's own language (ADR-0008).
+disruption:
+  kind:
+    delay: "Delay"
+    cancellation: "Cancellation"
+    breakdownEnRoute: "Breakdown en route"
+    equipmentSwap: "Coach change"
+    diversion: "Diversion"
+    routeSuspension: "Route suspended"
+  cause:
+    mechanical: "Mechanical failure"
+    roadClosed: "Road closed"
+    weather: "Weather"
+    security: "Security"
+    noDriver: "No driver"
+    noVehicle: "No coach available"
+    checkpoint: "Checkpoint"
+    lateInbound: "Late inbound coach"
+    other: "Other"
+  # The sentence the passenger receives. Short: it goes out by SMS, and a long
+  # SMS costs several times what a short one does.
+  summary:
+    delay: "Now departing at {time}."
+    cancellation: "This departure will not run."
+    breakdownEnRoute: "The coach has broken down."
+    equipmentSwap: "A different coach is assigned."
+    diversion: "The route has changed."
+    routeSuspension: "The route is suspended."
