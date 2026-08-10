@@ -220,6 +220,56 @@ final class PayForBooking {
     return recorded;
   }
 
+  /// A human resolves what the rail never did.
+  ///
+  /// The `indeterminate` queue's only exit, and it exists because these
+  /// networks lose answers: after fifteen minutes of silence an intent stops
+  /// being "pending" and becomes a thing somebody has to look at. That
+  /// somebody has evidence we do not — the operator's merchant statement, a
+  /// screenshot of the traveller's wallet, a phone call to the telco — and
+  /// this is how their finding gets written down.
+  ///
+  /// Three properties, each of which is the reason it is not just an UPDATE:
+  ///
+  ///   * **only `captured` or `failed`.** The domain's transition table says
+  ///     an indeterminate intent resolves one way or the other and nowhere
+  ///     else, and this path is checked by exactly the same rule as a
+  ///     callback;
+  ///   * **capturing here settles for real** — ledger, ticket, outbox, the
+  ///     operator's own commission — through the same code a rail's answer
+  ///     takes. A booking confirmed by an admin and one confirmed by MTN must
+  ///     be indistinguishable afterwards, because in the ledger they are;
+  ///   * **the actor and the reason are written to `payment_events`**, which
+  ///     is append-only and is the only thing that settles a dispute six
+  ///     weeks later. The row's source is `manual`; the body names who.
+  Future<PaymentIntentRecord?> resolve({
+    required String intentId,
+    required PaymentState to,
+    required String actorUserId,
+    required String reason,
+    PaymentFailureCode? failureCode,
+  }) async {
+    if (to != PaymentState.captured && to != PaymentState.failed) return null;
+
+    final recorded = await _payments.recordOutcome(
+      intentId: intentId,
+      state: to,
+      // `manual` is the schema's word for it, and the vocabulary is a CHECK
+      // constraint rather than free text on purpose: four sources are
+      // greppable in a dispute, an actor id embedded in a source string is
+      // not. Who decided goes in the body, where it is queryable as data.
+      source: 'manual',
+      raw: {'resolvedBy': actorUserId, 'reason': reason},
+      failureCode: to == PaymentState.failed
+          ? (failureCode ?? PaymentFailureCode.timeoutNoResponse)
+          : null,
+    );
+
+    if (recorded == null) return null;
+    if (recorded.state == PaymentState.captured) await _settle(recorded);
+    return recorded;
+  }
+
   Future<void> _settle(PaymentIntentRecord intent) async {
     final booking = await _bookings.byId(
       bookingId: intent.bookingId,

@@ -298,6 +298,87 @@ final class PostgresPlatformConsole implements PlatformConsole {
     );
   });
 
+  // ── Reconciliation ────────────────────────────────────────────────────────
+
+  /// One query, every join the screen needs.
+  ///
+  /// A reconciliation queue that needs a second request per row to name the
+  /// traveller is a queue somebody works with twenty tabs open, and the
+  /// person on the other end of it has already been waiting fifteen minutes.
+  static const _unresolvedSelect = '''
+    SELECT i.id, i.state::text AS state, i.rail_id, i.amount_minor,
+           i.currency::text AS currency, i.msisdn, i.created_at,
+           i.last_polled_at, i.poll_attempts, i.rail_transaction_id,
+           b.id AS booking_id, b.ref AS booking_ref,
+           b.state::text AS booking_state,
+           o.id AS operator_id, o.legal_name AS operator_name,
+           u.phone_e164 AS traveller_phone, u.email AS traveller_email,
+           d.departs_at,
+           r.origin_city, r.destination_city
+      FROM payment_intents i
+      JOIN bookings b   ON b.id = i.booking_id
+      JOIN operators o  ON o.id = i.operator_id
+      LEFT JOIN user_accounts u ON u.id = b.purchaser_user_id
+      LEFT JOIN departures d ON d.id = b.departure_id
+      LEFT JOIN routes r ON r.id = d.route_id
+  ''';
+
+  @override
+  Future<List<UnresolvedPayment>> unresolvedPayments({
+    required String actorUserId,
+    int limit = 100,
+  }) => _db.transaction(DbScope.platform(actorUserId), (tx) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        $_unresolvedSelect
+         WHERE i.state = 'indeterminate'
+            OR (i.state IN ('pending', 'authorized')
+                AND i.expires_at IS NOT NULL AND i.expires_at < now())
+         ORDER BY i.created_at
+         LIMIT @limit
+      '''),
+      parameters: {'limit': TypedValue(Type.integer, limit)},
+    );
+    return [for (final row in rows) _unresolved(row.toColumnMap())];
+  });
+
+  @override
+  Future<UnresolvedPayment?> unresolvedPayment(
+    String intentId, {
+    required String actorUserId,
+  }) => _db.transaction(DbScope.platform(actorUserId), (tx) async {
+    final rows = await tx.execute(
+      Sql.named('$_unresolvedSelect WHERE i.id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, intentId)},
+    );
+    return rows.isEmpty ? null : _unresolved(rows.first.toColumnMap());
+  });
+
+  static UnresolvedPayment _unresolved(Map<String, dynamic> r) {
+    final currency = Currency.byCode((r['currency'] as String).trim())!;
+    return UnresolvedPayment(
+      intentId: r['id'].toString(),
+      state: r['state'] as String,
+      railId: r['rail_id'] as String,
+      amount: Money(r['amount_minor'] as int, currency),
+      payerMsisdn: (r['msisdn'] as String?) ?? '',
+      createdAt: r['created_at'] as DateTime,
+      lastPolledAt: r['last_polled_at'] as DateTime?,
+      pollAttempts: (r['poll_attempts'] as int?) ?? 0,
+      railTransactionId: r['rail_transaction_id'] as String?,
+      bookingId: r['booking_id'].toString(),
+      bookingRef: r['booking_ref'] as String,
+      bookingState: r['booking_state'] as String,
+      operatorId: r['operator_id'].toString(),
+      operatorName: r['operator_name'] as String,
+      travellerPhone: r['traveller_phone'] as String?,
+      travellerEmail: r['traveller_email'] as String?,
+      departsAt: r['departs_at'] as DateTime?,
+      originCity: r['origin_city'] as String?,
+      destinationCity: r['destination_city'] as String?,
+    );
+  }
+
   // ── Plumbing ──────────────────────────────────────────────────────────────
 
   Future<String?> _statusOf(TxSession tx, String operatorId) async {

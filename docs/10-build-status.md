@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-10 · after commit *The back office, server side*
+**Updated:** 2026-08-10 · after commit *The reconciliation queue has an exit*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -71,7 +71,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Payment poller** | ✅ done | Backoff from the domain; 15 min of silence becomes `indeterminate` |
 | **Commission, per operator** | ✅ done | `CommissionTerm` in basis points, read from `operators.commission_bps` when a fare settles. Netted at source; unreadable terms keep nothing rather than guess |
 | Production credentials | ⬜ not started | **Commercial, not engineering.** Both adapters run against sandbox hosts |
-| `indeterminate` reconciliation console | ⬜ not started | The queue fills and nobody can work it. ADR-0005: before launch, not after the first incident |
+| `indeterminate` reconciliation — API | ✅ done | The queue, joined to the booking, the operator and the traveller's number. Three exits: ask the rail again · captured · failed. 5 integration tests |
+| `indeterminate` reconciliation — the screen | ⬜ not started | Lives in the admin app, which is the next thing built |
 | Payout runs and operator statements | ⬜ not started | `payable:operator:<id>` is correct and derived; nothing pays it out |
 | IRROPS / disruption tooling | ⬜ not started | P0 for this phase (`08-disruption.md`) |
 
@@ -162,17 +163,17 @@ cd apps/traveller && flutter test        # 80 app tests
 cd apps/console   && flutter test        # 11 console tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 213 files
+dart run tool/check_layers.dart          # the onion rule, 217 files
 ./infra/migrations/check.sh              # 26 schema guarantees
-./tool/integration.sh                    # 85 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 96 checks, incl. the Dart client
+./tool/integration.sh                    # 90 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 97 checks, incl. the Dart client
 ```
 
 Remove `services/api/build` before counting: `dart_frog build` copies the
 whole workspace into it, and `dart test services/api` then runs every suite
 twice and reports 414.
 
-**661 tests in total**, plus 96 smoke checks and 26 executed schema
+**666 tests in total**, plus 97 smoke checks and 26 executed schema
 guarantees. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
@@ -181,6 +182,27 @@ the screens render. Both halves of that seam have broken here before.
 ---
 
 ## What the last push changed, and what it cost
+
+The reconciliation queue has an exit. ADR-0005 asks for this screen *before*
+launch rather than after the first incident, and half of it now exists: the
+queue is a real query and its three resolutions are real transactions.
+
+**A capture resolved by a human settles through the same code a rail's answer
+takes** — ledger, this operator's commission, ticket, outbox. A booking
+confirmed by an admin and one confirmed by MTN must be indistinguishable
+afterwards, because in the ledger they are.
+
+**Only two exits, checked by the domain's own table.** An indeterminate
+intent resolves to captured or failed and nowhere else, and the admin path is
+refused by exactly the rule a callback is. Marking one `expired` to tidy the
+queue does nothing, and the test says so.
+
+**`payment_events` has a vocabulary and it was right.** The first draft wrote
+`admin:<uuid>` as the source and the CHECK constraint refused it. Four
+greppable sources beat a string somebody has to parse — so the row is
+`manual` and the body names who decided and why, as data.
+
+## What the push before that changed
 
 The back office, server side. `/admin/v1` — the third surface, promised in
 `02-architecture.md` since the first commit and until now entirely absent.
@@ -208,7 +230,7 @@ proven with two concurrent calls against real Postgres rather than asserted.
 actor, the subject and the stated reason, because "who looked at Ocean du
 Nord's revenue, and why" is a question asked after the fact.
 
-## What the push before that changed
+## And before that
 
 The ticket reaches a screen. Until this push the product could take
 somebody's money, sign a ticket, store it and text it — and the app that

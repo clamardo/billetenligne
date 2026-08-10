@@ -13,6 +13,7 @@ import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_booking_store.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_operator_directory.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_payment_store.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_platform_console.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_seat_inventory.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_crypto/bel_crypto.dart';
@@ -219,6 +220,134 @@ void main() {
       isTrue,
     );
     expect(ticket.isVoid, isFalse);
+  });
+
+  group('the reconciliation queue', () {
+    late PostgresPlatformConsole platform;
+    late String operator_;
+
+    setUpAll(() async {
+      platform = PostgresPlatformConsole(db);
+      operator_ = await fixture.platformStaff('operations', suffix: '-recon');
+    });
+
+    /// Fifteen minutes of silence is what turns a pending intent into one
+    /// somebody has to look at. Reached through the real path — the rail
+    /// answers `unknown` and the poller gives up — rather than by writing the
+    /// state into the row, because the state is not the interesting part.
+    Future<({BookingRecord booking, String intentId})> stranded() async {
+      final it = await pending();
+      rail.neverAnswers();
+      await payments.recordOutcome(
+        intentId: it.intentId,
+        state: PaymentState.indeterminate,
+        source: 'poll',
+        raw: const {'fake': 'no answer'},
+      );
+      return it;
+    }
+
+    test('lists what is in limbo, with a way to reach the traveller', () async {
+      final it = await stranded();
+
+      final queue = await platform.unresolvedPayments(actorUserId: operator_);
+      final row = queue.firstWhere((p) => p.intentId == it.intentId);
+
+      expect(row.state, 'indeterminate');
+      expect(row.bookingRef, it.booking.ref.value);
+      expect(row.operatorName, 'Ocean du Nord');
+      expect(row.amount, const Money.xaf(12300));
+      expect(row.payerMsisdn, payer);
+      // The person in the dark is the one whose PIN was typed. A queue that
+      // cannot produce a number to call is a queue that resolves by waiting.
+      expect(row.travellerPhone, isNotNull);
+      expect(row.originCity, isNotNull);
+      // Longest-waiting first, always.
+      final ages = [for (final p in queue) p.createdAt];
+      expect(ages, [...ages]..sort());
+    });
+
+    test('resolving it as captured settles for real', () async {
+      final it = await stranded();
+
+      final resolved = await pay.resolve(
+        intentId: it.intentId,
+        to: PaymentState.captured,
+        actorUserId: operator_,
+        reason: 'operator confirmed the merchant statement',
+      );
+
+      expect(resolved!.state, PaymentState.captured);
+      // Indistinguishable from a capture the rail reported: same ledger, same
+      // ticket, same outbox row. In the ledger they *are* the same thing.
+      expect(await fixture.ticketCount(it.booking.id), 1);
+      expect(await fixture.unbalancedTxnCount(), 0);
+      final balances = await fixture.accountBalances(it.booking.id);
+      expect(balances['revenue:commission'], isNotNull);
+      expect(await fixture.outboxCount('booking.confirmed', it.booking.id), 1);
+
+      // And it leaves the queue, which is the only way a queue stays worth
+      // working.
+      final queue = await platform.unresolvedPayments(actorUserId: operator_);
+      expect(queue.map((p) => p.intentId), isNot(contains(it.intentId)));
+    });
+
+    test('resolving it as failed issues nothing', () async {
+      final it = await stranded();
+
+      await pay.resolve(
+        intentId: it.intentId,
+        to: PaymentState.failed,
+        actorUserId: operator_,
+        reason: 'traveller wallet shows no debit',
+        failureCode: PaymentFailureCode.timeoutNoResponse,
+      );
+
+      expect(await fixture.ticketCount(it.booking.id), 0);
+      expect(await fixture.ledgerRowsFor(it.booking.id), 0);
+    });
+
+    test('the resolver and their reason are written down', () async {
+      final it = await stranded();
+      await pay.resolve(
+        intentId: it.intentId,
+        to: PaymentState.captured,
+        actorUserId: operator_,
+        reason: 'MTN support confirmed reference 88213',
+      );
+
+      final intent = await fixture.intentColumns(it.intentId);
+      expect(intent['state'], 'captured');
+      // `payment_events` is append-only and is the only thing that settles a
+      // dispute six weeks later. "Somebody marked it paid" is not an answer.
+      expect(intent['events'] as int, greaterThanOrEqualTo(2));
+      // `manual` is the schema's vocabulary — four sources, greppable in a
+      // dispute — and the body is where *who* lives, as data rather than as
+      // a string somebody has to parse.
+      final events = await fixture.paymentEventSources(it.intentId);
+      expect(events, contains('manual'));
+      final resolved = await fixture.paymentEventRaw(it.intentId, 'manual');
+      expect(resolved['resolvedBy'], operator_);
+      expect(resolved['reason'], contains('88213'));
+    });
+
+    test('nothing outside the two legal exits is applied', () async {
+      final it = await stranded();
+
+      // The domain says an indeterminate intent resolves one way or the
+      // other and nowhere else. This path is checked by the same rule a
+      // callback is.
+      final refused = await pay.resolve(
+        intentId: it.intentId,
+        to: PaymentState.expired,
+        actorUserId: operator_,
+        reason: 'tidying up',
+      );
+
+      expect(refused, isNull);
+      expect((await fixture.intentColumns(it.intentId))['state'],
+          'indeterminate');
+    });
   });
 
   test('every answer is written, whether or not it moved anything', () async {

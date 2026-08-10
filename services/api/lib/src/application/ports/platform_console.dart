@@ -174,6 +174,79 @@ enum DecisionRefusal {
   illegalTransition,
 }
 
+/// A payment nobody can resolve automatically.
+///
+/// Fifteen minutes of silence from a rail turns a `pending` intent into an
+/// `indeterminate` one, and that is not a failure state — it is a state where
+/// **the money may have moved and we do not know**. Somebody has to look:
+/// the operator's merchant statement, a screenshot of the traveller's wallet,
+/// a call to the telco. This row is what they look at.
+///
+/// It carries the traveller's own contact deliberately. The person in the
+/// dark is the one whose PIN was typed, and a queue that cannot produce a
+/// number to call is a queue that resolves by waiting.
+final class UnresolvedPayment {
+  const UnresolvedPayment({
+    required this.intentId,
+    required this.state,
+    required this.railId,
+    required this.amount,
+    required this.payerMsisdn,
+    required this.createdAt,
+    required this.bookingId,
+    required this.bookingRef,
+    required this.bookingState,
+    required this.operatorId,
+    required this.operatorName,
+    required this.pollAttempts,
+    this.lastPolledAt,
+    this.railTransactionId,
+    this.travellerPhone,
+    this.travellerEmail,
+    this.departsAt,
+    this.originCity,
+    this.destinationCity,
+  });
+
+  final String intentId;
+
+  /// `indeterminate`, and occasionally `pending` for an intent whose window
+  /// has closed. Both mean the same thing to the person working the queue.
+  final String state;
+
+  final String railId;
+  final Money amount;
+  final String payerMsisdn;
+  final DateTime createdAt;
+
+  final String bookingId;
+  final String bookingRef;
+  final String bookingState;
+
+  final String operatorId;
+  final String operatorName;
+
+  final int pollAttempts;
+  final DateTime? lastPolledAt;
+  final String? railTransactionId;
+
+  final String? travellerPhone;
+  final String? travellerEmail;
+
+  final DateTime? departsAt;
+  final String? originCity;
+  final String? destinationCity;
+
+  /// How long this person has been in the dark. The queue is sorted by it.
+  Duration ageAt(DateTime now) => now.difference(createdAt);
+
+  /// True when the coach leaves within the hour. These jump the queue: after
+  /// it goes, resolving the payment is a refund conversation rather than a
+  /// boarding one.
+  bool isUrgentAt(DateTime now) =>
+      departsAt != null && departsAt!.difference(now) < const Duration(hours: 1);
+}
+
 /// The cross-tenant surface: our own back office.
 ///
 /// Every method takes an **actor and a reason** rather than reading them from
@@ -222,6 +295,24 @@ abstract interface class PlatformConsole {
     required CommissionTerm term,
     required String actorUserId,
     required String reason,
+  });
+
+  // ── Reconciliation (ADR-0005) ─────────────────────────────────────────────
+
+  /// Every payment in limbo, longest-waiting first.
+  ///
+  /// Deliberately on this port rather than on `PaymentStore`: that one serves
+  /// a traveller watching their own attempt, and this one crosses every
+  /// tenant to serve the person who has to make it right. Same table, two
+  /// completely different authorities.
+  Future<List<UnresolvedPayment>> unresolvedPayments({
+    required String actorUserId,
+    int limit = 100,
+  });
+
+  Future<UnresolvedPayment?> unresolvedPayment(
+    String intentId, {
+    required String actorUserId,
   });
 
   /// Records that somebody looked. Cross-tenant *reads* are audited too, and

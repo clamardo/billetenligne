@@ -167,6 +167,18 @@ final class UnavailablePlatformConsole implements PlatformConsole {
   }) async => _refuse();
 
   @override
+  Future<List<UnresolvedPayment>> unresolvedPayments({
+    required String actorUserId,
+    int limit = 100,
+  }) async => _refuse();
+
+  @override
+  Future<UnresolvedPayment?> unresolvedPayment(
+    String intentId, {
+    required String actorUserId,
+  }) async => _refuse();
+
+  @override
   Future<void> recordRead({
     required String actorUserId,
     required String reason,

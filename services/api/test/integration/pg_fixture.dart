@@ -295,6 +295,35 @@ final class PgFixture {
     return rows.first.toColumnMap();
   }
 
+  Future<List<String>> paymentEventSources(String intentId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT source FROM payment_events WHERE intent_id = @id
+         ORDER BY received_at
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, intentId)},
+    );
+    return [for (final row in rows) row.toColumnMap()['source'] as String];
+  }
+
+  Future<Map<String, dynamic>> paymentEventRaw(
+    String intentId,
+    String source,
+  ) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT raw FROM payment_events
+         WHERE intent_id = @id AND source = @source
+         ORDER BY received_at DESC LIMIT 1
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, intentId),
+        'source': TypedValue(Type.text, source),
+      },
+    );
+    return (rows.first.toColumnMap()['raw'] as Map).cast<String, dynamic>();
+  }
+
   Future<int> ticketCount(String bookingId) async {
     final rows = await _seed.execute(
       Sql.named('SELECT count(*)::int AS n FROM tickets WHERE booking_id = @id'),

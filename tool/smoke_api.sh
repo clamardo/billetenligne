@@ -531,6 +531,8 @@ check "a traveller cannot decide anything" "403" \
      -d '{"decision":"approve","reason":"x"}')"
 check "the admin identity endpoint is closed too" "403" \
   "$(status -H "$AUTH" "$BASE/admin/v1/me")"
+check "the reconciliation queue is closed too" "403" \
+  "$(status -H "$AUTH" "$BASE/admin/v1/payments")"
 
 check "the profile needs an account" "401" "$(status "$BASE/public/v1/me")"
 me="$(curl -s -H "Authorization: Bearer $session_token" "$BASE/public/v1/me")"
