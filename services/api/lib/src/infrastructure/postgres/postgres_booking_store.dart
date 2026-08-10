@@ -129,11 +129,20 @@ final class PostgresBookingStore implements BookingStore {
         INSERT INTO bookings
           (ref, operator_id, departure_id, hold_id, purchaser_user_id, state,
            fare_minor, service_fee_minor, total_minor, currency, channel,
-           payment_code, payment_deadline)
-        VALUES
-          (@ref, @operator, @departure, @hold, app_user_id(),
-           'pending_payment', @fare, @fee, @total, @currency, @channel,
-           @code, now() + make_interval(secs => @payWithin))
+           payment_code, payment_deadline,
+           refund_policy_id, refund_policy_version)
+        SELECT @ref, @operator, @departure, @hold, app_user_id(),
+               'pending_payment', @fare, @fee, @total, @currency, @channel,
+               @code, now() + make_interval(secs => @payWithin),
+               -- Copied, not referenced. ADR-0015 rule 1: this booking is
+               -- judged by the policy as it stands right now, forever, and
+               -- an operator who writes better terms next month owes them to
+               -- next month's travellers rather than to this one. A NULL
+               -- here is an operator who has chosen no policy — they sell
+               -- exactly as before, with no self-service refund.
+               o.default_refund_policy_id, o.default_refund_policy_version
+          FROM operators o
+         WHERE o.id = @operator
         RETURNING id, ref, state::text AS state, payment_code, payment_deadline,
                   created_at
       '''),

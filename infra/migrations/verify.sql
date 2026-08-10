@@ -212,3 +212,56 @@ BEGIN
   END;
 END
 $$;
+
+DO $$
+DECLARE
+  policy_id UUID := 'cccccccc-0000-0000-0000-000000000001';
+BEGIN
+  -- ── 13. A refund policy cannot be rewritten ───────────────────────────────
+  -- ADR-0015 rule 1: a booking is judged by the version it was sold under,
+  -- forever. That rule survives exactly as long as nobody can UPDATE the row
+  -- it points at, so the ability is removed rather than discouraged.
+  INSERT INTO refund_policies (id, version, operator_id, name, tiers)
+  VALUES (policy_id, 1, '11111111-1111-1111-1111-111111111111', 'Souple',
+          '[{"minLeadTimeMinutes":1440,"rateBps":10000}]'::jsonb);
+
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.tenant_id', '11111111-1111-1111-1111-111111111111', true);
+
+  BEGIN
+    UPDATE refund_policies SET name = 'Stricte' WHERE id = policy_id;
+    RAISE EXCEPTION 'FAIL: a refund policy was rewritten';
+  EXCEPTION
+    WHEN insufficient_privilege OR raise_exception THEN
+      RAISE NOTICE 'OK  a refund policy is append-only, so a sold booking keeps its terms';
+  END;
+  RESET ROLE;
+END
+$$;
+
+DO $$
+BEGIN
+  -- ── 14. A default policy points at a VERSION, not at a policy ─────────────
+  -- Half a reference is a policy id nobody can resolve, and a reference to
+  -- "the policy" rather than "the version" is how yesterday's customer
+  -- quietly inherits today's terms.
+  BEGIN
+    UPDATE operators
+       SET default_refund_policy_id = 'cccccccc-0000-0000-0000-000000000001'
+     WHERE id = '11111111-1111-1111-1111-111111111111';
+    RAISE EXCEPTION 'FAIL: half a policy reference was accepted';
+  EXCEPTION WHEN check_violation THEN
+    NULL; -- expected
+  END;
+
+  BEGIN
+    UPDATE operators
+       SET default_refund_policy_id = 'cccccccc-0000-0000-0000-000000000001',
+           default_refund_policy_version = 99
+     WHERE id = '11111111-1111-1111-1111-111111111111';
+    RAISE EXCEPTION 'FAIL: a default pointing at a version that does not exist was accepted';
+  EXCEPTION WHEN foreign_key_violation THEN
+    RAISE NOTICE 'OK  a default refund policy resolves to one stored version';
+  END;
+END
+$$;

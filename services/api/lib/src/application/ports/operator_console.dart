@@ -267,6 +267,44 @@ abstract interface class OperatorConsole {
     required String departureId,
   });
 
+  // ── Terms ─────────────────────────────────────────────────────────────────
+
+  /// Every version of every refund policy this operator has authored, newest
+  /// version of each first, with the current default marked.
+  ///
+  /// Old versions are listed rather than hidden. A booking sold last March is
+  /// judged by the policy as it stood last March (ADR-0015 rule 1), so the
+  /// operator answering a question about that booking needs to be able to
+  /// read the terms it was actually sold under.
+  Future<List<RefundPolicySummary>> refundPolicies(String operatorId);
+
+  /// Stores a policy as a **new version**, never as an edit.
+  ///
+  /// The same shape as [saveLayout], and the same reason: an UPDATE here
+  /// would silently change what somebody who already paid is entitled to.
+  /// A name that already exists gets the next version of that policy; a new
+  /// name starts at version 1.
+  Future<RefundPolicySummary> saveRefundPolicy({
+    required String operatorId,
+    required String name,
+    required RefundPolicy policy,
+    required String actorUserId,
+  });
+
+  /// Points future sales at one version of one policy.
+  ///
+  /// **Future sales only.** Bookings already made keep the version stamped on
+  /// them, which is the whole point of versioning; the console says so before
+  /// the operator confirms rather than after (ADR-0015 rule 2).
+  ///
+  /// Null for [policyId] clears the default, which is how an operator stops
+  /// offering self-service refunds entirely.
+  Future<RefundPolicySummary?> setDefaultRefundPolicy({
+    required String operatorId,
+    required String? policyId,
+    required int? version,
+  });
+
   // ── Getting paid ──────────────────────────────────────────────────────────
 
   /// Where this operator collects, per rail.
@@ -345,4 +383,33 @@ final class DepartureBoardRow {
   final String? vehicleRegistration;
 
   int get available => capacity - sold - held;
+}
+
+/// One stored version of one refund policy, as the console lists it.
+final class RefundPolicySummary {
+  const RefundPolicySummary({
+    required this.id,
+    required this.version,
+    required this.name,
+    required this.policy,
+    required this.isDefault,
+    required this.effectiveFrom,
+    this.bookingCount = 0,
+  });
+
+  final String id;
+  final int version;
+  final String name;
+  final RefundPolicy policy;
+
+  /// Whether new sales are stamped with this version right now. At most one
+  /// version of one policy is true here.
+  final bool isDefault;
+
+  final DateTime effectiveFrom;
+
+  /// How many bookings were sold under this exact version. Shown because it
+  /// is the honest answer to "can I just change this?" — every one of these
+  /// is somebody who is entitled to these terms and not to the new ones.
+  final int bookingCount;
 }

@@ -612,6 +612,75 @@ check "the refusal names the offending field" "yes" \
      -d '{"name":"x","sections":[{"rows":4,"abreast":"2+2"},{"rows":4,"abreast":"zz"}]}' \
      | grep -q 'sections\[1\].abreast' && echo yes || echo no)"
 
+# ── Refund policies refuse what would be unenforceable ──────────────────────
+#
+# ADR-0015 rule 1 is the rule most systems get wrong: a booking is judged by
+# the policy version it was sold under, forever. The database enforces it
+# (0014 revoked UPDATE on the table), so what a socket can prove here is the
+# half above it — that a policy the server could not evaluate never reaches
+# storage, and that each refusal names the answer to fix.
+#
+# As with layouts, a policy that IS well formed answers 503 in this
+# composition, which is the assertion that validation ran before storage.
+policy_post() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/console/v1/policies" \
+    -H "$OP_AUTH" -H 'Content-Type: application/json' -d "$1"
+}
+
+check "a traveller cannot write an operator's terms" "403" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/console/v1/policies" \
+     -H "$AUTH" -H 'Content-Type: application/json' \
+     -d '{"name":"x","tiers":[]}')"
+check "a nameless policy is refused" "400" \
+  "$(policy_post '{"tiers":[]}')"
+check "a policy with no tier list at all is refused" "400" \
+  "$(policy_post '{"name":"x"}')"
+# An EMPTY list is not the same thing: "we refund nothing" is a real answer an
+# operator is entitled to give, and refusing it would force them to lie.
+check "a policy that refunds nothing gets past validation" "503" \
+  "$(policy_post '{"name":"Stricte","tiers":[]}')"
+check "a well-formed policy gets past validation" "503" \
+  "$(policy_post '{"name":"Souple","tiers":[{"minLeadTimeMinutes":2880,"rateBps":10000},{"minLeadTimeMinutes":1440,"rateBps":5000}]}')"
+# The refusal that is not about typing. Tiers are matched in order, so a list
+# written shortest-first answers every request with its most generous band —
+# and nobody notices until the month's refunds are counted.
+check "tiers written shortest-first are refused" "400" \
+  "$(policy_post '{"name":"x","tiers":[{"minLeadTimeMinutes":120,"rateBps":5000},{"minLeadTimeMinutes":2880,"rateBps":10000}]}')"
+check "a refund of more than 100% is refused" "400" \
+  "$(policy_post '{"name":"x","tiers":[{"minLeadTimeMinutes":1440,"rateBps":10001}]}')"
+check "a negative flat fee is refused" "400" \
+  "$(policy_post '{"name":"x","tiers":[{"minLeadTimeMinutes":1440,"rateBps":10000,"flatFeeMinor":-500}]}')"
+check "an unknown refund destination is refused" "400" \
+  "$(policy_post '{"name":"x","tiers":[],"destination":"cheque"}')"
+# Thirty days is the ceiling. Beyond that it is not a processing window, it is
+# a way of never paying.
+check "a processing window of a year is refused" "400" \
+  "$(policy_post '{"name":"x","tiers":[],"processingHours":9000}')"
+check "the refusal names the offending tier" "yes" \
+  "$(curl -s -X POST "$BASE/console/v1/policies" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"x","tiers":[{"minLeadTimeMinutes":2880,"rateBps":10000},{"minLeadTimeMinutes":1440,"rateBps":"half"}]}' \
+     | grep -q 'tiers\[1\].rateBps' && echo yes || echo no)"
+
+# Setting the default is a separate act from writing a policy, because the
+# blast radii differ: writing one changes nothing already sold, pointing the
+# default at it changes every sale from that second on.
+default_put() {
+  curl -s -o /dev/null -w '%{http_code}' -X PUT \
+    "$BASE/console/v1/policies/default" \
+    -H "$OP_AUTH" -H 'Content-Type: application/json' -d "$1"
+}
+check "half a policy reference is refused" "400" \
+  "$(default_put '{"policyId":"11111111-1111-1111-1111-111111111111"}')"
+check "a version of zero is refused" "400" \
+  "$(default_put '{"policyId":"11111111-1111-1111-1111-111111111111","version":0}')"
+check "clearing the default gets past validation" "503" \
+  "$(default_put '{"policyId":null,"version":null}')"
+check "a traveller cannot redirect an operator's terms" "403" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+     "$BASE/console/v1/policies/default" -H "$AUTH" \
+     -H 'Content-Type: application/json' -d '{"policyId":null,"version":null}')"
+
 # ── The back office refuses everybody it should ─────────────────────────────
 #
 # The admin surface cannot be *exercised* against the fakes composition — it

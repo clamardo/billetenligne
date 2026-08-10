@@ -54,6 +54,78 @@ final class RefundPolicy {
   final bool refundServiceFee;
   final Set<String> nonRefundableFareCodes;
 
+  /// Whether these tiers can be evaluated at all.
+  ///
+  /// Checked before a policy is stored rather than when a refund is quoted,
+  /// because the failure mode is silent: tiers are matched **in order** and
+  /// the first one whose lead time fits wins, so a list written shortest-first
+  /// answers every request with its most generous band. Nobody notices until
+  /// the month's refunds are counted.
+  bool get isWellFormed {
+    for (var i = 0; i < tiers.length; i++) {
+      final tier = tiers[i];
+      if (tier.rateBps < 0 || tier.rateBps > 10000) return false;
+      if (tier.flatFeeMinor < 0) return false;
+      if (tier.minLeadTime.isNegative) return false;
+      if (i > 0 && tier.minLeadTime >= tiers[i - 1].minLeadTime) return false;
+    }
+    return processingWindow >= Duration.zero;
+  }
+
+  /// The policy as sentences, as translation keys rather than prose.
+  ///
+  /// ADR-0015 rule 3: **operators do not write policy text.** They answer the
+  /// wizard's questions and we render the copy from the structured data, in
+  /// every language, which is what guarantees the policy shown to a traveller
+  /// and the policy executed by the server are the same object. A free-text
+  /// field beside a tier table is how "the app said 90% and they paid 50%"
+  /// becomes a dispute nobody can settle.
+  ///
+  /// Encoded `key|arg|arg` and rendered `a1`, `a2` — the same convention as
+  /// notices (ADR-0008), so one catalog serves the console, the app and the
+  /// email.
+  List<String> describe() {
+    final lines = <String>[];
+
+    if (tiers.isEmpty) {
+      lines.add('policy.line.noRefund');
+    } else {
+      for (final tier in tiers) {
+        final hours = tier.minLeadTime.inHours;
+        final percent = tier.rateBps ~/ 100;
+        lines.add(switch (tier) {
+          _ when tier.flatFeeMinor > 0 =>
+            'policy.line.tierWithFee|$hours|$percent|${tier.flatFeeMinor}',
+          _ when tier.rateBps == 10000 => 'policy.line.tierFull|$hours',
+          _ => 'policy.line.tier|$hours|$percent',
+        });
+      }
+      // The band below the last tier is the one travellers actually hit, and
+      // it is the one a tier table never states. Saying it out loud is the
+      // difference between a policy somebody read and a policy somebody
+      // discovered.
+      lines.add('policy.line.after|${tiers.last.minLeadTime.inHours}');
+    }
+
+    lines.add('policy.line.destination.${destination.name}');
+    if (destination != RefundDestination.agencyCash) {
+      lines.add('policy.line.window|${processingWindow.inHours}');
+    }
+    lines.add(
+      refundServiceFee ? 'policy.line.feeRefunded' : 'policy.line.feeKept',
+    );
+    if (nonRefundableFareCodes.isNotEmpty) {
+      final codes = nonRefundableFareCodes.toList()..sort();
+      lines.add('policy.line.nonRefundable|${codes.join(", ")}');
+    }
+
+    // Last, and never optional. An operator cannot configure its way out of
+    // its own breakdown (ADR-0015 rule 4), and a traveller reading the terms
+    // should see the floor beneath them.
+    lines.add('policy.line.platformFloor');
+    return lines;
+  }
+
   static RefundPolicy souple({String id = 'preset.souple'}) =>
       const RefundPolicy(
         id: 'preset.souple',

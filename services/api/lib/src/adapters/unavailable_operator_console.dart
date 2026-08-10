@@ -103,6 +103,25 @@ final class UnavailableOperatorConsole implements OperatorConsole {
   }) async => _refuse();
 
   @override
+  Future<List<RefundPolicySummary>> refundPolicies(String operatorId) async =>
+      _refuse();
+
+  @override
+  Future<RefundPolicySummary> saveRefundPolicy({
+    required String operatorId,
+    required String name,
+    required RefundPolicy policy,
+    required String actorUserId,
+  }) async => _refuse();
+
+  @override
+  Future<RefundPolicySummary?> setDefaultRefundPolicy({
+    required String operatorId,
+    required String? policyId,
+    required int? version,
+  }) async => _refuse();
+
+  @override
   Future<List<PaymentAccountSummary>> paymentAccounts(
     String operatorId,
   ) async => _refuse();

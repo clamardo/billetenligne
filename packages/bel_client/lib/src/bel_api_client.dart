@@ -319,6 +319,55 @@ final class BelApiClient {
     await _postJson('/console/v1/fleet/layouts', draft.toJson()),
   );
 
+  /// Every version of every refund policy this operator has written.
+  Future<({List<RefundPolicyDto> items, bool hasDefault})>
+  refundPolicies() async {
+    final json = await _get('/console/v1/policies');
+    return (
+      items: Wire.readList(
+        json['items'],
+        RefundPolicyDto.fromJson,
+        field: 'items',
+      ),
+      hasDefault: json['hasDefault'] as bool? ?? false,
+    );
+  }
+
+  /// Writes a policy, or the next version of one with this name.
+  ///
+  /// Never an edit — ADR-0015 rule 1. Saving under a name that already exists
+  /// creates version n+1, and the bookings sold under version n keep it.
+  Future<RefundPolicyDto> saveRefundPolicy({
+    required String name,
+    required RefundPolicy policy,
+  }) async => RefundPolicyDto.fromJson(
+    await _postJson('/console/v1/policies', {
+      'name': name,
+      'tiers': [
+        for (final t in policy.tiers) RefundTierDto.fromDomain(t).toJson(),
+      ],
+      'destination': policy.destination.name,
+      'processingHours': policy.processingWindow.inHours,
+      'refundServiceFee': policy.refundServiceFee,
+      'nonRefundableFares': policy.nonRefundableFareCodes.toList()..sort(),
+    }),
+  );
+
+  /// Points future sales at one version, or at nothing.
+  ///
+  /// Returns null when the default was cleared, which is a legitimate state:
+  /// no policy means no self-service refund rather than a hidden one.
+  Future<RefundPolicyDto?> setDefaultRefundPolicy({
+    String? policyId,
+    int? version,
+  }) async {
+    final json = await _putJson('/console/v1/policies/default', {
+      'policyId': policyId,
+      'version': version,
+    });
+    return json == null ? null : RefundPolicyDto.fromJson(json);
+  }
+
   Future<List<VehicleDto>> vehicles() async => Wire.readList(
     (await _get('/console/v1/fleet/vehicles'))['items'],
     VehicleDto.fromJson,
@@ -654,6 +703,17 @@ final class BelApiClient {
     );
     return result ?? const {};
   }
+
+  /// A PUT whose 204 is a real answer rather than an empty success.
+  ///
+  /// Used where clearing a setting is a legitimate outcome the caller has to
+  /// be able to tell apart from setting one — collapsing both into `{}` is
+  /// how "no default policy" and "the default is this policy" become the same
+  /// value on the client.
+  Future<Map<String, Object?>?> _putJson(
+    String path,
+    Map<String, Object?> body,
+  ) => _send('PUT', path, body: body, idempotent: true);
 
   Future<Map<String, Object?>> _get(
     String path, {

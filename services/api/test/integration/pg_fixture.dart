@@ -282,6 +282,28 @@ final class PgFixture {
     return rows.first.toColumnMap()['id'] as String;
   }
 
+  /// The refund policy a booking was stamped with at sale time.
+  ///
+  /// Read from the seed connection rather than through an adapter, because
+  /// the claim being made is about the *row* — ADR-0015 rule 1 says the
+  /// booking keeps these two numbers forever, and an adapter that resolved
+  /// them through the operator's current default would agree with itself
+  /// while the rule was being broken.
+  Future<({String? id, int? version})> bookingPolicy(String ref) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT refund_policy_id, refund_policy_version
+          FROM bookings WHERE ref = @ref
+      '''),
+      parameters: {'ref': TypedValue(Type.text, ref)},
+    );
+    final row = rows.first.toColumnMap();
+    return (
+      id: row['refund_policy_id']?.toString(),
+      version: row['refund_policy_version'] as int?,
+    );
+  }
+
   Future<Map<String, Object?>> intentColumns(String intentId) async {
     final rows = await _seed.execute(
       Sql.named('''
@@ -326,7 +348,9 @@ final class PgFixture {
 
   Future<int> ticketCount(String bookingId) async {
     final rows = await _seed.execute(
-      Sql.named('SELECT count(*)::int AS n FROM tickets WHERE booking_id = @id'),
+      Sql.named(
+        'SELECT count(*)::int AS n FROM tickets WHERE booking_id = @id',
+      ),
       parameters: {'id': TypedValue(Type.uuid, bookingId)},
     );
     return rows.first.toColumnMap()['n'] as int;
@@ -408,7 +432,9 @@ final class PgFixture {
 
   Future<int> seatCount(String departureId) async {
     final rows = await _seed.execute(
-      Sql.named('SELECT count(*)::int AS n FROM seats WHERE departure_id = @id'),
+      Sql.named(
+        'SELECT count(*)::int AS n FROM seats WHERE departure_id = @id',
+      ),
       parameters: {'id': TypedValue(Type.uuid, departureId)},
     );
     return rows.first.toColumnMap()['n'] as int;

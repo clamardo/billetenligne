@@ -748,6 +748,200 @@ final class PostgresOperatorConsole implements OperatorConsole {
 
   // ── Getting paid ──────────────────────────────────────────────────────────
 
+  // ── Terms ─────────────────────────────────────────────────────────────────
+
+  @override
+  Future<List<RefundPolicySummary>> refundPolicies(String operatorId) =>
+      _db.transaction(DbScope.tenant(operatorId), (tx) async {
+        // The booking count is what makes "can I just change this?" answerable
+        // honestly: every row it counts is somebody entitled to these terms
+        // and not to the ones the operator is about to write.
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT p.id, p.version, p.name, p.tiers, p.destination,
+                   p.processing_hours, p.refund_service_fee,
+                   p.non_refundable_fares, p.effective_from,
+                   (o.default_refund_policy_id = p.id
+                     AND o.default_refund_policy_version = p.version)
+                     AS is_default,
+                   (SELECT count(*) FROM bookings b
+                     WHERE b.refund_policy_id = p.id
+                       AND b.refund_policy_version = p.version)::int
+                     AS booking_count
+              FROM refund_policies p
+              JOIN operators o ON o.id = p.operator_id
+             WHERE p.operator_id = @operator
+             ORDER BY p.name, p.version DESC
+          '''),
+          parameters: {'operator': TypedValue(Type.uuid, operatorId)},
+        );
+
+        return [for (final row in rows) _policyFrom(row.toColumnMap())];
+      });
+
+  @override
+  Future<RefundPolicySummary> saveRefundPolicy({
+    required String operatorId,
+    required String name,
+    required RefundPolicy policy,
+    required String actorUserId,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // A new version, never an edit — and here the database agrees: 0014
+    // revoked UPDATE on this table, so an adapter that tried to edit would
+    // raise rather than quietly rewrite what somebody already paid for.
+    final existing = await tx.execute(
+      Sql.named('''
+        SELECT id, COALESCE(MAX(version), 0) + 1 AS v
+          FROM refund_policies
+         WHERE operator_id = @operator AND name = @name
+         GROUP BY id
+         ORDER BY v DESC
+         LIMIT 1
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'name': TypedValue(Type.text, name),
+      },
+    );
+
+    final previous = existing.isEmpty ? null : existing.first.toColumnMap();
+    final version = previous == null ? 1 : previous['v'] as int;
+
+    final rows = await tx.execute(
+      Sql.named('''
+        INSERT INTO refund_policies
+          (id, version, operator_id, name, tiers, destination,
+           processing_hours, refund_service_fee, non_refundable_fares,
+           created_by)
+        VALUES (COALESCE(@id, gen_random_uuid()), @version, @operator, @name,
+                @tiers::jsonb, @destination, @hours, @refundFee, @fares,
+                @actor)
+        RETURNING id, version, name, tiers, destination, processing_hours,
+                  refund_service_fee, non_refundable_fares, effective_from,
+                  FALSE AS is_default, 0 AS booking_count
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, previous?['id']?.toString()),
+        'version': TypedValue(Type.integer, version),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'name': TypedValue(Type.text, name),
+        'tiers': TypedValue(Type.text, jsonEncode(_tiers(policy))),
+        'destination': TypedValue(Type.text, policy.destination.name),
+        'hours': TypedValue(Type.integer, policy.processingWindow.inHours),
+        'refundFee': TypedValue(Type.boolean, policy.refundServiceFee),
+        'fares': TypedValue(
+          Type.textArray,
+          policy.nonRefundableFareCodes.toList()..sort(),
+        ),
+        'actor': TypedValue(Type.uuid, actorUserId),
+      },
+    );
+
+    return _policyFrom(rows.first.toColumnMap());
+  });
+
+  @override
+  Future<RefundPolicySummary?> setDefaultRefundPolicy({
+    required String operatorId,
+    required String? policyId,
+    required int? version,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // Both or neither, checked here as well as by the constraint, so a
+    // half-formed request is a 400 rather than a 500 out of the database.
+    if ((policyId == null) != (version == null)) return null;
+
+    final updated = await tx.execute(
+      Sql.named('''
+        UPDATE operators
+           SET default_refund_policy_id = @policy,
+               default_refund_policy_version = @version
+         WHERE id = @operator
+           AND (@policy::uuid IS NULL OR EXISTS (
+                 SELECT 1 FROM refund_policies p
+                  WHERE p.id = @policy AND p.version = @version
+                    AND p.operator_id = @operator))
+        RETURNING default_refund_policy_id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'policy': TypedValue(Type.uuid, policyId),
+        'version': TypedValue(Type.integer, version),
+      },
+    );
+
+    // No row means the policy named is not this operator's — which is a
+    // refusal, not an error: RLS already made it invisible, and answering
+    // "not found" is how a tenant learns nothing about another tenant's ids.
+    if (updated.isEmpty) return null;
+    if (policyId == null) return null;
+
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT id, version, name, tiers, destination, processing_hours,
+               refund_service_fee, non_refundable_fares, effective_from,
+               TRUE AS is_default,
+               (SELECT count(*) FROM bookings b
+                 WHERE b.refund_policy_id = refund_policies.id
+                   AND b.refund_policy_version = refund_policies.version)::int
+                 AS booking_count
+          FROM refund_policies
+         WHERE id = @policy AND version = @version
+      '''),
+      parameters: {
+        'policy': TypedValue(Type.uuid, policyId),
+        'version': TypedValue(Type.integer, version),
+      },
+    );
+
+    return rows.isEmpty ? null : _policyFrom(rows.first.toColumnMap());
+  });
+
+  static List<Map<String, Object?>> _tiers(RefundPolicy policy) => [
+    for (final tier in policy.tiers)
+      {
+        'minLeadTimeMinutes': tier.minLeadTime.inMinutes,
+        'rateBps': tier.rateBps,
+        if (tier.flatFeeMinor > 0) 'flatFeeMinor': tier.flatFeeMinor,
+      },
+  ];
+
+  static RefundPolicySummary _policyFrom(Map<String, Object?> row) {
+    final raw = row['tiers'];
+    final tiers = (raw is String ? jsonDecode(raw) : raw) as List<Object?>;
+
+    return RefundPolicySummary(
+      id: row['id'].toString(),
+      version: row['version'] as int,
+      name: row['name'] as String,
+      isDefault: row['is_default'] as bool? ?? false,
+      effectiveFrom: row['effective_from'] as DateTime? ?? DateTime.now().toUtc(),
+      bookingCount: row['booking_count'] as int? ?? 0,
+      policy: RefundPolicy(
+        id: row['id'].toString(),
+        version: row['version'] as int,
+        destination: RefundDestination.values.firstWhere(
+          (d) => d.name == row['destination'],
+          orElse: () => RefundDestination.source,
+        ),
+        processingWindow: Duration(hours: row['processing_hours'] as int? ?? 72),
+        refundServiceFee: row['refund_service_fee'] as bool? ?? false,
+        nonRefundableFareCodes: {
+          ...?(row['non_refundable_fares'] as List?)?.map((f) => '$f'),
+        },
+        tiers: [
+          for (final entry in tiers.cast<Map<String, Object?>>())
+            RefundTier(
+              minLeadTime: Duration(
+                minutes: entry['minLeadTimeMinutes'] as int? ?? 0,
+              ),
+              rateBps: entry['rateBps'] as int? ?? 0,
+              flatFeeMinor: entry['flatFeeMinor'] as int? ?? 0,
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Future<List<PaymentAccountSummary>> paymentAccounts(String operatorId) =>
       _db.transaction(DbScope.tenant(operatorId), (tx) async {
