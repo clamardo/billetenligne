@@ -84,7 +84,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **IRROPS — declaring, and telling everybody** | ✅ done | The dispatcher declares one of six kinds and everything downstream is derived: the departure's new status, the exemption on every booking, one message per passenger. All of it in **one transaction** — bookings marked involuntary with no declaration behind them is a refund entitlement nobody can account for. A disruption is **public** (the follower of a shared trip link holds no account and is exactly the person who otherwise phones the agency), **not editable afterwards** by a column-level grant, and **one open per departure** by a partial unique index, so "what is happening to my coach?" has one answer. A short delay entitles nobody to anything — the threshold is an hour, it lives in the domain, and the console asks it rather than restating it. 16 domain · 6 contract · 12 Postgres · 5 worker · 7 smoke · 6 console · 2 traveller tests |
 | **IRROPS — the rescue coach** | ✅ done | Option ① of `08-disruption.md` §2.2: a different vehicle, the same journey. The seats are **remapped by the domain** — a passenger keeps their label only when the new coach has one of the same kind, because `1D` is a window on a 2+2 and the middle of the back block on a 2+3. Every ticket is **re-signed** in the same transaction as the new manifest, since the QR carries the seat (ADR-0007). A coach that cannot seat everybody is refused **with the number short**, so a dispatcher knows which coach to look for next. Holds with nothing behind them are released rather than slid onto a different seat under somebody who is looking at a seat map. The swap supersedes the breakdown that caused it. 9 domain · 2 contract · 6 Postgres · 5 smoke · 6 console tests |
 | **IRROPS — the rebooking wave** | ✅ done | Option ② of `08-disruption.md` §2.2: the passengers go on the operator's own next departure. **Every replacement seat is taken before a single old one is released** (§2.4) inside one transaction, so a paid passenger never exists without a seat. **Partial coverage is a success** — "18 / 42" is what a dispatcher acts on, and refusing anything short of everybody would mean the tool only works on the days it is not needed. A party moves whole or not at all, in the order people booked, which is the only rule that can be said out loud to whoever is left. No fare difference, ever, even onto a dearer departure (ADR-0016). 13 domain · 2 contract · 13 Postgres · 2 worker · 5 smoke · 3 console tests |
-| **Payout runs** | 🟡 server only | `04-payments.md` §6.2. Prepare · approve · release, and the gap between them is the control: **an operator cannot create, approve or edit their own payout**, by grant rather than by handler, and **the person who prepared a run cannot approve it**. The amount is the ledger's own balance (`payable:operator` less their tills) read again at release, never the sum of the statement's line items. Releasing debits the payable and credits every till plus the bank in one movement, which is what makes "cash sales never generate a payout" true in the books. A week of nothing but cash is negative — the operator owes us the fees — and is refused as a transfer. 8 domain · 3 contract · 13 Postgres · 8 smoke · 2 schema guarantees. **No screens yet** |
+| **Payout runs** | ✅ done | `04-payments.md` §6.2. Prepare · approve · release, and the gap between them is the control: **an operator cannot create, approve or edit their own payout**, by grant rather than by handler, and **the person who prepared a run cannot approve it**. The amount is the ledger's own balance (`payable:operator` less their tills) read again at release, never the sum of the statement's line items. Releasing debits the payable and credits every till plus the bank in one movement, which is what makes "cash sales never generate a payout" true in the books. A week of nothing but cash is negative — the operator owes us the fees — and is refused as a transfer. The back office works the queue — the whole statement is in the row, because the person approving is agreeing to a number — and the operator reads their own statements in the console, cash line included. 8 domain · 3 contract · 13 Postgres · 8 smoke · 2 schema guarantees · 5 back-office · 3 console tests |
 | IRROPS — protection, and the passenger's own choice | ⬜ not started | `08-disruption.md` §2.2 options ③ and ⑤: a standing inter-operator agreement (§5) with settlement through our ledger, and letting the passengers pick between the options themselves (§3.2). Both need something that does not exist yet — an agreement table, and a traveller-facing choice screen |
 
 ## Phase 3 and beyond
@@ -209,11 +209,11 @@ dart test services/api -x integration -x storage        # 177 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 87 app tests
-cd apps/console   && flutter test        # 59 console tests
-cd apps/admin     && flutter test        # 18 back-office tests
+cd apps/console   && flutter test        # 62 console tests
+cd apps/admin     && flutter test        # 23 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 296 files
+dart run tool/check_layers.dart          # the onion rule, 298 files
 ./infra/migrations/check.sh              # 34 schema guarantees
 ./tool/integration.sh                    # 193 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 199 checks, incl. the Dart client
@@ -225,7 +225,7 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**820 tests in total**, plus 199 smoke checks, 34 executed schema guarantees,
+**828 tests in total**, plus 199 smoke checks, 34 executed schema guarantees,
 193 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
@@ -241,6 +241,41 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+The payout screens: the back office works the queue, and an operator reads
+their own statements.
+
+**The whole statement is in the row.** Not a summary with a link — the person
+approving is agreeing to a number, and they should be able to check the sales,
+the commission, the refunds and the drawer that produced it without navigating
+anywhere. Both halves of the difference are printed, so the net can be
+verified rather than trusted.
+
+**Reading the queue needs `finance.read`; moving anything on it needs
+`payout.approve`.** Our own analyst can answer "has Océan du Nord been paid?"
+without holding the authority to pay them, and the buttons are inert rather
+than absent so nobody wonders where they went.
+
+**Approval is not payment, and the notice says so.** A confirmation that read
+"approved" without adding "the money has not gone yet" is how a reviewer tells
+an operator their transfer is on its way a day early. The release refuses
+without a transfer reference, in the screen as well as at the server: a
+transfer nobody can find in a bank statement afterwards is one that gets sent
+twice.
+
+**A week the operator owes us is not offered as a transfer at all** — no
+greyed-out button, no payout with a minus sign. It reads as what it is, in
+both consoles.
+
+**The console statement prints the cash line and the drawer deduction.** Cash
+is never paid out and appears anyway, with the sentence that answers the
+question every operator asks first: you are already holding that money, and
+only the service fees come off it.
+
+**What it cost:** five back-office tests, three console tests, and one
+`finance.read` tab that a vendor must never see.
+
+## What the payout server push changed, and what it cost
 
 The payout run, server side (`04-payments.md` §6.2). The ledger has been
 correct since the first sale and nothing has ever taken money out of it: an

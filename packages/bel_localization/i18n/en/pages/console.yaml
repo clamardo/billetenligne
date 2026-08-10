@@ -10,6 +10,7 @@ console:
     timetable: "Timetables"
     policies: "Terms"
     vitrine: "Storefront"
+    finance: "Payouts"
   signIn:
     title: "Operator console"
   today:
@@ -69,6 +70,30 @@ console:
     noteHint: "Passengers see this alongside the templated message."
     back: "Back"
     confirm: "Move them"
+  # The weekly statement, operator side (04-payments.md §6.2). Read-only: the
+  # party being paid does not move the row that pays them.
+  statements:
+    title: "Your payouts"
+    subtitle: "One statement per period. Counter sales appear on it and are never paid out."
+    emptyTitle: "No statements yet"
+    emptyBody: "Your first statement appears here after the first selling period."
+    period: "{from} to {to}"
+    paidLabel: "Net to pay"
+    owed: "You owe us this amount"
+    online: "Online sales"
+    cash: "Counter sales (cash)"
+    tickets: "{count} ticket(s) · {amount}"
+    cashNote: "Cash sales are never paid out: you are already holding that money. Only the service fees are deducted."
+    commission: "Commission"
+    refunds: "Refunds issued"
+    tills: "Cash in drawers (deducted)"
+    paidOn: "Paid"
+    paidWith: "{date} · reference {reference}"
+    state:
+      draft: "Prepared"
+      approved: "Approved"
+      paid: "Paid"
+      void: "Voided"
   manifest:
     summary: "{sold} sold · {boarded} boarded · {capacity} seats"
     empty: "No passengers yet."

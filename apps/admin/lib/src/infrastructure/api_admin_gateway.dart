@@ -59,6 +59,40 @@ final class ApiAdminGateway implements AdminGateway {
   }) => _client.unresolvedPayments(reason: reason);
 
   @override
+  Future<List<PayoutRunDto>> payouts({required String reason}) =>
+      _client.payoutQueue(reason: reason);
+
+  @override
+  Future<PayoutRunDto> preparePayout({
+    required String operatorId,
+    required DateTime periodStart,
+    required DateTime periodEnd,
+    required String reason,
+  }) => _client.preparePayout(
+    PreparePayoutRequest(
+      operatorId: operatorId,
+      periodStart: periodStart,
+      periodEnd: periodEnd,
+    ),
+    reason: reason,
+  );
+
+  @override
+  Future<PayoutRunDto> decidePayout({
+    required String runId,
+    required String decision,
+    required String reason,
+    String? paymentReference,
+  }) => _client.decidePayout(
+    runId: runId,
+    request: PayoutDecisionRequest(
+      decision: decision,
+      reference: paymentReference,
+    ),
+    reason: reason,
+  );
+
+  @override
   Future<UnresolvedPaymentDto> resolvePayment({
     required String intentId,
     required String outcome,

@@ -44,6 +44,24 @@ abstract interface class AdminGateway {
     required String reason,
   });
 
+  /// The payout queue: prepared and not yet paid, oldest first.
+  Future<List<PayoutRunDto>> payouts({required String reason});
+
+  Future<PayoutRunDto> preparePayout({
+    required String operatorId,
+    required DateTime periodStart,
+    required DateTime periodEnd,
+    required String reason,
+  });
+
+  /// `approve` or `release`. Two calls, by two different people (ADR-0011).
+  Future<PayoutRunDto> decidePayout({
+    required String runId,
+    required String decision,
+    required String reason,
+    String? paymentReference,
+  });
+
   Future<UnresolvedPaymentDto> resolvePayment({
     required String intentId,
     required String outcome,

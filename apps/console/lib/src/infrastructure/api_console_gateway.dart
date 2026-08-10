@@ -151,6 +151,9 @@ final class ApiConsoleGateway implements ConsoleGateway {
   }) => _client.declareDisruption(departureId: departureId, request: request);
 
   @override
+  Future<List<PayoutRunDto>> statements() => _client.statements();
+
+  @override
   Future<RebookingAppliedDto> rebookOnto({
     required String departureId,
     required RebookRequest request,

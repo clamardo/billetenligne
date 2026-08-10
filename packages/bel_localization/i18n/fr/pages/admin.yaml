@@ -7,6 +7,7 @@ admin:
     queue: "Dossiers"
     operators: "Compagnies"
     payments: "Paiements"
+    payouts: "Versements"
   signIn:
     title: "Back-office BilletEnLigne"
   noAccess:
@@ -128,9 +129,41 @@ admin:
     confirmFailed: "Déclarer ce paiement échoué ?"
     evidence: "Preuve constatée"
     evidenceHelp: "Ce que vous avez vu, et où. C'est cette phrase qui tranchera une contestation dans six semaines."
+  # Le versement hebdomadaire (04-payments.md §6.2). Le relevé entier tient
+  # dans la ligne : la personne qui approuve s'engage sur un montant, elle doit
+  # pouvoir le vérifier sans naviguer ailleurs.
+  payouts:
+    title: "Versements"
+    subtitle: "{count} versement(s) en attente · le plus ancien en premier"
+    emptyTitle: "Aucun versement en attente"
+    emptyBody: "Préparez un relevé pour une compagnie et une période, puis une deuxième personne l'approuve."
+    period: "Du {from} au {to}"
+    online: "Ventes en ligne"
+    cash: "Ventes guichet (espèces)"
+    tickets: "{count} billet(s) · {amount}"
+    commission: "Commission"
+    refunds: "Remboursements émis"
+    payable: "Solde dû"
+    tills: "Espèces en caisse (déduites)"
+    destination: "Versement vers"
+    secondPerson: "Vous ne pouvez pas approuver un relevé que vous avez préparé."
+    approve: "Approuver ce relevé"
+    release: "Envoyer l'argent"
+    reference: "Référence du virement"
+    referenceHint: "Celle qui figurera sur le relevé bancaire. Sans elle, personne ne retrouve ce virement."
+    owesUs: "Cette compagnie nous doit {amount}. Aucun virement : une facture et une conversation."
+    state:
+      draft: "Préparé"
+      approved: "Approuvé"
+      paid: "Versé"
+      void: "Annulé"
   notice:
     decision: "{a1} · décision enregistrée"
     commission: "Commission fixée à {a1}"
     reasked: "Question renvoyée à l'opérateur. Le paiement reste en suspens tant qu'il n'a pas répondu."
     captured: "Paiement encaissé. Billet émis."
     failed: "Paiement déclaré échoué. La place est de nouveau en vente."
+    payout.prepared: "Relevé préparé : {a1}. Une deuxième personne doit l'approuver."
+    payout.approved: "Relevé approuvé : {a1}. L'argent n'est pas encore parti."
+    payout.released: "{a1} envoyés. Référence {a2}."
+    payout.needsReference: "Indiquez la référence du virement avant d'envoyer."

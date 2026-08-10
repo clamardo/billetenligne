@@ -13,7 +13,7 @@ import 'ports/admin_gateway.dart';
 /// changed, months after onboarding), and the payments nobody could settle
 /// automatically third — a queue that is empty on a good day and is the only
 /// thing that matters on a bad one.
-enum AdminSection { queue, operators, payments }
+enum AdminSection { queue, operators, payments, payouts }
 
 /// Everything the back office has loaded, and what it is doing.
 ///
@@ -73,6 +73,9 @@ final class AdminWorkspace {
   List<AdminOperatorDto> operators = const [];
   List<UnresolvedPaymentDto> payments = const [];
 
+  /// Everything prepared and not yet paid, across every operator.
+  List<PayoutRunDto> payouts = const [];
+
   /// The file that is open on top of the current section, if any.
   AdminOperatorDetailDto? _openOperator;
   AdminOperatorDetailDto? get openOperator => _openOperator;
@@ -128,6 +131,8 @@ final class AdminWorkspace {
         );
       case AdminSection.payments:
         payments = await _gateway.unresolvedPayments(reason: _reason);
+      case AdminSection.payouts:
+        payouts = await _gateway.payouts(reason: _reason);
     }
 
     // A file left open across a refresh is re-read, so a decision taken in
@@ -189,6 +194,60 @@ final class AdminWorkspace {
     // will argue about, and a confirmation that repeats it is a confirmation
     // somebody can catch a typo in.
     _notice = 'commission|${CommissionTerm(updated.commissionBps).display}';
+    await _load();
+  });
+
+  // ── The payout run ────────────────────────────────────────────────────────
+
+  /// Prepares one operator's week (`04-payments.md` §6.2).
+  ///
+  /// The window is passed in whole rather than derived from "last week" here:
+  /// a run for a period nobody chose is a run nobody can check, and the two
+  /// dates are what the statement is headed with.
+  Future<void> preparePayout({
+    required String operatorId,
+    required DateTime periodStart,
+    required DateTime periodEnd,
+  }) => _run(() async {
+    if (!hasReason) return;
+    final run = await _gateway.preparePayout(
+      operatorId: operatorId,
+      periodStart: periodStart,
+      periodEnd: periodEnd,
+      reason: _reason.trim(),
+    );
+    // Says the number back rather than "prepared". This is the amount a
+    // second person is about to agree to, and a confirmation that repeats it
+    // is a confirmation somebody can catch a wrong window in.
+    _notice = 'payout.prepared|${run.net.format()}';
+    await _load();
+  });
+
+  /// `approve` — a second person agreeing — or `release`, which is the only
+  /// one that moves money.
+  Future<void> decidePayout({
+    required String runId,
+    required String decision,
+    String? paymentReference,
+  }) => _run(() async {
+    if (!hasReason) return;
+    // Refused here as well as at the server. A transfer with no reference is
+    // one nobody can find in a bank statement afterwards, and finding that
+    // out from a 400 is finding it out after the money is gone.
+    if (decision == 'release' && (paymentReference ?? '').trim().isEmpty) {
+      _notice = 'payout.needsReference';
+      _emit();
+      return;
+    }
+    final run = await _gateway.decidePayout(
+      runId: runId,
+      decision: decision,
+      reason: _reason.trim(),
+      paymentReference: paymentReference?.trim(),
+    );
+    _notice = run.state == 'paid'
+        ? 'payout.released|${run.net.format()}|${run.reference ?? ''}'
+        : 'payout.approved|${run.net.format()}';
     await _load();
   });
 

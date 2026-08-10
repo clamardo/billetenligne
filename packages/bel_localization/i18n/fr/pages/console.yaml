@@ -10,6 +10,7 @@ console:
     timetable: "Horaires"
     policies: "Conditions"
     vitrine: "Vitrine"
+    finance: "Versements"
   signIn:
     title: "Console opérateur"
   today:
@@ -69,6 +70,30 @@ console:
     noteHint: "Ce que verront les passagers, en plus du message type."
     back: "Retour"
     confirm: "Reloger"
+  # Le relevé hebdomadaire, côté compagnie (04-payments.md §6.2). En lecture
+  # seule : celui qui est payé ne déplace pas la ligne qui le paie.
+  statements:
+    title: "Vos versements"
+    subtitle: "Un relevé par période. Les ventes guichet y figurent, elles ne sont jamais versées."
+    emptyTitle: "Aucun relevé pour l'instant"
+    emptyBody: "Votre premier relevé apparaîtra ici après la première période de vente."
+    period: "Du {from} au {to}"
+    paidLabel: "Net à verser"
+    owed: "Vous nous devez ce montant"
+    online: "Ventes en ligne"
+    cash: "Ventes guichet (espèces)"
+    tickets: "{count} billet(s) · {amount}"
+    cashNote: "Les ventes en espèces ne sont jamais versées : vous détenez déjà cet argent. Seuls les frais de service sont déduits."
+    commission: "Commission"
+    refunds: "Remboursements émis"
+    tills: "Espèces en caisse (déduites)"
+    paidOn: "Versé"
+    paidWith: "{date} · référence {reference}"
+    state:
+      draft: "Préparé"
+      approved: "Approuvé"
+      paid: "Versé"
+      void: "Annulé"
   manifest:
     summary: "{sold} vendus · {boarded} embarqués · {capacity} places"
     empty: "Aucun passager pour l'instant."

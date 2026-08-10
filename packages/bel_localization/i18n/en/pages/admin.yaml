@@ -6,6 +6,7 @@ admin:
     queue: "Applications"
     operators: "Operators"
     payments: "Payments"
+    payouts: "Payouts"
   signIn:
     title: "BilletEnLigne back office"
   noAccess:
@@ -127,9 +128,41 @@ admin:
     confirmFailed: "Declare this payment failed?"
     evidence: "Evidence seen"
     evidenceHelp: "What you saw, and where. This sentence is what settles a dispute six weeks from now."
+  # The weekly payout (04-payments.md §6.2). The whole statement is in the
+  # row: the person approving is agreeing to a number, and they should be able
+  # to check it without navigating anywhere.
+  payouts:
+    title: "Payouts"
+    subtitle: "{count} waiting · oldest first"
+    emptyTitle: "Nothing waiting"
+    emptyBody: "Prepare a statement for one operator and one period, then a second person approves it."
+    period: "{from} to {to}"
+    online: "Online sales"
+    cash: "Counter sales (cash)"
+    tickets: "{count} ticket(s) · {amount}"
+    commission: "Commission"
+    refunds: "Refunds issued"
+    payable: "Balance owed"
+    tills: "Cash in drawers (deducted)"
+    destination: "Paid to"
+    secondPerson: "You cannot approve a statement you prepared."
+    approve: "Approve this statement"
+    release: "Send the money"
+    reference: "Transfer reference"
+    referenceHint: "The one that will appear on the bank statement. Without it, nobody can find this transfer."
+    owesUs: "This operator owes us {amount}. No transfer: an invoice and a conversation."
+    state:
+      draft: "Prepared"
+      approved: "Approved"
+      paid: "Paid"
+      void: "Voided"
   notice:
     decision: "{a1} · decision recorded"
     commission: "Commission set to {a1}"
     reasked: "Asked the rail again. The payment stays in limbo until it answers."
     captured: "Payment captured. Ticket issued."
     failed: "Payment declared failed. The seat is back on sale."
+    payout.prepared: "Statement prepared: {a1}. A second person must approve it."
+    payout.approved: "Statement approved: {a1}. The money has not gone yet."
+    payout.released: "{a1} sent. Reference {a2}."
+    payout.needsReference: "Enter the transfer reference before sending."

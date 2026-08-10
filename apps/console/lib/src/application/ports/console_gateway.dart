@@ -62,6 +62,10 @@ abstract interface class ConsoleGateway {
     required RescueCoachRequest request,
   });
 
+  /// This operator's own payout statements, newest first. A read, and only a
+  /// read — there is no write on this port because there is no route.
+  Future<List<PayoutRunDto>> statements();
+
   Future<List<VehicleDto>> vehicles();
 
   Future<VehicleDto> saveVehicle({

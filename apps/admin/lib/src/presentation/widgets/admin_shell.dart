@@ -151,18 +151,24 @@ class _AdminShellState extends State<AdminShell> {
     if (w.can('platform.operator.review')) AdminSection.queue,
     if (w.can('platform.operator.review')) AdminSection.operators,
     if (w.can('platform.payment.reconcile')) AdminSection.payments,
+    // Reading the queue needs finance.read; moving anything on it needs
+    // payout.approve. Our own analyst can answer "has Océan du Nord been
+    // paid?" without holding the authority to pay them.
+    if (w.can('finance.read')) AdminSection.payouts,
   ];
 
   static IconData _icon(AdminSection s) => switch (s) {
     AdminSection.queue => Icons.inbox,
     AdminSection.operators => Icons.apartment,
     AdminSection.payments => Icons.help_outline,
+    AdminSection.payouts => Icons.account_balance,
   };
 
   static String _labelKey(AdminSection s) => switch (s) {
     AdminSection.queue => 'admin.nav.queue',
     AdminSection.operators => 'admin.nav.operators',
     AdminSection.payments => 'admin.nav.payments',
+    AdminSection.payouts => 'admin.nav.payouts',
   };
 
   /// Notices travel as `key|arg|arg`, so the *workspace* never holds prose.

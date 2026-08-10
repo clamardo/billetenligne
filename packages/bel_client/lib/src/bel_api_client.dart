@@ -597,24 +597,32 @@ final class BelApiClient {
   );
 
   /// The platform's payout queue: prepared and not yet paid, oldest first.
-  Future<List<PayoutRunDto>> payoutQueue() async => Wire.readList(
-    (await _get('/admin/v1/payouts'))['items'],
-    PayoutRunDto.fromJson,
-    field: 'items',
-  );
-
-  Future<PayoutRunDto> preparePayout(PreparePayoutRequest request) async =>
-      PayoutRunDto.fromJson(
-        await _postJson('/admin/v1/payouts', request.toJson()),
+  Future<List<PayoutRunDto>> payoutQueue({String? reason}) async =>
+      Wire.readList(
+        (await _get('/admin/v1/payouts', reason: reason))['items'],
+        PayoutRunDto.fromJson,
+        field: 'items',
       );
+
+  Future<PayoutRunDto> preparePayout(
+    PreparePayoutRequest request, {
+    required String reason,
+  }) async => PayoutRunDto.fromJson(
+    await _postJson('/admin/v1/payouts', request.toJson(), reason: reason),
+  );
 
   /// Approve a prepared run, or release an approved one. Two calls on
   /// purpose, by two different people (ADR-0011).
   Future<PayoutRunDto> decidePayout({
     required String runId,
     required PayoutDecisionRequest request,
+    required String reason,
   }) async => PayoutRunDto.fromJson(
-    await _postJson('/admin/v1/payouts/$runId/decision', request.toJson()),
+    await _postJson(
+      '/admin/v1/payouts/$runId/decision',
+      request.toJson(),
+      reason: reason,
+    ),
   );
 
   /// Move the passengers onto another of this operator's departures.

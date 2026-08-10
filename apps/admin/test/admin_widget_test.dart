@@ -3,6 +3,7 @@ import 'package:bel_admin/src/application/ports/admin_gateway.dart';
 import 'package:bel_admin/src/presentation/app.dart';
 import 'package:bel_client/bel_client.dart';
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_design/bel_design.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +25,7 @@ final class _ScriptedAdmin implements AdminGateway {
 
   List<AdminOperatorDto> roster = const [];
   List<UnresolvedPaymentDto> queue = const [];
+  List<PayoutRunDto> runs = const [];
   AdminOperatorDetailDto? file;
 
   /// `call:argument:…:reason`, in order.
@@ -88,6 +90,37 @@ final class _ScriptedAdmin implements AdminGateway {
   }
 
   @override
+  Future<List<PayoutRunDto>> payouts({required String reason}) async {
+    calls.add('payouts:$reason');
+    return runs;
+  }
+
+  @override
+  Future<PayoutRunDto> preparePayout({
+    required String operatorId,
+    required DateTime periodStart,
+    required DateTime periodEnd,
+    required String reason,
+  }) async {
+    calls.add('prepare:$operatorId:$reason');
+    return runs.first;
+  }
+
+  @override
+  Future<PayoutRunDto> decidePayout({
+    required String runId,
+    required String decision,
+    required String reason,
+    String? paymentReference,
+  }) async {
+    calls.add('payout:$runId:$decision:$reason:${paymentReference ?? ''}');
+    return _run(
+      state: decision == 'release' ? 'paid' : 'approved',
+      reference: paymentReference,
+    );
+  }
+
+  @override
   Future<UnresolvedPaymentDto> resolvePayment({
     required String intentId,
     required String outcome,
@@ -102,6 +135,32 @@ final class _ScriptedAdmin implements AdminGateway {
     return queue.first;
   }
 }
+
+PayoutRunDto _run({
+  String state = 'draft',
+  int net = 3516000,
+  String? reference,
+}) => PayoutRunDto(
+  id: 'pay-1',
+  operatorId: 'op-1',
+  operatorName: 'Océan du Nord',
+  periodStart: DateTime.utc(2026, 8, 1),
+  periodEnd: DateTime.utc(2026, 8, 8),
+  onlineSalesCount: 412,
+  onlineGross: const Money.xaf(3708000),
+  cashSalesCount: 188,
+  cashGross: const Money.xaf(1692000),
+  commission: const Money.xaf(185400),
+  serviceFees: const Money.xaf(180000),
+  refunds: const Money.xaf(126000),
+  payable: const Money.xaf(3708000),
+  tills: const Money.xaf(192000),
+  net: Money.xaf(net),
+  state: state,
+  preparedAt: DateTime.utc(2026, 8, 8, 9),
+  destination: 'MoMo ****4471',
+  reference: reference,
+);
 
 AdminOperatorDto _operator({
   String status = 'under_review',
@@ -462,6 +521,121 @@ void main() {
       gateway.calls,
       contains('commission:op-1:750:dossier complet, RCCM vérifié'),
     );
+  });
+
+  group('the payout queue', () {
+    testWidgets('the whole statement is in the row, cash included', (
+      tester,
+    ) async {
+      final gateway = _ScriptedAdmin(capabilities: const ['finance.read'])
+        ..runs = [_run()];
+
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(AdminSection.payouts);
+      await tester.pumpAndSettle();
+
+      // The person approving is agreeing to a number and should be able to
+      // check it here rather than trust it: both halves of the difference,
+      // and the cash line that is never paid out but is always asked about.
+      expect(find.textContaining('412 billet'), findsOneWidget);
+      expect(find.textContaining('188 billet'), findsOneWidget);
+      expect(find.text('Espèces en caisse (déduites)'), findsOneWidget);
+    });
+
+    testWidgets('an analyst may read the queue and not move it', (
+      tester,
+    ) async {
+      final gateway = _ScriptedAdmin(capabilities: const ['finance.read'])
+        ..runs = [_run()];
+
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(AdminSection.payouts);
+      await tester.pumpAndSettle();
+      await statePolicy(tester, workspace);
+
+      // "Has Océan du Nord been paid?" is answerable without holding the
+      // authority to pay them.
+      final button = tester.widget<KButton>(
+        find.widgetWithText(KButton, 'Approuver ce relevé'),
+      );
+      expect(button.onPressed, isNull);
+    });
+
+    testWidgets('approving says the money has not gone yet', (tester) async {
+      final gateway = _ScriptedAdmin(
+        capabilities: const ['finance.read', 'payout.approve'],
+      )..runs = [_run()];
+
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(AdminSection.payouts);
+      await tester.pumpAndSettle();
+      await statePolicy(tester, workspace);
+
+      await tester.tap(find.text('Approuver ce relevé'));
+      await tester.pumpAndSettle();
+
+      expect(
+        gateway.calls,
+        contains('payout:pay-1:approve:dossier complet, RCCM vérifié:'),
+      );
+      // Approval is not payment, and a notice that did not say so is how a
+      // reviewer tells an operator the money is on its way a day early.
+      expect(find.textContaining("pas encore parti"), findsOneWidget);
+    });
+
+    testWidgets('the money cannot be sent without a reference', (tester) async {
+      final gateway = _ScriptedAdmin(
+        capabilities: const ['finance.read', 'payout.approve'],
+      )..runs = [_run(state: 'approved')];
+
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(AdminSection.payouts);
+      await tester.pumpAndSettle();
+      await statePolicy(tester, workspace);
+
+      // A transfer nobody can find in a bank statement afterwards is a
+      // transfer that gets sent twice.
+      final blocked = tester.widget<KButton>(
+        find.widgetWithText(KButton, "Envoyer l'argent"),
+      );
+      expect(blocked.onPressed, isNull);
+
+      await tester.enterText(find.byType(TextField).last, 'MOMO-4471-88');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Envoyer l'argent"));
+      await tester.pumpAndSettle();
+
+      expect(
+        gateway.calls,
+        contains(
+          'payout:pay-1:release:dossier complet, RCCM vérifié:MOMO-4471-88',
+        ),
+      );
+      // The notice repeats the reference, which is what a reviewer copies
+      // into whatever ledger their finance team actually keeps.
+      expect(
+        find.textContaining('envoyés. Référence MOMO-4471-88'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an operator who owes us is not offered a transfer', (
+      tester,
+    ) async {
+      final gateway = _ScriptedAdmin(
+        capabilities: const ['finance.read', 'payout.approve'],
+      )..runs = [_run(net: -54000)];
+
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(AdminSection.payouts);
+      await tester.pumpAndSettle();
+      await statePolicy(tester, workspace);
+
+      // Money the wrong way round is an invoice and a conversation. Not a
+      // greyed-out button, and certainly not a payout with a minus sign.
+      expect(find.text('Approuver ce relevé'), findsNothing);
+      expect(find.textContaining('nous doit'), findsOneWidget);
+    });
   });
 
   group('the reconciliation queue', () {

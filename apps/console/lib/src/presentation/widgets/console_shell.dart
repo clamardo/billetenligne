@@ -122,6 +122,10 @@ final class ConsoleShell extends StatelessWidget {
     if (w.can('departure.manage')) ConsoleSection.timetable,
     if (w.can('booking.read')) ConsoleSection.policies,
     if (w.can('vitrine.manage')) ConsoleSection.vitrine,
+    // The owner and the finance role. A vendor does not need to see what the
+    // company was paid last week, and a tab they cannot use is a tab they
+    // eventually ask about.
+    if (w.can('finance.read')) ConsoleSection.finance,
   ];
 
   static IconData _icon(ConsoleSection s) => switch (s) {
@@ -132,6 +136,7 @@ final class ConsoleShell extends StatelessWidget {
     ConsoleSection.timetable => Icons.schedule,
     ConsoleSection.policies => Icons.gavel,
     ConsoleSection.vitrine => Icons.storefront,
+    ConsoleSection.finance => Icons.receipt_long,
   };
 
   static String _labelKey(ConsoleSection s) => switch (s) {
@@ -142,6 +147,7 @@ final class ConsoleShell extends StatelessWidget {
     ConsoleSection.timetable => 'console.nav.timetable',
     ConsoleSection.policies => 'console.nav.policies',
     ConsoleSection.vitrine => 'console.nav.vitrine',
+    ConsoleSection.finance => 'console.nav.finance',
   };
 
   /// Notices travel as `key|arg|arg`, so the *workspace* never holds prose.

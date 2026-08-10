@@ -8,6 +8,7 @@ import '../application/admin_workspace.dart';
 import 'l10n.dart';
 import 'screens/operator_screen.dart';
 import 'screens/payments_screen.dart';
+import 'screens/payouts_screen.dart';
 import 'screens/queue_screen.dart';
 import 'widgets/admin_shell.dart';
 
@@ -117,6 +118,7 @@ class _AdminState extends State<_Admin> {
                 showFilters: true,
               ),
               AdminSection.payments => PaymentsScreen(workspace: _work),
+              AdminSection.payouts => PayoutsScreen(workspace: _work),
             },
     );
   }

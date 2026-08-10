@@ -313,6 +313,15 @@ final class _ScriptedConsole implements ConsoleGateway {
     );
   }
 
+  /// This operator's statements, as the server would answer.
+  List<PayoutRunDto> statementList = const [];
+
+  @override
+  Future<List<PayoutRunDto>> statements() async {
+    saved.add('statements');
+    return statementList;
+  }
+
   /// How many of the moved party the replacement could take. Set per test:
   /// the console renders "everybody" and "18 of 42" differently, and only one
   /// of those tells a dispatcher what to do next.
@@ -1031,6 +1040,81 @@ void main() {
         find.widgetWithText(KButton, 'Reloger'),
       );
       expect(button.onPressed, isNull);
+    });
+  });
+
+  group('the statements screen', () {
+    PayoutRunDto statement({int net = 3516000, String state = 'paid'}) =>
+        PayoutRunDto(
+          id: 'pay-1',
+          operatorId: 'op-1',
+          periodStart: DateTime.utc(2026, 8, 1),
+          periodEnd: DateTime.utc(2026, 8, 8),
+          onlineSalesCount: 412,
+          onlineGross: const Money.xaf(3708000),
+          cashSalesCount: 188,
+          cashGross: const Money.xaf(1692000),
+          commission: const Money.xaf(185400),
+          serviceFees: const Money.xaf(180000),
+          refunds: const Money.xaf(126000),
+          payable: const Money.xaf(3708000),
+          tills: const Money.xaf(192000),
+          net: Money.xaf(net),
+          state: state,
+          preparedAt: DateTime.utc(2026, 8, 8, 9),
+          paidAt: state == 'paid' ? DateTime.utc(2026, 8, 12) : null,
+          reference: state == 'paid' ? 'MOMO-4471-88' : null,
+        );
+
+    _ScriptedConsole finance() =>
+        _ScriptedConsole(capabilities: const ['booking.read', 'finance.read'])
+          ..statementList = [statement()];
+
+    testWidgets('a vendor is not offered the tab at all', (tester) async {
+      await pump(
+        tester,
+        _ScriptedConsole(capabilities: const ['booking.read']),
+      );
+
+      // A vendor does not need to see what the company was paid last week,
+      // and a tab they cannot use is a tab they eventually ask about.
+      expect(find.text('Versements'), findsNothing);
+    });
+
+    testWidgets('the cash line is there, and says it is never paid out', (
+      tester,
+    ) async {
+      final gateway = finance();
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.finance);
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('statements'));
+      expect(find.textContaining('188 billet'), findsOneWidget);
+      // The number one operator question, answered on the statement itself
+      // rather than by a support call.
+      expect(
+        find.textContaining('vous détenez déjà cet argent'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('MOMO-4471-88'), findsOneWidget);
+    });
+
+    testWidgets('a week they owe us reads as owing, not as a payout', (
+      tester,
+    ) async {
+      final gateway = finance()..statementList = [statement(net: -54000)];
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.finance);
+      await tester.pumpAndSettle();
+
+      // Shown as a positive amount they owe rather than a payout with a minus
+      // sign, which reads as money coming to them.
+      expect(find.text('Vous nous devez ce montant'), findsOneWidget);
+      // Positive, and it is the amount they owe. `Money.format` groups with
+      // a narrow no-break space in French, so the assertion uses the same
+      // character rather than a plain one that would never match.
+      expect(find.textContaining('54${Money.narrowNbsp}000'), findsOneWidget);
     });
   });
 

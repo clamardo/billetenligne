@@ -20,6 +20,7 @@ enum ConsoleSection {
   timetable,
   policies,
   vitrine,
+  finance,
 }
 
 /// Everything the console has loaded, and what it is doing.
@@ -87,6 +88,11 @@ final class ConsoleWorkspace {
   /// consequence: those bookings have no self-service refund.
   bool hasDefaultPolicy = false;
 
+  /// The weekly statements, newest first. Read-only everywhere: the party
+  /// being paid does not get to move the row that pays them, and the server
+  /// enforces that with a grant rather than with a missing button.
+  List<PayoutRunDto> statements = const [];
+
   /// The operator's storefront. Null until the vitrine section is opened —
   /// nothing else on the console needs it, and loading it on every start
   /// would be a request per morning for a screen most people open twice.
@@ -140,6 +146,8 @@ final class ConsoleWorkspace {
         hasDefaultPolicy = loaded.hasDefault;
       case ConsoleSection.vitrine:
         vitrine = await _gateway.vitrine();
+      case ConsoleSection.finance:
+        statements = await _gateway.statements();
       case ConsoleSection.timetable:
         schedules = await _gateway.schedules();
         // The editor cannot offer a route or a coach it has not loaded, and
