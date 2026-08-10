@@ -48,6 +48,13 @@ abstract interface class ConsoleGateway {
     int? version,
   });
 
+  /// Move the passengers of a broken departure onto another of this
+  /// operator's. Partial coverage is a success, and says how many are left.
+  Future<RebookingAppliedDto> rebookOnto({
+    required String departureId,
+    required RebookRequest request,
+  });
+
   /// Send a different coach on a departure that has lost its own, remapping
   /// everybody who is already on it.
   Future<RescueAppliedDto> assignRescueCoach({

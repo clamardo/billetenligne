@@ -24,4 +24,8 @@ sms:
     body: "{operator}: {route} de {time}. {summary}"
     involuntary: "{operator}: {route} de {time} est perturbe. {summary} Aucun frais: echange ou remboursement integral."
   disruptionResolved:
-    body: "{operator}: nouvelle solution pour {route}. Depart {time}, siege {seat}. Aucun frais. Details: {link}"
+    body: "{operator}: nouvelle solution pour {route}. Depart {date} a {time}, siege {seat}. Aucun frais."
+  # Le passager change de depart, pas seulement de siege. L'ancienne heure est
+  # rappelee parce que c'est celle qu'il a en tete et sur son billet.
+  rebooked:
+    body: "{operator}: {route} de {oldTime} ne part pas. Vous partez le {date} a {time}, siege {seat}. Aucun frais. Ref {reference}."

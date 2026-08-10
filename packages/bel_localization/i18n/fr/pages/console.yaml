@@ -25,6 +25,7 @@ console:
     emptyBody: "Publiez un horaire depuis l'onglet Horaires pour mettre des départs en vente."
     declare: "Signaler un incident"
     rescue: "Car de secours"
+    rebook: "Reloger les passagers"
   # Le formulaire du régulateur, au bord de la route, sur un téléphone, en 2G,
   # parfois sous la pluie (08-disruption.md §2.1). Quatre grandes cibles, une
   # cause, et rien d'autre d'obligatoire.
@@ -57,6 +58,17 @@ console:
     willMove: "{count} passager(s) recevront un nouveau billet et une nouvelle place."
     back: "Retour"
     confirm: "Envoyer ce car"
+  # Le report sur un autre départ (08-disruption.md §2.2, option ②). La
+  # couverture est affichée par candidat : « 18 sur 42 » est le nombre sur
+  # lequel le régulateur enchaîne.
+  rebook:
+    title: "Reloger {count} passager(s)"
+    none: "Aucun autre départ sur cette ligne aujourd'hui. Essayez un car de secours."
+    covers: "{covered} sur {total}"
+    note: "Précision (facultatif)"
+    noteHint: "Ce que verront les passagers, en plus du message type."
+    back: "Retour"
+    confirm: "Reloger"
   manifest:
     summary: "{sold} vendus · {boarded} embarqués · {capacity} places"
     empty: "Aucun passager pour l'instant."
@@ -336,5 +348,7 @@ console:
     disruption.declaredFree: "Signalé. {a1} passager(s) prévenu(s), échange ou remboursement sans frais."
     rescue.applied: "{a1} affecté. {a2} passager(s) changent de place."
     rescue.appliedSameSeats: "{a1} affecté. Chacun garde sa place."
+    rebook.applied: "{a1} passager(s) relogés. Tout le monde a une place."
+    rebook.partial: "{a1} relogés, {a2} sans solution. Trouvez-leur un car."
     counter.collected: "Encaissé. Référence {a1}."
     counter.sold: "Vendu. Référence {a1}."

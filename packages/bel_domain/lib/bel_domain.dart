@@ -32,4 +32,5 @@ export 'src/policy/refund_policy.dart';
 export 'src/branding/brand_asset.dart';
 export 'src/operator/operator_application.dart';
 export 'src/disruption/disruption.dart';
+export 'src/disruption/reaccommodation.dart';
 export 'src/disruption/seat_remap.dart';

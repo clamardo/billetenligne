@@ -313,6 +313,36 @@ final class _ScriptedConsole implements ConsoleGateway {
     );
   }
 
+  /// How many of the moved party the replacement could take. Set per test:
+  /// the console renders "everybody" and "18 of 42" differently, and only one
+  /// of those tells a dispatcher what to do next.
+  int rebookLeft = 0;
+
+  @override
+  Future<RebookingAppliedDto> rebookOnto({
+    required String departureId,
+    required RebookRequest request,
+  }) async {
+    saved.add(
+      'rebook:$departureId:${request.replacementDepartureId}'
+      ':${request.note ?? ''}',
+    );
+    return RebookingAppliedDto(
+      departureId: departureId,
+      replacementDepartureId: request.replacementDepartureId,
+      replacementDepartsAt: DateTime.utc(2026, 8, 10, 13),
+      moved: const [
+        RebookedPartyDto(
+          bookingId: 'b-1',
+          ref: 'BEL-7QK4M2',
+          seatLabels: ['3A'],
+        ),
+      ],
+      passengersMoved: 18,
+      passengersLeft: rebookLeft,
+    );
+  }
+
   /// How many seats the rescue moved. Set per test — the console renders the
   /// difference between "everybody keeps their seat" and "nine people move".
   int rescueMoves = 0;
@@ -888,6 +918,119 @@ void main() {
       // The answer to a breakdown is then the counter, not this sheet — and
       // an empty list would have left the dispatcher looking for a scrollbar.
       expect(find.textContaining('Aucun car disponible'), findsOneWidget);
+    });
+  });
+
+  group('moving the passengers onto another departure', () {
+    /// A broken 06:00 with forty-two aboard, a 14:00 with eighteen free
+    /// seats, and a departure on another road that must never be offered.
+    _ScriptedConsole stranded() =>
+        _ScriptedConsole(
+            capabilities: const ['booking.read', 'disruption.declare'],
+          )
+          ..boardList = [
+            DepartureBoardDto(
+              id: 'dep-1',
+              routeCode: 'BZV-PNR',
+              departsAt: DateTime.utc(2026, 8, 10, 5),
+              status: 'scheduled',
+              capacity: 49,
+              sold: 42,
+              held: 0,
+              available: 7,
+              vehicle: 'ODN-001',
+              disruption: DisruptionDto(
+                id: 'd-1',
+                kind: DisruptionKind.breakdownEnRoute,
+                cause: DisruptionCause.mechanical,
+                declaredAt: DateTime.utc(2026, 8, 10, 5, 40),
+                marksInvoluntary: true,
+              ),
+            ),
+            DepartureBoardDto(
+              id: 'dep-2',
+              routeCode: 'BZV-PNR',
+              departsAt: DateTime.utc(2026, 8, 10, 13),
+              status: 'scheduled',
+              capacity: 49,
+              sold: 31,
+              held: 0,
+              available: 18,
+              vehicle: 'ODN-004',
+            ),
+            DepartureBoardDto(
+              id: 'dep-3',
+              routeCode: 'BZV-OYO',
+              departsAt: DateTime.utc(2026, 8, 10, 14),
+              status: 'scheduled',
+              capacity: 49,
+              sold: 0,
+              held: 0,
+              available: 49,
+              vehicle: 'ODN-007',
+            ),
+          ];
+
+    Future<void> open(WidgetTester tester) async {
+      await tester.tap(find.text('Reloger les passagers').first);
+      await tester.pumpAndSettle();
+    }
+
+    /// Scoped to the sheet. The day board is still behind it and carries the
+    /// same times and the same coach names, so an unscoped finder proves
+    /// nothing about what the dispatcher is choosing from.
+    Finder inSheet(Finder finder) =>
+        find.descendant(of: find.byType(Dialog), matching: finder);
+
+    testWidgets('only later departures on the same road are offered', (
+      tester,
+    ) async {
+      await pump(tester, stranded());
+      await open(tester);
+
+      // 14h00 on the same road, with its coverage. The BZV-OYO at 14h00 is
+      // a different journey however many seats it has, and the broken 06h00
+      // cannot rescue itself.
+      expect(inSheet(find.text('14h00')), findsOneWidget);
+      expect(inSheet(find.text('18 sur 42')), findsOneWidget);
+      expect(inSheet(find.text('ODN-007')), findsNothing);
+    });
+
+    testWidgets('choosing one sends it, and says who is left', (tester) async {
+      final gateway = stranded()..rebookLeft = 24;
+      await pump(tester, gateway);
+      await open(tester);
+
+      await tester.tap(inSheet(find.text('ODN-004')));
+      await tester.pumpAndSettle();
+
+      final button = find.widgetWithText(KButton, 'Reloger');
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('rebook:dep-1:dep-2:'));
+      // Partial coverage is the normal outcome, and the twenty-four still
+      // standing at the roadside are the dispatcher's next problem — a
+      // notice that said only "relogés" would hide them.
+      expect(find.textContaining('24'), findsOneWidget);
+    });
+
+    testWidgets('a full day offers nothing, and says why', (tester) async {
+      final gateway = stranded();
+      // The 14:00 sold out while the dispatcher was on the phone.
+      gateway.boardList = [gateway.boardList.first];
+      await pump(tester, gateway);
+      await open(tester);
+
+      expect(find.textContaining('Aucun autre départ'), findsOneWidget);
+      // And the confirm button cannot be pressed, rather than travelling to
+      // the server to be told what the screen already knows.
+      final button = tester.widget<KButton>(
+        find.widgetWithText(KButton, 'Reloger'),
+      );
+      expect(button.onPressed, isNull);
     });
   });
 

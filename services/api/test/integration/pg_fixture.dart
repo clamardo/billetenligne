@@ -79,7 +79,8 @@ final class PgFixture {
     await _seed.execute('''
       INSERT INTO cities (code, market_code, name_fr, name_en) VALUES
         ('BZV', 'CG', 'Brazzaville', 'Brazzaville'),
-        ('PNR', 'CG', 'Pointe-Noire', 'Pointe-Noire')
+        ('PNR', 'CG', 'Pointe-Noire', 'Pointe-Noire'),
+        ('OYO', 'CG', 'Oyo', 'Oyo')
       ON CONFLICT (code) DO NOTHING
     ''');
     await _seed.execute('''
@@ -558,6 +559,40 @@ final class PgFixture {
     );
   }
 
+  /// A second road for this operator, so "a different route is a different
+  /// journey" can be tested against a route that actually exists.
+  Future<String> route({
+    required String code,
+    String origin = 'BZV',
+    String destination = 'OYO',
+  }) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        INSERT INTO routes (operator_id, origin_city, destination_city,
+                            code, duration_minutes)
+        VALUES (@operator, @origin, @destination, @code, 300)
+        RETURNING id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'origin': TypedValue(Type.text, origin),
+        'destination': TypedValue(Type.text, destination),
+        'code': TypedValue(Type.text, code),
+      },
+    );
+    return rows.first.toColumnMap()['id'].toString();
+  }
+
+  /// Which departure a booking is on now. The question the rebooking wave
+  /// exists to change.
+  Future<String> departureOf(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT departure_id FROM bookings WHERE id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return rows.first.toColumnMap()['departure_id'].toString();
+  }
+
   Future<String?> supersededBy(String disruptionId) async {
     final rows = await _seed.execute(
       Sql.named('SELECT superseded_by FROM disruptions WHERE id = @id'),
@@ -678,6 +713,7 @@ final class PgFixture {
     int fareMinor = 12000,
     String status = 'scheduled',
     Duration? salesCloseIn,
+    String? onRoute,
   }) async {
     final created = await _seed.execute(
       Sql.named('''
@@ -695,7 +731,7 @@ final class PgFixture {
       '''),
       parameters: {
         'operator': TypedValue(Type.uuid, operatorId),
-        'route': TypedValue(Type.uuid, routeId),
+        'route': TypedValue(Type.uuid, onRoute ?? routeId),
         'layout': TypedValue(Type.uuid, layoutId),
         'offset': TypedValue(Type.double, fromNow.inSeconds.toDouble()),
         'capacity': TypedValue(Type.integer, seatLabels.length),

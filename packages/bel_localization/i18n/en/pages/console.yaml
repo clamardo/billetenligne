@@ -25,6 +25,7 @@ console:
     emptyBody: "Publish a timetable from the Timetables tab to put departures on sale."
     declare: "Report an incident"
     rescue: "Rescue coach"
+    rebook: "Move passengers"
   # The dispatcher's form: at a roadside, on a phone, on 2G, possibly in the
   # rain (08-disruption.md §2.1). Four large targets, a cause, and nothing
   # else required.
@@ -57,6 +58,17 @@ console:
     willMove: "{count} passenger(s) will get a new ticket and a new seat."
     back: "Back"
     confirm: "Send this coach"
+  # Moving onto another departure (08-disruption.md §2.2, option ②).
+  # Coverage is shown per candidate: "18 of 42" is the number a dispatcher
+  # acts on next.
+  rebook:
+    title: "Move {count} passenger(s)"
+    none: "No other departure on this route today. Try a rescue coach."
+    covers: "{covered} of {total}"
+    note: "Note (optional)"
+    noteHint: "Passengers see this alongside the templated message."
+    back: "Back"
+    confirm: "Move them"
   manifest:
     summary: "{sold} sold · {boarded} boarded · {capacity} seats"
     empty: "No passengers yet."
@@ -336,5 +348,7 @@ console:
     disruption.declaredFree: "Reported. {a1} passenger(s) told, exchange or refund with no fees."
     rescue.applied: "{a1} assigned. {a2} passenger(s) move seats."
     rescue.appliedSameSeats: "{a1} assigned. Everybody keeps their seat."
+    rebook.applied: "{a1} passenger(s) moved. Everybody has a seat."
+    rebook.partial: "{a1} moved, {a2} with nothing. Find them a coach."
     counter.collected: "Collected. Reference {a1}."
     counter.sold: "Sold. Reference {a1}."

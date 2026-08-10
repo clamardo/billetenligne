@@ -579,6 +579,45 @@ void main() {
       expect(back.holdsReleased, 1);
     });
 
+    test('a wave reports who is still standing at the roadside', () {
+      final applied = RebookingAppliedDto(
+        departureId: 'dep-1',
+        replacementDepartureId: 'dep-2',
+        replacementDepartsAt: t0.add(const Duration(hours: 8)),
+        moved: const [
+          RebookedPartyDto(
+            bookingId: 'b-1',
+            ref: 'BEL-7QK4M2',
+            seatLabels: ['3A', '3B'],
+          ),
+        ],
+        passengersMoved: 18,
+        passengersLeft: 24,
+      );
+
+      final back = RebookingAppliedDto.fromJson(applied.toJson());
+      expect(back.passengersLeft, 24);
+      expect(back.coversEverybody, isFalse);
+      expect(back.moved.single.seatLabels, ['3A', '3B']);
+      expect(back.replacementDepartsAt, applied.replacementDepartsAt);
+    });
+
+    test('a wave that covered everybody still says so out loud', () {
+      // Zero travels rather than being omitted. A client inferring "nobody
+      // left" from a missing field will one day infer it from a field that
+      // was dropped for a different reason.
+      final json = RebookingAppliedDto(
+        departureId: 'dep-1',
+        replacementDepartureId: 'dep-2',
+        replacementDepartsAt: t0,
+        moved: const [],
+        passengersMoved: 42,
+        passengersLeft: 0,
+      ).toJson();
+
+      expect(json['passengersLeft'], 0);
+    });
+
     test('a rescue with no coach named is refused', () {
       // The one field the server cannot guess. A swap onto "whatever is
       // free" is a swap onto a coach nobody has looked at.

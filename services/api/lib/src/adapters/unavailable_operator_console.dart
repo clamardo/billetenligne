@@ -269,6 +269,16 @@ final class UnavailableDisruptionDesk implements DisruptionDesk {
   }) async => throw const ConsoleRequiresDatabase();
 
   @override
+  Future<Result<RebookingApplied, DeclarationRefusal>> rebookOnto({
+    required String operatorId,
+    required String departureId,
+    required String replacementDepartureId,
+    required String actorUserId,
+    required DateTime now,
+    String? note,
+  }) async => throw const ConsoleRequiresDatabase();
+
+  @override
   Future<Map<String, DisruptionRecord>> openFor({
     required String operatorId,
     required DateTime from,

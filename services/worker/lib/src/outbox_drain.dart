@@ -286,6 +286,131 @@ final class OutboxDrain {
           eventId: 'disruption.declared:$disruptionId:$bookingId',
         );
 
+      case 'disruption.resolved':
+        final bookingId = payload['bookingId'];
+        final disruptionId = payload['disruptionId'];
+        if (bookingId is! String || disruptionId is! String) return null;
+
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT u.phone_e164, u.email, u.language,
+                   r.origin_city, r.destination_city,
+                   o.trading_name, o.legal_name,
+                   to_char(d.departs_at AT TIME ZONE @tz, 'DD/MM')
+                     AS departs_date,
+                   to_char(d.departs_at AT TIME ZONE @tz, 'HH24"h"MI')
+                     AS departs_time,
+                   (SELECT string_agg(bs.seat_label, ', '
+                                      ORDER BY bs.seat_label)
+                      FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats
+              FROM bookings b
+              JOIN departures d ON d.id = b.departure_id
+              JOIN routes r ON r.id = d.route_id
+              JOIN operators o ON o.id = b.operator_id
+              LEFT JOIN user_accounts u ON u.id = b.purchaser_user_id
+             WHERE b.id = @booking
+          '''),
+          parameters: {
+            'booking': TypedValue(Type.uuid, bookingId),
+            'tz': TypedValue(Type.text, timeZone),
+          },
+        );
+
+        if (rows.isEmpty) return null;
+        final b = rows.first.toColumnMap();
+
+        final phone = b['phone_e164'] as String?;
+        final email = b['email'] as String?;
+        final to = phone ?? email;
+        if (to == null) return null;
+
+        final t = CatalogTranslator(_catalog, b['language'] as String? ?? 'fr');
+
+        // The seat is the whole point of this message. "Votre place est déjà
+        // réservée, siège 14A" is what turns an anxious passenger standing at
+        // a roadside into a calm one (§3.1) — a resolution that did not name
+        // the seat would send them to the counter to ask for it.
+        final body = t('sms.disruptionResolved.body', {
+          'operator': b['trading_name'] ?? b['legal_name'] ?? '',
+          'route': '${b['origin_city']}–${b['destination_city']}',
+          'date': b['departs_date'],
+          'time': b['departs_time'],
+          'seat': b['seats'] ?? '',
+        });
+
+        return OutboundMessage(
+          channel: phone != null ? SignInChannel.phone : SignInChannel.email,
+          to: to,
+          subject: phone != null ? null : body,
+          body: body,
+          eventId: 'disruption.resolved:$disruptionId:$bookingId',
+        );
+
+      case 'booking.rebooked':
+        final bookingId = payload['bookingId'];
+        final fromDepartureId = payload['fromDepartureId'];
+        if (bookingId is! String || fromDepartureId is! String) return null;
+
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT b.ref, u.phone_e164, u.email, u.language,
+                   r.origin_city, r.destination_city,
+                   o.trading_name, o.legal_name,
+                   to_char(d.departs_at AT TIME ZONE @tz, 'DD/MM')
+                     AS departs_date,
+                   to_char(d.departs_at AT TIME ZONE @tz, 'HH24"h"MI')
+                     AS departs_time,
+                   to_char(od.departs_at AT TIME ZONE @tz, 'HH24"h"MI')
+                     AS old_time,
+                   (SELECT string_agg(bs.seat_label, ', '
+                                      ORDER BY bs.seat_label)
+                      FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats
+              FROM bookings b
+              JOIN departures d ON d.id = b.departure_id
+              JOIN departures od ON od.id = @from
+              JOIN routes r ON r.id = d.route_id
+              JOIN operators o ON o.id = b.operator_id
+              LEFT JOIN user_accounts u ON u.id = b.purchaser_user_id
+             WHERE b.id = @booking
+          '''),
+          parameters: {
+            'booking': TypedValue(Type.uuid, bookingId),
+            'from': TypedValue(Type.uuid, fromDepartureId),
+            'tz': TypedValue(Type.text, timeZone),
+          },
+        );
+
+        if (rows.isEmpty) return null;
+        final b = rows.first.toColumnMap();
+
+        final phone = b['phone_e164'] as String?;
+        final email = b['email'] as String?;
+        final to = phone ?? email;
+        if (to == null) return null;
+
+        final t = CatalogTranslator(_catalog, b['language'] as String? ?? 'fr');
+
+        // Both times, and that is the design. The passenger has 06h00 in
+        // their head and on their ticket; a message naming only the new one
+        // reads as a message about somebody else's trip.
+        final body = t('sms.rebooked.body', {
+          'operator': b['trading_name'] ?? b['legal_name'] ?? '',
+          'route': '${b['origin_city']}–${b['destination_city']}',
+          'oldTime': b['old_time'],
+          'date': b['departs_date'],
+          'time': b['departs_time'],
+          'seat': b['seats'] ?? '',
+          'reference': 'BEL-${b['ref']}',
+        });
+
+        return OutboundMessage(
+          channel: phone != null ? SignInChannel.phone : SignInChannel.email,
+          to: to,
+          subject: phone != null ? null : body,
+          body: body,
+          eventId: 'booking.rebooked:$fromDepartureId:$bookingId',
+        );
+
       default:
         // An event type nobody handles is marked delivered rather than
         // retried forever. It is a deploy-order artefact — a producer shipped

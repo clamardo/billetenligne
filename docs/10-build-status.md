@@ -83,7 +83,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Payout runs and operator statements | ⬜ not started | `payable:operator:<id>` is correct and derived; nothing pays it out |
 | **IRROPS — declaring, and telling everybody** | ✅ done | The dispatcher declares one of six kinds and everything downstream is derived: the departure's new status, the exemption on every booking, one message per passenger. All of it in **one transaction** — bookings marked involuntary with no declaration behind them is a refund entitlement nobody can account for. A disruption is **public** (the follower of a shared trip link holds no account and is exactly the person who otherwise phones the agency), **not editable afterwards** by a column-level grant, and **one open per departure** by a partial unique index, so "what is happening to my coach?" has one answer. A short delay entitles nobody to anything — the threshold is an hour, it lives in the domain, and the console asks it rather than restating it. 16 domain · 6 contract · 12 Postgres · 5 worker · 7 smoke · 6 console · 2 traveller tests |
 | **IRROPS — the rescue coach** | ✅ done | Option ① of `08-disruption.md` §2.2: a different vehicle, the same journey. The seats are **remapped by the domain** — a passenger keeps their label only when the new coach has one of the same kind, because `1D` is a window on a 2+2 and the middle of the back block on a 2+3. Every ticket is **re-signed** in the same transaction as the new manifest, since the QR carries the seat (ADR-0007). A coach that cannot seat everybody is refused **with the number short**, so a dispatcher knows which coach to look for next. Holds with nothing behind them are released rather than slid onto a different seat under somebody who is looking at a seat map. The swap supersedes the breakdown that caused it. 9 domain · 2 contract · 6 Postgres · 5 smoke · 6 console tests |
-| IRROPS — the rest of the re-accommodation plan | ⬜ not started | Ranked options beyond the swap: the next departure, protection on another operator, the passenger's own choice, and the rebooking wave. `08-disruption.md` §2.2 options ②③⑤ onwards |
+| **IRROPS — the rebooking wave** | ✅ done | Option ② of `08-disruption.md` §2.2: the passengers go on the operator's own next departure. **Every replacement seat is taken before a single old one is released** (§2.4) inside one transaction, so a paid passenger never exists without a seat. **Partial coverage is a success** — "18 / 42" is what a dispatcher acts on, and refusing anything short of everybody would mean the tool only works on the days it is not needed. A party moves whole or not at all, in the order people booked, which is the only rule that can be said out loud to whoever is left. No fare difference, ever, even onto a dearer departure (ADR-0016). 13 domain · 2 contract · 13 Postgres · 2 worker · 5 smoke · 3 console tests |
+| IRROPS — protection, and the passenger's own choice | ⬜ not started | `08-disruption.md` §2.2 options ③ and ⑤: a standing inter-operator agreement (§5) with settlement through our ledger, and letting the passengers pick between the options themselves (§3.2). Both need something that does not exist yet — an agreement table, and a traveller-facing choice screen |
 
 ## Phase 3 and beyond
 
@@ -200,21 +201,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 326 tests
+         packages/bel_contracts packages/bel_crypto     # 341 tests
 dart test packages/bel_client                           # 32 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 177 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 87 app tests
-cd apps/console   && flutter test        # 56 console tests
+cd apps/console   && flutter test        # 59 console tests
 cd apps/admin     && flutter test        # 18 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 286 files
+dart run tool/check_layers.dart          # the onion rule, 289 files
 ./infra/migrations/check.sh              # 32 schema guarantees
-./tool/integration.sh                    # 165 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 186 checks, incl. the Dart client
+./tool/integration.sh                    # 180 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 191 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -223,8 +224,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**791 tests in total**, plus 186 smoke checks, 32 executed schema guarantees,
-165 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**809 tests in total**, plus 191 smoke checks, 32 executed schema guarantees,
+180 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -239,6 +240,48 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+The rebooking wave: when there is no spare coach, the passengers go on the
+operator's own next departure. Option ② of `08-disruption.md` §2.2, and the
+half of a disruption that moves people rather than informing them.
+
+**Every replacement seat is taken before a single old one is released.** §2.4
+states it and the transaction alone does not achieve it — the ordering inside
+the loop is what keeps a paid passenger from existing, even for an instant and
+even in a raise, without a seat on any coach at all. Both departures are locked
+in id order first, because two dispatchers moving people between the same pair
+of coaches in opposite directions is a deadlock, on exactly the morning it
+would happen.
+
+**Partial coverage is a 201, not a 409.** The 14:00 has eighteen seats and
+forty-two people need one. Answering "18 / 42" is what lets a dispatcher take
+the eighteen and go looking for a coach for the rest; refusing anything short
+of everybody would mean the tool only works on the days it is not needed. The
+console says the same number per candidate *before* the choice, so nobody does
+that arithmetic in their head at a roadside.
+
+**A party moves whole, in the order people booked.** Splitting a family across
+two departures to make the arithmetic come out is not something anybody would
+accept at a counter, and booking order is the only rule that can be said out
+loud to whoever was left behind. First-fit rather than stop-at-the-first-that-
+does-not-fit: a family of four blocking the last three seats must not strand
+the eleven single travellers behind them.
+
+**No fare difference, ever.** The fare each passenger paid is carried across
+unchanged, even onto a dearer departure. That is ADR-0016 and it is the reason
+`involuntary_change` exists at all.
+
+**Found on the way:** the rescue coach's own `disruption.resolved` message had
+no case in the outbox drain, so every one of those rows was being marked
+delivered without being sent — the seat a passenger was moved to was written
+down and never told to them. Both that and the new rebooking message are
+composed now, and a worker test holds each.
+
+**What it cost:** thirteen domain tests, thirteen more against real Postgres,
+five smoke checks, and one fixture city (Oyo) so "a different road is a
+different journey" could be tested against a road that exists.
+
+## What the rescue-coach push changed, and what it cost
 
 The rescue coach: a different vehicle, the same journey, everybody remapped
 onto whatever seats it actually has. Option ① of `08-disruption.md` §2.2, and

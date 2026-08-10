@@ -287,3 +287,114 @@ final class RescueAppliedDto {
     holdsReleased: Wire.requireInt(json['holdsReleased'], 'holdsReleased'),
   );
 }
+
+/// Moving the passengers onto another departure (`08-disruption.md` §2.2
+/// option ②).
+final class RebookRequest {
+  const RebookRequest({required this.replacementDepartureId, this.note});
+
+  final String replacementDepartureId;
+  final String? note;
+
+  Map<String, Object?> toJson() => Wire.compact({
+    'replacementDepartureId': replacementDepartureId,
+    'note': note,
+  });
+
+  factory RebookRequest.fromJson(Map<String, Object?> json) => RebookRequest(
+    replacementDepartureId: Wire.requireString(
+      json['replacementDepartureId'],
+      'replacementDepartureId',
+    ),
+    note: json['note'] as String?,
+  );
+}
+
+/// One booking, moved onto the replacement.
+final class RebookedPartyDto {
+  const RebookedPartyDto({
+    required this.bookingId,
+    required this.ref,
+    required this.seatLabels,
+  });
+
+  final String bookingId;
+  final String ref;
+  final List<String> seatLabels;
+
+  Map<String, Object?> toJson() => {
+    'bookingId': bookingId,
+    'ref': ref,
+    'seatLabels': seatLabels,
+  };
+
+  factory RebookedPartyDto.fromJson(Map<String, Object?> json) =>
+      RebookedPartyDto(
+        bookingId: Wire.requireString(json['bookingId'], 'bookingId'),
+        ref: Wire.requireString(json['ref'], 'ref'),
+        seatLabels: [
+          for (final label in (json['seatLabels'] as List? ?? const []))
+            label as String,
+        ],
+      );
+}
+
+/// What the rebooking wave did.
+///
+/// **[passengersLeft] travels even when it is zero.** Partial coverage is the
+/// normal outcome of moving forty-two people onto a departure with eighteen
+/// free seats, and a client that had to infer "24 still stranded" from a
+/// missing field would eventually infer it wrongly.
+final class RebookingAppliedDto {
+  const RebookingAppliedDto({
+    required this.departureId,
+    required this.replacementDepartureId,
+    required this.replacementDepartsAt,
+    required this.moved,
+    required this.passengersMoved,
+    required this.passengersLeft,
+  });
+
+  final String departureId;
+  final String replacementDepartureId;
+  final DateTime replacementDepartsAt;
+  final List<RebookedPartyDto> moved;
+  final int passengersMoved;
+  final int passengersLeft;
+
+  bool get coversEverybody => passengersLeft == 0;
+
+  Map<String, Object?> toJson() => {
+    'departureId': departureId,
+    'replacementDepartureId': replacementDepartureId,
+    'replacementDepartsAt': Wire.instant(replacementDepartsAt),
+    'moved': [for (final party in moved) party.toJson()],
+    'passengersMoved': passengersMoved,
+    'passengersLeft': passengersLeft,
+  };
+
+  factory RebookingAppliedDto.fromJson(Map<String, Object?> json) =>
+      RebookingAppliedDto(
+        departureId: Wire.requireString(json['departureId'], 'departureId'),
+        replacementDepartureId: Wire.requireString(
+          json['replacementDepartureId'],
+          'replacementDepartureId',
+        ),
+        replacementDepartsAt: Wire.readInstant(
+          json['replacementDepartsAt'],
+          field: 'replacementDepartsAt',
+        ),
+        moved: [
+          for (final party in (json['moved'] as List? ?? const []))
+            RebookedPartyDto.fromJson(party as Map<String, Object?>),
+        ],
+        passengersMoved: Wire.requireInt(
+          json['passengersMoved'],
+          'passengersMoved',
+        ),
+        passengersLeft: Wire.requireInt(
+          json['passengersLeft'],
+          'passengersLeft',
+        ),
+      );
+}

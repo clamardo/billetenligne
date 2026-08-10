@@ -24,4 +24,8 @@ sms:
     body: "{operator}: {route} at {time}. {summary}"
     involuntary: "{operator}: your {route} departure at {time} is disrupted. {summary} No fees: exchange or full refund."
   disruptionResolved:
-    body: "{operator}: new arrangement for {route}. Departs {time}, seat {seat}. No fees. Details: {link}"
+    body: "{operator}: new arrangement for {route}. Departs {date} at {time}, seat {seat}. No fees."
+  # The passenger changes departure, not just seat. The old time is repeated
+  # because it is the one they have in their head and on their ticket.
+  rebooked:
+    body: "{operator}: your {route} at {oldTime} is not running. You now travel {date} at {time}, seat {seat}. No fees. Ref {reference}."

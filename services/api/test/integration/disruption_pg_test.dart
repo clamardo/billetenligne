@@ -363,6 +363,219 @@ void main() {
     });
   });
 
+  group('the rebooking wave', () {
+    /// The 14:00 on the same road, with room for [seats] people.
+    Future<String> replacement({
+      List<String> seats = const ['1A', '1B', '1C'],
+      Duration lead = const Duration(hours: 14),
+      String status = 'scheduled',
+      String? onRoute,
+    }) => fixture.departure(
+      seatLabels: seats,
+      fromNow: lead,
+      fareMinor: 9000,
+      status: status,
+      onRoute: onRoute,
+    );
+
+    Future<Result<RebookingApplied, DeclarationRefusal>> rebook(
+      String from,
+      String onto,
+    ) => desk.rebookOnto(
+      operatorId: operatorId,
+      departureId: from,
+      replacementDepartureId: onto,
+      actorUserId: dispatcherId,
+      now: DateTime.now().toUtc(),
+    );
+
+    test('a passenger moves, and the ticket moves with them', () async {
+      final trip = await sold(seat: '1A');
+      final later = await replacement();
+
+      final applied = await rebook(trip.departureId, later);
+      final result = applied.valueOrNull!;
+
+      expect(result.passengersMoved, 1);
+      expect(result.passengersLeft, 0);
+      expect(result.plan.coversEverybody, isTrue);
+
+      // The booking is on the other coach now, on a seat that coach has.
+      expect(await fixture.departureOf(trip.bookingId), later);
+      expect(await fixture.bookingSeatLabels(trip.bookingId), ['1A']);
+      expect(await fixture.seatStates(later), containsPair('1A', 'sold'));
+      // And the seat they left is back on sale, because the broken coach may
+      // yet run — an equipment swap on it would find the seat free.
+      expect(
+        await fixture.seatStates(trip.departureId),
+        containsPair('1A', 'available'),
+      );
+    });
+
+    test('the ticket is re-signed, because the trip changed', () async {
+      final trip = await sold(seat: '1A');
+      final later = await replacement();
+
+      await rebook(trip.departureId, later);
+
+      // One live ticket. The departure is inside the signed payload, so a
+      // ticket still naming the broken coach scans as the wrong trip.
+      expect(await fixture.ticketCount(trip.bookingId), 1);
+      expect(await fixture.ticketSeats(trip.bookingId), ['1A']);
+    });
+
+    test('everybody moved is exempt from fees, permanently', () async {
+      final trip = await sold(seat: '1A');
+      final later = await replacement();
+
+      await rebook(trip.departureId, later);
+
+      // The flag that makes the rest of ADR-0016 true: no fee, and no fare
+      // difference even when the replacement is dearer.
+      expect(await fixture.involuntaryBookings(later), 1);
+    });
+
+    test(
+      'a replacement with no room for everybody covers who it can',
+      () async {
+        final trip = await sold(seat: '1A');
+        await sell(trip.departureId, '1B', 'Serge N.');
+        await sell(trip.departureId, '1C', 'Marie K.');
+        final later = await replacement(seats: const ['1A']);
+
+        final result = (await rebook(trip.departureId, later)).valueOrNull!;
+
+        // "1 / 3" is the honest answer, and the one a dispatcher combines with
+        // a rescue coach. Refusing anything short of everybody would mean the
+        // tool only works on the days it is not needed.
+        expect(result.passengersMoved, 1);
+        expect(result.passengersLeft, 2);
+        expect(result.plan.coversEverybody, isFalse);
+        // Whoever booked first. The only ordering that can be said out loud to
+        // the two who were left.
+        expect(result.moved.single.bookingId, trip.bookingId);
+      },
+    );
+
+    test('a replacement that can take nobody is refused', () async {
+      final trip = await sold(seat: '1A');
+      final full = await replacement(seats: const ['1A']);
+      await sell(full, '1A', 'Déjà là');
+
+      final refused = await rebook(trip.departureId, full);
+
+      // Not a wave that moved nobody: "0 / 42" dressed up as a success is how
+      // a dispatcher walks away believing the problem is handled.
+      final failure = refused.failureOrNull! as ReplacementRefused;
+      expect(failure.failure, isA<NobodyFits>());
+      expect(await fixture.departureOf(trip.bookingId), trip.departureId);
+    });
+
+    test('a different road is not a re-accommodation', () async {
+      final trip = await sold(seat: '1A');
+      final elsewhere = await replacement(
+        onRoute: await fixture.route(code: 'BZV-OYO'),
+      );
+
+      final refused = await rebook(trip.departureId, elsewhere);
+      expect(
+        (refused.failureOrNull! as ReplacementRefused).failure,
+        isA<DifferentRoute>(),
+      );
+    });
+
+    test('a departure cannot rescue itself', () async {
+      final trip = await sold(seat: '1A');
+
+      final refused = await rebook(trip.departureId, trip.departureId);
+      expect(
+        (refused.failureOrNull! as ReplacementRefused).failure,
+        isA<SameDeparture>(),
+      );
+    });
+
+    test('an earlier departure cannot be reached', () async {
+      final trip = await sold(seat: '1A', lead: const Duration(hours: 10));
+      final earlier = await replacement(lead: const Duration(hours: 4));
+
+      final refused = await rebook(trip.departureId, earlier);
+      expect(
+        (refused.failureOrNull! as ReplacementRefused).failure,
+        isA<ReplacementNotLater>(),
+      );
+    });
+
+    test('a cancelled replacement is not a replacement', () async {
+      final trip = await sold(seat: '1A');
+      final later = await replacement();
+      await fixture.setDepartureStatus(later, 'cancelled');
+
+      final refused = await rebook(trip.departureId, later);
+      expect(
+        (refused.failureOrNull! as ReplacementRefused).failure,
+        isA<ReplacementNotSellable>(),
+      );
+    });
+
+    test('a coach nobody is on has nobody to move', () async {
+      final empty = await fixture.departure(
+        seatLabels: const ['1A'],
+        fromNow: const Duration(hours: 6),
+      );
+      final later = await replacement();
+
+      final refused = await rebook(empty, later);
+      expect(
+        (refused.failureOrNull! as ReplacementRefused).failure,
+        isA<NothingToMove>(),
+      );
+    });
+
+    test('somebody else\'s departure is not found', () async {
+      final trip = await sold(seat: '1A');
+
+      final refused = await desk.rebookOnto(
+        operatorId: operatorId,
+        departureId: trip.departureId,
+        replacementDepartureId: '00000000-0000-0000-0000-0000000000ff',
+        actorUserId: dispatcherId,
+        now: DateTime.now().toUtc(),
+      );
+
+      expect(refused.failureOrNull, isA<UnknownDeparture>());
+    });
+
+    test('everybody moved is told, once', () async {
+      final trip = await sold(seat: '1A');
+      final later = await replacement();
+
+      await rebook(trip.departureId, later);
+
+      // Through the outbox, never inline with the dispatcher's request
+      // (ADR-0019 rule 1) — and keyed per departure-and-booking, so a second
+      // wave over the same pair does not send twice.
+      expect(await fixture.outboxCount('booking.rebooked', trip.bookingId), 1);
+    });
+
+    test('who was moved where is written down', () async {
+      final trip = await sold(seat: '1A');
+      final later = await replacement();
+
+      await rebook(trip.departureId, later);
+
+      // §2.4: the operator's own evidence in a later dispute. Not derivable
+      // from the bookings afterwards — they only show where people ended up.
+      final entry = (await fixture.auditFor(operatorId)).singleWhere(
+        (e) =>
+            e['action'] == 'disruption.rebook' &&
+            e['subject_id'] == trip.departureId,
+      );
+      expect(entry['actor_id'].toString(), dispatcherId);
+      expect(entry['after_state']['passengersMoved'], 1);
+      expect(entry['after_state']['replacementDepartureId'], later);
+    });
+  });
+
   test('a breakdown records, exempts and queues, in one transaction', () async {
     final trip = await sold();
 

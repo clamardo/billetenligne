@@ -601,6 +601,309 @@ final class PostgresDisruptions implements DisruptionDesk {
     );
   });
 
+  @override
+  Future<Result<RebookingApplied, DeclarationRefusal>> rebookOnto({
+    required String operatorId,
+    required String departureId,
+    required String replacementDepartureId,
+    required String actorUserId,
+    required DateTime now,
+    String? note,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // Both departures locked before anything is read about their seats, and
+    // in id order — two dispatchers moving passengers between the same pair
+    // of coaches in opposite directions is a deadlock otherwise, and it is
+    // exactly the morning when that happens.
+    final ids = [departureId, replacementDepartureId]..sort();
+    final locked = await tx.execute(
+      Sql.named('''
+        SELECT id, route_id, departs_at, status::text AS status
+          FROM departures
+         WHERE id = ANY(@ids) AND operator_id = @operator
+         ORDER BY id
+           FOR UPDATE
+      '''),
+      parameters: {
+        'ids': TypedValue(Type.uuidArray, ids),
+        'operator': TypedValue(Type.uuid, operatorId),
+      },
+    );
+
+    final rows = {
+      for (final row in locked)
+        row.toColumnMap()['id'].toString(): row.toColumnMap(),
+    };
+    final source = rows[departureId];
+    final replacement = rows[replacementDepartureId];
+    if (source == null || replacement == null) {
+      return const Err(UnknownDeparture());
+    }
+
+    // Judged by the domain, not by a copy of the rules here (ADR-0004): the
+    // console asks the same question when it decides which departures to
+    // even offer as replacements.
+    final refusal = refuseReplacement(
+      departureId: departureId,
+      replacementId: replacementDepartureId,
+      routeId: source['route_id'].toString(),
+      replacementRouteId: replacement['route_id'].toString(),
+      replacementStatus: replacement['status'] as String,
+      departsAt: source['departs_at'] as DateTime,
+      replacementDepartsAt: replacement['departs_at'] as DateTime,
+      now: now,
+    );
+    if (refusal != null) return Err(ReplacementRefused(refusal));
+
+    // Confirmed only. A booking still waiting for a payment has not bought
+    // anything yet, and moving it would hand somebody a seat on a coach they
+    // have not paid for while a paid passenger behind them is left.
+    final parties = await tx.execute(
+      Sql.named('''
+        SELECT b.id, b.ref, b.created_at, count(bs.seat_label) AS seats
+          FROM bookings b
+          JOIN booking_seats bs ON bs.booking_id = b.id
+         WHERE b.departure_id = @id AND b.state = 'confirmed'
+         GROUP BY b.id, b.ref, b.created_at
+         ORDER BY b.created_at
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+    );
+
+    if (parties.isEmpty) {
+      return const Err(ReplacementRefused(NothingToMove()));
+    }
+
+    // Locked, because the arithmetic below is only true if nobody sells one
+    // of these seats between the count and the claim.
+    final free = await tx.execute(
+      Sql.named('''
+        SELECT seat_label FROM seats
+         WHERE departure_id = @id AND state = 'available'
+         ORDER BY seat_label
+           FOR UPDATE
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, replacementDepartureId)},
+    );
+
+    final plan = allocateRebooking(
+      parties: [
+        for (final row in parties)
+          PartyToMove(
+            bookingId: row.toColumnMap()['id'].toString(),
+            seats: row.toColumnMap()['seats'] as int,
+            bookedAt: row.toColumnMap()['created_at'] as DateTime,
+          ),
+      ],
+      seatsAvailable: free.length,
+    );
+
+    // Partial coverage is a success and is reported as a number. A
+    // replacement that can take nobody is not: "0 / 42" dressed up as a wave
+    // is how a dispatcher walks away believing the problem is handled.
+    if (plan.moved.isEmpty) {
+      return const Err(ReplacementRefused(NobodyFits()));
+    }
+
+    final refs = {
+      for (final row in parties)
+        row.toColumnMap()['id'].toString(): row.toColumnMap()['ref'] as String,
+    };
+    final labels = [
+      for (final row in free) row.toColumnMap()['seat_label'] as String,
+    ];
+
+    final moved = <RebookedParty>[];
+    var next = 0;
+
+    for (final party in plan.moved) {
+      final taking = labels.sublist(next, next + party.seats);
+      next += party.seats;
+
+      // **Take the new seats before releasing the old ones** (§2.4). The
+      // transaction makes it atomic either way; the ordering is what keeps a
+      // paid passenger from ever existing without a seat, including in the
+      // middle of this loop when something raises.
+      for (final label in taking) {
+        final claimed = await tx.execute(
+          Sql.named('''
+            UPDATE seats
+               SET state = 'sold', booking_id = @booking,
+                   hold_id = NULL, held_until = NULL
+             WHERE departure_id = @departure AND seat_label = @label
+               AND state = 'available'
+            RETURNING seat_label
+          '''),
+          parameters: {
+            'departure': TypedValue(Type.uuid, replacementDepartureId),
+            'label': TypedValue(Type.text, label),
+            'booking': TypedValue(Type.uuid, party.bookingId),
+          },
+        );
+        // Impossible while we hold the lock, and worth failing loudly rather
+        // than committing a wave that seated somebody nowhere.
+        if (claimed.isEmpty) {
+          throw StateError('seat $label on $replacementDepartureId vanished');
+        }
+      }
+
+      // The passengers travel with their party. Deleted and re-inserted
+      // rather than relabelled in place: `booking_seats` is keyed on
+      // (booking, label), and a booking moving 1A,1B onto 1B,1C collides
+      // with itself halfway through an UPDATE.
+      final seated = await tx.execute(
+        Sql.named('''
+          SELECT seat_label, passenger_name, passenger_phone,
+                 passenger_id_number, fare_minor
+            FROM booking_seats
+           WHERE booking_id = @id
+           ORDER BY seat_label
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, party.bookingId)},
+      );
+
+      await tx.execute(
+        Sql.named('DELETE FROM booking_seats WHERE booking_id = @id'),
+        parameters: {'id': TypedValue(Type.uuid, party.bookingId)},
+        ignoreRows: true,
+      );
+
+      for (var i = 0; i < seated.length; i++) {
+        final passenger = seated[i].toColumnMap();
+        await tx.execute(
+          Sql.named('''
+            INSERT INTO booking_seats
+              (booking_id, seat_label, passenger_name, passenger_phone,
+               passenger_id_number, fare_minor)
+            VALUES (@booking, @label, @name, @phone, @idNumber, @fare)
+          '''),
+          parameters: {
+            'booking': TypedValue(Type.uuid, party.bookingId),
+            'label': TypedValue(Type.text, taking[i]),
+            'name': TypedValue(Type.text, passenger['passenger_name']),
+            'phone': TypedValue(Type.text, passenger['passenger_phone']),
+            'idNumber': TypedValue(Type.text, passenger['passenger_id_number']),
+            // The fare they paid, carried across unchanged. An involuntary
+            // change never costs a fare difference (ADR-0016), even when the
+            // replacement is a more expensive departure.
+            'fare': TypedValue(Type.bigInteger, passenger['fare_minor']),
+          },
+          ignoreRows: true,
+        );
+      }
+
+      // Now, and only now, the seats they left go back on sale.
+      await tx.execute(
+        Sql.named('''
+          UPDATE seats
+             SET state = 'available', booking_id = NULL,
+                 hold_id = NULL, held_until = NULL
+           WHERE departure_id = @departure AND booking_id = @booking
+        '''),
+        parameters: {
+          'departure': TypedValue(Type.uuid, departureId),
+          'booking': TypedValue(Type.uuid, party.bookingId),
+        },
+        ignoreRows: true,
+      );
+
+      await tx.execute(
+        Sql.named('''
+          UPDATE bookings
+             SET departure_id = @replacement, involuntary_change = TRUE
+           WHERE id = @id
+        '''),
+        parameters: {
+          'id': TypedValue(Type.uuid, party.bookingId),
+          'replacement': TypedValue(Type.uuid, replacementDepartureId),
+        },
+        ignoreRows: true,
+      );
+
+      moved.add(
+        RebookedParty(
+          bookingId: party.bookingId,
+          ref: refs[party.bookingId]!,
+          seatLabels: taking,
+        ),
+      );
+    }
+
+    // Every moved ticket is re-signed, without exception: the departure is
+    // inside the signed payload as well as the seat, so a ticket that still
+    // names the broken coach scans as the wrong trip at the door.
+    await _reissue(
+      tx,
+      {for (final party in moved) party.bookingId},
+      replacementDepartureId,
+      operatorId,
+    );
+
+    await tx.execute(
+      Sql.named('''
+        INSERT INTO outbox (aggregate, aggregate_id, event_type, payload,
+                            dedupe_key)
+        SELECT 'booking', b.id, 'booking.rebooked',
+               jsonb_build_object('bookingId', b.id::text,
+                                  'fromDepartureId', @from::text),
+               'booking.rebooked:' || @from::text || ':' || b.id::text
+          FROM bookings b
+         WHERE b.id = ANY(@ids)
+        ON CONFLICT (dedupe_key) DO NOTHING
+      '''),
+      parameters: {
+        'from': TypedValue(Type.uuid, departureId),
+        'ids': TypedValue(Type.uuidArray, [
+          for (final party in moved) party.bookingId,
+        ]),
+      },
+      ignoreRows: true,
+    );
+
+    // The evidence §2.4 asks for: who was moved, where to, by whom. The
+    // disruption on the source departure is deliberately left open — the
+    // coach is still broken, and whoever was not moved is still on it.
+    await tx.execute(
+      Sql.named('''
+        INSERT INTO audit_log
+          (actor_id, actor_type, action, subject_type, subject_id,
+           operator_id, reason, after_state)
+        VALUES (@actor, 'operator_staff', 'disruption.rebook', 'departure',
+                @departure, @operator, @reason, @after)
+      '''),
+      parameters: {
+        'actor': TypedValue(Type.uuid, actorUserId),
+        'departure': TypedValue(Type.text, departureId),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'reason': TypedValue(
+          Type.text,
+          note == null
+              ? 'rebooked onto $replacementDepartureId'
+              : 'rebooked onto $replacementDepartureId: $note',
+        ),
+        'after': TypedValue(Type.jsonb, {
+          'replacementDepartureId': replacementDepartureId,
+          'passengersMoved': plan.passengersMoved,
+          'passengersLeft': plan.passengersLeft,
+          'bookings': [
+            for (final party in moved)
+              {'ref': party.ref, 'seats': party.seatLabels},
+          ],
+        }),
+      },
+      ignoreRows: true,
+    );
+
+    return Ok(
+      RebookingApplied(
+        departureId: departureId,
+        replacementDepartureId: replacementDepartureId,
+        replacementDepartsAt: replacement['departs_at'] as DateTime,
+        moved: moved,
+        plan: plan,
+      ),
+    );
+  });
+
   /// Re-signs the tickets of the bookings whose seats actually changed.
   ///
   /// The seat is inside the signed payload, so a moved passenger with an old

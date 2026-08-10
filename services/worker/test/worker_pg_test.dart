@@ -1,6 +1,7 @@
 @Tags(['integration'])
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:bel_api/src/adapters/logging_notification_gateway.dart';
@@ -456,6 +457,91 @@ void main() {
       expect(result.isOk, isTrue, reason: '${result.failureOrNull?.code}');
       return departureId;
     }
+
+    /// Declares a cancellation and hands back the disruption's own id.
+    Future<String> declaredOn(String departureId) async {
+      final result = await desk.declare(
+        operatorId: operatorId,
+        departureId: departureId,
+        kind: DisruptionKind.equipmentSwap,
+        cause: DisruptionCause.mechanical,
+        actorUserId: await aTraveller(),
+        now: DateTime.now().toUtc(),
+      );
+      return result.valueOrNull!.id;
+    }
+
+    /// Queues one message the way the request path does — a row in the
+    /// outbox, never a send inline with the dispatcher's request.
+    Future<void> queue({
+      required String eventType,
+      required String bookingId,
+      required Map<String, String> payload,
+      required String dedupeKey,
+    }) => seed.execute(
+      Sql.named('''
+        INSERT INTO outbox (aggregate, aggregate_id, event_type, payload,
+                            dedupe_key)
+        VALUES ('booking', @id, @type, @payload::jsonb, @key)
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, bookingId),
+        'type': TypedValue(Type.text, eventType),
+        'payload': TypedValue(Type.text, jsonEncode(payload)),
+        'key': TypedValue(Type.text, dedupeKey),
+      },
+    );
+
+    test('a rescue coach tells the passenger their new seat', () async {
+      final departureId = await aDeparture();
+      final bookingId = await aConfirmedBookingOn(departureId, seat: '7C');
+      final disruptionId = await declaredOn(departureId);
+
+      await queue(
+        eventType: 'disruption.resolved',
+        bookingId: bookingId,
+        payload: {'bookingId': bookingId, 'disruptionId': disruptionId},
+        dedupeKey: 'disruption.resolved:$disruptionId:$bookingId',
+      );
+
+      await recording.drain();
+
+      final body = sent.sent.last.body;
+      // The seat is the whole point. "Votre place est réservée, siège 7C" is
+      // what turns somebody standing at a roadside into somebody waiting.
+      expect(body, contains('7C'));
+      expect(body, contains('BZV–PNR'));
+      expect(body, contains('Aucun frais'));
+    });
+
+    test(
+      'a rebooked passenger is told both times, not just the new one',
+      () async {
+        final broken = await aDeparture();
+        final later = await aDeparture();
+        // The booking has already been moved by the time the drain runs — the
+        // wave commits, and the message is composed from what is now true.
+        final bookingId = await aConfirmedBookingOn(later, seat: '4A');
+
+        await queue(
+          eventType: 'booking.rebooked',
+          bookingId: bookingId,
+          payload: {'bookingId': bookingId, 'fromDepartureId': broken},
+          dedupeKey: 'booking.rebooked:$broken:$bookingId',
+        );
+
+        await recording.drain();
+
+        final body = sent.sent.last.body;
+        // Both times. The passenger has 06h00 in their head and on their
+        // ticket; a message naming only the new one reads as somebody else's
+        // trip.
+        expect(body, contains('06h00'));
+        expect(body, contains('4A'));
+        expect(body, contains('Aucun frais'));
+        expect(body, contains('BEL-'));
+      },
+    );
 
     test('a cancellation says who, which route, and that it is free', () async {
       await declared(

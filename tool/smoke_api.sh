@@ -999,6 +999,33 @@ check "a well-formed rescue gets past validation" "503" \
 check "GET is not a way to swap a coach" "405" \
   "$(status -H "$OP_AUTH" "$BASE/console/v1/departures/$DEP/rescue")"
 
+echo
+echo "── moving the passengers onto another departure"
+
+rebook_as() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST \
+    "$BASE/console/v1/departures/$DEP/rebook" -H "$1" \
+    -H 'Content-Type: application/json' -d "$2"
+}
+
+check "an anonymous caller cannot move anybody" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/departures/$DEP/rebook" \
+     -H 'Content-Type: application/json' \
+     -d '{"replacementDepartureId":"00000000-0000-0000-0000-000000000002"}')"
+check "a traveller cannot move somebody's passengers" "403" \
+  "$(rebook_as "$AUTH" \
+     '{"replacementDepartureId":"00000000-0000-0000-0000-000000000002"}')"
+# The one field the server cannot guess. "Whichever departure has room" is a
+# departure nobody has looked at.
+check "a wave with no replacement named is refused" "400" \
+  "$(rebook_as "$OP_AUTH" '{"note":"le 14h00"}')"
+check "a well-formed wave gets past validation" "503" \
+  "$(rebook_as "$OP_AUTH" \
+     '{"replacementDepartureId":"00000000-0000-0000-0000-000000000002"}')"
+check "GET is not a way to move passengers" "405" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/departures/$DEP/rebook")"
+
 # ── The Dart client against this same server ────────────────────────────────
 #
 # curl proves the HTTP surface; this proves the seam the *app* actually uses —

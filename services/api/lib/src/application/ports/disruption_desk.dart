@@ -86,6 +86,16 @@ final class CannotSeatEverybody extends DeclarationRefusal {
   String get code => 'disruption.cannot_seat_everybody';
 }
 
+/// The domain refused the replacement — a different road, a departure that
+/// is not later, one that has already gone. Carried rather than flattened, so
+/// the console renders the same sentence it would have rendered locally.
+final class ReplacementRefused extends DeclarationRefusal {
+  const ReplacementRefused(this.failure);
+  final RebookingRefusal failure;
+  @override
+  String get code => failure.code;
+}
+
 /// The domain refused it — a delay with no new time, a revised time that is
 /// not later, an estimate already in the past.
 final class DeclarationInvalid extends DeclarationRefusal {
@@ -95,24 +105,6 @@ final class DeclarationInvalid extends DeclarationRefusal {
   String get code => failure.code;
 }
 
-/// The dispatcher's side of `08-disruption.md`.
-///
-/// One method that matters, and it does five things in one transaction
-/// because any prefix of them committing alone is a nameable failure:
-///
-///   * the disruption is recorded — evidence, and immutable once written;
-///   * any open disruption on the same departure is superseded, so "what is
-///     happening to my coach right now?" keeps exactly one answer;
-///   * the departure's status follows, when the kind implies one;
-///   * every confirmed booking is marked `involuntary_change` when the
-///     declaration entitles them to it — the flag that permanently exempts
-///     them from fees and fare differences (ADR-0016);
-///   * one outbox row per booking, so passengers are told by the drain rather
-///     than by a send inline with the dispatcher's request (ADR-0019 rule 1).
-///
-/// The one that must never commit alone is the fourth: bookings marked
-/// involuntary with no disruption row to justify it is a refund entitlement
-/// nobody can account for.
 /// What a rescue coach did.
 final class RescueApplied {
   const RescueApplied({
@@ -148,6 +140,65 @@ final class RescueApplied {
   final int holdsReleased;
 }
 
+/// One party, moved.
+final class RebookedParty {
+  const RebookedParty({
+    required this.bookingId,
+    required this.ref,
+    required this.seatLabels,
+  });
+
+  final String bookingId;
+  final String ref;
+
+  /// Where they now sit. Different seats on a different coach, which is why
+  /// the ticket had to be re-signed.
+  final List<String> seatLabels;
+}
+
+/// What the rebooking wave did (`08-disruption.md` §2.4).
+final class RebookingApplied {
+  const RebookingApplied({
+    required this.departureId,
+    required this.replacementDepartureId,
+    required this.replacementDepartsAt,
+    required this.moved,
+    required this.plan,
+  });
+
+  final String departureId;
+  final String replacementDepartureId;
+  final DateTime replacementDepartsAt;
+
+  final List<RebookedParty> moved;
+
+  /// Who moved and who did not, as the domain allocated them. **Partial
+  /// coverage is normal** — "18 / 42" is the honest answer to a full later
+  /// departure, and the one a dispatcher combines with a rescue coach.
+  final RebookingPlan plan;
+
+  int get passengersMoved => plan.passengersMoved;
+  int get passengersLeft => plan.passengersLeft;
+}
+
+/// The dispatcher's side of `08-disruption.md`.
+///
+/// One method that matters, and it does five things in one transaction
+/// because any prefix of them committing alone is a nameable failure:
+///
+///   * the disruption is recorded — evidence, and immutable once written;
+///   * any open disruption on the same departure is superseded, so "what is
+///     happening to my coach right now?" keeps exactly one answer;
+///   * the departure's status follows, when the kind implies one;
+///   * every confirmed booking is marked `involuntary_change` when the
+///     declaration entitles them to it — the flag that permanently exempts
+///     them from fees and fare differences (ADR-0016);
+///   * one outbox row per booking, so passengers are told by the drain rather
+///     than by a send inline with the dispatcher's request (ADR-0019 rule 1).
+///
+/// The one that must never commit alone is the fourth: bookings marked
+/// involuntary with no disruption row to justify it is a refund entitlement
+/// nobody can account for.
 abstract interface class DisruptionDesk {
   Future<Result<DisruptionRecord, DeclarationRefusal>> declare({
     required String operatorId,
@@ -176,6 +227,26 @@ abstract interface class DisruptionDesk {
     required String operatorId,
     required String departureId,
     required String vehicleId,
+    required String actorUserId,
+    required DateTime now,
+    String? note,
+  });
+
+  /// Option ② of `08-disruption.md` §2.2: the operator's own next departure.
+  ///
+  /// **Every replacement seat is taken before a single old one is released**
+  /// (§2.4), inside one transaction — a wave that released first and then
+  /// failed to place somebody would leave a paid passenger with no seat on
+  /// any coach at all.
+  ///
+  /// Partial coverage is a success, not a refusal. A later departure with
+  /// eighteen free seats covers eighteen of forty-two, and saying so is what
+  /// lets a dispatcher combine it with a rescue coach. Only a replacement
+  /// that can take **nobody** is refused.
+  Future<Result<RebookingApplied, DeclarationRefusal>> rebookOnto({
+    required String operatorId,
+    required String departureId,
+    required String replacementDepartureId,
     required String actorUserId,
     required DateTime now,
     String? note,

@@ -129,10 +129,13 @@ Response _refused(DeclarationRefusal failure, String trace) =>
         ).toJson(),
         headers: {BelHeaders.traceId: trace},
       ),
-      // The refusals only the rescue-coach route can produce. Listed rather
-      // than left to a wildcard, so adding a third surface to this port makes
-      // this switch fail to compile instead of answering 200 to a refusal.
-      UnusableVehicle() || CannotSeatEverybody() => Response.json(
+      // The refusals the other two surfaces of this port produce — the
+      // rescue coach and the rebooking wave. Listed rather than left to a
+      // wildcard, so adding a fourth makes this switch fail to compile
+      // instead of answering 200 to a refusal.
+      UnusableVehicle() ||
+      CannotSeatEverybody() ||
+      ReplacementRefused() => Response.json(
         statusCode: HttpStatus.conflict,
         body: ApiError(code: failure.code, traceId: trace).toJson(),
         headers: {BelHeaders.traceId: trace},

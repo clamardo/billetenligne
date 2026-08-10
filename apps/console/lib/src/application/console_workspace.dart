@@ -257,6 +257,46 @@ final class ConsoleWorkspace {
     await _loadSection();
   });
 
+  /// This operator's own later departures on the same road, with room.
+  ///
+  /// Read off the board that is already loaded rather than fetched: the
+  /// dispatcher is looking at today, the candidates are on today, and a round
+  /// trip here would be one more thing to wait for at a roadside. The rules
+  /// are the domain's, so the sheet cannot offer a departure the server is
+  /// about to refuse.
+  List<DepartureBoardDto> replacementsFor(DepartureBoardDto broken) => [
+    for (final row in board)
+      if (row.id != broken.id &&
+          row.routeCode == broken.routeCode &&
+          row.departsAt.isAfter(broken.departsAt) &&
+          sellableDepartureStatuses.contains(row.status) &&
+          row.available > 0)
+        row,
+  ];
+
+  /// Option ② of ADR-0016 §2.2: the operator's own next departure.
+  ///
+  /// Partial coverage is a success and is said as a number. "18 sur 42" is
+  /// what a dispatcher acts on next; a notice that said only "réacheminés"
+  /// would hide the twenty-four still standing at the roadside.
+  Future<void> rebookOnto({
+    required String departureId,
+    required String replacementDepartureId,
+    String? note,
+  }) => _run(() async {
+    final applied = await _gateway.rebookOnto(
+      departureId: departureId,
+      request: RebookRequest(
+        replacementDepartureId: replacementDepartureId,
+        note: note,
+      ),
+    );
+    _notice = applied.coversEverybody
+        ? 'rebook.applied|${applied.passengersMoved}'
+        : 'rebook.partial|${applied.passengersMoved}|${applied.passengersLeft}';
+    await _loadSection();
+  });
+
   /// The coaches that could be sent out to a stranded departure.
   ///
   /// Loaded on demand rather than kept warm: the today screen has no other

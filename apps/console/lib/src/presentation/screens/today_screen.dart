@@ -6,6 +6,7 @@ import '../../application/console_workspace.dart';
 import '../l10n.dart';
 import '../widgets/disruption_sheet.dart';
 import '../widgets/manifest_sheet.dart';
+import '../widgets/rebook_sheet.dart';
 import '../widgets/rescue_sheet.dart';
 
 /// The dispatcher's day.
@@ -227,6 +228,18 @@ class _DepartureRow extends StatelessWidget {
                     fullWidth: false,
                     onPressed: () => _rescue(context),
                   ),
+                // The other half of §2.2: when there is no spare, the
+                // passengers go on a later departure instead. Offered on the
+                // same rows, because it is the same question — this coach is
+                // not going, so what happens to the people on it?
+                if (workspace.can('disruption.declare') &&
+                    (row.disruption != null || row.vehicle == null))
+                  KButton(
+                    label: context.t('console.today.rebook'),
+                    tone: KButtonTone.secondary,
+                    fullWidth: false,
+                    onPressed: () => _rebook(context),
+                  ),
               ],
             ),
           ),
@@ -285,6 +298,24 @@ class _DepartureRow extends StatelessWidget {
     await workspace.assignRescueCoach(
       departureId: row.id,
       vehicleId: draft.vehicleId,
+      note: draft.note,
+    );
+  }
+
+  Future<void> _rebook(BuildContext context) async {
+    final draft = await showDialog<RebookDraft>(
+      context: context,
+      builder: (_) => RebookSheet(
+        routeCode: row.routeCode,
+        sold: row.sold,
+        candidates: workspace.replacementsFor(row),
+      ),
+    );
+    if (draft == null) return;
+
+    await workspace.rebookOnto(
+      departureId: row.id,
+      replacementDepartureId: draft.replacementDepartureId,
       note: draft.note,
     );
   }

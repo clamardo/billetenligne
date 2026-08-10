@@ -4,17 +4,19 @@
 **Implements:** ADR-0016 · **Related:** ADR-0012 (inventory), ADR-0015 (policy floor), ADR-0014 (tracking)
 
 > **What is built, as of 2026-08-10.** §1 (the taxonomy), §2.1 (declare), the
-> `involuntary_change` exemption, **§2.2 option ① (the rescue coach)** with the
-> seat remapping and ticket re-issue it implies, the notification cascade in §4
-> for the passengers of the affected departure, and the traveller-facing status
-> in §3.1 and §3.3 minus the follower page. What is **not** built is the rest
-> of what moves somebody: §2.2's remaining options ②③⑤, §2.3, §2.4's rebooking
-> wave, §2.5's offline declaration, §3.2's self-service choice, §5's
-> inter-operator agreements and §6's reliability figures. The acceptance
-> criteria in §7 are therefore not met yet, though the one that matters — no
-> passenger left in an undefined state — now holds for the commonest case: a
-> breakdown answered with the spare puts everybody back on a seat with a
-> ticket that scans.
+> `involuntary_change` exemption, **§2.2 options ① and ②** — the rescue coach
+> with its seat remapping and ticket re-issue, and the wave that moves the
+> passengers onto the operator's own next departure — **§2.4's ordering rule**
+> (every replacement seat taken before any old one is released), the
+> notification cascade in §4, and the traveller-facing status in §3.1 and §3.3
+> minus the follower page. What is **not** built: the *ranked plan* itself —
+> the dispatcher chooses between ① and ② rather than being shown a score —
+> §2.2's options ③ and ⑤, §2.3's protection settlement, §2.5's offline
+> declaration, §3.2's self-service choice, §5's inter-operator agreements and
+> §6's reliability figures. The acceptance criteria in §7 are therefore not
+> met yet, though the one that matters — no passenger left in an undefined
+> state — now holds whenever the operator has either a spare coach or a later
+> departure with room.
 
 > Design premise: on Congo's road network, disruption is **normal traffic, not an error path**. This subsystem is built for the Tuesday-morning breakdown, not for the once-a-year incident. It is entirely operator-self-service (ADR-0016).
 

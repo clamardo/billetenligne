@@ -585,6 +585,21 @@ final class BelApiClient {
     ),
   );
 
+  /// Move the passengers onto another of this operator's departures.
+  ///
+  /// Partial coverage is a success — the answer says how many are still on
+  /// the broken coach, and a client that treated "18 / 42" as a failure would
+  /// undo the eighteen.
+  Future<RebookingAppliedDto> rebookOnto({
+    required String departureId,
+    required RebookRequest request,
+  }) async => RebookingAppliedDto.fromJson(
+    await _postJson(
+      '/console/v1/departures/$departureId/rebook',
+      request.toJson(),
+    ),
+  );
+
   Future<ManifestDto> manifest(String departureId) async =>
       ManifestDto.fromJson(
         await _get('/console/v1/departures/$departureId/manifest'),
