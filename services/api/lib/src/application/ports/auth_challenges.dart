@@ -50,6 +50,20 @@ abstract interface class AuthChallenges {
   /// because otherwise "ask again" with a fresh id would sidestep the limit.
   Future<DateTime?> lastIssuedTo(String destination);
 
+  /// How many codes this source has been sent since [since], and when the
+  /// oldest of them went out.
+  ///
+  /// The second half is what lets a refusal carry a real wait rather than
+  /// "try later": the window frees at `earliest + window`, and a limit that
+  /// cannot say when it lifts is a limit people retry against blindly.
+  ///
+  /// [sourceHash] is an HMAC of the caller's address, never the address. This
+  /// port never sees one.
+  Future<({int count, DateTime? earliest})> issuedFrom(
+    String sourceHash, {
+    required DateTime since,
+  });
+
   Future<Challenge> issue({
     required SignInChannel channel,
     required String destination,
@@ -57,6 +71,7 @@ abstract interface class AuthChallenges {
     required String language,
     required DateTime expiresAt,
     required int maxAttempts,
+    String? sourceHash,
   });
 
   Future<Challenge?> byId(String id);

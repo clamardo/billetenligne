@@ -139,6 +139,10 @@ final class MemoryAuthChallenges implements AuthChallenges {
   final Clock _clock;
   final Map<String, Challenge> _byId = {};
   final Map<String, DateTime> _lastIssued = {};
+
+  /// What each source has asked for, so the per-host bound behaves the same
+  /// way with fakes as it does against Postgres.
+  final Map<String, List<DateTime>> _bySource = {};
   var _next = 0;
 
   @override
@@ -153,7 +157,11 @@ final class MemoryAuthChallenges implements AuthChallenges {
     required String language,
     required DateTime expiresAt,
     required int maxAttempts,
+    String? sourceHash,
   }) async {
+    if (sourceHash != null) {
+      (_bySource[sourceHash] ??= []).add(_clock.now());
+    }
     final challenge = Challenge(
       id: 'ch-mem-${++_next}',
       channel: channel,
@@ -168,6 +176,19 @@ final class MemoryAuthChallenges implements AuthChallenges {
     _byId[challenge.id] = challenge;
     _lastIssued[destination] = challenge.createdAt;
     return challenge;
+  }
+
+  @override
+  Future<({int count, DateTime? earliest})> issuedFrom(
+    String sourceHash, {
+    required DateTime since,
+  }) async {
+    final sent =
+        (_bySource[sourceHash] ?? const <DateTime>[])
+            .where((at) => !at.isBefore(since))
+            .toList()
+          ..sort();
+    return (count: sent.length, earliest: sent.isEmpty ? null : sent.first);
   }
 
   @override

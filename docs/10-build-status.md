@@ -60,7 +60,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Scheduled materialisation** | ✅ done | A rolling 21-day sales horizon, extended by the worker rather than by a dispatcher remembering. Enumerates active patterns of active operators across every tenant under the worker's platform scope, then materialises each one back under its own tenant — so the pass sees everything and writes nothing outside the operator it is writing for. Idempotent by the same unique key the console's button relies on, so a run that half-finished is fixed by running it again. A backlog past the batch limit is reported in the pass name, never silently dropped. 6 Postgres tests |
 | **Cash refunds** | ✅ done | Quote, approve, collect. Approval moves a debt rather than undoing a sale: the retained share stays credited to the operator. The ticket voids at approval, the seat goes back on sale in the same transaction, and the claim code is single-use by statement. `source` disbursement down a rail is **not** built and stops at `approved`. 5 domain · 8 Postgres · 12 smoke · 5 widget tests |
 | Email on ACS | ✅ done | Signed requests, logging fallback; **only the sign-in code routes through it so far** |
-| SMS / push on ACS + Firebase | 🔨 in progress | Port, templates, drain and channel plumbing all done; **no provisioned sender number, so the API refuses the phone channel with a 503** |
+| **A bound on codes per host** | ✅ done | The per-destination cooldown cannot see one host walking a list of a thousand addresses, and every one of those is a message we pay for. Thirty per hour per source, env-tunable, and **deliberately loose** — carrier-grade NAT means one address here is routinely one building, so this is a cost control before it is a security control. The address is never stored: an HMAC of it under the same key the codes are hashed with. The rightmost `X-Forwarded-For` hop, not the leftmost, because the leftmost is whatever the caller typed. 5 unit · 1 Postgres · 4 smoke tests |
+| SMS / push on ACS + Firebase | 🔨 in progress | Port, templates, drain and channel plumbing all done; **no provisioned sender number, so the API refuses the phone channel with a 503**. What is no longer missing is the *switch*: `/public/v1/market` announces which channels the deployment can deliver on, the traveller app renders the option from that announcement, and a smoke check asserts the announcement and the route agree. The day a number is provisioned is a config push, not a release |
 | Session in platform secure storage | 🔨 in progress | `SessionStore` port is there; the app uses `MemorySessionStore`, so **a session lasts until the app is killed** |
 
 ## Phase 2 — Mobile money
@@ -198,18 +199,18 @@ dart test packages/bel_domain packages/bel_localization \
          packages/bel_contracts packages/bel_crypto     # 294 tests
 dart test packages/bel_client                           # 32 tests
 rm -rf services/api/build                               # see below — it matters
-dart test services/api -x integration -x storage        # 172 tests
+dart test services/api -x integration -x storage        # 177 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
-cd apps/traveller && flutter test        # 80 app tests
+cd apps/traveller && flutter test        # 85 app tests
 cd apps/console   && flutter test        # 44 console tests
 cd apps/admin     && flutter test        # 18 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
 dart run tool/check_layers.dart          # the onion rule, 276 files
 ./infra/migrations/check.sh              # 30 schema guarantees
-./tool/integration.sh                    # 141 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 167 checks, incl. the Dart client
+./tool/integration.sh                    # 142 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 174 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -218,8 +219,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**735 tests in total**, plus 167 smoke checks, 30 executed schema guarantees,
-141 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**745 tests in total**, plus 174 smoke checks, 30 executed schema guarantees,
+142 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.

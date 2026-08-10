@@ -133,7 +133,9 @@ final class _ScriptedGateway implements TravelGateway {
   }
 
   @override
-  Future<({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})>
+  Future<
+    ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
+  >
   paymentOptions(String bookingId) async {
     if (optionsFailure != null) throw optionsFailure!;
     return (
@@ -303,17 +305,19 @@ void main() {
       expect(flow.step, isA<Idle>());
     });
 
-    test('reset before the cities load does not strand on an empty picker',
-        () async {
-      final gateway = _ScriptedGateway()
-        ..citiesFailure = const NetworkUnreachable();
-      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+    test(
+      'reset before the cities load does not strand on an empty picker',
+      () async {
+        final gateway = _ScriptedGateway()
+          ..citiesFailure = const NetworkUnreachable();
+        final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
 
-      await flow.start();
-      flow.reset();
+        await flow.start();
+        flow.reset();
 
-      expect(flow.step, isA<Starting>());
-    });
+        expect(flow.step, isA<Starting>());
+      },
+    );
   });
 
   group('search', () {
@@ -618,13 +622,9 @@ void main() {
       flow.namePassengers();
 
       gateway.reserveFailure = const NetworkUnreachable();
-      await flow.reserve([
-        const PassengerDto(fullName: 'A', seatLabel: '1A'),
-      ]);
+      await flow.reserve([const PassengerDto(fullName: 'A', seatLabel: '1A')]);
       gateway.reserveFailure = null;
-      await flow.reserve([
-        const PassengerDto(fullName: 'A', seatLabel: '1A'),
-      ]);
+      await flow.reserve([const PassengerDto(fullName: 'A', seatLabel: '1A')]);
 
       // The same key both times. A second reservation would meet an
       // already-consumed hold and be refused, and the traveller would be told
@@ -633,32 +633,37 @@ void main() {
       expect(gateway.reserveKeys.first, gateway.reserveKeys.last);
     });
 
-    test('a refusal ends the attempt, so the next try is a new request',
-        () async {
-      final gateway = _ScriptedGateway(searchResult: [_departure()]);
-      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
-      await _reachHold(flow, gateway);
-      flow.namePassengers();
+    test(
+      'a refusal ends the attempt, so the next try is a new request',
+      () async {
+        final gateway = _ScriptedGateway(searchResult: [_departure()]);
+        final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+        await _reachHold(flow, gateway);
+        flow.namePassengers();
 
-      gateway.reserveFailure = const ServerRefused(
-        410,
-        ApiError(code: ErrorCode.holdExpired),
-      );
-      await flow.reserve([
-        const PassengerDto(fullName: 'A', seatLabel: '1A'),
-      ]);
-      gateway.reserveFailure = null;
-      await flow.reserve([
-        const PassengerDto(fullName: 'A', seatLabel: '1A'),
-      ]);
+        gateway.reserveFailure = const ServerRefused(
+          410,
+          ApiError(code: ErrorCode.holdExpired),
+        );
+        await flow.reserve([
+          const PassengerDto(fullName: 'A', seatLabel: '1A'),
+        ]);
+        gateway.reserveFailure = null;
+        await flow.reserve([
+          const PassengerDto(fullName: 'A', seatLabel: '1A'),
+        ]);
 
-      // The server answered. Reusing the key would ask it to replay an answer
-      // it already gave.
-      expect(gateway.reserveKeys.first, isNot(gateway.reserveKeys.last));
-    });
+        // The server answered. Reusing the key would ask it to replay an answer
+        // it already gave.
+        expect(gateway.reserveKeys.first, isNot(gateway.reserveKeys.last));
+      },
+    );
 
     test('expiry outside a hold is ignored', () async {
-      final flow = BookingFlow(gateway: _ScriptedGateway(), isSignedIn: () => true);
+      final flow = BookingFlow(
+        gateway: _ScriptedGateway(),
+        isSignedIn: () => true,
+      );
 
       flow.holdExpired();
 

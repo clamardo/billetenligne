@@ -223,6 +223,54 @@ void main() {
     },
   );
 
+  test(
+    'one host asking for a thousand codes is counted, and stopped',
+    () async {
+      // A source unique to this test: the suite shares a database, and a
+      // counter that saw another test's requests would pass for the wrong
+      // reason — or fail for one.
+      final source = 'source-${DateTime.now().microsecondsSinceEpoch}';
+
+      final bounded = SignIn(
+        challenges: challenges,
+        directory: directory,
+        notifications: notifications,
+        render:
+            ({
+              required SignInChannel channel,
+              required String language,
+              required String code,
+              required int minutes,
+            }) => (subject: 'code:$code', body: code),
+        mac: const HmacSha256Authenticator(),
+        codeKey: utf8.encode('an-integration-key-of-32-characters'),
+        maxPerSource: 3,
+      );
+
+      for (var i = 0; i < 3; i++) {
+        final sent = await bounded.start(
+          StartSignInRequest.email(freshEmail()),
+          source: source,
+        );
+        expect(sent.isOk, isTrue, reason: 'code $i');
+      }
+
+      final refused = await bounded.start(
+        StartSignInRequest.email(freshEmail()),
+        source: source,
+      );
+
+      // Every one of those went to a different address, so the per-destination
+      // cooldown never fired once. This is the check that sees the pattern.
+      expect(refused.failureOrNull, isA<TooManyFromOneSource>());
+      expect(notifications.sent, hasLength(3));
+
+      // And the address itself is not in the table — only an HMAC of it, so
+      // this is not a log of who asked for a code from where.
+      expect(await fixture.challengeSources(source), 0);
+    },
+  );
+
   test('the logging gateway is what runs when nothing is configured', () async {
     expect(
       await const LoggingNotificationGateway().send(

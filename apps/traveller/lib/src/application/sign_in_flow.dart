@@ -129,6 +129,31 @@ final class SignInFlow {
   /// [resend] only changes what is rendered while it is in flight: the request
   /// is identical, and it is the *server* that decides whether a second ask is
   /// a resend or a refusal.
+  /// What the server says it can deliver on. Email until told otherwise.
+  List<String> _channels = const ['email'];
+  bool get canSignInByPhone => _channels.contains('phone');
+
+  /// Which channel the traveller is using. Theirs to change while the address
+  /// screen is up, and fixed once a code is out.
+  SignInChannel _channel = SignInChannel.email;
+  SignInChannel get channel => _channel;
+
+  set channel(SignInChannel next) {
+    if (_channel == next) return;
+    _channel = next;
+    _emit(const NeedsAddress());
+  }
+
+  /// Asked once, when the screen opens. A failure here is not a failure of
+  /// sign-in: the list falls back to email, which is what has always worked.
+  Future<void> loadChannels() async {
+    final channels = await _gateway.signInChannels();
+    if (channels.isEmpty) return;
+    _channels = channels;
+    if (!_channels.contains(_channel.name)) _channel = SignInChannel.email;
+    _emit(_step);
+  }
+
   Future<void> requestCode(String address, {bool resend = false}) async {
     final trimmed = address.trim();
     if (trimmed.isEmpty) return;
@@ -141,7 +166,7 @@ final class SignInFlow {
     );
 
     try {
-      final challenge = await _gateway.requestCode(trimmed);
+      final challenge = await _gateway.requestCode(trimmed, channel: _channel);
       _address = trimmed;
       _resendAvailableAt = _clock.now().add(challenge.resendAfter);
       _emit(AwaitingCode(challenge));

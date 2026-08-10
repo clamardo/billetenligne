@@ -277,8 +277,12 @@ void main() {
       // Still rendered. A refunded ticket that silently vanishes reads as our
       // bug at the worst possible moment.
       expect(find.byType(QrImageView), findsOneWidget);
-      expect(find.text(CatalogTranslator(catalog, 'fr')('travel.ticket.voidedTitle')),
-          findsOneWidget);
+      expect(
+        find.text(
+          CatalogTranslator(catalog, 'fr')('travel.ticket.voidedTitle'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('an empty list offers a search rather than a blank', (
@@ -304,7 +308,9 @@ void main() {
       );
 
       expect(
-        find.text(CatalogTranslator(catalog, 'fr')('travel.tickets.emptyTitle')),
+        find.text(
+          CatalogTranslator(catalog, 'fr')('travel.tickets.emptyTitle'),
+        ),
         findsOneWidget,
       );
     });

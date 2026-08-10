@@ -84,6 +84,11 @@ final class ErrorCode {
   /// after waiting — which is why it carries the wait rather than a bare 429.
   static const otpResendTooSoon = 'otp.resend_too_soon';
 
+  /// One host has asked for too many codes in an hour. Not about the address
+  /// — about the caller — and deliberately loose, because carrier-grade NAT
+  /// means one address is routinely one building (migration 0016).
+  static const otpSourceRateLimited = 'otp.source_rate_limited';
+
   // ── Second factor (ADR-0013) ───────────────────────────────────────────
 
   /// The authenticator code did not match. Deliberately distinct from

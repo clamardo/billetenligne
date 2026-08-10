@@ -19,8 +19,20 @@ abstract interface class IdentityGateway {
   /// none, or when it is no longer good.
   Future<bool> restore();
 
-  /// "Send me a code."
-  Future<SignInChallengeDto> requestCode(String email);
+  /// "Send me a code." The channel is the traveller's choice among the ones
+  /// the server says it can actually deliver on.
+  Future<SignInChallengeDto> requestCode(
+    String address, {
+    SignInChannel channel = SignInChannel.email,
+  });
+
+  /// Which channels this deployment can deliver on — `email`, and `phone`
+  /// once there is a sender number.
+  ///
+  /// Asked rather than assumed (ADR-0006). The app renders a phone option on
+  /// the day the number is provisioned, without a release, in a market where
+  /// a large share of users never update.
+  Future<List<String>> signInChannels();
 
   /// Answers the code, exchanges the credential, and returns the traveller.
   Future<AccountDto> submitCode({

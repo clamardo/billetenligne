@@ -102,6 +102,7 @@ final class MarketDto {
     required this.languages,
     required this.serviceFee,
     required this.rails,
+    this.signInChannels = const ['email'],
   });
 
   final String code;
@@ -123,6 +124,22 @@ final class MarketDto {
   final List<String> languages;
   final Money serviceFee;
   final List<PaymentRailDto> rails;
+
+  /// Which sign-in channels this deployment can actually deliver on —
+  /// `email`, `phone`, or both.
+  ///
+  /// Announced rather than compiled in, for the same reason the rails are
+  /// (ADR-0006): switching SMS on is a provisioned sender number and a config
+  /// push, and an app that decided for itself would need a release on the day
+  /// the number arrives — in a market where many users never update.
+  ///
+  /// It is also the honest version of the current state. Phone is plumbed end
+  /// to end and switched off for want of a sender; the app says so because
+  /// the server said so, rather than because somebody hardcoded a sentence
+  /// that will be wrong the week it changes.
+  final List<String> signInChannels;
+
+  bool get canSignInByPhone => signInChannels.contains('phone');
 
   /// Which rail to pre-select for a number, so the payment screen opens on
   /// the user's own wallet (D-02).
@@ -151,6 +168,7 @@ final class MarketDto {
     'languages': languages,
     'serviceFee': Wire.money(serviceFee),
     'rails': [for (final r in rails) r.toJson()],
+    'signInChannels': signInChannels,
   };
 
   factory MarketDto.fromJson(Map<String, Object?> json) => MarketDto(
@@ -177,22 +195,32 @@ final class MarketDto {
       PaymentRailDto.fromJson,
       field: 'rails',
     ),
+    // Defaulted rather than required, so a client built against a newer
+    // contract still reads an older server's answer. Email is the channel
+    // that has always worked.
+    signInChannels:
+        (json['signInChannels'] as List?)?.cast<String>() ?? const ['email'],
   );
 
-  factory MarketDto.fromDomain(Market m) => MarketDto(
-    code: m.code,
-    nameKey: 'reference.countries.${m.code}',
-    currency: m.currency.code,
-    currencyExponent: m.currency.exponent,
-    diallingCode: m.diallingCode,
-    nationalLength: m.msisdn.nationalLength,
-    carrierPrefixes: {
-      for (final e in m.msisdn.prefixes.entries) e.key: e.value.id,
-    },
-    timeZone: m.timeZone,
-    defaultLanguage: m.defaultLanguage,
-    languages: m.languages,
-    serviceFee: m.serviceFee,
-    rails: [for (final r in m.rails) PaymentRailDto.fromDomain(r)],
-  );
+  factory MarketDto.fromDomain(Market m, {List<String>? signInChannels}) =>
+      MarketDto(
+        code: m.code,
+        nameKey: 'reference.countries.${m.code}',
+        currency: m.currency.code,
+        currencyExponent: m.currency.exponent,
+        diallingCode: m.diallingCode,
+        nationalLength: m.msisdn.nationalLength,
+        carrierPrefixes: {
+          for (final e in m.msisdn.prefixes.entries) e.key: e.value.id,
+        },
+        timeZone: m.timeZone,
+        defaultLanguage: m.defaultLanguage,
+        languages: m.languages,
+        serviceFee: m.serviceFee,
+        rails: [for (final r in m.rails) PaymentRailDto.fromDomain(r)],
+        // Not a property of the market — a property of this deployment. The
+        // domain knows Congo-Brazzaville prefers SMS; only composition knows
+        // whether we have a sender number today.
+        signInChannels: signInChannels ?? const ['email'],
+      );
 }

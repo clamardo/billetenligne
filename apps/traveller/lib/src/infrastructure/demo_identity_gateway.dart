@@ -50,8 +50,22 @@ final class DemoIdentityGateway implements IdentityGateway {
   @override
   Future<bool> restore() async => false;
 
+  /// What the demo says the server can deliver on.
+  ///
+  /// Email only by default, because that is what the real deployment answers
+  /// today and a demo that offered a channel the server refuses would be a
+  /// demo of a product we do not have. Settable so a test can stand where we
+  /// will be the week a sender number is provisioned.
+  List<String> channels = const ['email'];
+
   @override
-  Future<SignInChallengeDto> requestCode(String email) async {
+  Future<List<String>> signInChannels() async => channels;
+
+  @override
+  Future<SignInChallengeDto> requestCode(
+    String email, {
+    SignInChannel channel = SignInChannel.email,
+  }) async {
     await Future<void>.delayed(latency);
 
     final normalised = email.trim().toLowerCase();

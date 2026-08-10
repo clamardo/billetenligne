@@ -41,6 +41,22 @@ final class ResendTooSoon extends SignInFailure {
   Map<String, Object?> get params => {'seconds': retryAfter.inSeconds};
 }
 
+/// One host asked for too many codes in an hour.
+///
+/// Distinct from [ResendTooSoon] and it must be: that one is about an
+/// *address* and is a normal thing to hit — you asked twice. This one is
+/// about a *host*, and hitting it means either something is wrong or somebody
+/// is doing something odd. Carries the wait for the same reason: a limit that
+/// cannot say when it lifts is a limit people retry against blindly.
+final class TooManyFromOneSource extends SignInFailure {
+  const TooManyFromOneSource(this.retryAfter);
+  final Duration retryAfter;
+  @override
+  String get code => ErrorCode.otpSourceRateLimited;
+  @override
+  Map<String, Object?> get params => {'seconds': retryAfter.inSeconds};
+}
+
 /// We could not reach them at all — the rail was down or the address bounced.
 ///
 /// Distinct from every failure above it because it is *our* problem, and the
@@ -138,6 +154,8 @@ final class SignIn {
     this.codeTtl = const Duration(minutes: 5),
     this.resendCooldown = const Duration(seconds: 60),
     this.maxAttempts = 5,
+    this.sourceWindow = const Duration(hours: 1),
+    this.maxPerSource = 30,
   }) : _challenges = challenges,
        _directory = directory,
        _notifications = notifications,
@@ -167,11 +185,29 @@ final class SignIn {
   final Duration resendCooldown;
   final int maxAttempts;
 
+  /// How many codes one host may ask for, and over what period.
+  ///
+  /// **Deliberately loose.** In this market a very large share of traffic
+  /// arrives from behind carrier-grade NAT and from cybercafés, so one
+  /// address is routinely one *building* — an agency counter signing in six
+  /// staff, or a family sharing a connection. A bound tight enough to stop a
+  /// determined attacker would lock those people out, and locking out an
+  /// agency to save a few hundred francs of SMS is the wrong trade.
+  ///
+  /// So this is a **cost control before it is a security control**: it stops
+  /// the loop left running and the script pointed at us, which is most of
+  /// what actually happens, and it does not pretend to stop somebody with a
+  /// list of proxies. The per-destination cooldown and the five-attempt cap
+  /// are what protect an individual account; this protects the bill.
+  final Duration sourceWindow;
+  final int maxPerSource;
+
   // ── Step one: send a code ─────────────────────────────────────────────────
 
   Future<Result<SignInChallengeDto, SignInFailure>> start(
     StartSignInRequest request, {
     String language = 'fr',
+    String? source,
   }) async {
     final address = switch (request.channel) {
       SignInChannel.email => _normaliseEmail(request.email!),
@@ -186,6 +222,12 @@ final class SignIn {
           destination: destination,
           masked: masked,
           language: language,
+          // Hashed here rather than by the caller, under the same key the
+          // codes are hashed with: the port below never sees an address, so
+          // `auth_challenges` cannot become a log of who asked from where.
+          sourceHash: source == null || source.isEmpty
+              ? null
+              : hashOf('src:$source'),
         ),
     };
   }
@@ -195,8 +237,26 @@ final class SignIn {
     required String destination,
     required String masked,
     required String language,
+    String? sourceHash,
   }) async {
     final now = _clock.now();
+
+    // Checked before the per-address cooldown, and that order is the point:
+    // the cooldown is keyed on the destination, so a host walking a list of a
+    // thousand addresses never hits it once. This is the check that sees them.
+    if (sourceHash != null) {
+      final sent = await _challenges.issuedFrom(
+        sourceHash,
+        since: now.subtract(sourceWindow),
+      );
+      if (sent.count >= maxPerSource) {
+        final freeAt = (sent.earliest ?? now).add(sourceWindow);
+        final wait = freeAt.difference(now);
+        return Err(
+          TooManyFromOneSource(wait.isNegative ? Duration.zero : wait),
+        );
+      }
+    }
 
     // Keyed on the destination, not on a challenge id: otherwise "ask again"
     // with a fresh id sidesteps the limit entirely, which is the shape this
@@ -218,6 +278,7 @@ final class SignIn {
       language: language,
       expiresAt: now.add(codeTtl),
       maxAttempts: maxAttempts,
+      sourceHash: sourceHash,
     );
 
     final message = _render(

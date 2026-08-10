@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:bel_api/src/composition.dart';
 import 'package:bel_api/src/middleware/request_headers.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
@@ -18,7 +19,17 @@ Response onRequest(RequestContext context) {
     return Response(statusCode: HttpStatus.methodNotAllowed);
   }
 
-  final body = MarketDto.fromDomain(Market.current).toJson();
+  final body = MarketDto.fromDomain(
+    Market.current,
+    // A fact about today's deployment, not about the country. The app renders
+    // a phone option only when there is a sender to send from, so the day a
+    // number is provisioned is a config push rather than a release (ADR-0006)
+    // — which matters here, where a large share of users never update.
+    signInChannels: [
+      'email',
+      if (context.read<Services>().smsConfigured) 'phone',
+    ],
+  ).toJson();
   // Hash the canonical JSON, not `toString()`: a map's debug representation is
   // not a stable serialisation contract.
   final etag = '"${_weakHash(jsonEncode(body))}"';

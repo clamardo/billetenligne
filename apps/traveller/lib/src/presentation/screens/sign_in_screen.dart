@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bel_client/bel_client.dart';
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_design/bel_design.dart';
 import 'package:flutter/material.dart';
 
@@ -77,6 +78,11 @@ class _SignInScreenState extends State<SignInScreen> {
       setState(() {});
     });
 
+    // Which channels the server can actually deliver on. Failing is fine —
+    // the flow falls back to email, which is what has always worked — so
+    // this is deliberately not awaited and deliberately not a loading state.
+    unawaited(widget.flow.loadChannels());
+
     // One second, and only while this screen is mounted. It exists solely to
     // redraw the resend countdown.
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -123,6 +129,8 @@ class _SignInScreenState extends State<SignInScreen> {
     final kilo = context.kilo;
     final sending = step is SendingCode;
     final failure = step is NeedsAddress ? step.failure : null;
+    final phone = widget.flow.canSignInByPhone;
+    final byPhone = widget.flow.channel == SignInChannel.phone;
 
     if (step is NeedsAddress && step.address != null && _address.text.isEmpty) {
       // Retyping an email on a phone keyboard because the server said "wait
@@ -138,11 +146,44 @@ class _SignInScreenState extends State<SignInScreen> {
         style: kilo.text.bodySm.copyWith(color: kilo.color.contentSecondary),
       ),
       SizedBox(height: kilo.space.s5),
+
+      // Phone is the channel this market actually prefers, and whether it
+      // works is a fact about the deployment rather than about the app: the
+      // server announces which channels it can deliver on, and this control
+      // appears on the day a sender number is provisioned — a config push
+      // rather than a release (ADR-0006), in a market where a large share of
+      // users never update.
+      if (phone)
+        Padding(
+          padding: EdgeInsets.only(bottom: kilo.space.s4),
+          child: SegmentedButton<SignInChannel>(
+            segments: [
+              ButtonSegment(
+                value: SignInChannel.email,
+                label: Text(context.t('auth.gate.byEmail')),
+              ),
+              ButtonSegment(
+                value: SignInChannel.phone,
+                label: Text(context.t('auth.gate.byPhone')),
+              ),
+            ],
+            selected: {widget.flow.channel},
+            onSelectionChanged: sending
+                ? null
+                : (choice) {
+                    _address.clear();
+                    widget.flow.channel = choice.first;
+                  },
+          ),
+        ),
+
       KField(
-        label: context.t('auth.email.label'),
-        hint: context.t('auth.email.hint'),
+        label: context.t(byPhone ? 'auth.phone.label' : 'auth.email.label'),
+        hint: context.t(byPhone ? 'auth.phone.hint' : 'auth.email.hint'),
         controller: _address,
-        keyboardType: TextInputType.emailAddress,
+        keyboardType: byPhone
+            ? TextInputType.phone
+            : TextInputType.emailAddress,
         autofocus: true,
         enabled: !sending,
         error: failure == null ? null : _message(context, failure),
@@ -150,21 +191,23 @@ class _SignInScreenState extends State<SignInScreen> {
       ),
       SizedBox(height: kilo.space.s5),
       KButton(
-        label: context.t('auth.email.submit'),
+        label: context.t(byPhone ? 'auth.phone.submit' : 'auth.email.submit'),
         loading: sending,
         onPressed: _address.text.trim().isEmpty
             ? null
             : () => widget.flow.requestCode(_address.text),
       ),
-      SizedBox(height: kilo.space.s4),
-      // Phone is the channel this market actually prefers and it is second,
-      // not absent (ADR-0024). Saying so is more honest than a control that
-      // is simply missing.
-      Text(
-        context.t('auth.phone.unavailable'),
-        style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
-        textAlign: TextAlign.center,
-      ),
+      if (!phone) ...[
+        SizedBox(height: kilo.space.s4),
+        // Second, not absent (ADR-0024). Saying so is more honest than a
+        // control that is simply missing — and the sentence goes away by
+        // itself when the server starts announcing the channel.
+        Text(
+          context.t('auth.phone.unavailable'),
+          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
+          textAlign: TextAlign.center,
+        ),
+      ],
     ];
   }
 

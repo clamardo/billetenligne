@@ -205,7 +205,9 @@ final class Services {
     final env = environment ?? Platform.environment;
     final url = env['DATABASE_URL'];
 
-    if (url == null || url.isEmpty) return Services.inMemory(clock: clock);
+    if (url == null || url.isEmpty) {
+      return Services.inMemory(clock: clock, environment: env);
+    }
 
     final db = Database.open(url);
     final inventory = PostgresSeatInventory(db);
@@ -229,6 +231,11 @@ final class Services {
       searchDepartures: SearchDepartures(catalogue: catalogue),
       signIn: SignIn(
         challenges: PostgresAuthChallenges(db),
+        // Tunable without a deploy, like `max_attempts` is a column rather
+        // than a constant. A market with worse deliverability, or one whose
+        // traffic sits behind a single carrier NAT, needs a different number
+        // — and finding that out is not a reason to ship a release.
+        maxPerSource: _maxPerSource(env),
         directory: directory,
         notifications: _notifications(env),
         render: _renderSignInMessage,
@@ -289,12 +296,24 @@ final class Services {
     );
   }
 
+  /// How many sign-in codes one host may ask for per hour.
+  ///
+  /// Thirty by default: loose on purpose (migration 0016). One address here
+  /// is routinely one building, and a bound tight enough to stop a determined
+  /// attacker would lock out an agency counter.
+  static int _maxPerSource(Map<String, String> env) {
+    final raw = env['BEL_SIGNIN_MAX_PER_SOURCE'];
+    final parsed = raw == null ? null : int.tryParse(raw);
+    return parsed != null && parsed > 0 ? parsed : 30;
+  }
+
   /// Fakes, with one coach already on sale so the API answers something useful
   /// on a fresh clone.
   factory Services.inMemory({
     Clock clock = const SystemClock(),
     List<MemoryDeparture>? departures,
     NotificationGateway? notifications,
+    Map<String, String>? environment,
   }) {
     final inventory = MemorySeatInventory(
       clock: clock,
@@ -347,6 +366,10 @@ final class Services {
         mac: const HmacSha256Authenticator(),
         codeKey: _developmentCodeKey,
         clock: clock,
+        // Read here too, so the fakes composition refuses exactly where the
+        // real one does. A fake that is more permissive than the server is a
+        // fake that lets a limit ship untested.
+        maxPerSource: _maxPerSource(environment ?? Platform.environment),
       ),
       secondFactor: SecondFactorSignIn(
         factors: MemorySecondFactors(now: clock.now),

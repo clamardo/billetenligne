@@ -50,8 +50,26 @@ final class ApiIdentityGateway implements IdentityGateway {
   }
 
   @override
-  Future<SignInChallengeDto> requestCode(String email) =>
-      _client.startSignIn(StartSignInRequest.email(email));
+  Future<SignInChallengeDto> requestCode(
+    String address, {
+    SignInChannel channel = SignInChannel.email,
+  }) => _client.startSignIn(
+    channel == SignInChannel.phone
+        ? StartSignInRequest.phone(address)
+        : StartSignInRequest.email(address),
+  );
+
+  @override
+  Future<List<String>> signInChannels() async {
+    try {
+      return (await _client.market()).signInChannels;
+    } on ApiFailure {
+      // Offline, or an older server. Email is the channel that has always
+      // worked, and a sign-in screen that refuses to render because a config
+      // call failed is worse than one that offers one option.
+      return const ['email'];
+    }
+  }
 
   @override
   Future<AccountDto> submitCode({

@@ -25,13 +25,22 @@ final class _ScriptedIdentity implements IdentityGateway {
   @override
   Future<bool> restore() async => false;
 
+  /// What the server says it can deliver on today.
+  List<String> channels = const ['email'];
+
   @override
-  Future<SignInChallengeDto> requestCode(String email) async {
-    requested.add(email);
+  Future<List<String>> signInChannels() async => channels;
+
+  @override
+  Future<SignInChallengeDto> requestCode(
+    String email, {
+    SignInChannel channel = SignInChannel.email,
+  }) async {
+    requested.add('${channel.name}:$email');
     if (requestFailure != null) throw requestFailure!;
     return SignInChallengeDto(
       challengeId: 'ch-${requested.length}',
-      channel: SignInChannel.email,
+      channel: channel,
       sentTo: 'a***e@example.cg',
       expiresAt: DateTime.utc(2026, 8, 9, 6, 5),
       resendAfter: cooldown,
@@ -76,18 +85,61 @@ void main() {
     flow = SignInFlow(gateway: gateway, clock: clock);
   });
 
+  group('which channel, decided by the server', () {
+    test('email only, until the server says otherwise', () async {
+      await flow.loadChannels();
+
+      expect(flow.canSignInByPhone, isFalse);
+      expect(flow.channel, SignInChannel.email);
+    });
+
+    test(
+      'a provisioned sender turns the option on without a release',
+      () async {
+        gateway.channels = const ['email', 'phone'];
+        await flow.loadChannels();
+
+        expect(flow.canSignInByPhone, isTrue);
+        // Still email until the traveller chooses: announcing a channel is not
+        // switching somebody onto it mid-purchase.
+        expect(flow.channel, SignInChannel.email);
+
+        flow.channel = SignInChannel.phone;
+        await flow.requestCode('060192286');
+
+        expect(gateway.requested, ['phone:060192286']);
+      },
+    );
+
+    test(
+      'a channel the server withdrew falls back rather than sticking',
+      () async {
+        gateway.channels = const ['email', 'phone'];
+        await flow.loadChannels();
+        flow.channel = SignInChannel.phone;
+
+        // The sender number lapsed, or this is a different deployment.
+        gateway.channels = const ['email'];
+        await flow.loadChannels();
+
+        expect(flow.channel, SignInChannel.email);
+        expect(flow.canSignInByPhone, isFalse);
+      },
+    );
+  });
+
   group('asking for a code', () {
     test('reaches the code screen', () async {
       await flow.requestCode('aline@example.cg');
 
       final step = flow.step as AwaitingCode;
       expect(step.challenge.sentTo, 'a***e@example.cg');
-      expect(gateway.requested, ['aline@example.cg']);
+      expect(gateway.requested, ['email:aline@example.cg']);
     });
 
     test('trims what was typed', () async {
       await flow.requestCode('  aline@example.cg  ');
-      expect(gateway.requested, ['aline@example.cg']);
+      expect(gateway.requested, ['email:aline@example.cg']);
     });
 
     test('an empty address does nothing at all', () async {
@@ -134,7 +186,10 @@ void main() {
       // `challenge.sentTo` is `a***e@example.cg`. Resending from what is on
       // screen would post a literal string of asterisks and look, from the
       // traveller's side, exactly like a delivery failure.
-      expect(gateway.requested, ['aline@example.cg', 'aline@example.cg']);
+      expect(gateway.requested, [
+        'email:aline@example.cg',
+        'email:aline@example.cg',
+      ]);
     });
 
     test('a refused resend keeps the traveller on the code screen', () async {

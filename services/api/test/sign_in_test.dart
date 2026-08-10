@@ -54,7 +54,7 @@ void main() {
     required int minutes,
   }) => (subject: 'code:$code', body: '$language/$code/$minutes');
 
-  SignIn build({Random? random}) => SignIn(
+  SignIn build({Random? random, int? maxPerSource}) => SignIn(
     challenges: challenges,
     directory: directory,
     notifications: notifications,
@@ -63,6 +63,7 @@ void main() {
     codeKey: utf8.encode('a-test-key-of-at-least-32-characters'),
     clock: clock,
     random: random ?? FixedRandom(424242),
+    maxPerSource: maxPerSource ?? 30,
   );
 
   setUp(() {
@@ -223,6 +224,87 @@ void main() {
         ..remove('sentTo');
       expect(a, b);
     });
+  });
+
+  group('one host, many addresses', () {
+    /// Every code goes to a different inbox, which is exactly the shape the
+    /// per-destination cooldown cannot see.
+    Future<Result<SignInChallengeDto, SignInFailure>> ask(
+      SignIn signIn,
+      int n, {
+      String? from = '41.202.0.7',
+    }) => signIn.start(
+      StartSignInRequest.email('traveller$n@example.cg'),
+      source: from,
+    );
+
+    test('the per-address cooldown does not see a list of addresses', () async {
+      // Five codes, five inboxes, one host — and not one of them is a resend.
+      for (var i = 0; i < 5; i++) {
+        expect((await ask(signIn, i)).isOk, isTrue, reason: 'code $i');
+      }
+      expect(notifications.sent, hasLength(5));
+    });
+
+    test(
+      'a host that will not stop is stopped, and told when it lifts',
+      () async {
+        final limited = build(maxPerSource: 3);
+
+        for (var i = 0; i < 3; i++) {
+          expect((await ask(limited, i)).isOk, isTrue);
+        }
+
+        final refused = await ask(limited, 99);
+        final failure = refused.failureOrNull;
+
+        expect(failure, isA<TooManyFromOneSource>());
+        // The wait is real: the window frees an hour after the oldest of them,
+        // and a limit that cannot say when it lifts is retried against blindly.
+        expect(
+          (failure! as TooManyFromOneSource).retryAfter,
+          const Duration(hours: 1),
+        );
+        expect(notifications.sent, hasLength(3));
+      },
+    );
+
+    test(
+      'the window rolls, so an hour later the host is served again',
+      () async {
+        final limited = build(maxPerSource: 2);
+        await ask(limited, 1);
+        await ask(limited, 2);
+        expect((await ask(limited, 3)).isErr, isTrue);
+
+        clock.advance(const Duration(hours: 1, minutes: 1));
+
+        expect((await ask(limited, 4)).isOk, isTrue);
+      },
+    );
+
+    test('another host is unaffected', () async {
+      final limited = build(maxPerSource: 2);
+      await ask(limited, 1);
+      await ask(limited, 2);
+      expect((await ask(limited, 3)).isErr, isTrue);
+
+      // An agency counter behind its own connection is not punished for
+      // somebody else's loop.
+      expect((await ask(limited, 4, from: '41.202.0.9')).isOk, isTrue);
+    });
+
+    test(
+      'a caller with no address at all is not bucketed with the others',
+      () async {
+        final limited = build(maxPerSource: 1);
+        expect((await ask(limited, 1, from: null)).isOk, isTrue);
+
+        // Lumping every unknown caller into one bucket would let one of them
+        // exhaust the limit for all of them — including for a test harness.
+        expect((await ask(limited, 2, from: null)).isOk, isTrue);
+      },
+    );
   });
 
   group('completing a sign-in', () {

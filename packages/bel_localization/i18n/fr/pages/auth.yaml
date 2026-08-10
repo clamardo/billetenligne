@@ -3,6 +3,8 @@
 # évite l'abandon le plus coûteux du parcours (ADR-0013).
 auth:
   gate:
+    byEmail: "Par e-mail"
+    byPhone: "Par SMS"
     title: "Presque à vous"
     intro: "Nous avons besoin d'une adresse pour vous envoyer votre billet."
     reassurance: "Pas de mot de passe. Un code à usage unique, et c'est tout."

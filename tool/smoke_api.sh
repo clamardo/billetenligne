@@ -67,7 +67,12 @@ fi
 echo "── starting on :$PORT"
 # `exec` so the subshell is REPLACED by dart. Without it, $! is the subshell's
 # pid, the trap kills the shell, and dart is orphaned holding the port.
-(cd "$API_DIR" && exec env PORT="$PORT" dart build/bin/server.dart >/tmp/bel-smoke.log 2>&1) &
+# Six rather than the default thirty, so the per-host bound can actually be
+# reached over a socket in a few requests. The number is env-tunable for
+# exactly this kind of reason — a market behind one carrier NAT needs a
+# different one, and finding that out should not need a release.
+(cd "$API_DIR" && exec env PORT="$PORT" BEL_SIGNIN_MAX_PER_SOURCE=6 \
+  dart build/bin/server.dart >/tmp/bel-smoke.log 2>&1) &
 server_pid=$!
 
 for _ in $(seq 1 40); do
@@ -290,6 +295,28 @@ challenge_body="$(curl -s -X POST "$BASE/public/v1/auth/challenges" \
 check "asking for a code is 202" "202" \
   "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/auth/challenges" \
      -H 'Content-Type: application/json' -d '{"email":"other-'"$$"'@example.cg"}')"
+
+# Which channels this deployment can deliver on. Announced rather than
+# compiled into the app: the day a sender number is provisioned is a config
+# push, not a release (ADR-0006).
+market_body="$(curl -s "$BASE/public/v1/market")"
+check "the market announces its sign-in channels" "yes" \
+  "$(grep -q '"signInChannels":\[' <<<"$market_body" && echo yes || echo no)"
+check "email is always one of them" "yes" \
+  "$(grep -q '"signInChannels":\[[^]]*"email"' <<<"$market_body" && echo yes || echo no)"
+
+# The invariant, rather than a fact about today's deployment: what the market
+# announces and what the challenge route accepts are the same list. An app
+# that renders a phone option the server then 503s is worse than one that
+# never offered it.
+if grep -q '"signInChannels":\[[^]]*"phone"' <<<"$market_body"; then
+  expected_phone=202
+else
+  expected_phone=503
+fi
+check "the announcement and the route agree about phone" "$expected_phone" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/auth/challenges" \
+     -H 'Content-Type: application/json' -d '{"phone":"060192286"}')"
 
 check "an address that cannot be one is 400" "400" \
   "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/auth/challenges" \
@@ -919,6 +946,39 @@ else
   printf '   \033[31mFAIL\033[0m the typed client could not complete the funnel\n'
   echo "$client_out" | sed 's/^/       /'
 fi
+
+# ── One host, many addresses ────────────────────────────────────────────────
+#
+# Last, and deliberately: it exhausts this host's hourly budget for codes, so
+# anything below it would be answered 429. The per-destination cooldown cannot
+# see this shape at all — every address here is different, so not one of these
+# is a resend.
+echo
+echo "── one host, many addresses"
+
+source_refusal=""
+source_sent=0
+for i in $(seq 1 10); do
+  body="$(curl -s -X POST "$BASE/public/v1/auth/challenges" \
+    -H 'Content-Type: application/json' \
+    -d "{\"email\":\"flood-$$-$i@example.cg\"}")"
+  if grep -q '"code":"otp.source_rate_limited"' <<<"$body"; then
+    source_refusal="$body"
+    break
+  fi
+  source_sent=$((source_sent + 1))
+done
+
+check "a host asking for code after code is stopped" "yes" \
+  "$([[ -n "$source_refusal" ]] && echo yes || echo no)"
+# The budget is six for this run; a few were spent by the sign-in above, so
+# what is proved here is that the bound exists and bites well short of ten.
+check "it bites before ten fresh addresses" "yes" \
+  "$([[ "$source_sent" -lt 10 ]] && echo yes || echo no)"
+check "the refusal says when it lifts" "yes" \
+  "$(grep -q '"seconds":' <<<"$source_refusal" && echo yes || echo no)"
+check "and carries no prose" "yes" \
+  "$(grep -q '"message"' <<<"$source_refusal" && echo no || echo yes)"
 
 echo
 if (( fail > 0 )); then

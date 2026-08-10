@@ -46,6 +46,7 @@ final class Problem {
     ErrorCode.rateLimited ||
     ErrorCode.otpTooManyAttempts ||
     ErrorCode.otpResendTooSoon ||
+    ErrorCode.otpSourceRateLimited ||
     ErrorCode.mfaLocked => 429,
     ErrorCode.unavailable ||
     ErrorCode.paymentPspUnavailable ||

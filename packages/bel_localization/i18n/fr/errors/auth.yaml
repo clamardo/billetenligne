@@ -14,6 +14,7 @@ errors:
     expired: "Ce code n'est plus valable. Demandez-en un nouveau."
     too_many_attempts: "Trop d'essais. Demandez un nouveau code."
     resend_too_soon: "Patientez encore {seconds} s avant de demander un nouveau code."
+    source_rate_limited: "Trop de demandes de code depuis cette connexion. Réessayez dans {seconds} s."
   mfa:
     incorrect: "Code incorrect. Il vous reste {remaining} essai(s)."
     expired: "Cette connexion a expiré. Recommencez."

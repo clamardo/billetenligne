@@ -3,6 +3,8 @@
 # avoids the most expensive drop-off in this funnel (ADR-0013).
 auth:
   gate:
+    byEmail: "By email"
+    byPhone: "By SMS"
     title: "Almost yours"
     intro: "We need an address to send your ticket to."
     reassurance: "No password. A one-time code, and that is all."

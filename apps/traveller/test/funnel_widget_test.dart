@@ -49,17 +49,25 @@ void main() {
     // that live *after* the gate. The gate itself is exercised by the group
     // that passes false.
     bool signedIn = true,
+    List<String> channels = const ['email'],
   }) async {
     final gateway = DemoTravelGateway(now: DateTime.utc(2026, 8, 9, 6))
       // Instant, so the tests are about behaviour rather than about waiting.
       ..latency = Duration.zero;
 
-    identity = DemoIdentityGateway(
-      now: () => DateTime.utc(2026, 8, 9, 6),
-      signedInAs: signedIn
-          ? const AccountDto(id: 'u-test', language: 'fr', email: 'a@b.cg')
-          : null,
-    )..latency = Duration.zero;
+    identity =
+        DemoIdentityGateway(
+            now: () => DateTime.utc(2026, 8, 9, 6),
+            signedInAs: signedIn
+                ? const AccountDto(
+                    id: 'u-test',
+                    language: 'fr',
+                    email: 'a@b.cg',
+                  )
+                : null,
+          )
+          ..latency = Duration.zero
+          ..channels = channels;
 
     final flow = BookingFlow(
       gateway: gateway,
@@ -173,6 +181,48 @@ void main() {
       // No password, and it says so — somebody expecting to have to remember
       // one and unable to is somebody who abandons the purchase.
       expect(find.textContaining('Pas de mot de passe'), findsOneWidget);
+    });
+
+    testWidgets('SMS is named as coming, not silently missing', (tester) async {
+      await pumpApp(tester, signedIn: false);
+      await searchBzvToPnr(tester);
+      await tester.tap(find.textContaining('Ocean du Nord').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1A'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Continuer'));
+      await tester.pumpAndSettle();
+
+      // Second, not absent (ADR-0024) — and the sentence is here because the
+      // server did not announce the channel, not because it is hardcoded.
+      expect(find.textContaining('SMS arrive bientôt'), findsOneWidget);
+      expect(find.text('Par SMS'), findsNothing);
+    });
+
+    testWidgets('the day a sender is provisioned, the option appears', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        signedIn: false,
+        channels: const ['email', 'phone'],
+      );
+      await searchBzvToPnr(tester);
+      await tester.tap(find.textContaining('Ocean du Nord').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1A'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Continuer'));
+      await tester.pumpAndSettle();
+
+      // No release, no rebuild: the server said so (ADR-0006).
+      expect(find.text('Par SMS'), findsOneWidget);
+      expect(find.textContaining('SMS arrive bientôt'), findsNothing);
+
+      await tester.tap(find.text('Par SMS'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Recevoir un code par SMS'), findsOneWidget);
     });
 
     testWidgets('a code signs in and resumes the hold that was interrupted', (

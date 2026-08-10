@@ -224,6 +224,19 @@ final class PgFixture {
     ];
   }
 
+  /// How many challenges carry this source **in the clear**. Always zero:
+  /// `source_hash` is an HMAC, and the point of the column is that a dump of
+  /// it cannot be turned back into addresses.
+  Future<int> challengeSources(String source) async {
+    final rows = await _seed.execute(
+      Sql.named(
+        'SELECT count(*)::int FROM auth_challenges WHERE source_hash = @s',
+      ),
+      parameters: {'s': TypedValue(Type.text, source)},
+    );
+    return rows.first.first! as int;
+  }
+
   Future<String> operatorStatus(String operatorId) async {
     final rows = await _seed.execute(
       Sql.named('SELECT status::text AS s FROM operators WHERE id = @id'),

@@ -320,6 +320,26 @@ final class PostgresAuthChallenges implements AuthChallenges {
       });
 
   @override
+  Future<({int count, DateTime? earliest})> issuedFrom(
+    String sourceHash, {
+    required DateTime since,
+  }) => _db.transaction(const DbScope.identity(), (tx) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT count(*)::int AS n, min(created_at) AS earliest
+          FROM auth_challenges
+         WHERE source_hash = @source AND created_at >= @since
+      '''),
+      parameters: {
+        'source': TypedValue(Type.text, sourceHash),
+        'since': TypedValue(Type.timestampTz, since),
+      },
+    );
+    final row = rows.first.toColumnMap();
+    return (count: row['n'] as int, earliest: row['earliest'] as DateTime?);
+  });
+
+  @override
   Future<Challenge> issue({
     required SignInChannel channel,
     required String destination,
@@ -327,12 +347,15 @@ final class PostgresAuthChallenges implements AuthChallenges {
     required String language,
     required DateTime expiresAt,
     required int maxAttempts,
+    String? sourceHash,
   }) => _db.transaction(const DbScope.identity(), (tx) async {
     final rows = await tx.execute(
       Sql.named('''
         INSERT INTO auth_challenges
-          (channel, destination, code_hash, language, expires_at, max_attempts)
-        VALUES (@channel, @destination, @hash, @language, @expires, @max)
+          (channel, destination, code_hash, language, expires_at, max_attempts,
+           source_hash)
+        VALUES (@channel, @destination, @hash, @language, @expires, @max,
+                @source)
         RETURNING $_columns
       '''),
       parameters: {
@@ -342,6 +365,7 @@ final class PostgresAuthChallenges implements AuthChallenges {
         'language': TypedValue(Type.text, language),
         'expires': TypedValue(Type.timestampTz, expiresAt),
         'max': TypedValue(Type.integer, maxAttempts),
+        'source': TypedValue(Type.text, sourceHash),
       },
     );
     return _challenge(rows.first.toColumnMap());
