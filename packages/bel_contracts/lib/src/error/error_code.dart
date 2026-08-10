@@ -93,6 +93,29 @@ final class ErrorCode {
   /// the old secret.
   static const mfaAlreadyEnrolled = 'mfa.already_enrolled';
 
+  // ── Brand assets (03-operator-lifecycle.md §2.4) ───────────────────────
+
+  /// Not PNG, JPEG or SVG — sniffed from the bytes, never from the header the
+  /// caller sent.
+  static const assetUnsupportedType = 'asset.unsupported_type';
+
+  /// Over the budget for its kind: 40 KB for a logo, 120 KB for a cover. This
+  /// ships to every traveller's phone on a metered bundle (ADR-0009).
+  static const assetTooLarge = 'asset.too_large';
+
+  /// Within the byte budget but too many pixels. A 40 KB PNG can be 4000 px
+  /// square, and decoding that costs 64 MB of bitmap for a mark rendered at
+  /// 32 dp.
+  static const assetTooWide = 'asset.too_wide';
+
+  /// Truncated, or otherwise not measurable. A file we cannot measure is a
+  /// file we cannot bound.
+  static const assetUnreadable = 'asset.unreadable';
+
+  /// This deployment has nowhere to put a file. Distinct from a refusal:
+  /// nothing the caller sent was wrong.
+  static const storageUnavailable = 'storage.unavailable';
+
   // ── Tenancy / operator lifecycle ───────────────────────────────────────
   static const operatorSuspended = 'operator.suspended';
   static const operatorNotActive = 'operator.not_active';

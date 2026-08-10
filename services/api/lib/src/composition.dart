@@ -28,6 +28,7 @@ import 'application/ports/platform_console.dart';
 import 'application/ports/departure_catalogue.dart';
 import 'application/ports/notification_gateway.dart';
 import 'application/ports/seat_inventory.dart';
+import 'application/ports/object_store.dart';
 import 'application/ports/storefronts.dart';
 import 'application/ports/user_directory.dart';
 import 'application/pay_for_booking.dart';
@@ -41,6 +42,8 @@ import 'infrastructure/memory/memory_operator_directory.dart';
 import 'infrastructure/memory/memory_payment_store.dart';
 import 'infrastructure/memory/memory_city_catalogue.dart';
 import 'infrastructure/memory/memory_identity.dart';
+import 'infrastructure/azure/azure_blob_store.dart';
+import 'infrastructure/memory/memory_object_store.dart';
 import 'infrastructure/memory/memory_seat_inventory.dart';
 import 'infrastructure/memory/memory_second_factors.dart';
 import 'infrastructure/memory/memory_storefronts.dart';
@@ -80,6 +83,7 @@ final class Services {
     required this.console,
     required this.platform,
     required this.storefronts,
+    required this.storage,
     required this.payments,
     required this.payForBooking,
     required this.railIds,
@@ -123,6 +127,31 @@ final class Services {
   /// from and the public page a stranger opens. One port, because the live
   /// preview in that editor is only honest if it previews the same record.
   final Storefronts storefronts;
+
+  /// Where a logo goes.
+  ///
+  /// Azure Blob when `STORAGE__ACCOUNT` and `STORAGE__KEY` are set, an
+  /// in-memory map otherwise — the same shape as the database decision, and
+  /// for the same reason: a fresh clone should upload a file and see it come
+  /// back rather than read a stack trace about a missing account.
+  final ObjectStore storage;
+
+  /// Resolves a vitrine's storage keys into URLs a client can fetch.
+  ///
+  /// Here rather than in the adapter because *where a file can be fetched
+  /// from* is a fact about this deployment — the account, the container and
+  /// whatever CDN sits in front of them — and the database row knows none of
+  /// it. Public URLs, not signed ones: a logo is on a poster and a cached
+  /// page, and a signature that expires would break an image nobody was
+  /// protecting.
+  VitrineDto withAssetUrls(VitrineDto vitrine) => vitrine.withAssetUrls(
+    logoUrl: vitrine.logoAsset == null
+        ? null
+        : storage.publicUrl(vitrine.logoAsset!).toString(),
+    coverUrl: vitrine.coverAsset == null
+        ? null
+        : storage.publicUrl(vitrine.coverAsset!).toString(),
+  );
 
   final PaymentStore payments;
   final PayForBooking payForBooking;
@@ -212,6 +241,11 @@ final class Services {
       console: PostgresOperatorConsole(db, timeZone: Market.current.timeZone),
       platform: PostgresPlatformConsole(db),
       storefronts: PostgresStorefronts(db),
+      // Falls back to the in-memory store rather than refusing to start. A
+      // deployment with a database and no storage account is a real state —
+      // it is every deployment on the day before the storage account is
+      // provisioned — and `/health` reports it rather than the API dying.
+      storage: AzureBlobStore.fromEnvironment(env) ?? MemoryObjectStore(),
       payments: paymentStore,
       payForBooking: PayForBooking(
         payments: paymentStore,
@@ -314,6 +348,7 @@ final class Services {
       console: const UnavailableOperatorConsole(),
       platform: const UnavailablePlatformConsole(),
       storefronts: MemoryStorefronts.demo(),
+      storage: MemoryObjectStore(),
       payments: memoryPayments,
       payForBooking: PayForBooking(
         payments: memoryPayments,

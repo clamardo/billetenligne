@@ -535,6 +535,23 @@ check "the storefront is cacheable" "yes" \
 check "the vitrine editor is closed to anonymous" "401" \
   "$(status "$BASE/console/v1/vitrine")"
 
+# ── Brand assets ────────────────────────────────────────────────────────────
+#
+# The fakes composition has no object store, so what a socket can prove here is
+# the *refusals* — which is the half that matters on a public URL. The upload
+# round trip runs against real Azurite in `tool/storage.sh`.
+check "uploading a logo is closed to anonymous" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+     "$BASE/console/v1/vitrine/logo" -H 'Content-Type: image/png' \
+     --data-binary 'not a png')"
+# A traveller who found the URL. The console surface refuses them before the
+# route ever looks at the path, so they learn nothing about which asset names
+# exist — the same ordering the admin surface uses below.
+check "a traveller cannot upload to an operator" "403" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+     "$BASE/console/v1/vitrine/favicon" -H "$AUTH" \
+     -H 'Content-Type: image/png' --data-binary 'x')"
+
 # ── The back office refuses everybody it should ─────────────────────────────
 #
 # The admin surface cannot be *exercised* against the fakes composition — it

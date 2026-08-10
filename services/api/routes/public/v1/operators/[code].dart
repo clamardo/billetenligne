@@ -26,7 +26,8 @@ Future<Response> onRequest(RequestContext context, String code) async {
   }
 
   final trace = context.read<String>();
-  final storefront = await context.read<Services>().storefronts.byCode(code);
+  final services = context.read<Services>();
+  final storefront = await services.storefronts.byCode(code);
 
   if (storefront == null) {
     return Response.json(
@@ -36,7 +37,11 @@ Future<Response> onRequest(RequestContext context, String code) async {
   }
 
   return Response.json(
-    body: storefront.toJson(),
+    body: StorefrontDto(
+      vitrine: services.withAssetUrls(storefront.vitrine),
+      routes: storefront.routes,
+      onTimeRate: storefront.onTimeRate,
+    ).toJson(),
     headers: {
       BelHeaders.traceId: trace,
       // Five minutes. A vitrine changes a handful of times a year and the

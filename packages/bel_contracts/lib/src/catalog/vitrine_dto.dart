@@ -67,6 +67,8 @@ final class VitrineDto {
     this.taglineEn,
     this.logoAsset,
     this.coverAsset,
+    this.logoUrl,
+    this.coverUrl,
   });
 
   final String operatorId;
@@ -96,6 +98,17 @@ final class VitrineDto {
   final String? logoAsset;
   final String? coverAsset;
 
+  /// Where to actually fetch them.
+  ///
+  /// Resolved by the server from the key, and **not** derivable by a client:
+  /// the account, the container and whatever CDN sits in front of them all
+  /// change without the file changing, and a client that built this URL would
+  /// be a client that breaks on a storage migration. Null when there is no
+  /// asset, and also when the deployment has no storage configured — which is
+  /// why the monogram fallback is keyed off the URL rather than the key.
+  final String? logoUrl;
+  final String? coverUrl;
+
   /// What to show a reader of [language].
   ///
   /// Falls through to the other language before falling back to the trading
@@ -116,6 +129,29 @@ final class VitrineDto {
     return null;
   }
 
+  /// The same vitrine with its asset URLs resolved.
+  ///
+  /// A method rather than a constructor argument threaded through every
+  /// adapter, because *where a file can be fetched from* is a fact about the
+  /// deployment and not about the row — the storage adapter knows it and the
+  /// database does not.
+  VitrineDto withAssetUrls({String? logoUrl, String? coverUrl}) => VitrineDto(
+    operatorId: operatorId,
+    code: code,
+    legalName: legalName,
+    tradingName: tradingName,
+    accentHue: accentHue,
+    headerPattern: headerPattern,
+    titleFr: titleFr,
+    titleEn: titleEn,
+    taglineFr: taglineFr,
+    taglineEn: taglineEn,
+    logoAsset: logoAsset,
+    coverAsset: coverAsset,
+    logoUrl: logoUrl,
+    coverUrl: coverUrl,
+  );
+
   Map<String, Object?> toJson() => Wire.compact({
     'operatorId': operatorId,
     'code': code,
@@ -129,6 +165,8 @@ final class VitrineDto {
     'taglineEn': taglineEn,
     'logoAsset': logoAsset,
     'coverAsset': coverAsset,
+    'logoUrl': logoUrl,
+    'coverUrl': coverUrl,
   });
 
   factory VitrineDto.fromJson(Map<String, Object?> json) => VitrineDto(
@@ -144,6 +182,8 @@ final class VitrineDto {
     taglineEn: json['taglineEn'] as String?,
     logoAsset: json['logoAsset'] as String?,
     coverAsset: json['coverAsset'] as String?,
+    logoUrl: json['logoUrl'] as String?,
+    coverUrl: json['coverUrl'] as String?,
   );
 }
 

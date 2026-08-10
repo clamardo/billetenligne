@@ -60,6 +60,12 @@ scripts:
       shipped past a green suite.
     run: ./tool/smoke_api.sh
 
+  test:storage:
+    description: >-
+      The object store against real Azurite. A signature is the one thing a
+      fake cannot check, and this found a real one wrong.
+    run: ./tool/storage.sh
+
   test:schema:
     description: >-
       Applies every migration to a throwaway Postgres and asserts tenant
@@ -78,4 +84,5 @@ scripts:
       melos run test:apps && \
       melos run test:scanner && \
       melos run smoke:api && \
-      melos run test:schema
+      melos run test:schema && \
+      melos run test:storage

@@ -6,3 +6,7 @@
 tags:
   integration:
     timeout: 2x
+  # Runs against Azurite, started by tool/storage.sh. Skips itself when
+  # STORAGE__ACCOUNT is unset, for the same reason the integration tag does.
+  storage:
+    timeout: 2x

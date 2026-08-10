@@ -29,7 +29,8 @@ import 'package:dart_frog/dart_frog.dart';
 Future<Response> onRequest(RequestContext context) async {
   final trace = context.read<String>();
   final scope = context.read<TenantScope>();
-  final storefronts = context.read<Services>().storefronts;
+  final services = context.read<Services>();
+  final storefronts = services.storefronts;
 
   switch (context.request.method) {
     case HttpMethod.get:
@@ -42,7 +43,7 @@ Future<Response> onRequest(RequestContext context) async {
       if (vitrine == null) {
         return _error(HttpStatus.notFound, Problem.notFound(traceId: trace));
       }
-      return _ok(vitrine, trace);
+      return _ok(services.withAssetUrls(vitrine), trace);
 
     case HttpMethod.put:
       final denied = Require.capability(context, Capability.vitrineManage);
@@ -61,7 +62,7 @@ Future<Response> onRequest(RequestContext context) async {
       if (saved == null) {
         return _error(HttpStatus.notFound, Problem.notFound(traceId: trace));
       }
-      return _ok(saved, trace);
+      return _ok(services.withAssetUrls(saved), trace);
 
     default:
       return Response(statusCode: HttpStatus.methodNotAllowed);

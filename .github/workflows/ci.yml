@@ -95,6 +95,21 @@ jobs:
         working-directory: apps/admin
         run: flutter test
 
+  # The object store, against real Azurite. Shared Key signing is thirteen
+  # lines in a fixed order and the service answers 403 with no hint about
+  # which one was wrong — a mock would agree with whatever we wrote. It
+  # already caught one: `signedEncryptionScope` belongs to sv=2020-12-06, and
+  # including it under 2020-10-02 refused every signature we issued.
+  storage:
+    name: Object store against Azurite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - run: dart pub get
+      - name: Blob round trip, cache headers and SAS
+        run: ./tool/storage.sh
+
   # Layer 3. A schema that compiles is not a schema that isolates tenants,
   # balances a ledger or refuses to let someone edit an audit trail — so all
   # three are executed against a real Postgres.

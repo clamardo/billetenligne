@@ -1,4 +1,5 @@
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_domain/bel_domain.dart';
 
 import '../../application/ports/storefronts.dart';
 
@@ -55,6 +56,31 @@ final class MemoryStorefronts implements Storefronts {
       taglineEn: _orNull(edit.taglineEn),
       logoAsset: existing.logoAsset,
       coverAsset: existing.coverAsset,
+    );
+  }
+
+  @override
+  Future<void> setAsset({
+    required String operatorId,
+    required BrandAssetKind kind,
+    required String? key,
+  }) async {
+    final existing = _byId[operatorId];
+    if (existing == null) return;
+
+    _byId[operatorId] = VitrineDto(
+      operatorId: existing.operatorId,
+      code: existing.code,
+      legalName: existing.legalName,
+      tradingName: existing.tradingName,
+      accentHue: existing.accentHue,
+      headerPattern: existing.headerPattern,
+      titleFr: existing.titleFr,
+      titleEn: existing.titleEn,
+      taglineFr: existing.taglineFr,
+      taglineEn: existing.taglineEn,
+      logoAsset: kind == BrandAssetKind.logo ? key : existing.logoAsset,
+      coverAsset: kind == BrandAssetKind.cover ? key : existing.coverAsset,
     );
   }
 

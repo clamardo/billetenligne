@@ -29,6 +29,11 @@ final class Problem {
     ErrorCode.operatorSuspended ||
     ErrorCode.mfaEnrolmentRequired => 403,
     ErrorCode.notFound || ErrorCode.bookingInvalidRef => 404,
+    // 413 and 415 rather than a blanket 422: "your logo is too big" and "we do
+    // not take GIFs" are different problems with different fixes, and the
+    // status is the first thing a developer integrating against this reads.
+    ErrorCode.assetTooLarge => 413,
+    ErrorCode.assetUnsupportedType => 415,
     ErrorCode.conflict ||
     ErrorCode.seatUnavailable ||
     ErrorCode.holdAlreadyConsumed ||
@@ -42,7 +47,9 @@ final class Problem {
     ErrorCode.otpTooManyAttempts ||
     ErrorCode.otpResendTooSoon ||
     ErrorCode.mfaLocked => 429,
-    ErrorCode.unavailable || ErrorCode.paymentPspUnavailable => 503,
+    ErrorCode.unavailable ||
+    ErrorCode.paymentPspUnavailable ||
+    ErrorCode.storageUnavailable => 503,
     ErrorCode.internal => 500,
     // 422: well-formed, but the rules refuse it. Refund windows, policy
     // limits and payment declines all land here.

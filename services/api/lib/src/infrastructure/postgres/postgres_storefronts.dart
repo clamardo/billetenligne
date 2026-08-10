@@ -71,6 +71,29 @@ final class PostgresStorefronts implements Storefronts {
   });
 
   @override
+  Future<void> setAsset({
+    required String operatorId,
+    required BrandAssetKind kind,
+    required String? key,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // The column is chosen from a Dart enum, never from anything on the wire.
+    // A caller-supplied column name here is the shape of an injection, and
+    // this is a `SET` clause where it would be one.
+    final column = switch (kind) {
+      BrandAssetKind.logo => 'logo_asset',
+      BrandAssetKind.cover => 'cover_asset',
+    };
+
+    await tx.execute(
+      Sql.named('UPDATE operators SET $column = @key WHERE id = @id'),
+      parameters: {
+        'id': TypedValue(Type.uuid, operatorId),
+        'key': TypedValue(Type.text, key),
+      },
+    );
+  });
+
+  @override
   Future<StorefrontDto?> byCode(String code) =>
       _db.transaction(const DbScope.anonymous(), (tx) async {
         final rows = await tx.execute(

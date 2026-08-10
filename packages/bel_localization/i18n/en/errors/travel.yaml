@@ -29,3 +29,10 @@ errors:
     sold_out: "This departure is full."
     closed: "Sales are closed for this departure."
     cancelled: "This departure was cancelled by the operator."
+  asset:
+    unsupported_type: "That format is not accepted. Send a PNG, a JPEG or an SVG."
+    too_large: "That file is too heavy. Maximum {maxKb} KB."
+    too_wide: "That image is too large. Maximum {maxEdge} px per side."
+    unreadable: "That file looks incomplete. Try exporting it again."
+  storage:
+    unavailable: "File upload is not available on this server."

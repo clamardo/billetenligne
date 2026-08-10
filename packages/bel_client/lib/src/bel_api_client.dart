@@ -646,6 +646,8 @@ final class BelApiClient {
     String path, {
     Map<String, String>? query,
     Map<String, Object?>? body,
+    List<int>? rawBody,
+    String? contentType,
     String? idempotencyKey,
     String? reason,
     bool idempotent = false,
@@ -659,6 +661,7 @@ final class BelApiClient {
       'Accept': 'application/json',
       BelHeaders.language: language,
       if (body != null) 'Content-Type': 'application/json',
+      if (contentType != null) 'Content-Type': contentType,
       if (idempotencyKey != null) BelHeaders.idempotencyKey: idempotencyKey,
       if (reason != null && reason.trim().isNotEmpty)
         BelHeaders.reason: reason.trim(),
@@ -680,7 +683,7 @@ final class BelApiClient {
 
       try {
         final response = await _http
-            .send(_request(method, uri, headers, payload))
+            .send(_request(method, uri, headers, payload, rawBody))
             .then(http.Response.fromStream)
             .timeout(timeout);
 
@@ -720,14 +723,26 @@ final class BelApiClient {
     throw lastFailure ?? const NetworkUnreachable();
   }
 
+  /// A fresh request per attempt.
+  ///
+  /// Rebuilt rather than reused because `http.Request` is single-use — a retry
+  /// that re-sent the same instance would throw about a finalized request
+  /// instead of retrying, which is a bug that only appears on a flaky network.
   http.Request _request(
     String method,
     Uri uri,
     Map<String, String> headers,
     String? payload,
+    List<int>? rawBody,
   ) {
     final request = http.Request(method, uri)..headers.addAll(headers);
-    if (payload != null) request.body = payload;
+    // Bytes win over text: an upload sets one and a JSON call sets the other,
+    // and nothing sets both.
+    if (rawBody != null) {
+      request.bodyBytes = rawBody;
+    } else if (payload != null) {
+      request.body = payload;
+    }
     return request;
   }
 

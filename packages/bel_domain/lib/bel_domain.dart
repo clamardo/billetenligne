@@ -29,3 +29,4 @@ export 'src/catalog/transport_mode.dart';
 export 'src/catalog/recurrence.dart';
 export 'src/catalog/seat_layout.dart';
 export 'src/policy/refund_policy.dart';
+export 'src/branding/brand_asset.dart';
