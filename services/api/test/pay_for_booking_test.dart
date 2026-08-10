@@ -8,6 +8,7 @@ import 'package:bel_api/src/application/ports/payment_gateway.dart';
 import 'package:bel_api/src/application/ports/payment_store.dart';
 import 'package:bel_api/src/application/reserve_booking.dart';
 import 'package:bel_api/src/infrastructure/memory/memory_booking_store.dart';
+import 'package:bel_api/src/infrastructure/memory/memory_operator_directory.dart';
 import 'package:bel_api/src/infrastructure/memory/memory_payment_store.dart';
 import 'package:bel_api/src/infrastructure/memory/memory_seat_inventory.dart';
 import 'package:bel_contracts/bel_contracts.dart';
@@ -27,6 +28,7 @@ void main() {
   late MemorySeatInventory inventory;
   late MemoryBookingStore bookings;
   late MemoryPaymentStore payments;
+  late MemoryOperatorDirectory operators;
   late FakePaymentGateway rail;
   late PayForBooking pay;
   late ReserveBooking reserve;
@@ -55,10 +57,16 @@ void main() {
       clock: clock,
     );
     payments = MemoryPaymentStore(bookings: bookings, clock: clock);
+    // What this operator signed: 5%. Another operator signs another number,
+    // which is the whole point of the row it is read from.
+    operators = MemoryOperatorDirectory(
+      commissions: {'op-odn': CommissionTerm.seed},
+    );
     rail = FakePaymentGateway(railId: railId, clock: clock);
     pay = PayForBooking(
       payments: payments,
       bookings: bookings,
+      operators: operators,
       gateways: {railId: rail},
     );
     reserve = ReserveBooking(bookings: bookings, random: Random(11));
@@ -226,6 +234,53 @@ void main() {
       expect(posting, contains('credit payable:operator:op-odn 11400'));
       expect(posting, contains('credit revenue:commission 600'));
       expect(posting, contains('credit revenue:service_fee 300'));
+    });
+
+    test('nets the rate THIS operator negotiated, not a market rate', () async {
+      // 7.5%. A larger carrier with its own agency network argues the number
+      // down; a two-coach family business does not. Both are onboarded by the
+      // same code, and the ledger has to follow the contract rather than a
+      // constant.
+      operators.agree('op-odn', CommissionTerm(750));
+
+      final bookingId = await aReservation();
+      final intent = (await start(bookingId: bookingId)).valueOrNull!;
+      rail.settlesAfter(0);
+      await pay.reconcile(intentId: intent.id, railId: railId);
+
+      final posting = bookings.postingFor(bookingId)!;
+      // 12 000 at 750 bps is 900, and the operator is credited 11 100.
+      expect(posting, contains('credit revenue:commission 900'));
+      expect(posting, contains('credit payable:operator:op-odn 11100'));
+    });
+
+    test('keeps nothing when the operator terms cannot be read', () async {
+      // The money has already moved. Refusing to settle would leave somebody
+      // who paid without a ticket, and inventing a rate would take money
+      // under an agreement nobody signed — so the operator gets the lot and
+      // the gap is visible in the ledger.
+      pay = PayForBooking(
+        payments: payments,
+        bookings: bookings,
+        operators: MemoryOperatorDirectory(),
+        gateways: {railId: rail},
+      );
+
+      final bookingId = await aReservation();
+      final intent = (await start(bookingId: bookingId)).valueOrNull!;
+      rail.settlesAfter(0);
+      await pay.reconcile(intentId: intent.id, railId: railId);
+
+      final posting = bookings.postingFor(bookingId)!;
+      expect(posting, contains('credit payable:operator:op-odn 12000'));
+      expect(posting, isNot(contains('revenue:commission')));
+
+      final booking = await bookings.byId(
+        bookingId: bookingId,
+        operatorId: 'op-odn',
+      );
+      expect(booking!.state, 'confirmed');
+      expect(booking.tickets, hasLength(1));
     });
 
     test('a duplicate capture confirms once', () async {

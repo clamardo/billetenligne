@@ -68,6 +68,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Operator collection accounts** | ✅ done | Per rail, saved unverified, replacing deactivates rather than edits |
 | **Callback endpoint** | ✅ done | Body trusted only to select a row; state always re-queried. Answers 200 to everything |
 | **Payment poller** | ✅ done | Backoff from the domain; 15 min of silence becomes `indeterminate` |
+| **Commission, per operator** | ✅ done | `CommissionTerm` in basis points, read from `operators.commission_bps` when a fare settles. Netted at source; unreadable terms keep nothing rather than guess |
 | Production credentials | ⬜ not started | **Commercial, not engineering.** Both adapters run against sandbox hosts |
 | `indeterminate` reconciliation console | ⬜ not started | The queue fills and nobody can work it. ADR-0005: before launch, not after the first incident |
 | Payout runs and operator statements | ⬜ not started | `payable:operator:<id>` is correct and derived; nothing pays it out |
@@ -89,11 +90,13 @@ These are true today and each one is a decision, not an oversight.
    compiled-in `Market.congoBrazzaville`. Until the loader exists, enabling
    Orange Money needs a release rather than a config push — which is exactly
    what ADR-0006 says it should not need.
-2. **`sweepExpired` throws `UnimplementedError` in the Postgres adapter.**
-   Deliberate: it belongs to `services/worker`, which does not exist yet, and
-   the claim path already treats a lapsed hold as available — so no inventory
-   is stranded by its absence. It is a missing optimisation, not a missing
-   guarantee.
+2. **`sweepExpired` throws `UnimplementedError` in the API's Postgres
+   adapter.** Deliberate, and no longer a gap in the product: the sweep lives
+   in `services/worker`, which exists and runs it under platform scope. The
+   API refuses it because a request-scoped connection is the wrong place to
+   walk the whole table, and the claim path already treats a lapsed hold as
+   available — so no inventory is stranded either way. What is missing is a
+   *scheduler*: nothing runs the worker on a timer yet.
 3. **Search has no pagination and a hard `LIMIT 100`.** One route on one day
    will not approach it. It becomes a real gap the moment the console can
    create a hundred departures, and it is a silent truncation until then —
@@ -109,8 +112,14 @@ These are true today and each one is a decision, not an oversight.
    under the 160-character gate. What is missing is a provisioned ACS sender
    number, so `COMMS__SMSFROM` is blank and the API answers 503 for that
    channel rather than accepting it and leaving somebody waiting (ADR-0024).
-6. **Commission is a market-wide rate, not a per-operator term.** `Market.commissionRate` is 5% for everybody. An anchor operator will negotiate, and when they do it moves onto the operator row — one rate for one operator is not worth a column today, and the simplification is named here so it is a decision rather than an oversight.
-
+6. **Nobody can set an operator's commission from a screen.** The rate is a
+   term of one operator's contract and the code now treats it as one — read
+   from `operators.commission_bps` when a fare settles, in basis points,
+   proven against a real database at a rate no constant in the binary knows.
+   What is missing is the admin back office that would type it in: today it
+   is set by whoever runs the migration, and a renegotiation is an `UPDATE`.
+   Naming it here because a number that arrives by SQL is a number nobody
+   audits.
 7. **The console signs in with a one-time code, not a password and TOTP.**
    ADR-0013 specifies email + password + mandatory TOTP for back office. The
    deviation is documented in `apps/console/lib/src/presentation/sign_in.dart`
@@ -119,7 +128,6 @@ These are true today and each one is a decision, not an oversight.
    above a cap — the things that ADR protects — do not exist as endpoints at
    all. **TOTP lands before they do.** If refunds ship first, that comment is
    the bug report.
-
 8. **The seat-layout section builder is not built.** Four presets cover what
    actually runs in Congo and picking one takes ninety seconds, which is the
    path most operators take anyway (`06-fleet-and-routes.md` §3.2). An
@@ -130,13 +138,10 @@ These are true today and each one is a decision, not an oversight.
    signed, stored and queued for SMS. The traveller app shows a payment code
    and then has nowhere to go: no ticket screen, no booking history. The
    endpoint (`GET /public/v1/bookings`) is there and typed in `bel_client`.
-
-10. **The catalog is copied, not shared, into the apps.** `bel_localization` is
-   pure Dart — the API imports it — so it cannot declare Flutter assets, and
-   Flutter refuses `..` in asset paths. `tool/sync_i18n.sh` copies it and
+10. **The catalog is copied, not shared, into the apps.** `bel_localization`
+   is pure Dart — the API imports it — so it cannot declare Flutter assets,
+   and Flutter refuses `..` in asset paths. `tool/sync_i18n.sh` copies it and
    `i18n_freshness_test` fails the build if a copy drifts.
-8. **Nothing writes to the ledger yet.** The tables, the balance trigger and
-   the append-only grants are all in place and tested; no code posts an entry.
 
 ---
 

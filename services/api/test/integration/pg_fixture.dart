@@ -140,6 +140,63 @@ final class PgFixture {
     return rows.first.toColumnMap()['n'] as int;
   }
 
+  /// What this operator negotiated when they were onboarded.
+  ///
+  /// A fixture writes it because the admin back office that will one day set
+  /// it does not exist yet — but the column does, and the settlement path
+  /// reads it, so the test can be honest about where the number comes from.
+  Future<void> agreeCommission(int bps) async {
+    await _seed.execute(
+      Sql.named('UPDATE operators SET commission_bps = @bps WHERE id = @id'),
+      parameters: {
+        'bps': TypedValue(Type.integer, bps),
+        'id': TypedValue(Type.uuid, operatorId),
+      },
+    );
+  }
+
+  /// A verified merchant number for one rail. Without one the operator has no
+  /// mobile money rails at all, which is the correct default and the reason
+  /// this has to be seeded explicitly.
+  Future<String> collectionAccount({
+    required String railId,
+    required String msisdn,
+    bool verified = true,
+  }) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        INSERT INTO operator_payment_accounts
+          (operator_id, rail_id, msisdn, display_name, verified_at)
+        VALUES (@operator, @rail, @msisdn, 'Ocean du Nord',
+                CASE WHEN @verified THEN now() ELSE NULL END)
+        ON CONFLICT (operator_id, rail_id) WHERE active
+        DO UPDATE SET msisdn = EXCLUDED.msisdn,
+                      verified_at = EXCLUDED.verified_at
+        RETURNING id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'rail': TypedValue(Type.text, railId),
+        'msisdn': TypedValue(Type.text, msisdn),
+        'verified': TypedValue(Type.boolean, verified),
+      },
+    );
+    return rows.first.toColumnMap()['id'] as String;
+  }
+
+  Future<Map<String, Object?>> intentColumns(String intentId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT state::text AS state, rail_id, msisdn, amount_minor,
+               (SELECT count(*)::int FROM payment_events e
+                 WHERE e.intent_id = payment_intents.id) AS events
+          FROM payment_intents WHERE id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, intentId)},
+    );
+    return rows.first.toColumnMap();
+  }
+
   Future<int> ticketCount(String bookingId) async {
     final rows = await _seed.execute(
       Sql.named('SELECT count(*)::int AS n FROM tickets WHERE booking_id = @id'),

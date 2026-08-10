@@ -29,6 +29,14 @@ markets:
     languages: [fr, en]
     serviceFeeMinor: 300   # flat per seat, never a percentage
 
+    # The OPENING number for an operator onboarded in this country, in basis
+    # points. Not what anybody is charged: commission is a term of one
+    # operator's contract, negotiated when they sign, stored on their row
+    # (`operators.commission_bps`) and read at the moment a fare settles. A
+    # market cannot set a rate — it can only say where the conversation
+    # starts.
+    defaultCommissionBps: 500
+
     phone:
       diallingCode: "242"
       nationalLength: 9    # including the leading 0, which Congo retains

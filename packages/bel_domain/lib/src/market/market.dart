@@ -1,4 +1,5 @@
 import '../identity/phone_number.dart';
+import '../money/commission.dart';
 import '../money/currency.dart';
 import '../money/money.dart';
 import 'payment_rail.dart';
@@ -39,7 +40,7 @@ final class Market {
     required this.languages,
     required this.rails,
     required this.serviceFee,
-    this.commissionRate = 0.05,
+    this.defaultCommission = CommissionTerm.seed,
   });
 
   /// ISO 3166-1 alpha-2.
@@ -73,20 +74,17 @@ final class Market {
   /// percentage — percentages feel like a tax and are harder to trust.
   final Money serviceFee;
 
-  /// Our cut of the fare on a digital sale, netted at source.
+  /// Where an operator's commission *starts* when they are onboarded here.
   ///
-  /// A market default rather than a per-operator term, and that is a **known
-  /// simplification**: an anchor operator will negotiate, and when they do
-  /// this moves onto the operator row. It lives here today because one rate
-  /// for one operator is not worth a column, and because putting it here
-  /// keeps it beside the service fee where anybody costing a booking will
-  /// find both.
+  /// Not what anybody is charged. The rate is a term of one operator's
+  /// contract — negotiated with them, stored on their row, and read at the
+  /// moment money moves (`operators.commission_bps`). This field exists so
+  /// that onboarding a new operator in a new country has a sane opening
+  /// number instead of a zero or a hardcoded 5%.
   ///
-  /// A rate, unlike the service fee, because that is how commercial terms in
-  /// this industry are actually written — and because it is invisible to the
-  /// traveller, who only ever sees a fare and a flat fee. Cash sales carry
-  /// none of it at all (product brief D-04).
-  final double commissionRate;
+  /// Cash sales carry no commission at all, whatever the term says (product
+  /// brief D-04).
+  final CommissionTerm defaultCommission;
 
   String get diallingCode => msisdn.countryCode;
 

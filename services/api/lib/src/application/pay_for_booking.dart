@@ -2,6 +2,7 @@ import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 
 import 'ports/booking_store.dart';
+import 'ports/operator_directory.dart';
 import 'ports/payment_gateway.dart';
 import 'ports/payment_store.dart';
 
@@ -70,15 +71,18 @@ final class PayForBooking {
   const PayForBooking({
     required PaymentStore payments,
     required BookingStore bookings,
+    required OperatorDirectory operators,
     required Map<String, PaymentGateway> gateways,
     this.market = Market.current,
     this.window = const Duration(minutes: 10),
   }) : _payments = payments,
        _bookings = bookings,
+       _operators = operators,
        _gateways = gateways;
 
   final PaymentStore _payments;
   final BookingStore _bookings;
+  final OperatorDirectory _operators;
   final Map<String, PaymentGateway> _gateways;
   final Market market;
 
@@ -226,10 +230,20 @@ final class PayForBooking {
     // Commission netted at source: the operator is credited the fare less our
     // cut rather than credited in full and invoiced later. An operator who has
     // to be invoiced is one who eventually does not pay.
-    final commission = Money(
-      (booking.fare.minor * market.commissionRate).round(),
-      booking.fare.currency,
-    );
+    //
+    // **The rate is this operator's, not the market's.** It is a term of the
+    // contract we signed with them, read from their row at the moment the
+    // money moves.
+    //
+    // If we cannot read it, we keep nothing. The money has already moved by
+    // the time this runs, so refusing to settle would leave a traveller who
+    // paid without a ticket — never an option. Crediting the operator the
+    // whole fare costs us our cut on one sale and is visible in the ledger;
+    // inventing a rate would take money from somebody under an agreement they
+    // never made, and would be invisible.
+    final term = await _operators.commissionFor(intent.operatorId) ??
+        CommissionTerm.none;
+    final commission = term.on(booking.fare);
 
     final posting = Postings.railCapture(
       operatorId: intent.operatorId,

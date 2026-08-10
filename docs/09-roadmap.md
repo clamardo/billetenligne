@@ -109,7 +109,7 @@ The engineering is done. What is missing is a merchant agreement, which is the l
 - ✅ The in-app experience end to end: choose a wallet, name the number to debit (**not necessarily your own**), confirm where the money is going, watch for the PIN prompt, receipt
 - ✅ Operator collection accounts in the console, saved unverified because mobile money has no chargeback
 - ✅ The poller, because callbacks get lost — that is a fact about these networks, not a hypothetical
-- ✅ Commission netted at source, on every rail capture
+- ✅ **Commission netted at source, at the rate each operator negotiated** — a term of one contract, read from their row when the fare settles, in basis points. Not a market rate and not a constant: the number a large carrier argues for is not the one a two-coach family business gets
 - ✅ The full failure taxonomy, each case with its own copy and its own recovery
 - ⬜ **Production credentials.** Both adapters run against sandbox hosts today and a fake rail in development
 - ⬜ **The `indeterminate` reconciliation console — before launch, not after the first incident.** The queue exists and the poller fills it; no admin screen works it

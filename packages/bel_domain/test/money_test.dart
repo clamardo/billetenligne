@@ -102,4 +102,39 @@ void main() {
       }
     });
   });
+
+  _commissionTerms();
+}
+
+void _commissionTerms() {
+  group('CommissionTerm', () {
+    test('is a term of one operator contract, in basis points', () {
+      // 7.5% on a 12 000 XAF fare. The number comes from a contract, so the
+      // type has to express what a contract can say — and contracts say
+      // "seven and a half percent", not "0.075".
+      expect(
+        CommissionTerm(750).on(const Money.xaf(12000)),
+        const Money.xaf(900),
+      );
+      expect(CommissionTerm(750).display, '7.5%');
+      expect(CommissionTerm.seed.display, '5%');
+      expect(CommissionTerm(1225).display, '12.25%');
+    });
+
+    test('cash carries none, and that is a value rather than a null', () {
+      expect(
+        CommissionTerm.none.on(const Money.xaf(12000)),
+        Money.zero(Currency.xaf),
+      );
+    });
+
+    test('refuses a rate the database CHECK would refuse', () {
+      // `operators_commission_sane` caps at 3000 bps. Two places enforcing
+      // two different ceilings is how a row gets written that the ledger then
+      // cannot post.
+      expect(() => CommissionTerm(3001), throwsArgumentError);
+      expect(() => CommissionTerm(-1), throwsArgumentError);
+      expect(CommissionTerm(3000).display, '30%');
+    });
+  });
 }

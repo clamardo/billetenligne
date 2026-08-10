@@ -34,6 +34,7 @@ import 'application/search_departures.dart';
 import 'application/sign_in.dart';
 import 'infrastructure/db/database.dart';
 import 'infrastructure/memory/memory_booking_store.dart';
+import 'infrastructure/memory/memory_operator_directory.dart';
 import 'infrastructure/memory/memory_payment_store.dart';
 import 'infrastructure/memory/memory_city_catalogue.dart';
 import 'infrastructure/memory/memory_identity.dart';
@@ -42,6 +43,7 @@ import 'infrastructure/postgres/postgres_departure_catalogue.dart';
 import 'infrastructure/postgres/postgres_booking_store.dart';
 import 'infrastructure/postgres/postgres_identity.dart';
 import 'infrastructure/postgres/postgres_operator_console.dart';
+import 'infrastructure/postgres/postgres_operator_directory.dart';
 import 'infrastructure/postgres/postgres_payment_store.dart';
 import 'infrastructure/postgres/postgres_idempotency_store.dart';
 import 'infrastructure/postgres/postgres_seat_inventory.dart';
@@ -174,6 +176,9 @@ final class Services {
       payForBooking: PayForBooking(
         payments: paymentStore,
         bookings: bookings,
+        // The commission is a term of one operator's contract, so it is read
+        // from their row when a fare settles — never from a constant here.
+        operators: PostgresOperatorDirectory(db),
         gateways: rails,
       ),
       railIds: rails.keys.toSet(),
@@ -253,6 +258,10 @@ final class Services {
       payForBooking: PayForBooking(
         payments: memoryPayments,
         bookings: memoryBookings,
+        // The demo operator on the seed rate. A real one has negotiated.
+        operators: MemoryOperatorDirectory(
+          commissions: const {'op-demo': CommissionTerm.seed},
+        ),
         // One fake rail, so a fresh clone can walk the whole payment funnel
         // with no credentials and no network — including the failure screens,
         // which is what `FakePaymentGateway.decliningMsisdn` is for.
