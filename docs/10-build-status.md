@@ -49,7 +49,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Traveller app — reserve and pay | ✅ done | Passenger names → payment code → agency. 54 app tests |
 | **Traveller app — tickets and history** | ✅ done | Upcoming and past, unpaid reservations included with their code. The QR and its rotating secret travel inside the booking, so opening a ticket costs no request. 11 flow and widget tests |
 | **Operator console — API** | ✅ done | Fleet, routes, timetables, materialisation, guichet, manifests |
-| **Operator console — the app** | ✅ done | Flutter web. Fleet, routes, timetables, the dispatcher's day, the guichet, manifests, refund terms and refunds — and, for somebody who belongs to no operator yet, the onboarding wizard instead of the console. 44 tests |
+| **Operator console — the app** | ✅ done | Flutter web. Fleet, routes, timetables, the dispatcher's day with its disruption form, the guichet, manifests, refund terms and refunds — and, for somebody who belongs to no operator yet, the onboarding wizard instead of the console. 50 tests |
 | Admin back office — API | ✅ done | `/admin/v1`: the queue, one operator's page, six lifecycle decisions, the negotiated commission. Every read and every write audited with actor and reason. 8 integration tests |
 | **Admin back office — the app** | ✅ done | Flutter web. The review queue, one operator's file with its documents and trail, six lifecycle decisions, the negotiated commission, and the reconciliation queue. The reason lives in the frame and no write happens without one. 15 tests |
 | **The vitrine** | ✅ done | Title, tagline, accent, header pattern and logo, with a live preview drawn by the real widgets — and the public storefront at `/public/v1/operators/{code}` |
@@ -81,7 +81,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | `indeterminate` reconciliation — API | ✅ done | The queue, joined to the booking, the operator and the traveller's number. Three exits: ask the rail again · captured · failed. 5 integration tests |
 | **`indeterminate` reconciliation — the screen** | ✅ done | In the back office. Longest-waiting first, everything needed to decide in the row, three exits — and captured/failed demand a sentence about *that* payment, which becomes the `payment_events` row |
 | Payout runs and operator statements | ⬜ not started | `payable:operator:<id>` is correct and derived; nothing pays it out |
-| IRROPS / disruption tooling | ⬜ not started | P0 for this phase (`08-disruption.md`) |
+| **IRROPS — declaring, and telling everybody** | ✅ done | The dispatcher declares one of six kinds and everything downstream is derived: the departure's new status, the exemption on every booking, one message per passenger. All of it in **one transaction** — bookings marked involuntary with no declaration behind them is a refund entitlement nobody can account for. A disruption is **public** (the follower of a shared trip link holds no account and is exactly the person who otherwise phones the agency), **not editable afterwards** by a column-level grant, and **one open per departure** by a partial unique index, so "what is happening to my coach?" has one answer. A short delay entitles nobody to anything — the threshold is an hour, it lives in the domain, and the console asks it rather than restating it. 16 domain · 6 contract · 12 Postgres · 5 worker · 7 smoke · 6 console · 2 traveller tests |
+| IRROPS — the re-accommodation plan | ⬜ not started | Ranked options, seat remapping onto a different layout, protection on another operator, the passenger's own choice, the rebooking wave. `08-disruption.md` §2.2 onwards, and the larger half |
 
 ## Phase 3 and beyond
 
@@ -89,8 +90,10 @@ Not started. `09-roadmap.md` has the remaining Phase 1 work in **dependency
 order**. With both consoles rendered, the vitrine complete, TOTP in front of
 both back offices, object storage built, the section builder shipped and
 refunds executing end to end, the sales horizon extending itself and an
-operator able to sign themselves up, what is left of Phase 1 is the phone
-channel and a per-IP limit on sign-in codes.
+operator able to sign themselves up, and the phone channel plumbed behind an
+announcement, **every engineering item in Phase 1 is built.** What remains
+there is commercial. Phase 2 is where the unbuilt work now lives: the
+re-accommodation plan, payout runs, and the `config/markets.yaml` loader.
 
 ---
 
@@ -196,21 +199,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 294 tests
+         packages/bel_contracts packages/bel_crypto     # 315 tests
 dart test packages/bel_client                           # 32 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 177 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
-cd apps/traveller && flutter test        # 85 app tests
-cd apps/console   && flutter test        # 44 console tests
+cd apps/traveller && flutter test        # 87 app tests
+cd apps/console   && flutter test        # 50 console tests
 cd apps/admin     && flutter test        # 18 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 276 files
-./infra/migrations/check.sh              # 30 schema guarantees
-./tool/integration.sh                    # 142 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 174 checks, incl. the Dart client
+dart run tool/check_layers.dart          # the onion rule, 283 files
+./infra/migrations/check.sh              # 32 schema guarantees
+./tool/integration.sh                    # 159 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 181 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -219,8 +222,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**745 tests in total**, plus 174 smoke checks, 30 executed schema guarantees,
-142 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**774 tests in total**, plus 181 smoke checks, 32 executed schema guarantees,
+159 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -235,6 +238,60 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+Disruption: a dispatcher declares one, and everybody on the coach is told.
+`08-disruption.md` has existed since week one and nothing implemented a line
+of it, which meant the most common event on this road network — a breakdown on
+a Tuesday morning — had no representation anywhere in the system.
+
+**One transaction, and the ordering inside it is the design.** Record the
+declaration, supersede whatever was open, restate the departure, mark the
+bookings, queue one message per passenger. The one that must never commit
+alone is the fourth: bookings flagged `involuntary_change` with no declaration
+behind them is a refund entitlement nobody can account for.
+
+**A disruption is public.** `bel_public` may read one. The traveller whose
+ticket it affects is the obvious reader; the one that decided the grant is the
+*follower* of a shared trip link, who holds no account at all. Withholding why
+a coach is late is precisely the behaviour that generates the phone calls this
+removes, and there is nothing in the row that is not already being shouted
+across a station forecourt.
+
+**The declaration cannot be rewritten, by grant.** An operator may resolve one
+and may not touch what they declared, when, or why. It is their own evidence
+in a later dispute, and evidence its owner can edit is not evidence. Enforced
+by a column-level GRANT rather than by a handler, so it holds against code
+written next year by somebody who never read the migration.
+
+**A short delay entitles nobody to anything.** Everything else is involuntary
+and permanently exempt from fees; a coach fifteen minutes late is not a free
+cancellation for everyone who booked it, because that would mean the operator
+who *tells the truth about being late* pays for it. The threshold is an hour,
+it lives in `bel_domain`, and the console asks it rather than restating it —
+so the dispatcher sees what their declaration will cost while they are still
+choosing the offset.
+
+**The form is designed for a roadside, not for a desk.** Four large targets, a
+cause, and nothing else required. The new time is picked in offsets, because
+"+2 h" is one tap and a clock dialog in the rain is four taps and a mistake.
+
+**Found on the way, and worth more than the feature: every outbound message
+was rendering departure times in UTC.** `timestamptz` arrives in Dart as UTC,
+so the booking confirmation SMS has been telling travellers that their 06:00
+from Brazzaville leaves at 05:00 — for as long as that message has existed.
+Times are now formatted by Postgres in the market's zone, which is where the
+zone database actually is, and a worker test holds it there. This is the
+second time a "small" formatting decision in this repository has turned out to
+be a passenger-facing failure, and both were found by a test that rendered the
+real string rather than asserting on a DateTime.
+
+**What it cost:** two schema guarantees, seventeen more tests against real
+Postgres, and a public grant that had to be argued for rather than assumed.
+What is *not* built is the larger half — the re-accommodation plan, seat
+remapping, protection on another operator, the passenger's own choice, the
+rebooking wave. Named in the table above rather than implied by silence.
+
+## What the logo push changed, and what it cost
 
 Logo upload, and the object storage under it. The columns have been in the
 schema since migration 0001 and nothing had ever written one, because a logo
