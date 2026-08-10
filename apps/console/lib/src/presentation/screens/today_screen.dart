@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../application/console_workspace.dart';
 import '../l10n.dart';
+import '../widgets/disruption_sheet.dart';
 import '../widgets/manifest_sheet.dart';
 
 /// The dispatcher's day.
@@ -127,10 +128,31 @@ class _DepartureRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  row.routeCode,
-                  style: kilo.text.body,
-                  overflow: TextOverflow.ellipsis,
+                // A Wrap rather than a Row: the badge is as long as its
+                // longest label and the console runs in whatever window an
+                // agency happens to have open. Wrapping onto a second line at
+                // 900px is a row that still reads; a Row there is an overflow
+                // stripe across the screen somebody watches every morning.
+                Wrap(
+                  spacing: kilo.space.s2,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      row.routeCode,
+                      style: kilo.text.body,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    // What is happening to this coach, beside its name. A
+                    // dispatcher glancing at the day must not have to open a
+                    // row to find out one of them is broken down.
+                    if (row.disruption != null)
+                      KChip(
+                        context.t(
+                          'disruption.kind.${row.disruption!.kind.name}',
+                        ),
+                        tone: KChipTone.danger,
+                      ),
+                  ],
                 ),
                 Text(
                   row.vehicle ?? context.t('console.today.noVehicle'),
@@ -170,6 +192,17 @@ class _DepartureRow extends StatelessWidget {
             fullWidth: false,
             onPressed: () => _showManifest(context),
           ),
+          // Only for somebody who holds the capability. Cancelling a coach
+          // and telling everybody on it is not a counter agent's authority.
+          if (workspace.can('disruption.declare')) ...[
+            SizedBox(width: kilo.space.s2),
+            KButton(
+              label: context.t('console.today.declare'),
+              tone: KButtonTone.secondary,
+              fullWidth: false,
+              onPressed: () => _declare(context),
+            ),
+          ],
         ],
       ),
     );
@@ -181,6 +214,26 @@ class _DepartureRow extends StatelessWidget {
     await showDialog<void>(
       context: context,
       builder: (_) => ManifestSheet(manifest: manifest),
+    );
+  }
+
+  Future<void> _declare(BuildContext context) async {
+    final draft = await showDialog<DisruptionDraft>(
+      context: context,
+      builder: (_) => DisruptionSheet(
+        routeCode: row.routeCode,
+        departsAt: row.departsAt,
+        sold: row.sold,
+      ),
+    );
+    if (draft == null) return;
+
+    await workspace.declareDisruption(
+      departureId: row.id,
+      kind: draft.kind,
+      cause: draft.cause,
+      note: draft.note,
+      revisedDepartsAt: draft.revisedDepartsAt,
     );
   }
 

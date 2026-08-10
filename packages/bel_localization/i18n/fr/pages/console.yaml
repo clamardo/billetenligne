@@ -23,6 +23,27 @@ console:
     noVehicle: "Aucun car affecté"
     emptyTitle: "Aucun départ ce jour"
     emptyBody: "Publiez un horaire depuis l'onglet Horaires pour mettre des départs en vente."
+    declare: "Signaler un incident"
+  # Le formulaire du régulateur, au bord de la route, sur un téléphone, en 2G,
+  # parfois sous la pluie (08-disruption.md §2.1). Quatre grandes cibles, une
+  # cause, et rien d'autre d'obligatoire.
+  disruption:
+    title: "Que s'est-il passé ?"
+    cause: "Cause"
+    note: "Précision (facultatif)"
+    noteHint: "Ce que verront les passagers, en plus du message type."
+    later: "Nouveau départ"
+    plus30: "+30 min"
+    plus60: "+1 h"
+    plus120: "+2 h"
+    plus240: "+4 h"
+    back: "Retour"
+    confirm: "Signaler"
+    willTell: "{count} passager(s) seront prévenus immédiatement."
+    free: "Échange ou remboursement intégral, sans frais."
+    notFree: "Moins d'une heure de retard : pas de remboursement automatique."
+    needsTime: "Choisissez le nouveau départ."
+    badge: "Perturbé"
   manifest:
     summary: "{sold} vendus · {boarded} embarqués · {capacity} places"
     empty: "Aucun passager pour l'instant."
@@ -298,5 +319,7 @@ console:
     materialise.created: "{a1} départ(s) créé(s) et en vente."
     materialise.nothingNew: "Rien de nouveau — ces {a1} départ(s) existaient déjà."
     materialise.skipped: "{a1} départ(s) créé(s). {a2} date(s) ignorée(s) : {a3}."
+    disruption.declared: "Signalé. {a1} passager(s) prévenu(s)."
+    disruption.declaredFree: "Signalé. {a1} passager(s) prévenu(s), échange ou remboursement sans frais."
     counter.collected: "Encaissé. Référence {a1}."
     counter.sold: "Vendu. Référence {a1}."

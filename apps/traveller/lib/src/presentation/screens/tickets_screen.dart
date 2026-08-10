@@ -167,7 +167,15 @@ class _BookingCard extends StatelessWidget {
                     style: kilo.text.body.copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
-                if (allVoid)
+                // Ahead of every other badge on purpose. A traveller opening
+                // this list during a breakdown is looking for one thing, and
+                // "annulé" or "impayé" is not it.
+                if (booking.disruption != null)
+                  KChip(
+                    context.t(booking.disruption!.kindKey),
+                    tone: KChipTone.warning,
+                  )
+                else if (allVoid)
                   KChip(
                     context.t('travel.tickets.voided'),
                     tone: KChipTone.danger,

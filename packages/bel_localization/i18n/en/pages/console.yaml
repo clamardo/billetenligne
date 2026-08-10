@@ -23,6 +23,27 @@ console:
     noVehicle: "No coach assigned"
     emptyTitle: "No departures on this day"
     emptyBody: "Publish a timetable from the Timetables tab to put departures on sale."
+    declare: "Report an incident"
+  # The dispatcher's form: at a roadside, on a phone, on 2G, possibly in the
+  # rain (08-disruption.md §2.1). Four large targets, a cause, and nothing
+  # else required.
+  disruption:
+    title: "What happened?"
+    cause: "Cause"
+    note: "Note (optional)"
+    noteHint: "Passengers see this alongside the templated message."
+    later: "New departure time"
+    plus30: "+30 min"
+    plus60: "+1 h"
+    plus120: "+2 h"
+    plus240: "+4 h"
+    back: "Back"
+    confirm: "Report"
+    willTell: "{count} passenger(s) will be told immediately."
+    free: "Exchange or full refund, no fees."
+    notFree: "Under an hour late: no automatic refund."
+    needsTime: "Choose the new departure time."
+    badge: "Disrupted"
   manifest:
     summary: "{sold} sold · {boarded} boarded · {capacity} seats"
     empty: "No passengers yet."
@@ -298,5 +319,7 @@ console:
     materialise.created: "{a1} departure(s) created and on sale."
     materialise.nothingNew: "Nothing new — those {a1} departure(s) already existed."
     materialise.skipped: "{a1} departure(s) created. {a2} date(s) skipped: {a3}."
+    disruption.declared: "Reported. {a1} passenger(s) told."
+    disruption.declaredFree: "Reported. {a1} passenger(s) told, exchange or refund with no fees."
     counter.collected: "Collected. Reference {a1}."
     counter.sold: "Sold. Reference {a1}."

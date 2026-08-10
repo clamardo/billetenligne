@@ -97,6 +97,12 @@ abstract interface class ConsoleGateway {
 
   Future<ManifestDto> manifest(String departureId);
 
+  /// Declares a disruption on a departure (`08-disruption.md` §2.1).
+  Future<DeclaredDisruptionDto> declareDisruption({
+    required String departureId,
+    required DeclareDisruptionRequest request,
+  });
+
   Future<SeatMapDto> seatMap(String departureId);
 
   Future<CounterSaleDto> collect({

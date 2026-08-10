@@ -145,6 +145,12 @@ final class ApiConsoleGateway implements ConsoleGateway {
       _client.manifest(departureId);
 
   @override
+  Future<DeclaredDisruptionDto> declareDisruption({
+    required String departureId,
+    required DeclareDisruptionRequest request,
+  }) => _client.declareDisruption(departureId: departureId, request: request);
+
+  @override
   Future<SeatMapDto> seatMap(String departureId) =>
       _client.seatMap(departureId);
 

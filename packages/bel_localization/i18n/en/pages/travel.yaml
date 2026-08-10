@@ -102,7 +102,15 @@ travel:
     offlineNote: "This ticket works with no network. You can turn your data off."
     voidedTitle: "Ticket void"
     voidedBody: "This ticket was refunded or cancelled. It no longer boards."
-    boardBy: "Boarding until {time}"
+    boardBy: "Board by {time}"
+    # During a disruption this ticket IS the information channel
+    # (08-disruption.md §3.3): what the operator declared, where, and what it
+    # entitles the passenger to — above everything else on the screen.
+    disrupted: "{kind} reported by {operator}"
+    disruptedAt: "Near {place}"
+    disruptedNewTime: "Now departing at {time}"
+    disruptedFree: "No fees: exchange or full refund."
+    disruptedCounter: "Go to a {operator} counter, or call the agency."
   reserved:
     title: "Reservation confirmed"
     payAtAgency: "Show this code at any {operator} agency to pay."

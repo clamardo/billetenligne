@@ -285,6 +285,122 @@ void main() {
       );
     });
 
+    testWidgets('a disrupted coach says so above the code', (tester) async {
+      final catalog = await loadTestCatalog();
+      final base = _booking(
+        id: 'broken',
+        departsAt: now.add(const Duration(hours: 2)),
+      );
+      final booking = BookingDto(
+        id: base.id,
+        ref: base.ref,
+        state: base.state,
+        departureId: base.departureId,
+        operatorName: base.operatorName,
+        originCity: base.originCity,
+        destinationCity: base.destinationCity,
+        departsAt: base.departsAt,
+        arrivesAt: base.arrivesAt,
+        passengers: base.passengers,
+        total: base.total,
+        createdAt: base.createdAt,
+        tickets: base.tickets,
+        involuntaryChange: true,
+        disruption: DisruptionDto(
+          id: 'd-1',
+          kind: DisruptionKind.breakdownEnRoute,
+          cause: DisruptionCause.mechanical,
+          declaredAt: now,
+          marksInvoluntary: true,
+          location: 'RN1 près de Dolisie',
+          note: 'pont coupé',
+        ),
+      );
+
+      await tester.pumpWidget(
+        Localized(
+          catalog: catalog,
+          child: MaterialApp(
+            theme: KiloTheme.materialTheme(),
+            home: TicketScreen(
+              booking: booking,
+              ticket: booking.tickets.single,
+              seatIndex: 0,
+              onClose: () {},
+              clock: clock,
+            ),
+          ),
+        ),
+      );
+
+      // During a breakdown the ticket is the information channel: what
+      // happened, where, in the operator's own words — and that it costs
+      // nothing, which is the first question anybody has.
+      expect(find.textContaining('Panne en route'), findsOneWidget);
+      expect(find.textContaining('RN1 près de Dolisie'), findsOneWidget);
+      expect(find.text('pont coupé'), findsOneWidget);
+      expect(find.textContaining('Aucun frais'), findsOneWidget);
+      // And the ticket still works. It is still a valid ticket for a coach
+      // that is going to run late, and hiding the QR would strand somebody
+      // who decides to wait.
+      expect(find.byType(QrImageView), findsOneWidget);
+    });
+
+    testWidgets('a short delay carries the new time and no promise', (
+      tester,
+    ) async {
+      final catalog = await loadTestCatalog();
+      final base = _booking(
+        id: 'late',
+        departsAt: now.add(const Duration(hours: 2)),
+      );
+      final booking = BookingDto(
+        id: base.id,
+        ref: base.ref,
+        state: base.state,
+        departureId: base.departureId,
+        operatorName: base.operatorName,
+        originCity: base.originCity,
+        destinationCity: base.destinationCity,
+        departsAt: base.departsAt,
+        arrivesAt: base.arrivesAt,
+        passengers: base.passengers,
+        total: base.total,
+        createdAt: base.createdAt,
+        tickets: base.tickets,
+        disruption: DisruptionDto(
+          id: 'd-2',
+          kind: DisruptionKind.delay,
+          cause: DisruptionCause.checkpoint,
+          declaredAt: now,
+          marksInvoluntary: false,
+          revisedDepartsAt: base.departsAt.add(const Duration(minutes: 20)),
+        ),
+      );
+
+      await tester.pumpWidget(
+        Localized(
+          catalog: catalog,
+          child: MaterialApp(
+            theme: KiloTheme.materialTheme(),
+            home: TicketScreen(
+              booking: booking,
+              ticket: booking.tickets.single,
+              seatIndex: 0,
+              onClose: () {},
+              clock: clock,
+            ),
+          ),
+        ),
+      );
+
+      // A time, not a delay: "+20 min" is arithmetic somebody does standing
+      // at a roadside at 04:00.
+      expect(find.textContaining('09:20'), findsOneWidget);
+      // And no free-refund promise the counter would have to refuse.
+      expect(find.textContaining('Aucun frais'), findsNothing);
+    });
+
     testWidgets('an empty list offers a search rather than a blank', (
       tester,
     ) async {

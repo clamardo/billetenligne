@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../l10n.dart';
+import '../widgets/disruption_strip.dart';
 import '../widgets/formatting.dart';
 
 /// The ticket. The thing the whole product exists to hand somebody.
@@ -100,6 +101,17 @@ class _TicketScreenState extends State<TicketScreen> {
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s4),
           children: [
+            // Above the void notice and above the QR. A passenger opening
+            // their ticket during a breakdown is looking for one thing, and
+            // it is not the code.
+            if (booking.disruption != null) ...[
+              DisruptionStrip(
+                disruption: booking.disruption!,
+                operatorName: booking.operatorName,
+              ),
+              SizedBox(height: kilo.space.s4),
+            ],
+
             if (ticket.isVoid) ...[
               KCard(
                 tone: kilo.color.dangerSoft,

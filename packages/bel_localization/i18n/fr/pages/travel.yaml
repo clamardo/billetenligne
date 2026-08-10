@@ -103,6 +103,14 @@ travel:
     voidedTitle: "Billet annulé"
     voidedBody: "Ce billet a été remboursé ou annulé. Il ne permet plus d'embarquer."
     boardBy: "Embarquement jusqu'à {time}"
+    # Pendant une perturbation, ce billet EST le canal d'information
+    # (08-disruption.md §3.3). Ce que la compagnie a déclaré, où, et ce que
+    # cela ouvre comme droit — avant tout le reste sur l'écran.
+    disrupted: "{kind} signalé par {operator}"
+    disruptedAt: "Vers {place}"
+    disruptedNewTime: "Nouveau départ prévu à {time}"
+    disruptedFree: "Aucun frais : échange ou remboursement intégral."
+    disruptedCounter: "Présentez-vous au guichet {operator} ou appelez l'agence."
   reserved:
     title: "Réservation confirmée"
     payAtAgency: "Présentez ce code dans une agence {operator} pour payer."

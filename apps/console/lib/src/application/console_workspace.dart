@@ -228,6 +228,35 @@ final class ConsoleWorkspace {
         await _loadSection();
       });
 
+  /// Declares a disruption, and says what it did.
+  ///
+  /// Never a bare success. "Signalé" tells a dispatcher nothing; the count of
+  /// passengers told is what tells them the message went out and how much of
+  /// their morning just changed — and whether the declaration entitled those
+  /// passengers to a free exchange, which decides who they are about to talk
+  /// to at the counter.
+  Future<void> declareDisruption({
+    required String departureId,
+    required DisruptionKind kind,
+    required DisruptionCause cause,
+    String? note,
+    DateTime? revisedDepartsAt,
+  }) => _run(() async {
+    final declared = await _gateway.declareDisruption(
+      departureId: departureId,
+      request: DeclareDisruptionRequest(
+        kind: kind,
+        cause: cause,
+        note: note,
+        revisedDepartsAt: revisedDepartsAt,
+      ),
+    );
+    _notice = declared.disruption.marksInvoluntary
+        ? 'disruption.declaredFree|${declared.bookingsAffected}'
+        : 'disruption.declared|${declared.bookingsAffected}';
+    await _loadSection();
+  });
+
   Future<void> saveVehicle({
     required String registration,
     required String layoutId,

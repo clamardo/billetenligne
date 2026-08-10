@@ -284,6 +284,35 @@ final class _ScriptedConsole implements ConsoleGateway {
     ],
   );
 
+  /// What the last declaration was answered with, and how many it reached.
+  int declaredAffected = 42;
+  bool declaredFree = true;
+
+  @override
+  Future<DeclaredDisruptionDto> declareDisruption({
+    required String departureId,
+    required DeclareDisruptionRequest request,
+  }) async {
+    saved.add(
+      'disruption:$departureId:${request.kind.name}:${request.cause.name}'
+      ':${request.note ?? ''}',
+    );
+    return DeclaredDisruptionDto(
+      disruption: DisruptionDto(
+        id: 'd-1',
+        kind: request.kind,
+        cause: request.cause,
+        declaredAt: DateTime.utc(2026, 8, 10, 5, 40),
+        marksInvoluntary: declaredFree,
+        note: request.note,
+        revisedDepartsAt: request.revisedDepartsAt,
+      ),
+      departureId: departureId,
+      bookingsAffected: declaredAffected,
+      departureStatus: 'cancelled',
+    );
+  }
+
   @override
   Future<SeatMapDto> seatMap(String departureId) => throw UnimplementedError();
 
@@ -526,6 +555,158 @@ void main() {
 
       expect(find.text('Aline M.'), findsOneWidget);
       expect(find.text('BEL-7QK4M2'), findsOneWidget);
+    });
+  });
+
+  group('declaring a disruption', () {
+    /// The sheet scrolls: on an agency laptop the confirm button is below the
+    /// fold once the causes are showing, which is exactly where it is on a
+    /// phone too.
+    Future<void> confirm(WidgetTester tester) async {
+      final button = find.widgetWithText(KButton, 'Signaler');
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+    }
+
+    _ScriptedConsole dispatcher({int sold = 42}) =>
+        _ScriptedConsole(
+            capabilities: const ['booking.read', 'disruption.declare'],
+          )
+          ..boardList = [
+            DepartureBoardDto(
+              id: 'dep-1',
+              routeCode: 'BZV-PNR',
+              departsAt: DateTime.utc(2026, 8, 10, 5),
+              status: 'scheduled',
+              capacity: 49,
+              sold: sold,
+              held: 0,
+              available: 49 - sold,
+              vehicle: 'ODN-001',
+            ),
+          ];
+
+    testWidgets('a vendor is not offered the button at all', (tester) async {
+      final gateway = _ScriptedConsole(capabilities: const ['booking.read'])
+        ..boardList = dispatcher().boardList;
+
+      await pump(tester, gateway);
+
+      // Not greyed out, which invites a support call, and not visible and
+      // 403ing, which teaches people our buttons lie (ADR-0011).
+      expect(find.text('Signaler un incident'), findsNothing);
+      expect(find.text('Liste'), findsOneWidget);
+    });
+
+    testWidgets('four taps declare a breakdown', (tester) async {
+      final gateway = dispatcher();
+      await pump(tester, gateway);
+
+      await tester.tap(find.text('Signaler un incident'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Panne en route'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Panne mécanique'));
+      await tester.pumpAndSettle();
+      await confirm(tester);
+
+      expect(
+        gateway.saved,
+        contains('disruption:dep-1:breakdownEnRoute:mechanical:'),
+      );
+    });
+
+    testWidgets('what it will cost is shown before the button', (tester) async {
+      await pump(tester, dispatcher());
+
+      await tester.tap(find.text('Signaler un incident'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Retard'));
+      await tester.pumpAndSettle();
+
+      // Thirty minutes entitles nobody to anything. The dispatcher is told
+      // that at the moment they pick the offset, not by a counter agent an
+      // hour later.
+      await tester.tap(find.text('+30 min'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining("Moins d'une heure"), findsOneWidget);
+
+      await tester.tap(find.text('+2 h'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('sans frais'), findsOneWidget);
+
+      // And how many people this reaches, which is what turns "signalé" into
+      // a fact somebody can act on.
+      expect(find.textContaining('42 passager'), findsOneWidget);
+    });
+
+    testWidgets('a delay cannot be declared without a new time', (
+      tester,
+    ) async {
+      final gateway = dispatcher();
+      await pump(tester, gateway);
+
+      await tester.tap(find.text('Signaler un incident'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Retard'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Barrage / contrôle'));
+      await tester.pumpAndSettle();
+
+      // The domain refuses it on the server too. Refusing it here as well is
+      // what stops a roadside request travelling to find that out on 2G.
+      await confirm(tester);
+      expect(gateway.saved, isEmpty);
+    });
+
+    testWidgets('the answer says how many were told', (tester) async {
+      final gateway = dispatcher();
+      await pump(tester, gateway);
+
+      await tester.tap(find.text('Signaler un incident'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Annulation'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pas de car disponible'));
+      await tester.pumpAndSettle();
+      await confirm(tester);
+
+      // "Signalé" on its own tells a dispatcher nothing.
+      expect(find.textContaining('42 passager'), findsOneWidget);
+      expect(find.textContaining('sans frais'), findsOneWidget);
+    });
+
+    testWidgets('a disrupted coach is marked on the day view', (tester) async {
+      final gateway = dispatcher();
+      gateway.boardList = [
+        DepartureBoardDto(
+          id: 'dep-1',
+          routeCode: 'BZV-PNR',
+          departsAt: DateTime.utc(2026, 8, 10, 5),
+          status: 'scheduled',
+          capacity: 49,
+          sold: 42,
+          held: 0,
+          available: 7,
+          vehicle: 'ODN-001',
+          disruption: DisruptionDto(
+            id: 'd-1',
+            kind: DisruptionKind.breakdownEnRoute,
+            cause: DisruptionCause.mechanical,
+            declaredAt: DateTime.utc(2026, 8, 10, 5, 40),
+            marksInvoluntary: true,
+          ),
+        ),
+      ];
+
+      await pump(tester, gateway);
+
+      // Beside the route name, so a dispatcher glancing at the day does not
+      // have to open a row to find out one of their coaches is broken down.
+      expect(find.text('Panne en route'), findsOneWidget);
     });
   });
 
