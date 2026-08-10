@@ -22,6 +22,7 @@ export 'src/catalog/trip_dto.dart';
 export 'src/common/headers.dart';
 export 'src/common/page.dart';
 export 'src/config/market_dto.dart';
+export 'src/console/console_dto.dart';
 export 'src/error/api_error.dart';
 export 'src/error/error_code.dart';
 export 'src/json/json_codec.dart';

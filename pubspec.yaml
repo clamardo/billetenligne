@@ -11,5 +11,6 @@ workspace:
   - packages/bel_client
   - services/api
   - services/worker
+  - apps/console
   - apps/scanner
   - apps/traveller

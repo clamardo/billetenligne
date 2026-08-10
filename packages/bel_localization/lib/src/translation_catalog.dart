@@ -131,21 +131,61 @@ final class TranslationCatalog {
 
   /// FNV-1a over lang/key/value triples in stable order. Cheap, dependency
   /// free, and only ever compared for equality.
+  ///
+  /// **Two 32-bit lanes, not one 64-bit hash**, and that is not a style
+  /// choice. The 64-bit version compiled fine and ran correctly everywhere it
+  /// had ever been run — the API, the workers, `dart test` — and the first
+  /// web build refused it outright: `0xcbf29ce484222325` cannot be
+  /// represented exactly in JavaScript, where an int is a double. This
+  /// package is shared by the server and by three Flutter apps, one of which
+  /// is now a web build, so anything here has to be exact on both number
+  /// systems.
+  ///
+  /// The multiply is done in shifts because `hash * 16777619` overflows the
+  /// 53 bits a JS double holds exactly, while every operation below stays
+  /// inside the 32 bits dart2js gives bitwise operators. Two independently
+  /// seeded lanes are concatenated to keep the same 16-hex-character width
+  /// the ETag depends on and to keep collisions as unlikely as before.
   static String _computeHash(Map<String, Map<String, String>> byLanguage) {
-    var hash = 0xcbf29ce484222325;
-    const prime = 0x100000001b3;
+    var a = 0x811c9dc5;
+    // A different seed for the second lane, so the two do not move together
+    // and the concatenation is worth more than either half.
+    var b = 0x1000193;
+
     final langs = byLanguage.keys.toList()..sort();
     for (final lang in langs) {
       final keys = byLanguage[lang]!.keys.toList()..sort();
       for (final key in keys) {
         final line = '$lang|$key|${byLanguage[lang]![key]}\n';
         for (final byte in utf8.encode(line)) {
-          hash = ((hash ^ byte) * prime) & 0xFFFFFFFFFFFFFFFF;
+          a = _fnvStep(a, byte);
+          b = _fnvStep(b, byte ^ 0x5a);
         }
       }
     }
-    // Mask to 63 bits: Dart ints are signed, and a negative value would
-    // render with a leading '-' and break the fixed-width ETag.
-    return (hash & 0x7FFFFFFFFFFFFFFF).toRadixString(16).padLeft(16, '0');
+
+    return _hex8(a) + _hex8(b);
   }
+
+  /// One FNV-1a round, entirely within 32 bits.
+  ///
+  /// `x * 16777619` written as shifts: the prime is
+  /// `2^24 + 2^8 + 2^7 + 2^4 + 2^1 + 1`, so the sum of those shifted copies
+  /// is the product. Every intermediate is masked, so nothing ever leaves the
+  /// range both Dart VM ints and JS doubles represent exactly.
+  static int _fnvStep(int hash, int byte) {
+    var h = (hash ^ byte) & 0xFFFFFFFF;
+    h =
+        (h +
+            ((h << 1) & 0xFFFFFFFF) +
+            ((h << 4) & 0xFFFFFFFF) +
+            ((h << 7) & 0xFFFFFFFF) +
+            ((h << 8) & 0xFFFFFFFF) +
+            ((h << 24) & 0xFFFFFFFF)) &
+        0xFFFFFFFF;
+    return h;
+  }
+
+  static String _hex8(int value) =>
+      (value & 0xFFFFFFFF).toRadixString(16).padLeft(8, '0');
 }

@@ -1,0 +1,45 @@
+name: bel_console
+description: >-
+  BilletEnLigne — the operator console. Configure a fleet, publish a timetable,
+  sell over the counter, print a manifest. Flutter web, because an agency has a
+  laptop or a tablet and neither of them wants an install.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.24.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  bel_client: ^0.1.0
+  bel_contracts: ^0.1.0
+  bel_design: ^0.1.0
+  bel_domain: ^0.1.0
+  bel_localization: ^0.1.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  # Fingerprints the bundled catalog against the source (i18n_freshness_test).
+  crypto: ^3.0.0
+flutter:
+  uses-material-design: true
+  assets:
+    # Copied from packages/bel_localization/i18n by tool/sync_i18n.sh, for the
+    # same reason the traveller app copies it: bel_localization is pure Dart
+    # (the API imports it) so it cannot declare Flutter assets, and Flutter
+    # refuses `..` in asset paths.
+    - assets/i18n/
+    - assets/i18n/fr/
+    - assets/i18n/fr/pages/
+    - assets/i18n/fr/errors/
+    - assets/i18n/fr/enums/
+    - assets/i18n/fr/messages/
+    - assets/i18n/fr/reference/
+    - assets/i18n/en/
+    - assets/i18n/en/pages/
+    - assets/i18n/en/errors/
+    - assets/i18n/en/enums/
+    - assets/i18n/en/messages/
+    - assets/i18n/en/reference/

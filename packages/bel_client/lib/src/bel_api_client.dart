@@ -185,7 +185,220 @@ final class BelApiClient {
   Future<void> releaseHold(String holdId) =>
       _send('DELETE', '/public/v1/holds/$holdId', idempotent: true);
 
+  // ── Console ───────────────────────────────────────────────────────────────
+  //
+  // The operator surface. Every call below is refused with a 403 unless the
+  // caller holds the capability the route checks, and this client does not
+  // pre-check: a client that decides what it may do is a client an attacker
+  // can edit. [consoleIdentity] exists to render navigation, not to authorise.
+
+  Future<ConsoleIdentityDto> consoleIdentity() async =>
+      ConsoleIdentityDto.fromJson(await _get('/console/v1/me'));
+
+  Future<List<LayoutDto>> layouts() async => Wire.readList(
+    (await _get('/console/v1/fleet/layouts'))['items'],
+    LayoutDto.fromJson,
+    field: 'items',
+  );
+
+  /// Creates a layout, or a **new version** of one with this name.
+  ///
+  /// [preset] is the fast path — most operators never open the editor, and
+  /// picking one of the four that actually run in Congo takes ninety seconds
+  /// against the twenty minutes the section builder takes.
+  Future<LayoutDto> saveLayout({
+    required String name,
+    String? preset,
+    int? rows,
+    List<Map<String, Object?>>? sections,
+    String mode = 'bus',
+  }) async => LayoutDto.fromJson(
+    await _postJson('/console/v1/fleet/layouts', {
+      'name': name,
+      if (preset != null) 'preset': preset,
+      if (rows != null) 'rows': rows,
+      if (sections != null) 'sections': sections,
+      'mode': mode,
+    }),
+  );
+
+  Future<List<VehicleDto>> vehicles() async => Wire.readList(
+    (await _get('/console/v1/fleet/vehicles'))['items'],
+    VehicleDto.fromJson,
+    field: 'items',
+  );
+
+  Future<VehicleDto> saveVehicle({
+    required String registration,
+    required String layoutId,
+    String? id,
+    String? nickname,
+    String? model,
+    List<String> amenities = const [],
+  }) async => VehicleDto.fromJson(
+    await _postJson('/console/v1/fleet/vehicles', {
+      'registration': registration,
+      'layoutId': layoutId,
+      if (id != null) 'id': id,
+      if (nickname != null) 'nickname': nickname,
+      if (model != null) 'model': model,
+      'amenities': amenities,
+    }),
+  );
+
+  /// Returns the **future departures this coach was carrying**. Taking a
+  /// vehicle off the road without saying which departures it was running is
+  /// how bookings get dropped without anybody noticing until the passengers
+  /// are at the station.
+  Future<List<String>> setVehicleStatus({
+    required String vehicleId,
+    required String status,
+  }) async {
+    final body = await _postJson('/console/v1/fleet/vehicles', {
+      'id': vehicleId,
+      'status': status,
+    });
+    return (body['affectedDepartureIds'] as List?)?.cast<String>() ?? const [];
+  }
+
+  Future<List<RouteDto>> operatorRoutes() async => Wire.readList(
+    (await _get('/console/v1/routes'))['items'],
+    RouteDto.fromJson,
+    field: 'items',
+  );
+
+  Future<RouteDto> saveRoute({
+    required String code,
+    required String originCity,
+    required String destinationCity,
+    required int durationMinutes,
+    String? id,
+    int? distanceKm,
+  }) async => RouteDto.fromJson(
+    await _postJson('/console/v1/routes', {
+      'code': code,
+      'originCity': originCity,
+      'destinationCity': destinationCity,
+      'durationMinutes': durationMinutes,
+      if (id != null) 'id': id,
+      if (distanceKm != null) 'distanceKm': distanceKm,
+    }),
+  );
+
+  Future<List<ScheduleDto>> schedules() async => Wire.readList(
+    (await _get('/console/v1/schedules'))['items'],
+    ScheduleDto.fromJson,
+    field: 'items',
+  );
+
+  Future<ScheduleDto> saveSchedule({
+    required String routeId,
+    required String rrule,
+    required String departureTime,
+    required int fareMinor,
+    required DateTime validFrom,
+    String? id,
+    String? vehicleId,
+    DateTime? validUntil,
+  }) async => ScheduleDto.fromJson(
+    await _postJson('/console/v1/schedules', {
+      'routeId': routeId,
+      'rrule': rrule,
+      'departureTime': departureTime,
+      'fareMinor': fareMinor,
+      'validFrom': _isoDate(validFrom),
+      if (id != null) 'id': id,
+      if (vehicleId != null) 'vehicleId': vehicleId,
+      if (validUntil != null) 'validUntil': _isoDate(validUntil),
+    }),
+  );
+
+  /// Turns a timetable into departures a traveller can buy.
+  Future<MaterialisationDto> materialise({
+    required String scheduleId,
+    required DateTime from,
+    required DateTime to,
+  }) async => MaterialisationDto.fromJson(
+    await _postJson('/console/v1/schedules', {
+      'materialise': true,
+      'id': scheduleId,
+      'from': _isoDate(from),
+      'to': _isoDate(to),
+    }),
+  );
+
+  Future<List<DepartureBoardDto>> departureBoard(DateTime localDate) async =>
+      Wire.readList(
+        (await _get(
+          '/console/v1/departures',
+          query: {'date': _isoDate(localDate)},
+        ))['items'],
+        DepartureBoardDto.fromJson,
+        field: 'items',
+      );
+
+  Future<ManifestDto> manifest(String departureId) async => ManifestDto.fromJson(
+    await _get('/console/v1/departures/$departureId/manifest'),
+  );
+
+  /// Collect against a reservation made on a phone.
+  Future<CounterSaleDto> collectPayment({
+    required String paymentCode,
+    required String stationId,
+  }) async => CounterSaleDto.fromJson(
+    await _postJson('/console/v1/bookings', {
+      'paymentCode': paymentCode,
+      'stationId': stationId,
+    }),
+  );
+
+  /// Sell across the counter to somebody standing there.
+  ///
+  /// Takes an [idempotencyKey] because the till's network drops mid-sale and
+  /// the vendor taps again — that must return the same booking rather than a
+  /// second one on different seats.
+  Future<CounterSaleDto> sellAtCounter({
+    required String departureId,
+    required String buyerPhone,
+    required List<PassengerDto> passengers,
+    required String stationId,
+    String? idempotencyKey,
+  }) async => CounterSaleDto.fromJson(
+    await _postJson('/console/v1/bookings', {
+      'departureId': departureId,
+      'buyerPhone': buyerPhone,
+      'stationId': stationId,
+      'passengers': [for (final p in passengers) p.toJson()],
+    }, idempotencyKey: idempotencyKey ?? IdempotencyKey.generate()),
+  );
+
   // ── Plumbing ──────────────────────────────────────────────────────────────
+
+  static String _isoDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  /// A POST whose answer is a body, with no idempotency key by default.
+  ///
+  /// Distinct from [_post], which demands one: configuration writes are
+  /// upserts keyed on something stable — a registration, a route code — so a
+  /// retry is already safe, and demanding a key for an operation that is
+  /// idempotent by construction is ceremony clients get wrong.
+  Future<Map<String, Object?>> _postJson(
+    String path,
+    Map<String, Object?> body, {
+    String? idempotencyKey,
+  }) async {
+    final result = await _send(
+      'POST',
+      path,
+      body: body,
+      idempotencyKey: idempotencyKey,
+      idempotent: idempotencyKey != null,
+    );
+    return result ?? const {};
+  }
 
   Future<Map<String, Object?>> _get(
     String path, {

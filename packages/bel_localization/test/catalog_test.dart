@@ -152,6 +152,20 @@ void main() {
       }
     });
 
+    test('the fingerprint is exact on both number systems', () {
+      // The first version of this hash used 64-bit FNV-1a. It ran correctly
+      // everywhere it had ever been run — the API, the workers, `dart test` —
+      // and the first `flutter build web` refused it outright:
+      // `0xcbf29ce484222325` cannot be represented exactly in JavaScript,
+      // where an int is a double.
+      //
+      // This package is imported by the server AND by three Flutter apps, one
+      // of which is now a web build, so a value computed here has to be exact
+      // on both number systems. The assertion is the width and the alphabet,
+      // because those are what the ETag and the freshness test depend on.
+      expect(catalog.hash, matches(RegExp(r'^[0-9a-f]{16}$')));
+    });
+
     test('SMS templates stay within one segment where they can', () {
       // Multipart SMS costs a multiple. Anything over 160 chars is flagged so
       // the cost is a deliberate choice, not an accident (ADR-0013).

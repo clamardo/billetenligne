@@ -4,6 +4,12 @@ import 'package:flutter/services.dart' show rootBundle;
 
 /// The translation catalog, loaded from the asset bundle.
 ///
+/// A copy of the traveller app's loader, and deliberately a copy rather than
+/// a shared widget: `bel_localization` is pure Dart so it cannot declare
+/// Flutter assets, and the thing being shared here is the *catalog*, which is
+/// (`tool/sync_i18n.sh` keeps both bundles identical and
+/// `i18n_freshness_test` fails the build if either drifts).
+///
 /// The same YAML the API reads from disk, copied into `assets/i18n` by
 /// `tool/sync_i18n.sh` and guarded against drift by `i18n_freshness_test`.
 /// One reviewed French sentence serves the screen, the SMS and the PDF
