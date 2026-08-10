@@ -23,7 +23,7 @@ What remains before a pilot is **commercial, not technical**, which is what this
 
 **Done:** the domain, the schema with its tenancy and ledger guarantees, the public sales boundary, the whole traveller API surface, email sign-in, booking and cash payment with double-entry postings, ticket issuing, the operator console's API, `services/worker`, the typed client, the Kilo component library, the traveller app through to a payment code, the standalone boarding scanner, and CI that executes all of it.
 
-649 tests · 92 smoke checks · 26 executed schema guarantees · 76 of those tests against real Postgres.
+661 tests · 96 smoke checks · 26 executed schema guarantees · 85 of those tests against real Postgres.
 
 ---
 
@@ -59,6 +59,7 @@ Ships without a PSP. The point is to prove inventory, ticketing, boarding and th
 - ✅ **Identity — sign in with a one-time code** (ADR-0024). Email leads, not phone: Firebase phone OTP needs a real billed project and we have no provisioned SMS sender, so we run the challenge over a rail we control and answer a correct code with a Firebase *custom token*. This is the fallback ADR-0018 already documented. Phone is a config value away — the channel is a column, an enum and a switch, and the SMS template is already written.
 
 ### Also done since
+- ✅ **The admin surface** (`/admin/v1`) — operator queue, operator page, approve · activate · request info · reject · suspend · reinstate, and the per-operator commission. `platform_staff` is finally read, which it never had been
 - ✅ **Tickets and history in the app** — the QR, the live 30-second code, one ticket per seat, and unpaid reservations listed with the code to pay them. The receipt's "see my ticket" button now shows a ticket rather than returning to a search box
 - ✅ **Cities from the server**, so the app holds no copy of an operator's network
 - ✅ **Booking and cash payment** — reserve, collect, post the ledger, issue the ticket, all in one transaction
@@ -69,8 +70,8 @@ Ships without a PSP. The point is to prove inventory, ticketing, boarding and th
 
 ### Remaining, in dependency order
 
-**1. Operator onboarding and admin approval.**
-The admin back office, the KYB queue, approval and suspension (`03-operator-lifecycle.md`). Can trail the console: the anchor operator will be onboarded by hand.
+**1. The admin back office as an app.**
+The API is built: the queue, one operator's page, six lifecycle decisions, the negotiated commission, every read and write audited with an actor and a reason. Nothing renders it. The same app is where the `indeterminate` reconciliation queue has to live, which makes it the next thing.
 
 **2. The vitrine.**
 Logo, header text, accent from the closed set of eight. Cheap, and it is what makes an operator feel the platform is theirs.

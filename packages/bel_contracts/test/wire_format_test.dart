@@ -380,6 +380,61 @@ void main() {
     });
   });
 
+  group('the back office', () {
+    test('an operator survives the round trip, commission included', () {
+      final dto = AdminOperatorDto(
+        id: 'op-1',
+        code: 'ODN',
+        legalName: 'Ocean du Nord SARL',
+        status: 'under_review',
+        marketCode: 'CG',
+        createdAt: DateTime.utc(2026, 8, 1, 9),
+        // Basis points on the wire. A rate that arrives as `0.075` is one
+        // somebody eventually sends as `7.5`, and the difference is a
+        // hundredfold error in what we take from a fare.
+        commissionBps: 750,
+        rccmNumber: 'CG-BZV-01-2019-B12-00345',
+        documentCount: 4,
+        expiringDocumentCount: 1,
+      );
+
+      final back = AdminOperatorDto.fromJson(dto.toJson());
+      expect(back.commissionBps, 750);
+      expect(back.rccmNumber, dto.rccmNumber);
+      expect(back.expiringDocumentCount, 1);
+      expect(back.isPending, isTrue);
+    });
+
+    test('a decision carries its reason, because an audit needs one', () {
+      const request = OperatorDecisionRequest(
+        decision: 'suspend',
+        reason: 'insurance lapsed',
+      );
+      final back = OperatorDecisionRequest.fromJson(request.toJson());
+      expect(back.decision, 'suspend');
+      expect(back.reason, 'insurance lapsed');
+      expect(() => OperatorDecisionRequest.fromJson(const {'decision': 'x'}),
+          throwsA(isA<WireFormatException>()));
+    });
+
+    test('the audit trail is readable and carries no secrets', () {
+      final entry = AuditEntryDto(
+        action: 'operator.approve',
+        actorType: 'platform_staff',
+        actorId: 'u-1',
+        reason: 'documents complete',
+        createdAt: DateTime.utc(2026, 8, 2, 11),
+      );
+      final json = entry.toJson();
+      // Before/after states stay server-side: they can hold a settlement
+      // account number, and a trail rendered in a browser does not need one.
+      expect(json.keys, unorderedEquals([
+        'action', 'actorType', 'actorId', 'reason', 'createdAt',
+      ]));
+      expect(AuditEntryDto.fromJson(json).reason, 'documents complete');
+    });
+  });
+
   group('nulls are omitted', () {
     test('absent optional fields do not travel', () {
       // Absent and null mean the same thing to every client, and omitting

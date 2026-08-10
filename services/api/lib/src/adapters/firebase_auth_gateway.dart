@@ -211,6 +211,10 @@ final class FirebaseAuthGateway implements AuthGateway {
       tenantId: staff?.operatorId,
       roles: staff?.roles ?? const [],
       stationIds: staff?.stationIds ?? const [],
+      // And from `platform_staff`, read on the same statement. Nobody is our
+      // staff because a token said so.
+      isPlatform: account.isPlatformStaff,
+      platformRole: account.platformRole,
     );
   }
 

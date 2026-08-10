@@ -16,6 +16,7 @@ final class Account {
     this.phoneVerifiedAt,
     this.disabledAt,
     this.staff,
+    this.platformRole,
   });
 
   final String id;
@@ -46,6 +47,17 @@ final class Account {
   /// database is the authority (ADR-0018), and the difference matters the hour
   /// somebody is dismissed — their token is still valid for the rest of it.
   final StaffMembership? staff;
+
+  /// `super_admin` | `operations` | `viewer`, for our own people. Null for
+  /// everybody else, which is everybody.
+  ///
+  /// Read from `platform_staff` on every authenticated request, for the same
+  /// reason [staff] is: a custom claim is a hint for routing, the database is
+  /// the authority (ADR-0018), and the difference matters the hour somebody
+  /// leaves. Their token is still valid for the rest of it.
+  final String? platformRole;
+
+  bool get isPlatformStaff => platformRole != null;
 
   bool get isDisabled => disabledAt != null;
 }

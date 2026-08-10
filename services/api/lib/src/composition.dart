@@ -24,6 +24,7 @@ import 'application/ports/city_catalogue.dart';
 import 'application/ports/operator_console.dart';
 import 'application/ports/payment_gateway.dart';
 import 'application/ports/payment_store.dart';
+import 'application/ports/platform_console.dart';
 import 'application/ports/departure_catalogue.dart';
 import 'application/ports/notification_gateway.dart';
 import 'application/ports/seat_inventory.dart';
@@ -45,6 +46,7 @@ import 'infrastructure/postgres/postgres_identity.dart';
 import 'infrastructure/postgres/postgres_operator_console.dart';
 import 'infrastructure/postgres/postgres_operator_directory.dart';
 import 'infrastructure/postgres/postgres_payment_store.dart';
+import 'infrastructure/postgres/postgres_platform_console.dart';
 import 'infrastructure/postgres/postgres_idempotency_store.dart';
 import 'infrastructure/postgres/postgres_seat_inventory.dart';
 import 'middleware/idempotency.dart';
@@ -69,6 +71,7 @@ final class Services {
     required this.reserveBooking,
     required this.bookings,
     required this.console,
+    required this.platform,
     required this.payments,
     required this.payForBooking,
     required this.railIds,
@@ -95,6 +98,11 @@ final class Services {
   /// the traveller browses, and a fake one would be a second definition of
   /// every coach and route, kept in sync by hand.
   final OperatorConsole console;
+
+  /// Our own back office. Refuses without a database for the same reason the
+  /// operator console does — and more so: every read here is meant to cross
+  /// tenants, and a fake with no tenants to cross would be theatre.
+  final PlatformConsole platform;
 
   final PaymentStore payments;
   final PayForBooking payForBooking;
@@ -172,6 +180,7 @@ final class Services {
       reserveBooking: ReserveBooking(bookings: bookings),
       bookings: bookings,
       console: PostgresOperatorConsole(db, timeZone: Market.current.timeZone),
+      platform: PostgresPlatformConsole(db),
       payments: paymentStore,
       payForBooking: PayForBooking(
         payments: paymentStore,
@@ -254,6 +263,7 @@ final class Services {
       reserveBooking: ReserveBooking(bookings: memoryBookings),
       bookings: memoryBookings,
       console: const UnavailableOperatorConsole(),
+      platform: const UnavailablePlatformConsole(),
       payments: memoryPayments,
       payForBooking: PayForBooking(
         payments: memoryPayments,

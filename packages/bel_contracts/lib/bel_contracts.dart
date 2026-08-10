@@ -14,6 +14,7 @@
 ///    sentence (ADR-0008).
 library;
 
+export 'src/admin/admin_dto.dart';
 export 'src/auth/auth_dto.dart';
 export 'src/booking/booking_dto.dart';
 export 'src/catalog/city_dto.dart';

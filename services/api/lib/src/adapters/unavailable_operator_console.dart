@@ -1,6 +1,7 @@
 import 'package:bel_domain/bel_domain.dart';
 
 import '../application/ports/operator_console.dart';
+import '../application/ports/platform_console.dart';
 
 /// What the console surface resolves to when there is no database.
 ///
@@ -124,4 +125,55 @@ final class ConsoleRequiresDatabase implements Exception {
       'The operator console requires a database. Set DATABASE_URL and run '
       'the migrations; the fakes composition serves the traveller surface '
       'only.';
+}
+
+/// The same refusal, for the back office.
+///
+/// The admin surface reads across every tenant and writes an audit row for
+/// each read. Neither is meaningful against fakes, so it refuses in the same
+/// voice rather than serving an invented queue that a reviewer might believe.
+final class UnavailablePlatformConsole implements PlatformConsole {
+  const UnavailablePlatformConsole();
+
+  Never _refuse() => throw const ConsoleRequiresDatabase();
+
+  @override
+  Future<List<OperatorSummary>> operators({
+    required String actorUserId,
+    Set<String> statuses = const {},
+  }) async => _refuse();
+
+  @override
+  Future<OperatorDetail?> operatorDetail(
+    String operatorId, {
+    required String actorUserId,
+  }) async => _refuse();
+
+  @override
+  Future<Result<OperatorSummary, DecisionRefusal>> decide({
+    required String operatorId,
+    required OperatorDecision decision,
+    required String actorUserId,
+    required String reason,
+    String? detail,
+  }) async => _refuse();
+
+  @override
+  Future<Result<OperatorSummary, DecisionRefusal>> setCommission({
+    required String operatorId,
+    required CommissionTerm term,
+    required String actorUserId,
+    required String reason,
+  }) async => _refuse();
+
+  @override
+  Future<void> recordRead({
+    required String actorUserId,
+    required String reason,
+    required String action,
+    String? subjectType,
+    String? subjectId,
+    String? operatorId,
+    String? traceId,
+  }) async => _refuse();
 }

@@ -109,6 +109,23 @@ BEGIN
     RAISE EXCEPTION 'FAIL: the identity role can grant itself a role';
   END IF;
 
+  -- 0012 added `platform_staff` for the same reason and under the same rule.
+  -- This one matters more than the others: a surface that could write it
+  -- could make its own caller a super_admin, which would make every control
+  -- in this file decorative.
+  IF NOT has_table_privilege('bel_identity', 'platform_staff', 'SELECT') THEN
+    RAISE EXCEPTION 'FAIL: the identity role cannot see our own staff';
+  END IF;
+
+  IF has_table_privilege('bel_identity', 'platform_staff', 'INSERT')
+  OR has_table_privilege('bel_identity', 'platform_staff', 'UPDATE')
+  OR has_table_privilege('bel_identity', 'platform_staff', 'DELETE')
+  OR has_table_privilege('bel_admin', 'platform_staff', 'INSERT')
+  OR has_table_privilege('bel_admin', 'platform_staff', 'UPDATE')
+  OR has_table_privilege('bel_admin', 'platform_staff', 'DELETE') THEN
+    RAISE EXCEPTION 'FAIL: a running surface can appoint its own staff';
+  END IF;
+
   RAISE NOTICE 'OK  the identity role reads roles, cannot write them, and cannot sell';
 END
 $$;

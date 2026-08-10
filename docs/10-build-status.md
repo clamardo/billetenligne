@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-10 · after commit *The ticket reaches a screen*
+**Updated:** 2026-08-10 · after commit *The back office, server side*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -49,8 +49,9 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Traveller app — tickets and history** | ✅ done | Upcoming and past, unpaid reservations included with their code. The QR and its rotating secret travel inside the booking, so opening a ticket costs no request. 11 flow and widget tests |
 | **Operator console — API** | ✅ done | Fleet, routes, timetables, materialisation, guichet, manifests |
 | **Operator console — the app** | ✅ done | Flutter web. Fleet, routes, timetables, the dispatcher's day, the guichet, manifests. 11 tests |
-| Admin back office | ⬜ not started | |
-| Operator onboarding + approval queue | ⬜ not started | Designed in `03-operator-lifecycle.md` |
+| Admin back office — API | ✅ done | `/admin/v1`: the queue, one operator's page, six lifecycle decisions, the negotiated commission. Every read and every write audited with actor and reason. 8 integration tests |
+| Admin back office — the app | ⬜ not started | The surface exists and nothing renders it |
+| Operator onboarding — the wizard | ⬜ not started | `03-operator-lifecycle.md` §2.2. The first ten operators are onboarded by hand, which is what the queue is for |
 | Refund policy wizard + execution | ⬜ not started | Domain policy engine is built and tested |
 | Email on ACS | ✅ done | Signed requests, logging fallback; **only the sign-in code routes through it so far** |
 | SMS / push on ACS + Firebase | 🔨 in progress | Port, templates, drain and channel plumbing all done; **no provisioned sender number, so the API refuses the phone channel with a 503** |
@@ -153,7 +154,7 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 222 tests
+         packages/bel_contracts packages/bel_crypto     # 225 tests
 dart test packages/bel_client                           # 32 tests
 dart test services/api -x integration                   # 150 tests
 cd packages/bel_design && flutter test   # 58 component and contrast tests
@@ -161,17 +162,17 @@ cd apps/traveller && flutter test        # 80 app tests
 cd apps/console   && flutter test        # 11 console tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 204 files
+dart run tool/check_layers.dart          # the onion rule, 213 files
 ./infra/migrations/check.sh              # 26 schema guarantees
-./tool/integration.sh                    # 76 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 92 checks, incl. the Dart client
+./tool/integration.sh                    # 85 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 96 checks, incl. the Dart client
 ```
 
 Remove `services/api/build` before counting: `dart_frog build` copies the
 whole workspace into it, and `dart test services/api` then runs every suite
 twice and reports 414.
 
-**649 tests in total**, plus 92 smoke checks and 26 executed schema
+**661 tests in total**, plus 96 smoke checks and 26 executed schema
 guarantees. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
@@ -180,6 +181,34 @@ the screens render. Both halves of that seam have broken here before.
 ---
 
 ## What the last push changed, and what it cost
+
+The back office, server side. `/admin/v1` — the third surface, promised in
+`02-architecture.md` since the first commit and until now entirely absent.
+
+**`platform_staff` had never been read.** The table has existed since
+migration 0001, `PlatformScope` since the first middleware, three platform
+roles since `capability.dart` — and nothing anywhere resolved a bearer token
+to any of them. `Principal.isPlatform` was false for every request this
+system has ever served. Migration 0012 grants the identity surface SELECT on
+that one table, and asserts in `verify_identity.sql` that no running surface
+can *write* it: a service that can appoint its own administrators makes every
+other control decorative.
+
+**Authority is checked before paperwork.** The reason header is mandatory on
+every mutation, but a traveller who finds the URL gets a 403 and learns
+nothing about it. The first draft asked for the reason first, which told a
+stranger there was a header worth sending.
+
+**A decision and its audit row are one transaction**, and the transition is
+conditional in SQL as well as in Dart. Two reviewers approving one
+application at the same moment produce one approval and one trail entry —
+proven with two concurrent calls against real Postgres rather than asserted.
+
+**Reads are audited too.** Opening one operator's file writes a row with the
+actor, the subject and the stated reason, because "who looked at Ocean du
+Nord's revenue, and why" is a question asked after the fact.
+
+## What the push before that changed
 
 The ticket reaches a screen. Until this push the product could take
 somebody's money, sign a ticket, store it and text it — and the app that
@@ -210,7 +239,7 @@ reach a confirmed booking, a ticket or a QR — the whole reason the fake
 exists. It now settles on the second poll, and six smoke checks walk
 prompt → poll → capture → ticket over a real socket with no credentials.
 
-## What the push before that changed
+## And the push before that
 
 Mobile money, end to end — the part that sells this product.
 

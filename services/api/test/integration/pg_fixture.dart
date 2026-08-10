@@ -112,6 +112,104 @@ final class PgFixture {
     return rows.first.toColumnMap()['id'] as String;
   }
 
+  /// One of our own people, with a platform role.
+  ///
+  /// Seeded as `postgres` because nothing in the application may write
+  /// `platform_staff` — migration 0012 revokes INSERT from every running
+  /// surface, on the grounds that a service which can appoint its own
+  /// administrators makes every other control decorative.
+  Future<String> platformStaff(String role, {String? suffix}) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        INSERT INTO user_accounts (email, full_name)
+        VALUES (@email, @name)
+        ON CONFLICT (lower(email)) WHERE email IS NOT NULL
+        DO UPDATE SET full_name = EXCLUDED.full_name
+        RETURNING id
+      '''),
+      parameters: {
+        'email': '$role${suffix ?? ''}@billetenligne.cg',
+        'name': 'Staff $role',
+      },
+    );
+    final userId = rows.first.toColumnMap()['id'] as String;
+
+    await _seed.execute(
+      Sql.named('''
+        INSERT INTO platform_staff (user_id, role) VALUES (@user, @role)
+        ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role,
+                                            revoked_at = NULL
+      '''),
+      parameters: {
+        'user': TypedValue(Type.uuid, userId),
+        'role': TypedValue(Type.text, role),
+      },
+    );
+    return userId;
+  }
+
+  /// An operator in a chosen lifecycle state, so the queue has something to
+  /// work. Returns its id.
+  Future<String> applicant({
+    required String code,
+    required String legalName,
+    String status = 'registered',
+  }) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        INSERT INTO operators (code, legal_name, market_code, status)
+        VALUES (@code, @name, 'CG', @status::operator_status)
+        ON CONFLICT (code) DO UPDATE SET status = EXCLUDED.status
+        RETURNING id
+      '''),
+      parameters: {
+        'code': TypedValue(Type.text, code),
+        'name': TypedValue(Type.text, legalName),
+        'status': TypedValue(Type.text, status),
+      },
+    );
+    return rows.first.toColumnMap()['id'] as String;
+  }
+
+  Future<void> kybDocument({
+    required String operatorId,
+    required String docType,
+    DateTime? expiresAt,
+  }) async {
+    await _seed.execute(
+      Sql.named('''
+        INSERT INTO kyb_documents (operator_id, doc_type, storage_key,
+                                   expires_at)
+        VALUES (@operator, @type, @key, @expires)
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'type': TypedValue(Type.text, docType),
+        'key': TypedValue(Type.text, 'kyb/$operatorId/$docType.jpg'),
+        'expires': TypedValue(Type.timestampTz, expiresAt),
+      },
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> auditFor(String operatorId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT action, actor_id, actor_type, reason, before_state, after_state
+          FROM audit_log WHERE operator_id = @id ORDER BY created_at
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, operatorId)},
+    );
+    return [for (final row in rows) row.toColumnMap()];
+  }
+
+  Future<String> operatorStatus(String operatorId) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT status::text AS s FROM operators WHERE id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, operatorId)},
+    );
+    return rows.first.toColumnMap()['s'] as String;
+  }
+
   /// An agency counter. Cash is reconciled against the drawer that took it,
   /// so a till needs a station and a station needs a row.
   Future<String> station(String cityCode, String name) async {

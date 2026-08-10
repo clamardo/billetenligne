@@ -511,6 +511,27 @@ check "the ticket names its passenger and seat" "yes" \
 check "the payment code is gone once paid" "yes" \
   "$(grep -q '"paymentCode"' <<<"$paid" && echo no || echo yes)"
 
+# ── The back office refuses everybody it should ─────────────────────────────
+#
+# The admin surface cannot be *exercised* against the fakes composition — it
+# reads across tenants and audits every read, and there are no tenants to
+# cross without a database. What can be proven here is the half that matters
+# most on a public URL: who it turns away, and in what order.
+check "the admin surface is closed to anonymous" "401" \
+  "$(status "$BASE/admin/v1/operators")"
+# A traveller who found the URL. Authority is checked BEFORE the reason
+# header, so they learn only that they may not be here — not that there is a
+# header they could have sent.
+check "a traveller is refused, not prompted" "403" \
+  "$(status -H "$AUTH" "$BASE/admin/v1/operators")"
+check "a traveller cannot decide anything" "403" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/admin/v1/operators/00000000-0000-0000-0000-000000000000/decision" \
+     -H "$AUTH" -H 'Content-Type: application/json' \
+     -d '{"decision":"approve","reason":"x"}')"
+check "the admin identity endpoint is closed too" "403" \
+  "$(status -H "$AUTH" "$BASE/admin/v1/me")"
+
 check "the profile needs an account" "401" "$(status "$BASE/public/v1/me")"
 me="$(curl -s -H "Authorization: Bearer $session_token" "$BASE/public/v1/me")"
 check "the profile is the address that signed in" "yes" \

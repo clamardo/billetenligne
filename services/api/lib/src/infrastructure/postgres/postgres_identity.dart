@@ -46,6 +46,22 @@ final class PostgresUserDirectory implements UserDirectory {
     ) staff ON TRUE
   ''';
 
+  /// Our own staff, read on the same request for the same reason.
+  ///
+  /// A second LATERAL rather than a second round trip. `revoked_at IS NULL`,
+  /// so somebody who left this morning is not an administrator this
+  /// afternoon — which is the whole argument for reading it per request
+  /// instead of trusting a token claim.
+  static const _platformJoin = '''
+    LEFT JOIN LATERAL (
+      SELECT p.role
+        FROM platform_staff p
+       WHERE p.user_id = user_accounts.id
+         AND p.revoked_at IS NULL
+       LIMIT 1
+    ) platform ON TRUE
+  ''';
+
   @override
   Future<Account?> byAuthUid(String authUid) =>
       _db.transaction(const DbScope.identity(), (tx) async {
@@ -54,8 +70,9 @@ final class PostgresUserDirectory implements UserDirectory {
             SELECT $_columns,
                    staff.operator_id AS staff_operator_id,
                    staff.roles       AS staff_roles,
-                   staff.station_ids AS staff_station_ids
-              FROM user_accounts $_staffJoin
+                   staff.station_ids AS staff_station_ids,
+                   platform.role     AS platform_role
+              FROM user_accounts $_staffJoin $_platformJoin
              WHERE auth_uid = @uid
           '''),
           parameters: {'uid': TypedValue(Type.text, authUid)},
@@ -248,6 +265,7 @@ final class PostgresUserDirectory implements UserDirectory {
     emailVerifiedAt: r['email_verified_at'] as DateTime?,
     phoneVerifiedAt: r['phone_verified_at'] as DateTime?,
     disabledAt: r['disabled_at'] as DateTime?,
+    platformRole: r['platform_role'] as String?,
   );
 }
 
