@@ -109,18 +109,17 @@ The engineering is done. What is missing is a merchant agreement, which is the l
 - ✅ The in-app experience end to end: choose a wallet, name the number to debit (**not necessarily your own**), confirm where the money is going, watch for the PIN prompt, receipt
 - ✅ Operator collection accounts in the console, saved unverified because mobile money has no chargeback
 - ✅ The poller, because callbacks get lost — that is a fact about these networks, not a hypothetical
-- ⬜ **Production credentials.** Both adapters run against sandbox hosts today and a fake rail in development
-- ⬜ The `indeterminate` reconciliation console — the queue exists and fills; no admin screen works it yet
 - ✅ Commission netted at source, on every rail capture
 - ✅ The full failure taxonomy, each case with its own copy and its own recovery
+- ⬜ **Production credentials.** Both adapters run against sandbox hosts today and a fake rail in development
+- ⬜ **The `indeterminate` reconciliation console — before launch, not after the first incident.** The queue exists and the poller fills it; no admin screen works it
+- ⬜ **Disruption / IRROPS tooling** (`08-disruption.md`) — P0 here, because the first breakdown will happen in week one and the operator must handle it without calling us
 - ⬜ The ledger in anger: payout runs and operator statements
-- ⬜ **The `indeterminate` reconciliation console — before launch, not after the first incident**
-- **Disruption / IRROPS tooling** (`08-disruption.md`) — P0 here, because the first breakdown will happen in week one and the operator must handle it without calling us
-- The `config/markets.yaml` loader, so enabling a rail is a config push rather than a release
+- ⬜ The `config/markets.yaml` loader, so enabling a rail is a config push rather than a release
 
 **Exit:** a traveller pays with Airtel Money and boards. Payment success ≥ 88% first attempt.
 
-Everything that exit requires is built. It is waiting on a telco, exactly as predicted.
+The *payment path* is built end to end and waiting on a telco. The phase is not: a launch needs the reconciliation console and IRROPS, and both are unbuilt. Saying "everything is built" here — as an earlier draft of this section did — is exactly the kind of claim this document exists to refuse.
 
 ---
 

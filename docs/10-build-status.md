@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-09 · after commit *The operator console, as an app*
+**Updated:** 2026-08-10 · after commit *Mobile money, end to end*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -21,7 +21,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | `bel_contracts` — wire format | ✅ done | Money is always `{minor, currency}` |
 | `bel_crypto` — Ed25519, HMAC | ✅ done | Verified against the RFC 4231 vector |
 | `bel_design` — Kilo tokens, three themes, components | ✅ done | 9 components, 58 tests; **gallery app still not built** |
-| Postgres schema, RLS, ledger | ✅ done | 10 migrations, 26 executed guarantees |
+| Postgres schema, RLS, ledger | ✅ done | 11 migrations, 26 executed guarantees |
 | Public sales boundary (`bel_public`) | ✅ done | 0005 — a traveller cannot mark a seat sold, proven in `verify_public.sql` |
 | Dart Frog skeleton, auth + idempotency middleware | ✅ done | 43 smoke checks over a real socket |
 | `infra/dev` — Postgres, Firebase emulator, Azurite, Mailpit | ✅ done | `docker compose up`; `.env.example` connected as the wrong role until 0007 |
@@ -56,7 +56,24 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | SMS / push on ACS + Firebase | 🔨 in progress | Port, templates, drain and channel plumbing all done; **no provisioned sender number, so the API refuses the phone channel with a 503** |
 | Session in platform secure storage | 🔨 in progress | `SessionStore` port is there; the app uses `MemorySessionStore`, so **a session lasts until the app is killed** |
 
-## Phase 2 and beyond
+## Phase 2 — Mobile money
+
+| Feature | State | Notes |
+|---|---|---|
+| **Airtel Money adapter** | ✅ done | USSD push, against the real contract. Own transaction id, headers for country/currency, national MSISDN |
+| **MTN MoMo adapter** | ✅ done | `requesttopay`, keyed on the `X-Reference-Id` we generate |
+| **Fake rail** | ✅ done | Every terminal state plus a declining number. ADR-0005 makes this a release gate, not a convenience |
+| **Payment intents + state machine** | ✅ done | `indeterminate` first-class; illegal transitions refused; every answer written to `payment_events` |
+| **Traveller payment experience** | ✅ done | Wallet, payer number, confirmation, waiting, receipt, refusal, unresolved. 13 flow tests |
+| **Operator collection accounts** | ✅ done | Per rail, saved unverified, replacing deactivates rather than edits |
+| **Callback endpoint** | ✅ done | Body trusted only to select a row; state always re-queried. Answers 200 to everything |
+| **Payment poller** | ✅ done | Backoff from the domain; 15 min of silence becomes `indeterminate` |
+| Production credentials | ⬜ not started | **Commercial, not engineering.** Both adapters run against sandbox hosts |
+| `indeterminate` reconciliation console | ⬜ not started | The queue fills and nobody can work it. ADR-0005: before launch, not after the first incident |
+| Payout runs and operator statements | ⬜ not started | `payable:operator:<id>` is correct and derived; nothing pays it out |
+| IRROPS / disruption tooling | ⬜ not started | P0 for this phase (`08-disruption.md`) |
+
+## Phase 3 and beyond
 
 Not started. `09-roadmap.md` has the remaining Phase 1 work in **dependency
 order** — the operator console's app is now the top of it, and it is the only
@@ -92,7 +109,9 @@ These are true today and each one is a decision, not an oversight.
    under the 160-character gate. What is missing is a provisioned ACS sender
    number, so `COMMS__SMSFROM` is blank and the API answers 503 for that
    channel rather than accepting it and leaving somebody waiting (ADR-0024).
-6. **The console signs in with a one-time code, not a password and TOTP.**
+6. **Commission is a market-wide rate, not a per-operator term.** `Market.commissionRate` is 5% for everybody. An anchor operator will negotiate, and when they do it moves onto the operator row — one rate for one operator is not worth a column today, and the simplification is named here so it is a decision rather than an oversight.
+
+7. **The console signs in with a one-time code, not a password and TOTP.**
    ADR-0013 specifies email + password + mandatory TOTP for back office. The
    deviation is documented in `apps/console/lib/src/presentation/sign_in.dart`
    and the reasoning is sequencing: today's console configures a fleet and
@@ -101,18 +120,18 @@ These are true today and each one is a decision, not an oversight.
    all. **TOTP lands before they do.** If refunds ship first, that comment is
    the bug report.
 
-7. **The seat-layout section builder is not built.** Four presets cover what
+8. **The seat-layout section builder is not built.** Four presets cover what
    actually runs in Congo and picking one takes ninety seconds, which is the
    path most operators take anyway (`06-fleet-and-routes.md` §3.2). An
    operator whose coach matches no preset can adjust the row count and no
    more. Named on the screen rather than hidden behind a control that does
    nothing.
-8. **A confirmed booking's ticket never reaches a screen.** It is issued,
+9. **A confirmed booking's ticket never reaches a screen.** It is issued,
    signed, stored and queued for SMS. The traveller app shows a payment code
    and then has nowhere to go: no ticket screen, no booking history. The
    endpoint (`GET /public/v1/bookings`) is there and typed in `bel_client`.
 
-9. **The catalog is copied, not shared, into the apps.** `bel_localization` is
+10. **The catalog is copied, not shared, into the apps.** `bel_localization` is
    pure Dart — the API imports it — so it cannot declare Flutter assets, and
    Flutter refuses `..` in asset paths. `tool/sync_i18n.sh` copies it and
    `i18n_freshness_test` fails the build if a copy drifts.
@@ -136,17 +155,17 @@ cd apps/traveller && flutter test        # 54 app tests
 cd apps/console   && flutter test        # 11 console tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 178 files
+dart run tool/check_layers.dart          # the onion rule, 187 files
 ./infra/migrations/check.sh              # 26 schema guarantees
 ./tool/integration.sh                    # 71 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 72 checks, incl. the Dart client
+./tool/smoke_api.sh                      # 86 checks, incl. the Dart client
 ```
 
 Remove `services/api/build` before counting: `dart_frog build` copies the
 whole workspace into it, and `dart test services/api` then runs every suite
 twice and reports 414.
 
-**525 tests in total**, plus 72 smoke checks and 26 executed schema
+**555 tests in total**, plus 86 smoke checks and 26 executed schema
 guarantees. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
@@ -154,7 +173,30 @@ the screens render. Both halves of that seam have broken here before.
 
 ---
 
-## What the last pushes changed, and what they cost
+## What the last push changed, and what it cost
+
+Mobile money, end to end — the part that sells this product.
+
+Two adapters written against the real APIs rather than from memory, and
+they disagree in ways that matter: MTN keys everything on a reference we
+generate, Airtel mints its own and wants the *national* number where we
+store E.164. Sending the stored form is a subscriber-not-found that looks,
+in every log, like the traveller mistyped their own number.
+
+**The confirmation screen is a separate step**, and that is the whole
+argument: amount, wallet, the number the money leaves, the number it
+arrives at, and the operator's name beside it — all checkable before
+anything irreversible. **The payer number is not the traveller's**, because
+somebody whose wallet is empty pays from a relative's. **Never "failed"
+when we do not know**, because the money may have moved.
+
+One thing the work found: the compiled-in market rail list was gating which
+rails could be offered, which defeats the entire point of ADR-0006's
+server-driven list. A rail this deployment can reach, that the operator has
+a verified account on, is now offered whether or not a constant in the
+binary mentions it.
+
+## What the seven before that changed
 
 Seven commits: identity, cities, money, the console's API, the worker, the
 traveller's payment screen, and the console itself. **An operator can now put
