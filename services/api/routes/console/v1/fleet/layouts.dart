@@ -65,8 +65,9 @@ Future<Response> onRequest(RequestContext context) async {
         return _badRequest(trace, 'name');
       }
 
-      final layout = _layoutFrom(body);
-      if (layout == null) return _badRequest(trace, 'preset');
+      final drawn = _layoutFrom(body);
+      if (drawn.layout == null) return _badRequest(trace, drawn.field!);
+      final layout = drawn.layout!;
 
       final saved = await console.saveLayout(
         operatorId: scope.operatorId,
@@ -97,7 +98,7 @@ Future<Response> onRequest(RequestContext context) async {
 /// The presets are the ones that actually run in Congo
 /// (`06-fleet-and-routes.md` §3.2), and they live in `bel_domain` so the
 /// console's preview, the seat map and the manifest all draw the same coach.
-SeatLayout? _layoutFrom(Map<String, Object?> body) {
+({SeatLayout? layout, String? field}) _layoutFrom(Map<String, Object?> body) {
   final preset = body['preset'];
   if (preset is String) {
     final base = switch (preset) {
@@ -106,64 +107,166 @@ SeatLayout? _layoutFrom(Map<String, Object?> body) {
       'air_two_class' => SeatLayout.airTwoClass(),
       _ => null,
     };
-    if (base == null) return null;
+    if (base == null) return (layout: null, field: 'preset');
 
     // Row count is the one thing an operator almost always adjusts: a preset
     // is a 49-seater and theirs is a 51. Overriding it here beats making them
     // open the section builder for one number.
     final rows = body['rows'];
-    if (rows is! int || base.sections.isEmpty) return base;
+    if (rows == null || base.sections.isEmpty)
+      return (layout: base, field: null);
+    // A row count that is not a number, or is zero or negative, is a typo
+    // rather than an instruction. It used to be ignored, which meant an
+    // operator asking for 51 rows and silently getting the preset's 11.
+    if (rows is! int || rows < 1 || rows > _maxRows) {
+      return (layout: null, field: 'rows');
+    }
 
-    return SeatLayout(
-      version: base.version,
-      mode: base.mode,
-      sections: [
-        CabinSection(
-          code: base.sections.first.code,
-          labelKey: base.sections.first.labelKey,
-          rows: rows,
-          abreast: base.sections.first.abreast,
-          startRow: base.sections.first.startRow,
-          numbering: base.sections.first.numbering,
-          pitchCm: base.sections.first.pitchCm,
-          modifier: base.sections.first.modifier,
-        ),
-        ...base.sections.skip(1),
-      ],
-      features: base.features,
-      blocked: base.blocked,
+    return (
+      layout: SeatLayout(
+        version: base.version,
+        mode: base.mode,
+        sections: [
+          CabinSection(
+            code: base.sections.first.code,
+            labelKey: base.sections.first.labelKey,
+            rows: rows,
+            abreast: base.sections.first.abreast,
+            startRow: base.sections.first.startRow,
+            numbering: base.sections.first.numbering,
+            pitchCm: base.sections.first.pitchCm,
+            modifier: base.sections.first.modifier,
+          ),
+          ...base.sections.skip(1),
+        ],
+        features: base.features,
+        blocked: base.blocked,
+      ),
+      field: null,
     );
   }
 
   final sections = body['sections'];
-  if (sections is! List || sections.isEmpty) return null;
+  if (sections is! List || sections.isEmpty) {
+    return (layout: null, field: 'sections');
+  }
+  if (sections.length > _maxSections) {
+    return (layout: null, field: 'sections');
+  }
 
   final parsed = <CabinSection>[];
-  for (final entry in sections) {
-    if (entry is! Map) return null;
+  for (var i = 0; i < sections.length; i++) {
+    final entry = sections[i];
+    if (entry is! Map) return (layout: null, field: 'sections[$i]');
     final s = entry.cast<String, Object?>();
+
     final rows = s['rows'];
+    if (rows is! int || rows < 1 || rows > _maxRows) {
+      return (layout: null, field: 'sections[$i].rows');
+    }
+
+    // The check that matters. `abc` used to throw a FormatException out of a
+    // capacity getter — a 500 on a request whose only fault was a typo — and
+    // `9+9` walked off the end of the seat-letter table with a RangeError.
     final abreast = s['abreast'];
-    if (rows is! int || rows < 1 || abreast is! String) return null;
+    if (abreast is! String || !Abreast.isValid(abreast)) {
+      return (layout: null, field: 'sections[$i].abreast');
+    }
+
+    final startRow = s['startRow'] ?? 1;
+    if (startRow is! int || startRow < 1) {
+      return (layout: null, field: 'sections[$i].startRow');
+    }
+
+    final numbering = switch (s['numbering']) {
+      null || 'rowLetter' => SeatNumbering.rowLetter,
+      'sequential' => SeatNumbering.sequential,
+      _ => null,
+    };
+    if (numbering == null) {
+      return (layout: null, field: 'sections[$i].numbering');
+    }
+
+    final modifier = _modifierFrom(s['fareMultiplier'], s['fareSupplement']);
+    if (modifier.invalid) {
+      return (layout: null, field: 'sections[$i].fare');
+    }
+
+    final pitch = s['pitchCm'];
+    if (pitch != null && (pitch is! int || pitch < 40 || pitch > 250)) {
+      return (layout: null, field: 'sections[$i].pitchCm');
+    }
 
     parsed.add(
       CabinSection(
-        code: s['code'] as String? ?? 'STD',
+        code: (s['code'] as String? ?? 'STD').trim(),
         labelKey: s['labelKey'] as String? ?? 'seat.class.standard',
         rows: rows,
         abreast: abreast,
-        startRow: s['startRow'] as int? ?? 1,
+        startRow: startRow,
+        numbering: numbering,
+        modifier: modifier.value,
+        pitchCm: pitch as int?,
       ),
     );
   }
 
-  return SeatLayout(
+  final layout = SeatLayout(
     version: 1,
     mode: body['mode'] == 'air' ? TransportMode.air : TransportMode.bus,
     sections: parsed,
     blocked: {for (final b in (body['blocked'] as List? ?? const [])) '$b'},
   );
+
+  // A layout with no sellable seat is a departure nobody can book. Refusing it
+  // here beats discovering it when a dispatcher publishes a timetable.
+  if (layout.capacity < 1) return (layout: null, field: 'sections');
+
+  return (layout: layout, field: null);
 }
+
+/// Two ways to price a section, and never both.
+///
+/// A multiplier and a supplement together is not an argument about which one
+/// wins — it is a request nobody meant to send, and answering it either way
+/// puts a price on a seat the operator did not choose.
+({PriceModifier? value, bool invalid}) _modifierFrom(
+  Object? multiplier,
+  Object? supplement,
+) {
+  if (multiplier != null && supplement != null) {
+    return (value: null, invalid: true);
+  }
+
+  if (multiplier != null) {
+    final value = multiplier is int ? multiplier.toDouble() : multiplier;
+    // A VIP seat is worth more, not five hundred times more. The ceiling is
+    // what stops a stray decimal point quoting a fare nobody can pay.
+    if (value is! double || value <= 0 || value > 10) {
+      return (value: null, invalid: true);
+    }
+    return (value: PriceModifier.multiplier(value), invalid: false);
+  }
+
+  if (supplement != null) {
+    if (supplement is! int || supplement < 0) {
+      return (value: null, invalid: true);
+    }
+    return (value: PriceModifier.supplementMinor(supplement), invalid: false);
+  }
+
+  return (value: null, invalid: false);
+}
+
+/// A coach has fewer than twenty rows and a wide-body fewer than sixty. The
+/// cap is not about realism — it is about what one request may make the server
+/// allocate, because every row becomes seat rows in the database on every
+/// departure that uses the layout.
+const _maxRows = 80;
+
+/// Six cabins is more than any vehicle in this market has. A layout with forty
+/// is somebody's script, not somebody's coach.
+const _maxSections = 6;
 
 Response _badRequest(String trace, String field) => Response.json(
   statusCode: HttpStatus.badRequest,

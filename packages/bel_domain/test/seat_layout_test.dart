@@ -2,6 +2,7 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:test/test.dart';
 
 void main() {
+  _abreastGuards();
   group('CabinSection', () {
     test('parses an abreast configuration into blocks', () {
       const section = CabinSection(
@@ -118,6 +119,78 @@ void main() {
       );
       expect(withBlocked.grossCapacity, 49);
       expect(withBlocked.capacity, 47);
+    });
+  });
+}
+
+void _abreastGuards() {
+  group('the 2+3 notation, and what it refuses', () {
+    // Every one of these arrives from an operator's console over HTTP, and
+    // every one of them used to get through.
+    test('a typo is a refusal, not an exception', () {
+      expect(Abreast.parse('abc'), isNull);
+      expect(Abreast.parse(''), isNull);
+      expect(Abreast.parse('  '), isNull);
+      expect(Abreast.parse('2++2'), isNull);
+    });
+
+    test('a negative block cannot shrink a layout', () {
+      expect(Abreast.parse('-4+2'), isNull);
+      expect(Abreast.parse('0+2'), isNull);
+    });
+
+    // Ten is the width of the letter table, and also wider than anything that
+    // carries passengers: a 3+4+3 widebody is exactly ten.
+    test('a row wider than the letter table is refused', () {
+      expect(Abreast.parse('3+4+3'), [3, 4, 3]);
+      expect(Abreast.parse('9+9'), isNull);
+      expect(Abreast.parse('11'), isNull);
+    });
+
+    test('more than three aisles is refused', () {
+      expect(Abreast.parse('1+1+1+1'), [1, 1, 1, 1]);
+      expect(Abreast.parse('1+1+1+1+1'), isNull);
+    });
+
+    test('whitespace around the numbers is forgiven', () {
+      expect(Abreast.parse(' 2 + 3 '), [2, 3]);
+    });
+  });
+
+  group('a section that cannot be drawn has no seats', () {
+    // Nothing downstream throws. The edge that accepted it is what should
+    // have refused it, and `isValid` is how it knows to.
+    test('and says so, rather than throwing out of a getter', () {
+      const broken = CabinSection(
+        code: 'X',
+        labelKey: 'seat.class.standard',
+        rows: 2,
+        abreast: 'abc',
+      );
+
+      expect(broken.isValid, isFalse);
+      expect(broken.capacity, 0);
+      expect(broken.seatLabels(), isEmpty);
+    });
+
+    test('a layout with no sections is not valid either', () {
+      const empty = SeatLayout(
+        version: 1,
+        mode: TransportMode.bus,
+        sections: [],
+      );
+      expect(empty.isValid, isFalse);
+    });
+
+    test('every preset is valid', () {
+      for (final layout in [
+        SeatLayout.busStandard49(),
+        SeatLayout.busVipFront(),
+        SeatLayout.airTwoClass(),
+      ]) {
+        expect(layout.isValid, isTrue);
+        expect(layout.capacity, greaterThan(0));
+      }
     });
   });
 }

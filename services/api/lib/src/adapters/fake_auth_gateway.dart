@@ -20,6 +20,21 @@ final class FakeAuthGateway implements AuthGateway {
       authUid: 'demo',
       language: 'fr',
     ),
+    // One operator owner, on the same tenant the memory adapters seed. It
+    // exists so the console surface can be driven over a real socket without
+    // Postgres: the routes that *refuse* a request — a malformed seat layout,
+    // a capability somebody does not hold — decide before they ever reach a
+    // repository, and that is the half worth proving on a URL.
+    //
+    // Anything that does reach a repository answers 503 in this composition,
+    // which is itself the assertion that validation ran first.
+    'fake:operator': const Principal(
+      userId: 'u-demo-owner',
+      authUid: 'demo-owner',
+      tenantId: 'op-demo',
+      roles: ['org_owner'],
+      language: 'fr',
+    ),
   });
 
   void register(String token, Principal principal) =>

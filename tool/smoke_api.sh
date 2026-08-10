@@ -552,6 +552,66 @@ check "a traveller cannot upload to an operator" "403" \
      "$BASE/console/v1/vitrine/favicon" -H "$AUTH" \
      -H 'Content-Type: image/png' --data-binary 'x')"
 
+# ── Seat layouts refuse what would have crashed them ────────────────────────
+#
+# Every input below reached a 500 before this section existed. `abreast: "abc"`
+# threw a FormatException out of a capacity getter, `"9+9"` walked off the end
+# of the seat-letter table, and a 100000-row section asked the server to build
+# a hundred thousand seat labels in a loop nobody could interrupt. All three
+# are reachable by any operator's own staff, which is why they are here rather
+# than in a unit test: the refusal has to happen on the socket, before the
+# request reaches anything that stores or allocates.
+#
+# The fakes composition has no console, so a layout that IS valid answers 503.
+# That is the assertion, not a limitation — 503 means the request got past
+# validation and died at the database, and 400 means it never got that far.
+OP_AUTH='Authorization: Bearer fake:operator'
+layout_post() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/console/v1/fleet/layouts" \
+    -H "$OP_AUTH" -H 'Content-Type: application/json' -d "$1"
+}
+
+check "a traveller cannot draw a layout" "403" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/fleet/layouts" -H "$AUTH" \
+     -H 'Content-Type: application/json' -d '{"name":"x","preset":"bus_standard_49"}')"
+check "a nameless layout is refused" "400" \
+  "$(layout_post '{"preset":"bus_standard_49"}')"
+check "an unknown preset is refused" "400" \
+  "$(layout_post '{"name":"x","preset":"nope"}')"
+check "a valid preset gets past validation" "503" \
+  "$(layout_post '{"name":"x","preset":"bus_standard_49"}')"
+check "a preset row count that is not a number is refused" "400" \
+  "$(layout_post '{"name":"x","preset":"bus_standard_49","rows":"many"}')"
+# The three that used to be 500s.
+check "an unparseable abreast is refused, not thrown" "400" \
+  "$(layout_post '{"name":"x","sections":[{"rows":10,"abreast":"abc"}]}')"
+check "an abreast wider than the seat letters is refused" "400" \
+  "$(layout_post '{"name":"x","sections":[{"rows":10,"abreast":"9+9"}]}')"
+check "a hundred thousand rows is refused" "400" \
+  "$(layout_post '{"name":"x","sections":[{"rows":100000,"abreast":"2+2"}]}')"
+check "a layout with no sections is refused" "400" \
+  "$(layout_post '{"name":"x","sections":[]}')"
+check "a section that is not an object is refused" "400" \
+  "$(layout_post '{"name":"x","sections":["2+2"]}')"
+# Two prices for one seat is not a tie to break — it is a request nobody meant
+# to send, and either answer puts a fare on a seat the operator did not choose.
+check "a section priced two ways at once is refused" "400" \
+  "$(layout_post '{"name":"x","sections":[{"rows":4,"abreast":"2+2","fareMultiplier":1.5,"fareSupplement":500}]}')"
+check "a fare multiplier of zero is refused" "400" \
+  "$(layout_post '{"name":"x","sections":[{"rows":4,"abreast":"2+2","fareMultiplier":0}]}')"
+check "an unknown numbering scheme is refused" "400" \
+  "$(layout_post '{"name":"x","sections":[{"rows":4,"abreast":"2+2","numbering":"spiral"}]}')"
+check "a hand-drawn layout gets past validation" "503" \
+  "$(layout_post '{"name":"x","sections":[{"rows":10,"abreast":"2+2"},{"rows":1,"abreast":"5","startRow":11}]}')"
+# The refusal names the field, because "400" alone sends an operator back to
+# guess which of six sections they mistyped.
+check "the refusal names the offending field" "yes" \
+  "$(curl -s -X POST "$BASE/console/v1/fleet/layouts" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"x","sections":[{"rows":4,"abreast":"2+2"},{"rows":4,"abreast":"zz"}]}' \
+     | grep -q 'sections\[1\].abreast' && echo yes || echo no)"
+
 # ── The back office refuses everybody it should ─────────────────────────────
 #
 # The admin surface cannot be *exercised* against the fakes composition — it

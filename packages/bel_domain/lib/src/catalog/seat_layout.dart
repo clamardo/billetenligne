@@ -57,6 +57,57 @@ final class LayoutFeature {
   final int col;
 }
 
+/// The `2+3` notation, and what it is allowed to say.
+///
+/// A validated parser rather than `int.parse` at the point of use, because
+/// this string arrives from an operator's console over HTTP. Three things it
+/// used to let through, every one of them reachable by an authenticated
+/// vendor:
+///
+///   * `abc` threw a `FormatException` out of a capacity getter — a 500 on a
+///     request whose only problem was a typo;
+///   * `-4+2` gave a section a **negative** seat count, which then made a
+///     layout's capacity smaller than the seats it actually contained;
+///   * `9+9` asked for eighteen seats across and walked off the end of the
+///     letter table with a `RangeError`.
+///
+/// The cap is ten, which is the width of the letter table and also wider than
+/// anything that carries passengers — a 3+4+3 widebody is exactly ten.
+abstract final class Abreast {
+  /// A..K with I skipped, because a capital I reads as a 1 on a seat sticker.
+  static const letters = 'ABCDEFGHJK';
+
+  static const maxSeatsPerRow = letters.length;
+
+  /// Four blocks would be three aisles. Nothing that carries passengers has
+  /// more, and a section that claims to is a section drawn by accident.
+  static const maxBlocks = 4;
+
+  /// The seats in each block, or null when the notation is not one we accept.
+  static List<int>? parse(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+
+    final groups = trimmed.split('+');
+    if (groups.isEmpty || groups.length > maxBlocks) return null;
+
+    final blocks = <int>[];
+    var total = 0;
+    for (final group in groups) {
+      final size = int.tryParse(group.trim());
+      // Zero is refused as well as negative: an empty block is an aisle
+      // written twice, and `2++2` should be a refusal rather than a shrug.
+      if (size == null || size < 1) return null;
+      total += size;
+      if (total > maxSeatsPerRow) return null;
+      blocks.add(size);
+    }
+    return blocks;
+  }
+
+  static bool isValid(String raw) => parse(raw) != null;
+}
+
 /// One cabin section: "3 rows of 2+3 in first class".
 ///
 /// This is the abstraction that lets a single designer serve a 2+2 coach, a
@@ -88,10 +139,14 @@ final class CabinSection {
   final PriceModifier? modifier;
   final int? pitchCm;
 
-  List<int> get blocks => abreast
-      .split('+')
-      .map((p) => int.parse(p.trim()))
-      .toList(growable: false);
+  /// Empty when [abreast] is not notation we accept, so nothing downstream
+  /// throws. A section that cannot be read has no seats, and the edge that
+  /// accepted it is what should have said so — see [isValid].
+  List<int> get blocks => Abreast.parse(abreast) ?? const [];
+
+  /// Whether this section is one we can actually draw. Checked at the edge
+  /// that accepts it, so a typo is a 400 naming the field rather than a 500.
+  bool get isValid => rows > 0 && Abreast.isValid(abreast);
 
   int get seatsPerRow => blocks.fold(0, (a, b) => a + b);
   int get capacity => rows * seatsPerRow;
@@ -101,7 +156,7 @@ final class CabinSection {
   /// Labels follow the sticker on the seat, not our database — the conductor
   /// reads the vehicle, not the schema.
   List<String> seatLabels({int sequentialOffset = 0}) {
-    const letters = 'ABCDEFGHJK'; // I is skipped — reads as 1
+    const letters = Abreast.letters; // I is skipped — reads as 1
     final out = <String>[];
     var seq = sequentialOffset;
     for (var r = 0; r < rows; r++) {
@@ -143,6 +198,14 @@ final class SeatLayout {
   int get capacity => allSeatLabels().where((s) => !blocked.contains(s)).length;
 
   int get grossCapacity => sections.fold(0, (sum, s) => sum + s.capacity);
+
+  /// Whether every section can be drawn, and there is at least one.
+  ///
+  /// A layout with no sections has no seats, which makes a departure that
+  /// nobody can book — and a vehicle assigned one would fail at the moment a
+  /// dispatcher published a timetable rather than at the moment somebody
+  /// saved it.
+  bool get isValid => sections.isNotEmpty && sections.every((s) => s.isValid);
 
   List<String> allSeatLabels() {
     final out = <String>[];
