@@ -245,7 +245,6 @@ final class DemoTravelGateway implements TravelGateway {
     );
   }
 
-
   // ── Paying ────────────────────────────────────────────────────────────────
   //
   // A demo rail that behaves like a real one: the prompt takes a few seconds
@@ -301,7 +300,9 @@ final class DemoTravelGateway implements TravelGateway {
   }
 
   @override
-  Future<({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})>
+  Future<
+    ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
+  >
   paymentOptions(String bookingId) async {
     await Future<void>.delayed(latency);
     final total = _booking?.total ?? const Money.xaf(12300);
@@ -340,7 +341,9 @@ final class DemoTravelGateway implements TravelGateway {
     await Future<void>.delayed(latency);
     _polls = 0;
 
-    if (payerMsisdn.replaceAll(RegExp(r'[^0-9]'), '').endsWith(decliningMsisdn)) {
+    if (payerMsisdn
+        .replaceAll(RegExp(r'[^0-9]'), '')
+        .endsWith(decliningMsisdn)) {
       throw const ServerRefused(
         422,
         ApiError(code: 'payment.insufficient_funds'),

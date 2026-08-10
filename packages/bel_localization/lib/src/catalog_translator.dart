@@ -34,6 +34,25 @@ final class CatalogTranslator {
   String call(String key, [Map<String, Object?> args = const {}]) =>
       TranslationInterpolation.format(_lookup(key) ?? _missing(key), args);
 
+  /// A message encoded as `key|arg|arg`, rendered with `a1`, `a2`, …
+  ///
+  /// The convention ADR-0008 uses everywhere a layer knows *what happened*
+  /// but not *who is reading*: a workspace emits `layout.saved|Car 51`, a
+  /// refund policy emits `policy.line.tier|48|90`, and the sentence is
+  /// assembled here. It lives in the translator rather than in each shell
+  /// because it was written three times before this — twice identically, once
+  /// with a different prefix — and a decoder that disagrees with the encoder
+  /// renders somebody's key on screen.
+  ///
+  /// [prefix] is prepended to the key, so a surface with its own namespace of
+  /// notices does not have to carry it in every emitted string.
+  String encoded(String message, {String prefix = ''}) {
+    final parts = message.split('|');
+    return call('$prefix${parts.first}', {
+      for (var i = 1; i < parts.length; i++) 'a$i': parts[i],
+    });
+  }
+
   /// Plural-aware lookup. Resolves `key.one` / `key.other` by CLDR category
   /// for the active language, and always injects `count`.
   ///

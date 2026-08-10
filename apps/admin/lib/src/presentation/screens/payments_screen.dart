@@ -108,10 +108,7 @@ class _PaymentCard extends StatelessWidget {
                   SizedBox(height: kilo.space.s1),
                   Text(
                     context.t('admin.payments.waiting', {
-                      'duration': Format.age(
-                        waited,
-                        locale: context.language,
-                      ),
+                      'duration': Format.age(waited, locale: context.language),
                     }),
                     style: kilo.text.caption.copyWith(
                       // Every hour here is an hour a traveller does not know
@@ -141,8 +138,7 @@ class _PaymentCard extends StatelessWidget {
           // support desk, which is how most of these actually resolve.
           _Line(
             context.t('admin.payments.railRef'),
-            payment.railTransactionId ??
-                context.t('admin.payments.noRailRef'),
+            payment.railTransactionId ?? context.t('admin.payments.noRailRef'),
           ),
           _Line(
             context.t('admin.payments.traveller'),
@@ -244,10 +240,7 @@ class _Exits extends StatelessWidget {
   /// Both terminal exits go through the same dialog, and both demand a
   /// sentence about *this* payment. The standing reason says why somebody is
   /// in the back office; this says what they saw.
-  Future<void> _confirm(
-    BuildContext context, {
-    required String outcome,
-  }) async {
+  Future<void> _confirm(BuildContext context, {required String outcome}) async {
     final result = await showDialog<({String evidence, String failureCode})>(
       context: context,
       builder: (_) => _ResolutionDialog(outcome: outcome),

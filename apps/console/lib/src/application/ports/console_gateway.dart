@@ -1,3 +1,4 @@
+import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 
 /// Everything the console needs from the outside world.
@@ -21,6 +22,19 @@ abstract interface class ConsoleGateway {
   });
 
   Future<LayoutDto> drawLayout(LayoutDraft draft);
+
+  Future<({List<RefundPolicyDto> items, bool hasDefault})> refundPolicies();
+
+  Future<RefundPolicyDto> saveRefundPolicy({
+    required String name,
+    required RefundPolicy policy,
+  });
+
+  /// Null when the default was cleared — a legitimate state, not a failure.
+  Future<RefundPolicyDto?> setDefaultRefundPolicy({
+    String? policyId,
+    int? version,
+  });
 
   Future<List<VehicleDto>> vehicles();
 

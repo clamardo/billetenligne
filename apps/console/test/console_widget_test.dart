@@ -86,6 +86,40 @@ final class _ScriptedConsole implements ConsoleGateway {
     );
   }
 
+  List<RefundPolicyDto> policyList = const [];
+  bool hasDefault = false;
+
+  /// The last policy written, kept as the domain object the screen produced —
+  /// what a test should assert about a wizard is the *terms* it built, since
+  /// the encoding is proven separately in `bel_contracts`.
+  RefundPolicy? written;
+
+  @override
+  Future<({List<RefundPolicyDto> items, bool hasDefault})>
+  refundPolicies() async => (items: policyList, hasDefault: hasDefault);
+
+  @override
+  Future<RefundPolicyDto> saveRefundPolicy({
+    required String name,
+    required RefundPolicy policy,
+  }) async {
+    written = policy;
+    saved.add('policy:$name:${policy.tiers.length}');
+    return RefundPolicyDto.fromDomain(policy, name: name, isDefault: false);
+  }
+
+  @override
+  Future<RefundPolicyDto?> setDefaultRefundPolicy({
+    String? policyId,
+    int? version,
+  }) async {
+    saved.add('default:$policyId:$version');
+    if (policyId == null) return null;
+    return policyList.firstWhere(
+      (p) => p.id == policyId && p.version == version,
+    );
+  }
+
   @override
   Future<List<VehicleDto>> vehicles() async => vehicleList;
 
@@ -199,8 +233,7 @@ final class _ScriptedConsole implements ConsoleGateway {
   );
 
   @override
-  Future<SeatMapDto> seatMap(String departureId) =>
-      throw UnimplementedError();
+  Future<SeatMapDto> seatMap(String departureId) => throw UnimplementedError();
 
   @override
   Future<CounterSaleDto> collect({
@@ -280,12 +313,8 @@ final class _ScriptedConsole implements ConsoleGateway {
     total: const Money.xaf(12300),
     fare: const Money.xaf(12000),
     serviceFee: const Money.xaf(300),
-    passengers: const [
-      PassengerDto(fullName: 'Aline M.', seatLabel: '1A'),
-    ],
-    tickets: const [
-      (id: 't-1', seatLabel: '1A', qrPayload: 'payload'),
-    ],
+    passengers: const [PassengerDto(fullName: 'Aline M.', seatLabel: '1A')],
+    tickets: const [(id: 't-1', seatLabel: '1A', qrPayload: 'payload')],
   );
 }
 
@@ -309,9 +338,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     final workspace = ConsoleWorkspace(gateway: gateway, files: files);
-    await tester.pumpWidget(
-      ConsoleApp(catalog: catalog, workspace: workspace),
-    );
+    await tester.pumpWidget(ConsoleApp(catalog: catalog, workspace: workspace));
     await tester.pumpAndSettle();
     return workspace;
   }
@@ -345,9 +372,7 @@ void main() {
     testWidgets('a vendor has no Fleet tab at all', (tester) async {
       await pump(
         tester,
-        _ScriptedConsole(
-          capabilities: const ['booking.read', 'booking.sell'],
-        ),
+        _ScriptedConsole(capabilities: const ['booking.read', 'booking.sell']),
       );
 
       // Not a greyed one, which invites a support call, and not a visible one
@@ -416,7 +441,10 @@ void main() {
     });
 
     testWidgets('an empty day names the cause', (tester) async {
-      await pump(tester, _ScriptedConsole(capabilities: const ['booking.read']));
+      await pump(
+        tester,
+        _ScriptedConsole(capabilities: const ['booking.read']),
+      );
 
       // On a day with no departures the answer is almost always "the
       // timetable was never published", and that is two clicks away.
@@ -490,19 +518,19 @@ void main() {
   testWidgets('taking a coach off the road says what it was carrying', (
     tester,
   ) async {
-    final gateway = _ScriptedConsole(
-      capabilities: const ['booking.read', 'fleet.manage'],
-    )..vehicleList = const [
-      VehicleDto(
-        id: 'v-1',
-        registration: 'ODN-001',
-        layoutId: 'l-1',
-        layoutName: 'Coach 2+2',
-        capacity: 49,
-        status: 'active',
-        sellable: true,
-      ),
-    ];
+    final gateway =
+        _ScriptedConsole(capabilities: const ['booking.read', 'fleet.manage'])
+          ..vehicleList = const [
+            VehicleDto(
+              id: 'v-1',
+              registration: 'ODN-001',
+              layoutId: 'l-1',
+              layoutName: 'Coach 2+2',
+              capacity: 49,
+              status: 'active',
+              sellable: true,
+            ),
+          ];
 
     await pump(tester, gateway);
     await tester.tap(find.text('Flotte'));
@@ -578,10 +606,7 @@ void main() {
 
       expect(find.byType(KSeatMap), findsNothing);
       expect(find.text('Aucune place pour l\'instant.'), findsOneWidget);
-      expect(
-        find.textContaining('ne peut pas être dessinée'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('ne peut pas être dessinée'), findsOneWidget);
     });
 
     testWidgets('a nameless layout cannot be saved', (tester) async {
@@ -683,6 +708,234 @@ void main() {
     });
   });
 
+  group('refund terms', () {
+    Finder fieldNamed(String label) => find.descendant(
+      of: find.widgetWithText(KField, label),
+      matching: find.byType(TextField),
+    );
+
+    /// The standard preset as a stored row: 90% at 48 h, 50% at 24 h.
+    RefundPolicyDto stored(
+      String name, {
+      int version = 1,
+      bool isDefault = false,
+      int bookingCount = 0,
+    }) {
+      final base = RefundPolicyDto.fromDomain(
+        RefundPolicy.standard(),
+        name: name,
+        isDefault: isDefault,
+        bookingCount: bookingCount,
+      );
+      return RefundPolicyDto(
+        id: 'p-$name',
+        version: version,
+        name: name,
+        tiers: base.tiers,
+        destination: base.destination,
+        processingHours: base.processingHours,
+        refundServiceFee: base.refundServiceFee,
+        nonRefundableFares: base.nonRefundableFares,
+        isDefault: isDefault,
+        bookingCount: bookingCount,
+      );
+    }
+
+    Future<ConsoleWorkspace> openPolicies(
+      WidgetTester tester,
+      _ScriptedConsole gateway,
+    ) async {
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.policies);
+      await tester.pumpAndSettle();
+      return workspace;
+    }
+
+    testWidgets('no terms at all is stated, not left blank', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'policy.manage'],
+      );
+      await openPolicies(tester, gateway);
+
+      // "No terms" is not a neutral default — it is a decision with a
+      // consequence, and a screen that says nothing is a screen that hides it.
+      expect(
+        find.text("Aucune condition n'est appliquée aux nouvelles ventes."),
+        findsOneWidget,
+      );
+      expect(find.textContaining('libre-service'), findsOneWidget);
+    });
+
+    testWidgets('a stored policy is shown as sentences, never as numbers', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'policy.manage'],
+      )..policyList = [stored('Standard', isDefault: true, bookingCount: 42)];
+      await openPolicies(tester, gateway);
+
+      // Rendered by RefundPolicy.describe() — the same object the server
+      // executes, so the console and the traveller cannot read different
+      // terms from one policy.
+      expect(
+        find.textContaining('48 h avant le départ : 90 % remboursés'),
+        findsOneWidget,
+      );
+      // The band a tier table never states, and the one travellers hit.
+      expect(
+        find.textContaining('Moins de 24 h avant le départ'),
+        findsOneWidget,
+      );
+      // The floor an operator cannot configure away.
+      expect(
+        find.textContaining('vous êtes remboursé intégralement'),
+        findsWidgets,
+      );
+      // The honest answer to "can I just change this?".
+      expect(find.textContaining('42 réservation(s)'), findsOneWidget);
+    });
+
+    testWidgets('the wizard writes terms, and warns before it saves', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'policy.manage'],
+      );
+      await openPolicies(tester, gateway);
+
+      await tester.tap(find.text('Écrire des conditions'));
+      await tester.pumpAndSettle();
+
+      // Rule 2 of ADR-0015: the console says a save creates a version, before
+      // the button rather than in an apology afterwards.
+      expect(find.textContaining('crée une nouvelle version'), findsOneWidget);
+
+      // Nameless, so the button refuses and says what it wants.
+      final disabled = tester.widget<KButton>(
+        find.widgetWithText(KButton, 'Enregistrer'),
+      );
+      expect(disabled.onPressed, isNull);
+
+      await tester.enterText(fieldNamed('Nom de ces conditions'), 'Maison');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(KButton, 'Enregistrer'));
+      await tester.pumpAndSettle();
+
+      // The preset it opened on: 90% at 48 h, 50% at 24 h.
+      expect(gateway.written!.tiers, hasLength(2));
+      expect(gateway.written!.tiers.first.rateBps, 9000);
+      expect(gateway.written!.tiers.last.rateBps, 5000);
+      expect(gateway.saved, contains('policy:Maison:2'));
+    });
+
+    testWidgets('bands in the wrong order cannot be saved', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'policy.manage'],
+      );
+      await openPolicies(tester, gateway);
+
+      await tester.tap(find.text('Écrire des conditions'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        fieldNamed('Nom de ces conditions'),
+        'À l\'envers',
+      );
+
+      // Swap the first band's lead time below the second's. Every field is
+      // individually valid; the set is not — and tiers are matched in order,
+      // so this policy would answer every request with its most generous
+      // band and nobody would notice until the month was counted.
+      await tester.enterText(
+        fieldNamed('Au moins (heures avant le départ)').first,
+        '2',
+      );
+      await tester.pumpAndSettle();
+
+      final save = tester.widget<KButton>(
+        find.widgetWithText(KButton, 'Enregistrer'),
+      );
+      expect(save.onPressed, isNull);
+      expect(find.textContaining('du plus tôt au plus tard'), findsWidgets);
+      expect(gateway.written, isNull);
+    });
+
+    testWidgets('the preview changes with the answer, before anything saves', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'policy.manage'],
+      );
+      await openPolicies(tester, gateway);
+
+      await tester.tap(find.text('Écrire des conditions'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Remboursement effectué sous 72 h'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Souple — 100 % jusqu\'à 24 h avant'));
+      await tester.pumpAndSettle();
+
+      // The preset's own words, generated rather than typed.
+      expect(
+        find.textContaining(
+          "Jusqu'à 24 h avant le départ : remboursement intégral",
+        ),
+        findsOneWidget,
+      );
+      expect(gateway.written, isNull);
+    });
+
+    testWidgets('cash at the agency drops the promise it cannot keep', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'policy.manage'],
+      );
+      await openPolicies(tester, gateway);
+
+      await tester.tap(find.text('Écrire des conditions'));
+      await tester.pumpAndSettle();
+      // Below the fold on a 1280×800 laptop: the questions run past the
+      // viewport once the preset's two bands are drawn.
+      await tester.ensureVisible(
+        find.text('Sur le moyen de paiement d\'origine'),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sur le moyen de paiement d\'origine'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("En espèces, à l'agence").last);
+      await tester.pumpAndSettle();
+
+      // "Within 72 hours" would be a promise about somebody's opening times,
+      // so both the question and the sentence disappear.
+      expect(find.text('Délai de traitement (heures)'), findsNothing);
+      expect(find.textContaining('Remboursement effectué sous'), findsNothing);
+      expect(
+        find.textContaining("Remboursé en espèces, à l'agence"),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a vendor may read the terms and not rewrite them', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(capabilities: const ['booking.read'])
+        ..policyList = [stored('Standard', isDefault: true)];
+      await openPolicies(tester, gateway);
+
+      // A vendor at the counter is asked "can I get my money back?" far more
+      // often than an owner is, so the tab is theirs — the editing is not.
+      expect(find.text('Conditions'), findsWidgets);
+      expect(find.text('Écrire des conditions'), findsNothing);
+      expect(find.text('Appliquer aux nouvelles ventes'), findsNothing);
+      expect(find.textContaining('90 % remboursés'), findsOneWidget);
+    });
+  });
+
   group('the vitrine', () {
     testWidgets('with nowhere to pick a file, no upload button is offered', (
       tester,
@@ -742,7 +995,11 @@ void main() {
       final gateway = _ScriptedConsole(
         capabilities: const ['booking.read', 'vitrine.manage'],
       );
-      final workspace = await pump(tester, gateway, files: _ScriptedPicker(null));
+      final workspace = await pump(
+        tester,
+        gateway,
+        files: _ScriptedPicker(null),
+      );
 
       workspace.openSection(ConsoleSection.vitrine);
       await tester.pumpAndSettle();

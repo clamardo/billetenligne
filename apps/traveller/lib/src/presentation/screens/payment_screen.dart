@@ -61,7 +61,10 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(context.t('payment.method.toPay'), style: kilo.text.body),
+                  Text(
+                    context.t('payment.method.toPay'),
+                    style: kilo.text.body,
+                  ),
                   KMoney(
                     Format.money(step.amount, locale: locale),
                     size: KMoneySize.hero,
@@ -185,6 +188,5 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
       widget.step.selected != null &&
       _number.text.replaceAll(RegExp(r'[^0-9]'), '').length >= 9;
 
-  static String _format(String e164) =>
-      e164.isEmpty ? '' : Format.msisdn(e164);
+  static String _format(String e164) => e164.isEmpty ? '' : Format.msisdn(e164);
 }

@@ -41,8 +41,7 @@ final class ConsoleShell extends StatelessWidget {
         children: [
           NavigationRail(
             selectedIndex: index < 0 ? 0 : index,
-            onDestinationSelected: (i) =>
-                workspace.openSection(sections[i]),
+            onDestinationSelected: (i) => workspace.openSection(sections[i]),
             labelType: NavigationRailLabelType.all,
             leading: Padding(
               padding: EdgeInsets.symmetric(vertical: kilo.space.s4),
@@ -121,6 +120,7 @@ final class ConsoleShell extends StatelessWidget {
     if (w.can('fleet.manage')) ConsoleSection.fleet,
     if (w.can('route.manage')) ConsoleSection.network,
     if (w.can('departure.manage')) ConsoleSection.timetable,
+    if (w.can('booking.read')) ConsoleSection.policies,
     if (w.can('vitrine.manage')) ConsoleSection.vitrine,
   ];
 
@@ -130,6 +130,7 @@ final class ConsoleShell extends StatelessWidget {
     ConsoleSection.fleet => Icons.directions_bus,
     ConsoleSection.network => Icons.alt_route,
     ConsoleSection.timetable => Icons.schedule,
+    ConsoleSection.policies => Icons.gavel,
     ConsoleSection.vitrine => Icons.storefront,
   };
 
@@ -139,6 +140,7 @@ final class ConsoleShell extends StatelessWidget {
     ConsoleSection.fleet => 'console.nav.fleet',
     ConsoleSection.network => 'console.nav.network',
     ConsoleSection.timetable => 'console.nav.timetable',
+    ConsoleSection.policies => 'console.nav.policies',
     ConsoleSection.vitrine => 'console.nav.vitrine',
   };
 
@@ -148,11 +150,7 @@ final class ConsoleShell extends StatelessWidget {
   /// happened emits a key and parameters, and the layer that knows the reader
   /// renders the sentence.
   static String _notice(BuildContext context, String encoded) {
-    final parts = encoded.split('|');
-    final key = 'console.notice.${parts.first}';
-    return context.t(key, {
-      for (var i = 1; i < parts.length; i++) 'a$i': parts[i],
-    });
+    return context.tEncoded(encoded, prefix: 'console.notice.');
   }
 }
 

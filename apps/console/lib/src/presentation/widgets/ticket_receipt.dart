@@ -38,11 +38,7 @@ final class TicketReceipt extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(
-                Icons.check_circle,
-                size: 48,
-                color: kilo.color.success,
-              ),
+              Icon(Icons.check_circle, size: 48, color: kilo.color.success),
               SizedBox(height: kilo.space.s3),
               Text(
                 context.t('console.receipt.paid'),

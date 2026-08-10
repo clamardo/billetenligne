@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:bel_client/bel_client.dart';
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_domain/bel_domain.dart';
 
 import 'ports/console_gateway.dart';
 import 'ports/file_picker.dart';
@@ -11,7 +12,15 @@ import 'ports/file_picker.dart';
 /// Ordered the way an operator's day is: today's departures first, the till
 /// second, and configuration behind both. A fleet manager opens this app
 /// twice a month; a vendor opens it every morning.
-enum ConsoleSection { today, counter, fleet, network, timetable, vitrine }
+enum ConsoleSection {
+  today,
+  counter,
+  fleet,
+  network,
+  timetable,
+  policies,
+  vitrine,
+}
 
 /// Everything the console has loaded, and what it is doing.
 ///
@@ -65,6 +74,19 @@ final class ConsoleWorkspace {
   List<ScheduleDto> schedules = const [];
   List<DepartureBoardDto> board = const [];
 
+  /// Every version of every refund policy, newest of each first.
+  ///
+  /// Old versions stay in the list rather than being hidden, because a
+  /// booking sold last March is judged by the policy as it stood last March
+  /// (ADR-0015 rule 1) — and the person answering a question about that
+  /// booking needs to be able to read the terms it was actually sold under.
+  List<RefundPolicyDto> policies = const [];
+
+  /// Whether new sales carry any policy at all. Said out loud rather than
+  /// inferred from the list, because "no default" is a real state with a real
+  /// consequence: those bookings have no self-service refund.
+  bool hasDefaultPolicy = false;
+
   /// The operator's storefront. Null until the vitrine section is opened —
   /// nothing else on the console needs it, and loading it on every start
   /// would be a request per morning for a screen most people open twice.
@@ -112,6 +134,10 @@ final class ConsoleWorkspace {
       case ConsoleSection.network:
         routes = await _gateway.routes();
         cities = await _gateway.cities();
+      case ConsoleSection.policies:
+        final loaded = await _gateway.refundPolicies();
+        policies = loaded.items;
+        hasDefaultPolicy = loaded.hasDefault;
       case ConsoleSection.vitrine:
         vitrine = await _gateway.vitrine();
       case ConsoleSection.timetable:
@@ -165,6 +191,42 @@ final class ConsoleWorkspace {
         : 'layout.saved|${saved.name}';
     await _loadSection();
   });
+
+  /// Writes a policy, or the next version of one with this name.
+  ///
+  /// Never an edit, and the screen says so before the button is pressed:
+  /// bookings already sold keep the version stamped on them, which is the
+  /// whole point of versioning (ADR-0015 rule 1).
+  Future<void> saveRefundPolicy({
+    required String name,
+    required RefundPolicy policy,
+  }) => _run(() async {
+    if (name.trim().isEmpty || !policy.isWellFormed) {
+      _notice = 'policy.invalid';
+      return;
+    }
+    final saved = await _gateway.saveRefundPolicy(
+      name: name.trim(),
+      policy: policy,
+    );
+    _notice = saved.version > 1
+        ? 'policy.savedVersion|${saved.name}|${saved.version}'
+        : 'policy.saved|${saved.name}';
+    await _loadSection();
+  });
+
+  /// Points future sales at one version, or at nothing.
+  Future<void> setDefaultPolicy({String? policyId, int? version}) =>
+      _run(() async {
+        final saved = await _gateway.setDefaultRefundPolicy(
+          policyId: policyId,
+          version: version,
+        );
+        _notice = saved == null
+            ? 'policy.defaultCleared'
+            : 'policy.defaultSet|${saved.name}|${saved.version}';
+        await _loadSection();
+      });
 
   Future<void> saveVehicle({
     required String registration,
@@ -250,7 +312,8 @@ final class ConsoleWorkspace {
     // published this), and dates that could not be filled (that coach is in
     // the workshop, so those days are not on sale).
     if (report.skipped.isNotEmpty) {
-      _notice = 'materialise.skipped|${report.created}|'
+      _notice =
+          'materialise.skipped|${report.created}|'
           '${report.skipped.length}|${report.skipped.first.reason}';
     } else if (report.created == 0) {
       _notice = 'materialise.nothingNew|${report.alreadyExisted}';

@@ -1,5 +1,6 @@
 import 'package:bel_client/bel_client.dart';
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_domain/bel_domain.dart';
 
 import '../application/ports/console_gateway.dart';
 
@@ -29,6 +30,22 @@ final class ApiConsoleGateway implements ConsoleGateway {
 
   @override
   Future<LayoutDto> drawLayout(LayoutDraft draft) => _client.drawLayout(draft);
+
+  @override
+  Future<({List<RefundPolicyDto> items, bool hasDefault})> refundPolicies() =>
+      _client.refundPolicies();
+
+  @override
+  Future<RefundPolicyDto> saveRefundPolicy({
+    required String name,
+    required RefundPolicy policy,
+  }) => _client.saveRefundPolicy(name: name, policy: policy);
+
+  @override
+  Future<RefundPolicyDto?> setDefaultRefundPolicy({
+    String? policyId,
+    int? version,
+  }) => _client.setDefaultRefundPolicy(policyId: policyId, version: version);
 
   @override
   Future<List<VehicleDto>> vehicles() => _client.vehicles();
@@ -119,10 +136,7 @@ final class ApiConsoleGateway implements ConsoleGateway {
   Future<CounterSaleDto> collect({
     required String paymentCode,
     required String stationId,
-  }) => _client.collectPayment(
-    paymentCode: paymentCode,
-    stationId: stationId,
-  );
+  }) => _client.collectPayment(paymentCode: paymentCode, stationId: stationId);
 
   @override
   Future<VitrineDto> vitrine() => _client.vitrine();

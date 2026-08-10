@@ -55,7 +55,8 @@ final class DemoIdentityGateway implements IdentityGateway {
     await Future<void>.delayed(latency);
 
     final normalised = email.trim().toLowerCase();
-    if (!normalised.contains('@') || !normalised.split('@').last.contains('.')) {
+    if (!normalised.contains('@') ||
+        !normalised.split('@').last.contains('.')) {
       throw const ServerRefused(400, ApiError(code: ErrorCode.emailInvalid));
     }
 

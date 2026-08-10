@@ -87,10 +87,7 @@ final class ManifestSheet extends StatelessWidget {
                             child: Text(p.seatLabel, style: kilo.text.amountSm),
                           ),
                           title: Text(p.passengerName),
-                          subtitle: Text(
-                            p.bookingRef,
-                            style: kilo.text.code,
-                          ),
+                          subtitle: Text(p.bookingRef, style: kilo.text.code),
                           trailing: Icon(
                             p.boarded
                                 ? Icons.check_circle

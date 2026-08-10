@@ -19,7 +19,11 @@ import '../widgets/formatting.dart';
 /// newest-first has a permanently abandoned tail, and the tail is what the
 /// SLA is a promise about.
 final class QueueScreen extends StatelessWidget {
-  const QueueScreen({required this.workspace, this.showFilters = false, super.key});
+  const QueueScreen({
+    required this.workspace,
+    this.showFilters = false,
+    super.key,
+  });
 
   final AdminWorkspace workspace;
 
@@ -189,9 +193,7 @@ final class OperatorRow extends StatelessWidget {
               Text(
                 waited.inDays < 1
                     ? context.t('admin.queue.waitingToday')
-                    : context.t('admin.queue.waiting', {
-                        'days': waited.inDays,
-                      }),
+                    : context.t('admin.queue.waiting', {'days': waited.inDays}),
                 style: kilo.text.caption.copyWith(
                   // A file that has waited more than two days is the SLA
                   // breaking, and it says so in the one place a reviewer

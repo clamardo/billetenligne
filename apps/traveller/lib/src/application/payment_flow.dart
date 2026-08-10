@@ -122,9 +122,11 @@ final class PaymentUnresolved extends PaymentStep {
 /// somewhere on the client too, and this is it. Everything above renders a
 /// step; nothing above knows there is a poll.
 final class PaymentFlow {
-  PaymentFlow({required TravelGateway gateway, Clock clock = const SystemClock()})
-    : _gateway = gateway,
-      _clock = clock;
+  PaymentFlow({
+    required TravelGateway gateway,
+    Clock clock = const SystemClock(),
+  }) : _gateway = gateway,
+       _clock = clock;
 
   final TravelGateway _gateway;
   final Clock _clock;
@@ -156,7 +158,8 @@ final class PaymentFlow {
           amount: result.amount,
           // Preselected from the traveller's own number when we can. The
           // majority case then costs no taps at all.
-          selected: result.options.where((o) => o.recommended).firstOrNull ??
+          selected:
+              result.options.where((o) => o.recommended).firstOrNull ??
               result.options.firstOrNull,
           payerMsisdn: result.accountMsisdn ?? '',
           accountMsisdn: result.accountMsisdn,
@@ -199,9 +202,7 @@ final class PaymentFlow {
     final carrier = PhoneNumber.parse(msisdn).valueOrNull?.operator;
     final matching = carrier == null
         ? null
-        : current.options
-              .where((o) => o.operatorId == carrier.id)
-              .firstOrNull;
+        : current.options.where((o) => o.operatorId == carrier.id).firstOrNull;
 
     _emit(
       ChoosingMethod(

@@ -54,3 +54,24 @@ seat:
     vip: "VIP"
     first: "First"
     economy: "Economy"
+
+# The sentences of a refund policy, generated from the numbers the operator
+# entered (ADR-0015 rule 3): operators never write the prose, they answer
+# questions. Encoded `key|arg`, rendered a1, a2.
+policy:
+  line:
+    noRefund: "No refund on cancellation."
+    tierFull: "Up to {a1} h before departure: refunded in full."
+    tier: "Up to {a1} h before departure: {a2}% refunded."
+    tierWithFee: "Up to {a1} h before departure: {a2}% refunded, less {a3} in fees."
+    after: "Less than {a1} h before departure: no refund."
+    window: "Refunded within {a1} h."
+    feeKept: "The service fee is not refunded."
+    feeRefunded: "The service fee is refunded as well."
+    nonRefundable: "Non-refundable fares: {a1}."
+    platformFloor: "If the carrier cancels or breaks down, you are refunded in full, whatever the terms say."
+    destination:
+      source: "Refunded to your payment method."
+      agencyCash: "Refunded in cash, at the agency, in person."
+      creditNote: "Refunded as credit for a future trip."
+      travellerChoice: "You choose how to be refunded."

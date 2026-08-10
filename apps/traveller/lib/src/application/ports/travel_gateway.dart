@@ -63,7 +63,9 @@ abstract interface class TravelGateway {
   /// release (ADR-0006). Carries the traveller's own number so the payer
   /// field can be prefilled, and the amount so the confirmation screen does
   /// not have to recompute one.
-  Future<({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})>
+  Future<
+    ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
+  >
   paymentOptions(String bookingId);
 
   /// Pushes a PIN prompt to a handset. Answers `pending`, never `paid`.

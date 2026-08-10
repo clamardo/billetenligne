@@ -65,10 +65,8 @@ class _ConsoleRootState extends State<ConsoleRoot> {
               builder: (context) => SecondFactorEnrolment(
                 client: widget.client,
                 t: context.t,
-                onCancel: () =>
-                    setState(() => _managingSecondFactor = false),
-                onFinished: () =>
-                    setState(() => _managingSecondFactor = false),
+                onCancel: () => setState(() => _managingSecondFactor = false),
+                onFinished: () => setState(() => _managingSecondFactor = false),
               ),
             ),
           ),

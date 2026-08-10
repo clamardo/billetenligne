@@ -167,10 +167,7 @@ class _AdminShellState extends State<AdminShell> {
 
   /// Notices travel as `key|arg|arg`, so the *workspace* never holds prose.
   static String _notice(BuildContext context, String encoded) {
-    final parts = encoded.split('|');
-    return context.t('admin.notice.${parts.first}', {
-      for (var i = 1; i < parts.length; i++) 'a$i': parts[i],
-    });
+    return context.tEncoded(encoded, prefix: 'admin.notice.');
   }
 }
 

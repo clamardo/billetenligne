@@ -114,7 +114,13 @@ class _VitrineScreenState extends State<VitrineScreen> {
                 ),
               ],
             )
-          : ListView(children: [preview, SizedBox(height: kilo.space.s5), form]),
+          : ListView(
+              children: [
+                preview,
+                SizedBox(height: kilo.space.s5),
+                form,
+              ],
+            ),
     );
   }
 
@@ -206,9 +212,7 @@ class _Form extends StatelessWidget {
         SizedBox(height: kilo.space.s1),
         Text(
           context.t('console.vitrine.accentHelp'),
-          style: kilo.text.caption.copyWith(
-            color: kilo.color.contentSecondary,
-          ),
+          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
         ),
         SizedBox(height: kilo.space.s2),
         Wrap(
@@ -394,9 +398,7 @@ class _Preview extends StatelessWidget {
         SizedBox(height: kilo.space.s2),
         Text(
           context.t('console.vitrine.previewStorefront'),
-          style: kilo.text.caption.copyWith(
-            color: kilo.color.contentSecondary,
-          ),
+          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
         ),
         SizedBox(height: kilo.space.s4),
 
@@ -417,9 +419,7 @@ class _Preview extends StatelessWidget {
         SizedBox(height: kilo.space.s2),
         Text(
           context.t('console.vitrine.previewSearch'),
-          style: kilo.text.caption.copyWith(
-            color: kilo.color.contentSecondary,
-          ),
+          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
         ),
         SizedBox(height: kilo.space.s4),
 
@@ -436,9 +436,7 @@ class _Preview extends StatelessWidget {
         SizedBox(height: kilo.space.s2),
         Text(
           context.t('console.vitrine.previewTicket'),
-          style: kilo.text.caption.copyWith(
-            color: kilo.color.contentSecondary,
-          ),
+          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
         ),
       ],
     );
@@ -532,10 +530,7 @@ class _LogoField extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  context.t('console.vitrine.logo'),
-                  style: kilo.text.label,
-                ),
+                Text(context.t('console.vitrine.logo'), style: kilo.text.label),
                 SizedBox(height: kilo.space.s1),
                 // The constraints, before the dialog rather than after the
                 // refusal. Every one of them is enforced server-side, and

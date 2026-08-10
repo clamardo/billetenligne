@@ -85,9 +85,11 @@ final class SignedIn extends SignInStep {
 ///     keyboard because the server said "wait 40 seconds" is how somebody
 ///     abandons a purchase.
 final class SignInFlow {
-  SignInFlow({required IdentityGateway gateway, Clock clock = const SystemClock()})
-    : _gateway = gateway,
-      _clock = clock;
+  SignInFlow({
+    required IdentityGateway gateway,
+    Clock clock = const SystemClock(),
+  }) : _gateway = gateway,
+       _clock = clock;
 
   final IdentityGateway _gateway;
   final Clock _clock;

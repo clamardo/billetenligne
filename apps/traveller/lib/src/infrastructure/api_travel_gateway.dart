@@ -49,7 +49,9 @@ final class ApiTravelGateway implements TravelGateway {
   }
 
   @override
-  Future<({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})>
+  Future<
+    ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
+  >
   paymentOptions(String bookingId) => _client.paymentOptions(bookingId);
 
   @override

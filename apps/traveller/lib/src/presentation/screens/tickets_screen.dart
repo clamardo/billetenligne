@@ -76,7 +76,9 @@ final class TicketsScreen extends StatelessWidget {
                           children: [
                             Text(
                               context.t('travel.tickets.staleTitle'),
-                              style: kilo.text.body.copyWith(fontWeight: FontWeight.w600),
+                              style: kilo.text.body.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             SizedBox(height: kilo.space.s1),
                             Text(
@@ -99,7 +101,11 @@ final class TicketsScreen extends StatelessWidget {
                       SizedBox(height: kilo.space.s4),
                       _SectionHeading(context.t('travel.tickets.past')),
                       for (final booking in past)
-                        _BookingCard(booking: booking, onOpen: onOpen, past: true),
+                        _BookingCard(
+                          booking: booking,
+                          onOpen: onOpen,
+                          past: true,
+                        ),
                     ],
                   ],
                 ),
@@ -142,8 +148,7 @@ class _BookingCard extends StatelessWidget {
     final kilo = context.kilo;
     final locale = context.language;
     final hasTicket = booking.tickets.isNotEmpty;
-    final allVoid =
-        hasTicket && booking.tickets.every((t) => t.isVoid);
+    final allVoid = hasTicket && booking.tickets.every((t) => t.isVoid);
 
     return Padding(
       padding: EdgeInsets.only(bottom: kilo.space.s3),

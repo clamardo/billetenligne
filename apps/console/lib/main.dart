@@ -47,14 +47,13 @@ Future<void> main() async {
       catalog: catalog,
       session: session,
       client: client,
-      buildWorkspace: () =>
-          ConsoleWorkspace(
-            gateway: ApiConsoleGateway(client),
-            // The one thing this app does that a widget test cannot. Absent,
-            // the vitrine screen omits the upload control rather than showing
-            // a button that opens nothing.
-            files: const WebFilePicker(),
-          ),
+      buildWorkspace: () => ConsoleWorkspace(
+        gateway: ApiConsoleGateway(client),
+        // The one thing this app does that a widget test cannot. Absent,
+        // the vitrine screen omits the upload control rather than showing
+        // a button that opens nothing.
+        files: const WebFilePicker(),
+      ),
     ),
   );
 }

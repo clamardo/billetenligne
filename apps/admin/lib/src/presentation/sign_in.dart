@@ -66,10 +66,8 @@ class _AdminRootState extends State<AdminRoot> {
               builder: (context) => SecondFactorEnrolment(
                 client: widget.client,
                 t: context.t,
-                onCancel: () =>
-                    setState(() => _managingSecondFactor = false),
-                onFinished: () =>
-                    setState(() => _managingSecondFactor = false),
+                onCancel: () => setState(() => _managingSecondFactor = false),
+                onFinished: () => setState(() => _managingSecondFactor = false),
               ),
             ),
           ),

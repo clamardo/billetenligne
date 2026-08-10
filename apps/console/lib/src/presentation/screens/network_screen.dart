@@ -100,7 +100,9 @@ final class NetworkScreen extends StatelessWidget {
                             ? 'console.network.active'
                             : 'console.network.inactive',
                       ),
-                      tone: route.active ? KChipTone.success : KChipTone.neutral,
+                      tone: route.active
+                          ? KChipTone.success
+                          : KChipTone.neutral,
                     ),
                   ],
                 ),
@@ -150,8 +152,7 @@ final class NetworkScreen extends StatelessWidget {
                           labelText: dialogContext.t('console.network.from'),
                         ),
                         items: _cityItems(),
-                        onChanged: (v) =>
-                            setState(() => origin = v ?? origin),
+                        onChanged: (v) => setState(() => origin = v ?? origin),
                       ),
                     ),
                     SizedBox(width: dialogContext.kilo.space.s3),

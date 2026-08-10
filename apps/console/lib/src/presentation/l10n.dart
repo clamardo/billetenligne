@@ -132,6 +132,10 @@ extension TranslationContext on BuildContext {
   String t(String key, [Map<String, Object?> args = const {}]) =>
       translator(key, args);
 
+  /// A `key|arg|arg` message, rendered through the catalog (ADR-0008).
+  String tEncoded(String message, {String prefix = ''}) =>
+      translator.encoded(message, prefix: prefix);
+
   String tPlural(
     String key,
     int count, [

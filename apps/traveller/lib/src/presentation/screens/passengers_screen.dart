@@ -63,8 +63,7 @@ class _PassengersScreenState extends State<PassengersScreen> {
     super.dispose();
   }
 
-  bool get _complete =>
-      _names.values.every((c) => c.text.trim().isNotEmpty);
+  bool get _complete => _names.values.every((c) => c.text.trim().isNotEmpty);
 
   @override
   Widget build(BuildContext context) {
@@ -80,10 +79,7 @@ class _PassengersScreenState extends State<PassengersScreen> {
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s4),
           children: [
-            Text(
-              context.t('travel.passengers.intro'),
-              style: kilo.text.body,
-            ),
+            Text(context.t('travel.passengers.intro'), style: kilo.text.body),
             SizedBox(height: kilo.space.s4),
 
             for (final seat in widget.hold.seatLabels) ...[

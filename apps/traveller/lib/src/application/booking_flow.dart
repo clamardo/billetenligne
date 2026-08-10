@@ -302,7 +302,9 @@ final class BookingFlow {
     // The gate. A hold has an owner — an anonymous one is a hold nobody can be
     // warned about before it expires — so this is where browsing ends.
     if (!_isSignedIn()) {
-      _emit(NeedsIdentity(current.departure, current.seatMap, current.selected));
+      _emit(
+        NeedsIdentity(current.departure, current.seatMap, current.selected),
+      );
       return;
     }
 

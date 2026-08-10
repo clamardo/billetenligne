@@ -157,9 +157,7 @@ final class TimetableScreen extends StatelessWidget {
           for (final w in const [1, 4, 12])
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(w),
-              child: Text(
-                dialogContext.t('console.timetable.weeks', {'n': w}),
-              ),
+              child: Text(dialogContext.t('console.timetable.weeks', {'n': w})),
             ),
         ],
       ),
@@ -236,9 +234,7 @@ final class TimetableScreen extends StatelessWidget {
                         child: KField(
                           label: dialogContext.t('console.timetable.time'),
                           controller: time,
-                          helper: dialogContext.t(
-                            'console.timetable.timeHelp',
-                          ),
+                          helper: dialogContext.t('console.timetable.timeHelp'),
                         ),
                       ),
                       SizedBox(width: dialogContext.kilo.space.s3),

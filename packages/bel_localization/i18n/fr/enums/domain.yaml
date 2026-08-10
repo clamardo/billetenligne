@@ -54,3 +54,24 @@ seat:
     vip: "VIP"
     first: "Première"
     economy: "Économique"
+
+# Les phrases d'une politique de remboursement, générées à partir des chiffres
+# que l'opérateur a saisis (ADR-0015 règle 3) : l'opérateur ne rédige jamais
+# le texte, il répond à des questions. Encodées `clé|arg`, rendues a1, a2.
+policy:
+  line:
+    noRefund: "Aucun remboursement en cas d'annulation."
+    tierFull: "Jusqu'à {a1} h avant le départ : remboursement intégral."
+    tier: "Jusqu'à {a1} h avant le départ : {a2} % remboursés."
+    tierWithFee: "Jusqu'à {a1} h avant le départ : {a2} % remboursés, moins {a3} de frais."
+    after: "Moins de {a1} h avant le départ : aucun remboursement."
+    window: "Remboursement effectué sous {a1} h."
+    feeKept: "Les frais de service ne sont pas remboursés."
+    feeRefunded: "Les frais de service sont également remboursés."
+    nonRefundable: "Tarifs non remboursables : {a1}."
+    platformFloor: "Si le transporteur annule ou tombe en panne, vous êtes remboursé intégralement, quoi qu'il arrive."
+    destination:
+      source: "Remboursé sur votre moyen de paiement."
+      agencyCash: "Remboursé en espèces, à l'agence, en personne."
+      creditNote: "Remboursé en avoir, valable sur un prochain voyage."
+      travellerChoice: "Vous choisissez comment être remboursé."

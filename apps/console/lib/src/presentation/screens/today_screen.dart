@@ -55,10 +55,7 @@ final class TodayScreen extends StatelessWidget {
                   workspace.day.subtract(const Duration(days: 1)),
                 ),
               ),
-              Text(
-                _dayLabel(workspace.day),
-                style: kilo.text.h3,
-              ),
+              Text(_dayLabel(workspace.day), style: kilo.text.h3),
               IconButton(
                 tooltip: context.t('console.today.next'),
                 icon: const Icon(Icons.chevron_right),

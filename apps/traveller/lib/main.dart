@@ -79,7 +79,10 @@ Future<void> main() async {
   runApp(
     TravellerApp(
       catalog: catalog,
-      flow: BookingFlow(gateway: gateway, isSignedIn: () => identity.isSignedIn),
+      flow: BookingFlow(
+        gateway: gateway,
+        isSignedIn: () => identity.isSignedIn,
+      ),
       signIn: SignInFlow(gateway: identity),
       payment: PaymentFlow(gateway: gateway),
       tickets: TicketsFlow(gateway: gateway),

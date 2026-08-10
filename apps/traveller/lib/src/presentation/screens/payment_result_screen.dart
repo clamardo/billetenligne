@@ -211,10 +211,7 @@ final class PaymentUnresolvedScreen extends StatelessWidget {
               ),
             ),
             SizedBox(height: kilo.space.s5),
-            KButton(
-              label: context.t('common.actions.done'),
-              onPressed: onDone,
-            ),
+            KButton(label: context.t('common.actions.done'), onPressed: onDone),
           ],
         ),
       ),
