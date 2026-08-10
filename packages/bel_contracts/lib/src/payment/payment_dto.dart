@@ -238,3 +238,113 @@ final class RefundQuoteDto {
     policySummaryKey: policySummaryKey,
   );
 }
+
+
+/// A way to pay this operator, as the app renders it.
+///
+/// **Server-driven** (ADR-0006): enabling Orange Money must be a config push
+/// rather than an app release, because in this market a meaningful share of
+/// users never update the app. The list also carries what the money is going
+/// TO, because paying a number you do not recognise is the moment people
+/// abandon.
+final class PaymentOptionDto {
+  const PaymentOptionDto({
+    required this.railId,
+    required this.operatorId,
+    required this.labelKey,
+    required this.collectionMsisdn,
+    required this.collectionName,
+    this.ussdCode,
+    this.recommended = false,
+  });
+
+  /// `cg.airtel_money`, `cg.mtn_momo`.
+  final String railId;
+
+  /// The carrier, `airtel` / `mtn`. What the MSISDN prefix resolves to, and
+  /// what the app preselects from the traveller's own number.
+  final String operatorId;
+
+  /// A **catalog key**, not a sentence. The server never sends prose
+  /// (ADR-0008), so this is `enum.MobileOperator.airtel` and the surface
+  /// renders it in the reader's language.
+  final String labelKey;
+
+  /// The merchant number the money lands in. Shown in full: a traveller about
+  /// to send 12 300 francs is entitled to see where.
+  final String collectionMsisdn;
+
+  /// The name beside the number — "Ocean du Nord". Without it the number is
+  /// just digits, and digits are what a scam looks like.
+  final String collectionName;
+
+  /// The manual dial string for this wallet, when the rail publishes one.
+  ///
+  /// Shown on the waiting screen if the push prompt does not arrive — prompts
+  /// genuinely fail on these networks, and somebody with a way to pay by hand
+  /// beats somebody watching a spinner.
+  final String? ussdCode;
+
+  /// True when this rail matches the payer's own MSISDN prefix. A hint for
+  /// ordering, never a restriction: paying from another carrier's wallet is
+  /// refused by the rail, not by us, and the app says which before sending.
+  final bool recommended;
+
+  Map<String, Object?> toJson() => {
+    'railId': railId,
+    'operatorId': operatorId,
+    'labelKey': labelKey,
+    'collectionMsisdn': collectionMsisdn,
+    'collectionName': collectionName,
+    if (ussdCode != null) 'ussdCode': ussdCode,
+    'recommended': recommended,
+  };
+
+  factory PaymentOptionDto.fromJson(Map<String, Object?> json) =>
+      PaymentOptionDto(
+        railId: Wire.requireString(json['railId'], 'railId'),
+        operatorId: Wire.requireString(json['operatorId'], 'operatorId'),
+        labelKey: Wire.requireString(json['labelKey'], 'labelKey'),
+        collectionMsisdn: Wire.requireString(
+          json['collectionMsisdn'],
+          'collectionMsisdn',
+        ),
+        collectionName: Wire.requireString(
+          json['collectionName'],
+          'collectionName',
+        ),
+        ussdCode: json['ussdCode'] as String?,
+        recommended: json['recommended'] == true,
+      );
+}
+
+/// "Push a prompt to this handset."
+final class StartPaymentRequest {
+  const StartPaymentRequest({
+    required this.bookingId,
+    required this.railId,
+    required this.payerMsisdn,
+  });
+
+  final String bookingId;
+  final String railId;
+
+  /// **Not necessarily the traveller's own number.** Somebody whose wallet is
+  /// empty pays from a relative's, standing next to them and reading out the
+  /// PIN prompt. The server records whether the two matched and never
+  /// requires it.
+  final String payerMsisdn;
+
+  Map<String, Object?> toJson() => {
+    'bookingId': bookingId,
+    'railId': railId,
+    'payerMsisdn': payerMsisdn,
+  };
+
+  factory StartPaymentRequest.fromJson(Map<String, Object?> json) =>
+      StartPaymentRequest(
+        bookingId: Wire.requireString(json['bookingId'], 'bookingId'),
+        railId: Wire.requireString(json['railId'], 'railId'),
+        payerMsisdn: Wire.requireString(json['payerMsisdn'], 'payerMsisdn'),
+      );
+}

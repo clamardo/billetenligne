@@ -100,6 +100,21 @@ final class MemoryBookingStore implements BookingStore {
   }
 
   @override
+  Future<BookingRecord?> captureRail({
+    required String bookingId,
+    required String operatorId,
+    required String railId,
+    required String intentId,
+    required LedgerTransaction posting,
+  }) => captureCash(
+    bookingId: bookingId,
+    operatorId: operatorId,
+    stationId: 'rail:$railId',
+    soldByUserId: null,
+    posting: posting,
+  );
+
+  @override
   Future<BookingRecord?> captureCash({
     required String bookingId,
     required String operatorId,
@@ -179,6 +194,14 @@ final class MemoryBookingStore implements BookingStore {
     final booking = _byId[bookingId];
     return booking?.operatorId == operatorId ? booking : null;
   }
+
+  /// Any booking, regardless of who owns it.
+  ///
+  /// The fake's stand-in for a query that runs under a different scope in the
+  /// real store — the payment store opens an intent as the traveller and
+  /// reads the booking in the same statement, which a map cannot express.
+  Future<BookingRecord?> byIdUnscoped(String bookingId) async =>
+      _byId[bookingId];
 
   @override
   Future<List<BookingRecord>> forTraveller(String userId, {int limit = 50}) =>

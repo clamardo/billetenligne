@@ -208,6 +208,31 @@ final class PostgresBookingStore implements BookingStore {
     required String stationId,
     required String? soldByUserId,
     required LedgerTransaction posting,
+  }) => _capture(
+    bookingId: bookingId,
+    operatorId: operatorId,
+    posting: posting,
+    paymentMethod: 'cash',
+    stationId: stationId,
+    soldByUserId: soldByUserId,
+    intentId: null,
+  );
+
+  /// Confirm, sell the seats, post the ledger, issue the tickets, queue the
+  /// message — one transaction, whatever paid for it.
+  ///
+  /// Cash and rail differ in what they record (a till and a vendor, or an
+  /// intent) and in what they post (no commission, or commission netted at
+  /// source). They do not differ in any of the four things that must happen
+  /// together, which is why there is one of these and not two.
+  Future<BookingRecord?> _capture({
+    required String bookingId,
+    required String operatorId,
+    required LedgerTransaction posting,
+    required String paymentMethod,
+    required String? stationId,
+    required String? soldByUserId,
+    required String? intentId,
   }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
     // Conditional on `pending_payment`, so two vendors collecting the same
     // reservation at two counters produce one sale. Checking in Dart first
@@ -218,7 +243,7 @@ final class PostgresBookingStore implements BookingStore {
            SET state = 'confirmed',
                confirmed_at = now(),
                paid_at = now(),
-               payment_method = 'cash',
+               payment_method = @method,
                station_id = @station,
                sold_by = @soldBy,
                -- Cleared on payment. It is a bearer: whoever holds it can pay
@@ -234,6 +259,7 @@ final class PostgresBookingStore implements BookingStore {
       parameters: {
         'booking': TypedValue(Type.uuid, bookingId),
         'operator': TypedValue(Type.uuid, operatorId),
+        'method': TypedValue(Type.text, paymentMethod),
         'station': TypedValue(Type.uuid, stationId),
         'soldBy': TypedValue(Type.uuid, soldByUserId),
       },
@@ -258,7 +284,13 @@ final class PostgresBookingStore implements BookingStore {
       ignoreRows: true,
     );
 
-    await _postLedger(tx, posting, bookingId: bookingId, operatorId: operatorId);
+    await _postLedger(
+      tx,
+      posting,
+      bookingId: bookingId,
+      operatorId: operatorId,
+      intentId: intentId,
+    );
 
     final seats = await _readBookingSeats(tx, bookingId, currency);
     final trip = await _trip(tx, departureId);
@@ -347,6 +379,23 @@ final class PostgresBookingStore implements BookingStore {
       tickets: tickets,
     );
   });
+
+  @override
+  Future<BookingRecord?> captureRail({
+    required String bookingId,
+    required String operatorId,
+    required String railId,
+    required String intentId,
+    required LedgerTransaction posting,
+  }) => _capture(
+    bookingId: bookingId,
+    operatorId: operatorId,
+    posting: posting,
+    paymentMethod: railId,
+    stationId: null,
+    soldByUserId: null,
+    intentId: intentId,
+  );
 
   // ── Reads ─────────────────────────────────────────────────────────────────
 
@@ -534,6 +583,7 @@ final class PostgresBookingStore implements BookingStore {
     LedgerTransaction posting, {
     required String bookingId,
     required String operatorId,
+    String? intentId,
   }) async {
     // One txn_id groups the rows of one movement. The deferred constraint
     // trigger checks the sum at COMMIT — after this function returns, and
@@ -547,9 +597,9 @@ final class PostgresBookingStore implements BookingStore {
         Sql.named('''
           INSERT INTO ledger_entries
             (txn_id, account, direction, amount_minor, currency,
-             operator_id, booking_id, memo)
+             operator_id, booking_id, intent_id, memo)
           VALUES (@txn, @account, @direction::ledger_direction, @amount,
-                  @currency, @operator, @booking, @memo)
+                  @currency, @operator, @booking, @intent, @memo)
         '''),
         parameters: {
           'txn': TypedValue(Type.uuid, txn.toString()),
@@ -559,6 +609,7 @@ final class PostgresBookingStore implements BookingStore {
           'currency': TypedValue(Type.text, entry.amount.currency.code),
           'operator': TypedValue(Type.uuid, entry.operatorId ?? operatorId),
           'booking': TypedValue(Type.uuid, bookingId),
+          'intent': TypedValue(Type.uuid, intentId),
           'memo': TypedValue(Type.text, entry.memo),
         },
         ignoreRows: true,

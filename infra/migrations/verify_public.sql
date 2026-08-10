@@ -148,7 +148,7 @@ DECLARE
   forbidden TEXT[] := ARRAY[
     'operator_staff', 'platform_staff', 'kyb_documents',
     'ledger_entries', 'payment_events', 'audit_log',
-    'refunds', 'refund_policies', 'payment_intents',
+    'refunds', 'refund_policies',
     'vehicles', 'departure_patterns', 'redemptions'
   ];
 BEGIN
@@ -181,7 +181,24 @@ BEGIN
     RAISE EXCEPTION 'FAIL: the public role can write to stations';
   END IF;
 
-  RAISE NOTICE 'OK  the public role cannot reach % restricted tables, and may only read stations',
+  -- `payment_intents` left the list in 0011, because a traveller has to be
+  -- able to start their own payment and watch it. The property that matters
+  -- is the one 0005 established for seats: there is no path from an internet
+  -- request to a CAPTURED payment. The traveller may INSERT an intent and
+  -- SELECT their own; every state transition afterwards is a system action
+  -- under the operator or platform scope, after the rail has spoken.
+  IF has_table_privilege('bel_public', 'payment_intents', 'UPDATE')
+  OR has_table_privilege('bel_public', 'payment_intents', 'DELETE') THEN
+    RAISE EXCEPTION 'FAIL: the public role can move a payment forward itself';
+  END IF;
+
+  -- And the raw rail payloads stay out of reach entirely: MSISDNs, merchant
+  -- identifiers, whatever the telco chose to echo back.
+  IF has_table_privilege('bel_public', 'payment_events', 'SELECT') THEN
+    RAISE EXCEPTION 'FAIL: the public role can read raw PSP payloads';
+  END IF;
+
+  RAISE NOTICE 'OK  the public role cannot reach % restricted tables, may only read stations, and cannot advance a payment',
     cardinality(forbidden);
 END
 $$;

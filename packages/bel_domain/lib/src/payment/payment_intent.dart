@@ -161,7 +161,16 @@ final class PaymentIntent {
   /// Legal moves. Anything not listed is rejected, which is what stops a
   /// late callback resurrecting a refunded booking.
   static const _allowed = <PaymentState, Set<PaymentState>>{
-    PaymentState.created: {PaymentState.pending, PaymentState.cancelled},
+    // `failed` is reachable straight from `created` because a rail can refuse
+    // the request itself — MTN answers 400 for a subscriber it does not know,
+    // Airtel a TF for a barred one — and no prompt ever reaches a handset.
+    // Routing that through `pending` first would be a fiction the payment
+    // events log would then have to carry forever.
+    PaymentState.created: {
+      PaymentState.pending,
+      PaymentState.failed,
+      PaymentState.cancelled,
+    },
     PaymentState.pending: {
       PaymentState.authorized,
       PaymentState.captured, // some rails capture without a distinct auth

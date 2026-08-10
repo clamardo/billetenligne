@@ -14,20 +14,27 @@ import 'adapters/logging_notification_gateway.dart';
 import 'adapters/unavailable_operator_console.dart';
 import 'adapters/memory_idempotency_store.dart';
 import 'application/hold_seats.dart';
+import 'adapters/airtel_money_gateway.dart';
 import 'adapters/ed25519_ticket_issuer.dart';
+import 'adapters/fake_payment_gateway.dart';
+import 'adapters/mtn_momo_gateway.dart';
 import 'application/ports/booking_store.dart';
 import 'application/ports/ticket_issuer.dart';
 import 'application/ports/city_catalogue.dart';
 import 'application/ports/operator_console.dart';
+import 'application/ports/payment_gateway.dart';
+import 'application/ports/payment_store.dart';
 import 'application/ports/departure_catalogue.dart';
 import 'application/ports/notification_gateway.dart';
 import 'application/ports/seat_inventory.dart';
 import 'application/ports/user_directory.dart';
+import 'application/pay_for_booking.dart';
 import 'application/reserve_booking.dart';
 import 'application/search_departures.dart';
 import 'application/sign_in.dart';
 import 'infrastructure/db/database.dart';
 import 'infrastructure/memory/memory_booking_store.dart';
+import 'infrastructure/memory/memory_payment_store.dart';
 import 'infrastructure/memory/memory_city_catalogue.dart';
 import 'infrastructure/memory/memory_identity.dart';
 import 'infrastructure/memory/memory_seat_inventory.dart';
@@ -35,6 +42,7 @@ import 'infrastructure/postgres/postgres_departure_catalogue.dart';
 import 'infrastructure/postgres/postgres_booking_store.dart';
 import 'infrastructure/postgres/postgres_identity.dart';
 import 'infrastructure/postgres/postgres_operator_console.dart';
+import 'infrastructure/postgres/postgres_payment_store.dart';
 import 'infrastructure/postgres/postgres_idempotency_store.dart';
 import 'infrastructure/postgres/postgres_seat_inventory.dart';
 import 'middleware/idempotency.dart';
@@ -59,6 +67,9 @@ final class Services {
     required this.reserveBooking,
     required this.bookings,
     required this.console,
+    required this.payments,
+    required this.payForBooking,
+    required this.railIds,
     required this.authGateway,
     required this.directory,
     required this.catalogue,
@@ -82,6 +93,14 @@ final class Services {
   /// the traveller browses, and a fake one would be a second definition of
   /// every coach and route, kept in sync by hand.
   final OperatorConsole console;
+
+  final PaymentStore payments;
+  final PayForBooking payForBooking;
+
+  /// The rails this deployment can actually collect on. Intersected with the
+  /// operator's verified accounts before anything is offered, so a rail we
+  /// cannot reach is absent rather than present-and-broken.
+  final Set<String> railIds;
 
   /// Who the caller is. Firebase behind a real database, a deterministic fake
   /// otherwise — the same condition under which the inventory is a fake, so a
@@ -133,6 +152,8 @@ final class Services {
     // today (ADR-0020). Resolved once, at startup, because key material is
     // not something to fetch per request.
     final bookings = PostgresBookingStore(db, issuer: _ticketIssuer);
+    final paymentStore = PostgresPaymentStore(db);
+    final rails = _railsFrom(env);
 
     return Services._(
       holdSeats: HoldSeats(inventory: inventory),
@@ -149,6 +170,13 @@ final class Services {
       reserveBooking: ReserveBooking(bookings: bookings),
       bookings: bookings,
       console: PostgresOperatorConsole(db, timeZone: Market.current.timeZone),
+      payments: paymentStore,
+      payForBooking: PayForBooking(
+        payments: paymentStore,
+        bookings: bookings,
+        gateways: rails,
+      ),
+      railIds: rails.keys.toSet(),
       authGateway: FirebaseAuthGateway(
         config: FirebaseConfig.fromEnvironment(env),
         directory: directory,
@@ -198,6 +226,10 @@ final class Services {
       issuer: _ticketIssuer,
       clock: clock,
     );
+    final memoryPayments = MemoryPaymentStore(
+      bookings: memoryBookings,
+      clock: clock,
+    );
 
     return Services._(
       holdSeats: HoldSeats(inventory: inventory),
@@ -217,6 +249,16 @@ final class Services {
       reserveBooking: ReserveBooking(bookings: memoryBookings),
       bookings: memoryBookings,
       console: const UnavailableOperatorConsole(),
+      payments: memoryPayments,
+      payForBooking: PayForBooking(
+        payments: memoryPayments,
+        bookings: memoryBookings,
+        // One fake rail, so a fresh clone can walk the whole payment funnel
+        // with no credentials and no network — including the failure screens,
+        // which is what `FakePaymentGateway.decliningMsisdn` is for.
+        gateways: {'cg.fake_money': FakePaymentGateway(clock: clock)},
+      ),
+      railIds: const {'cg.fake_money'},
       // A demo traveller, so a fresh clone can hold a seat without standing up
       // Firebase first — and a fake, so this token cannot reach a real
       // database even by accident.
@@ -326,6 +368,52 @@ final class Services {
   /// `BEL_I18N_DIR` because the working directory differs between `dart_frog
   /// dev`, `dart test` and a built binary, and a catalog that resolves in one
   /// of those and not the others is a feature that works until it is deployed.
+  /// The rails this deployment can actually collect on.
+  ///
+  /// Credentials-driven, not a compiled-in list: a rail with no credentials is
+  /// absent rather than present-and-broken, which is what makes enabling
+  /// Orange Money a config push rather than a release (ADR-0006). The map is
+  /// also what the payment options endpoint intersects with the operator's
+  /// verified accounts, so a rail we cannot reach is never offered.
+  static Map<String, PaymentGateway> _railsFrom(Map<String, String> env) {
+    final rails = <String, PaymentGateway>{};
+
+    final mtnKey = env['MTN__SUBSCRIPTIONKEY'] ?? '';
+    if (mtnKey.isNotEmpty) {
+      rails['cg.mtn_momo'] = MtnMomoGateway(
+        baseUrl: Uri.parse(
+          env['MTN__BASEURL'] ?? 'https://sandbox.momodeveloper.mtn.com',
+        ),
+        subscriptionKey: mtnKey,
+        apiUser: env['MTN__APIUSER'] ?? '',
+        apiKey: env['MTN__APIKEY'] ?? '',
+        targetEnvironment: env['MTN__TARGETENVIRONMENT'] ?? 'sandbox',
+        callbackUrl:
+            '${env['PUBLIC_BASE_URL'] ?? ''}/hooks/payments/mtn',
+      );
+    }
+
+    final airtelId = env['AIRTEL__CLIENTID'] ?? '';
+    if (airtelId.isNotEmpty) {
+      rails['cg.airtel_money'] = AirtelMoneyGateway(
+        baseUrl: Uri.parse(
+          env['AIRTEL__BASEURL'] ?? 'https://openapiuat.airtel.africa',
+        ),
+        clientId: airtelId,
+        clientSecret: env['AIRTEL__CLIENTSECRET'] ?? '',
+        country: Market.current.code,
+        currency: Market.current.currency.code,
+      );
+    }
+
+    // No credentials at all is a real state — every developer, and every CI
+    // run. The fake rail keeps the funnel walkable rather than leaving a
+    // payment screen with nothing on it.
+    if (rails.isEmpty) rails['cg.fake_money'] = FakePaymentGateway();
+
+    return rails;
+  }
+
   /// Signs every ticket this process issues.
   ///
   /// A fixed development seed, so a ticket signed by yesterday's run still

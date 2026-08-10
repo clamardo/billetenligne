@@ -39,6 +39,7 @@ final class Market {
     required this.languages,
     required this.rails,
     required this.serviceFee,
+    this.commissionRate = 0.05,
   });
 
   /// ISO 3166-1 alpha-2.
@@ -71,6 +72,21 @@ final class Market {
   /// Flat booking fee per seat, in this market's currency. Flat, never a
   /// percentage — percentages feel like a tax and are harder to trust.
   final Money serviceFee;
+
+  /// Our cut of the fare on a digital sale, netted at source.
+  ///
+  /// A market default rather than a per-operator term, and that is a **known
+  /// simplification**: an anchor operator will negotiate, and when they do
+  /// this moves onto the operator row. It lives here today because one rate
+  /// for one operator is not worth a column, and because putting it here
+  /// keeps it beside the service fee where anybody costing a booking will
+  /// find both.
+  ///
+  /// A rate, unlike the service fee, because that is how commercial terms in
+  /// this industry are actually written — and because it is invisible to the
+  /// traveller, who only ever sees a fare and a flat fee. Cash sales carry
+  /// none of it at all (product brief D-04).
+  final double commissionRate;
 
   String get diallingCode => msisdn.countryCode;
 

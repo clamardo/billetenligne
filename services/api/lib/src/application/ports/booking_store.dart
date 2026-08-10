@@ -183,6 +183,25 @@ abstract interface class BookingStore {
     required LedgerTransaction posting,
   });
 
+  /// Confirms a booking whose mobile money payment settled.
+  ///
+  /// The twin of [captureCash] and deliberately a separate method rather than
+  /// a parameter: cash names a till and a vendor, a rail names an intent, and
+  /// the ledger postings are genuinely different — cash carries no commission
+  /// and a rail nets it at source. Collapsing them into one method with four
+  /// nullable arguments would make both harder to read and neither safer.
+  ///
+  /// Conditional on `pending_payment`, so a duplicate callback and a poll
+  /// arriving together produce one confirmation, one set of ledger rows and
+  /// one ticket.
+  Future<BookingRecord?> captureRail({
+    required String bookingId,
+    required String operatorId,
+    required String railId,
+    required String intentId,
+    required LedgerTransaction posting,
+  });
+
   /// Finds an unpaid booking by the code the traveller reads to the vendor.
   ///
   /// Scoped to the operator doing the asking, so one operator's vendor cannot
