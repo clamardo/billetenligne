@@ -84,3 +84,5 @@ travel:
     total: "Total to pay"
     deadline: "Pay before {time}, or the seats go back on sale."
     afterPayment: "Once paid, your ticket appears here with its QR code."
+    payNow: "Pay now with mobile money"
+    payLater: "Pay at an agency"

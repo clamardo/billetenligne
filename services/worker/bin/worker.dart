@@ -5,7 +5,9 @@ import 'package:bel_api/src/adapters/logging_notification_gateway.dart';
 import 'package:bel_api/src/application/ports/notification_gateway.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_localization/bel_localization.dart';
+import 'package:bel_api/src/composition.dart';
 import 'package:bel_worker/src/outbox_drain.dart';
+import 'package:bel_worker/src/payment_poller.dart';
 import 'package:bel_worker/src/sweepers.dart';
 
 /// One pass, then exit.
@@ -46,7 +48,16 @@ Future<int> main(List<String> args) async {
       ) ??
       const LoggingNotificationGateway();
 
+  // The same composition the API uses, so the worker polls through exactly
+  // the adapters that opened the intents — a second wiring here would be a
+  // second set of rail credentials to keep in step.
+  final services = Services.resolve();
+
   final sweepers = Sweepers(db);
+  final poller = PaymentPoller(
+    payments: services.payments,
+    pay: services.payForBooking,
+  );
   final drain = OutboxDrain(
     db: db,
     notifications: notifications,
@@ -57,7 +68,12 @@ Future<int> main(List<String> args) async {
   );
 
   final passes = <String, Future<SweepResult> Function()>{
-    // The drain first. It is the only pass a traveller notices.
+    // Payments first, and by a distance. Every other pass here is tidy-up
+    // that costs a tidier database when it is skipped; this one is the
+    // difference between a traveller boarding and a traveller who paid and
+    // cannot.
+    'payments': poller.poll,
+    // Then the drain — the only other pass a traveller notices.
     'outbox': drain.drain,
     'holds': sweepers.expireHolds,
     'reservations': sweepers.expireReservations,
@@ -80,5 +96,6 @@ Future<int> main(List<String> args) async {
   }
 
   await db.close();
+  await services.close();
   return failed ? 1 : 0;
 }

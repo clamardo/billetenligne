@@ -266,6 +266,55 @@ abstract interface class OperatorConsole {
     required String operatorId,
     required String departureId,
   });
+
+  // ── Getting paid ──────────────────────────────────────────────────────────
+
+  /// Where this operator collects, per rail.
+  ///
+  /// Includes unverified accounts, unlike the traveller-facing read: an
+  /// operator has to be able to see the number they entered and that it is
+  /// still waiting to be checked.
+  Future<List<PaymentAccountSummary>> paymentAccounts(String operatorId);
+
+  /// Sets the number a rail's payments land in.
+  ///
+  /// **Saved unverified, always.** A number nobody has proved belongs to this
+  /// operator must not receive money, and an operator typing their own number
+  /// is not proof — a typo sends every franc to a stranger, permanently and
+  /// irreversibly, because mobile money has no chargeback. Verification is a
+  /// separate act by somebody who saw the merchant agreement.
+  ///
+  /// Replacing a number **deactivates** the old one rather than editing it, so
+  /// an intent that already paid into it still resolves in a dispute.
+  Future<PaymentAccountSummary?> savePaymentAccount({
+    required String operatorId,
+    required String railId,
+    required String msisdn,
+    required String displayName,
+  });
+}
+
+/// A collection account, as the console shows it.
+final class PaymentAccountSummary {
+  const PaymentAccountSummary({
+    required this.id,
+    required this.railId,
+    required this.msisdn,
+    required this.displayName,
+    required this.verified,
+    required this.active,
+  });
+
+  final String id;
+  final String railId;
+  final String msisdn;
+  final String displayName;
+
+  /// Until this is true the rail is not offered to a single traveller. The
+  /// console says so plainly rather than showing a number that looks live.
+  final bool verified;
+
+  final bool active;
 }
 
 /// One line of the dispatcher's day view.

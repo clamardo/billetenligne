@@ -23,7 +23,7 @@ What remains before a pilot is **commercial, not technical**, which is what this
 
 **Done:** the domain, the schema with its tenancy and ledger guarantees, the public sales boundary, the whole traveller API surface, email sign-in, booking and cash payment with double-entry postings, ticket issuing, the operator console's API, `services/worker`, the typed client, the Kilo component library, the traveller app through to a payment code, the standalone boarding scanner, and CI that executes all of it.
 
-525 tests · 72 smoke checks · 26 executed schema guarantees · 71 of those tests against real Postgres.
+555 tests · 86 smoke checks · 26 executed schema guarantees · 71 of those tests against real Postgres.
 
 ---
 
@@ -86,7 +86,10 @@ The policy engine is built and tested; the wizard and the execution path are not
 **6. Scheduled materialisation in the worker.**
 The pass exists and is driven by the console; nothing yet runs it nightly, so a timetable is materialised when a dispatcher asks. Fine for a pilot with one operator, wrong at ten.
 
-**7. Phone as the second sign-in channel, and a per-IP limit on codes.**
+**7. The reconciliation console for `indeterminate` payments.**
+The queue exists and the poller fills it after fifteen minutes of silence. Nobody can work it. ADR-0005 says build this before launch rather than after the first incident, and that is still right.
+
+**8. Phone as the second sign-in channel, and a per-IP limit on codes.**
 The channel is plumbed and switched off for want of a provisioned ACS sender number. Ships with it: codes are rate-limited per *destination* today — 60 seconds between sends, five attempts per code — which bounds the cost of hammering one address, and nothing yet bounds one host asking for codes to a thousand different addresses. Every one of those is a message we pay for, so this is a cost control before it is a security control.
 
 **Exit:** the anchor operator sells real seats through our console for real cash, and conductors board with our scanner. *Revenue: zero. Learning: maximum.*
@@ -97,19 +100,27 @@ Everything that exit requires is now built. What is left is a signature.
 
 ---
 
-## Phase 2 — Mobile money
+## Phase 2 — Mobile money · **built, awaiting credentials**
 
-Starts the day the first production credentials land, and overlaps Phase 1 rather than following it.
+The engineering is done. What is missing is a merchant agreement, which is the long pole this roadmap has said it was from the first line.
 
-- Payment orchestration and the intent state machine (`indeterminate` is a first-class state, not an afterthought)
-- Airtel Money and MTN MoMo adapters, in whichever order credentials arrive
-- The ledger in anger: payout runs, operator statements, commission netted at source
-- The full failure taxonomy, each case with its own copy
-- **The `indeterminate` queue and its reconciliation console — before launch, not after the first incident**
+- ✅ Payment orchestration and the intent state machine (`indeterminate` is a first-class state, with a queue, a worker pass and a screen that does not call it a failure)
+- ✅ **Airtel Money and MTN MoMo adapters**, both against the real APIs. Independent, so whichever set of credentials lands first ships first
+- ✅ The in-app experience end to end: choose a wallet, name the number to debit (**not necessarily your own**), confirm where the money is going, watch for the PIN prompt, receipt
+- ✅ Operator collection accounts in the console, saved unverified because mobile money has no chargeback
+- ✅ The poller, because callbacks get lost — that is a fact about these networks, not a hypothetical
+- ⬜ **Production credentials.** Both adapters run against sandbox hosts today and a fake rail in development
+- ⬜ The `indeterminate` reconciliation console — the queue exists and fills; no admin screen works it yet
+- ✅ Commission netted at source, on every rail capture
+- ✅ The full failure taxonomy, each case with its own copy and its own recovery
+- ⬜ The ledger in anger: payout runs and operator statements
+- ⬜ **The `indeterminate` reconciliation console — before launch, not after the first incident**
 - **Disruption / IRROPS tooling** (`08-disruption.md`) — P0 here, because the first breakdown will happen in week one and the operator must handle it without calling us
 - The `config/markets.yaml` loader, so enabling a rail is a config push rather than a release
 
 **Exit:** a traveller pays with Airtel Money and boards. Payment success ≥ 88% first attempt.
+
+Everything that exit requires is built. It is waiting on a telco, exactly as predicted.
 
 ---
 
@@ -167,7 +178,8 @@ Each is reasonable, and each would dilute the one thing that has to be excellent
 |---|---|---|---|
 | Telco merchant onboarding stalls | Weeks since application, no credentials | Phase 1 ships without it; three rails pursued in parallel | **Unmitigated — no application submitted** |
 | Anchor operator does not sign | No LOI | The cash-only console is free and useful on its own; lead with that | **Unmitigated — no LOI** |
-| Mobile money success below 85% | Per-rail, per-hour dashboard | Rail fallback plus an aggregator escape hatch (ADR-0006) | Deferred to Phase 2 |
+| Mobile money success below 85% | Per-rail, per-hour dashboard | Rail fallback plus an aggregator escape hatch (ADR-0006) | **Both adapters built and tested against a fake that reproduces every terminal state. Unmeasured until real traffic** |
+| An operator mistypes their collection number | — | Saved unverified; no rail is offered until somebody has checked it | Mobile money has no chargeback, so this is the one typo in the product that cannot be undone |
 | Travellers do not trust prepayment | Funnel drop at the payment screen | SMS receipts, honest scarcity, visible refund policy, cash retained | Design done; unproven |
 | Disruption overwhelms support | Support tickets per disruption | IRROPS is operator self-service and P0 in Phase 2 | Designed, not built |
 | **Nobody has used this on a real network** | — | Phase 3 manual smoke | Everything so far is an emulator on a fast connection |

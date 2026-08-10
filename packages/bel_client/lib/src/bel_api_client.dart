@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_domain/bel_domain.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_failure.dart';
@@ -178,6 +179,50 @@ final class BelApiClient {
     final body = await _get('/public/v1/bookings');
     return Wire.readList(body['items'], BookingDto.fromJson, field: 'items');
   }
+
+  /// How this booking can be paid, and where the money goes.
+  ///
+  /// Server-driven: a rail appears only if this deployment can reach it AND
+  /// the operator has a verified account on it. Enabling one is a config push
+  /// rather than an app release (ADR-0006).
+  Future<({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})>
+  paymentOptions(String bookingId) async {
+    final body = await _get('/public/v1/bookings/$bookingId/payment-options');
+    return (
+      options: Wire.readList(
+        body['items'],
+        PaymentOptionDto.fromJson,
+        field: 'items',
+      ),
+      accountMsisdn: body['accountMsisdn'] as String?,
+      amount: Wire.readMoney(body['amount'], field: 'amount'),
+    );
+  }
+
+  /// Pushes a PIN prompt to a handset.
+  ///
+  /// Answers `pending`, not `paid` — the traveller has not typed anything
+  /// yet. Takes an idempotency key for a sharper reason than the hold does: a
+  /// duplicate tap would put two PIN prompts on one handset.
+  Future<PaymentIntentDto> startPayment(
+    StartPaymentRequest request, {
+    String? idempotencyKey,
+  }) async {
+    final body = await _post(
+      '/public/v1/payments',
+      body: request.toJson(),
+      idempotencyKey: idempotencyKey ?? IdempotencyKey.generate(),
+    );
+    return PaymentIntentDto.fromJson(body);
+  }
+
+  /// Has it settled?
+  ///
+  /// Re-queries the rail server-side on every call, because a callback can be
+  /// lost and a traveller staring at a spinner while the money has left their
+  /// wallet is the worst state this product has.
+  Future<PaymentIntentDto> paymentStatus(String intentId) async =>
+      PaymentIntentDto.fromJson(await _get('/public/v1/payments/$intentId'));
 
   /// Give the seats back. Idempotent, so no key is required — demanding one
   /// for an operation that is already idempotent is ceremony clients get

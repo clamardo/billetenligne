@@ -6,12 +6,17 @@ import 'package:bel_localization/bel_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../application/booking_flow.dart';
+import '../application/payment_flow.dart';
 import '../application/sign_in_flow.dart';
 import 'l10n.dart';
 import 'screens/hold_screen.dart';
 import 'screens/results_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/passengers_screen.dart';
+import 'screens/payment_confirm_screen.dart';
+import 'screens/payment_result_screen.dart';
+import 'screens/payment_screen.dart';
+import 'screens/payment_waiting_screen.dart';
 import 'screens/reserved_screen.dart';
 import 'screens/seat_map_screen.dart';
 import 'screens/sign_in_screen.dart';
@@ -29,6 +34,7 @@ final class TravellerApp extends StatelessWidget {
     required this.catalog,
     required this.flow,
     required this.signIn,
+    required this.payment,
     this.language = 'fr',
     super.key,
   });
@@ -36,6 +42,7 @@ final class TravellerApp extends StatelessWidget {
   final TranslationCatalog catalog;
   final BookingFlow flow;
   final SignInFlow signIn;
+  final PaymentFlow payment;
   final String language;
 
   @override
@@ -47,16 +54,21 @@ final class TravellerApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: KiloTheme.materialTheme(),
       darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
-      home: _Funnel(flow: flow, signIn: signIn),
+      home: _Funnel(flow: flow, signIn: signIn, payment: payment),
     ),
   );
 }
 
 class _Funnel extends StatefulWidget {
-  const _Funnel({required this.flow, required this.signIn});
+  const _Funnel({
+    required this.flow,
+    required this.signIn,
+    required this.payment,
+  });
 
   final BookingFlow flow;
   final SignInFlow signIn;
+  final PaymentFlow payment;
 
   @override
   State<_Funnel> createState() => _FunnelState();
@@ -72,6 +84,12 @@ class _FunnelState extends State<_Funnel> {
   var _releasing = false;
 
   StreamSubscription<BookingStep>? _subscription;
+  StreamSubscription<PaymentStep>? _paymentSubscription;
+
+  /// True while the payment flow owns the screen. The booking flow's step is
+  /// still `Reserved` underneath, which is what makes backing out of paying
+  /// land exactly where it started rather than at the top of the funnel.
+  var _paying = false;
 
   @override
   void initState() {
@@ -79,6 +97,9 @@ class _FunnelState extends State<_Funnel> {
     // The flow is pure Dart and knows nothing about widgets — the layer check
     // enforces that — so the subscription is the seam between them.
     _subscription = _flow.steps.listen((_) {
+      if (mounted) setState(() {});
+    });
+    _paymentSubscription = widget.payment.steps.listen((_) {
       if (mounted) setState(() {});
     });
     // The city list is the first thing the search screen needs and the app
@@ -89,6 +110,7 @@ class _FunnelState extends State<_Funnel> {
   @override
   void dispose() {
     _subscription?.cancel();
+    _paymentSubscription?.cancel();
     super.dispose();
   }
 
@@ -100,6 +122,8 @@ class _FunnelState extends State<_Funnel> {
 
   @override
   Widget build(BuildContext context) {
+    if (_paying) return _paymentScreen(context);
+
     final step = _flow.step;
 
     return switch (step) {
@@ -219,6 +243,13 @@ class _FunnelState extends State<_Funnel> {
       Reserved(:final booking) => ReservedScreen(
         booking: booking,
         onDone: _flow.reset,
+        // Mobile money. Cash at an agency stays on the same screen — a
+        // traveller who cannot pay by phone still has a code to walk in with,
+        // and offering both is the whole point of the market this serves.
+        onPayNow: () {
+          setState(() => _paying = true);
+          widget.payment.start(booking.id);
+        },
       ),
 
       StepFailed(:final failure, :final recoverable) => Scaffold(
@@ -234,6 +265,59 @@ class _FunnelState extends State<_Funnel> {
       ),
     };
   }
+
+  /// The payment flow's screens, layered over the funnel.
+  Widget _paymentScreen(BuildContext context) {
+    final step = widget.payment.step;
+
+    return switch (step) {
+      LoadingOptions() => Scaffold(
+        body: KStateView(KLoading(context.t('payment.method.loading'))),
+      ),
+
+      ChoosingMethod() => PaymentMethodScreen(
+        step: step,
+        flow: widget.payment,
+        onBack: _stopPaying,
+      ),
+
+      ConfirmingPayment() => PaymentConfirmScreen(
+        step: step,
+        flow: widget.payment,
+        // Back to the method screen, not out of paying: changing a number is
+        // the commonest reason anybody leaves the confirmation.
+        onBack: () => widget.payment.tryAgain(),
+      ),
+
+      AwaitingPin() => PaymentWaitingScreen(step: step, onCancel: _stopPaying),
+
+      PaymentSucceeded() => PaymentReceiptScreen(
+        step: step,
+        onDone: () {
+          setState(() => _paying = false);
+          _flow.reset();
+        },
+      ),
+
+      PaymentRefused() => PaymentRefusedScreen(
+        step: step,
+        onRetry: widget.payment.tryAgain,
+        onBack: _stopPaying,
+      ),
+
+      PaymentUnresolved() => PaymentUnresolvedScreen(
+        step: step,
+        onDone: () {
+          setState(() => _paying = false);
+          _flow.reset();
+        },
+      ),
+    };
+  }
+
+  /// Leaves paying without losing the reservation. The payment code and its
+  /// deadline are still on the screen underneath.
+  void _stopPaying() => setState(() => _paying = false);
 
   void _backToResults() {
     final query = _flow.lastQuery;

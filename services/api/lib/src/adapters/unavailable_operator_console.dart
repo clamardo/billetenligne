@@ -100,6 +100,19 @@ final class UnavailableOperatorConsole implements OperatorConsole {
     required String operatorId,
     required String departureId,
   }) async => _refuse();
+
+  @override
+  Future<List<PaymentAccountSummary>> paymentAccounts(
+    String operatorId,
+  ) async => _refuse();
+
+  @override
+  Future<PaymentAccountSummary?> savePaymentAccount({
+    required String operatorId,
+    required String railId,
+    required String msisdn,
+    required String displayName,
+  }) async => _refuse();
 }
 
 /// The console needs a real database and there is not one.

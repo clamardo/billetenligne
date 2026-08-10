@@ -64,17 +64,24 @@ Future<Response> onRequest(RequestContext context, String id) async {
     if (!services.railIds.contains(a.railId)) continue;
 
     final rail = _railFor(a.railId);
-    if (rail == null || !rail.enabled) continue;
+
+    // A rail the compiled-in market does not describe is still offered, and
+    // that is deliberate: ADR-0006 makes this list server-driven precisely so
+    // a rail can be added without an app release, and gating it on a constant
+    // in the binary would defeat that. The market entry supplies the label
+    // and the USSD fallback when there is one; without it the rail id is the
+    // key, which the catalog can grow an entry for at any time.
+    if (rail != null && !rail.enabled) continue;
 
     options.add(
       PaymentOptionDto(
         railId: a.railId,
-        operatorId: rail.operator?.id ?? a.railId,
+        operatorId: rail?.operator?.id ?? a.railId,
         // A catalog key. The server never sends prose (ADR-0008).
-        labelKey: rail.labelKey,
+        labelKey: rail?.labelKey ?? 'enum.PaymentRail.${a.railId}',
         collectionMsisdn: a.msisdn,
         collectionName: a.displayName,
-        ussdCode: rail.ussdCode,
+        ussdCode: rail?.ussdCode,
         recommended: a.railId == recommendedRail,
       ),
     );

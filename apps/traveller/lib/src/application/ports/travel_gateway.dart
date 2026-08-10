@@ -1,4 +1,5 @@
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_domain/bel_domain.dart';
 
 /// Everything the traveller journey needs from the outside world.
 ///
@@ -42,4 +43,28 @@ abstract interface class TravelGateway {
     required List<PassengerDto> passengers,
     required String idempotencyKey,
   });
+
+  /// One booking, refreshed.
+  Future<BookingDto> booking(String bookingId);
+
+  // ── Paying ────────────────────────────────────────────────────────────────
+
+  /// How this booking can be paid, and where the money goes.
+  ///
+  /// Server-driven, so enabling a rail is a config push rather than an app
+  /// release (ADR-0006). Carries the traveller's own number so the payer
+  /// field can be prefilled, and the amount so the confirmation screen does
+  /// not have to recompute one.
+  Future<({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})>
+  paymentOptions(String bookingId);
+
+  /// Pushes a PIN prompt to a handset. Answers `pending`, never `paid`.
+  Future<PaymentIntentDto> startPayment({
+    required String bookingId,
+    required String railId,
+    required String payerMsisdn,
+    required String idempotencyKey,
+  });
+
+  Future<PaymentIntentDto> paymentStatus(String intentId);
 }

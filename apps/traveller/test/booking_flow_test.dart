@@ -9,6 +9,13 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// The idempotency key is the interesting recording: whether a retry reuses it
 /// is the difference between one hold and two.
+/// Exported so `payment_flow_test` can drive the same fake.
+///
+/// One scripted gateway rather than two, for the reason the port itself gives:
+/// search-seatmap-hold-reserve-pay is one conversation, and two fakes that
+/// disagree about a booking make both suites meaningless.
+typedef ScriptedGatewayFactory = _ScriptedGateway;
+
 final class _ScriptedGateway implements TravelGateway {
   _ScriptedGateway({this.searchResult});
 
@@ -77,25 +84,110 @@ final class _ScriptedGateway implements TravelGateway {
     reserved
       ..clear()
       ..addAll(passengers);
-    return reserveResult ??= BookingDto(
-      id: 'bk-1',
-      ref: 'BEL-7QK4M2',
-      state: 'pending_payment',
-      departureId: 'dep-1',
-      operatorName: 'Ocean du Nord',
-      originCity: 'BZV',
-      destinationCity: 'PNR',
-      departsAt: DateTime.utc(2026, 8, 10, 6),
-      arrivesAt: DateTime.utc(2026, 8, 10, 14),
-      passengers: passengers,
-      fare: const Money.xaf(12000),
-      serviceFee: const Money.xaf(300),
-      total: const Money.xaf(12300),
-      createdAt: DateTime.utc(2026, 8, 9),
-      paymentCode: 'K4M2Q',
-      paymentDeadline: DateTime.utc(2026, 8, 9, 10),
+    return reserveResult ??= _demoBooking(passengers);
+  }
+
+  // ── Paying ────────────────────────────────────────────────────────────────
+
+  List<PaymentOptionDto> options = const [
+    PaymentOptionDto(
+      railId: 'cg.mtn_momo',
+      operatorId: 'mtn',
+      labelKey: 'enum.MobileOperator.mtn',
+      collectionMsisdn: '242060000001',
+      collectionName: 'Ocean du Nord',
+      recommended: true,
+    ),
+    PaymentOptionDto(
+      railId: 'cg.airtel_money',
+      operatorId: 'airtel',
+      labelKey: 'enum.MobileOperator.airtel',
+      collectionMsisdn: '242050000002',
+      collectionName: 'Ocean du Nord',
+    ),
+  ];
+
+  String? accountMsisdn = '242061234567';
+  ApiFailure? optionsFailure;
+  ApiFailure? startPaymentFailure;
+
+  final startedPayments = <({String railId, String payerMsisdn, String key})>[];
+  final statusScript = <String>[];
+
+  @override
+  Future<BookingDto> booking(String bookingId) async =>
+      reserveResult ??= _demoBooking(const []);
+
+  @override
+  Future<({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})>
+  paymentOptions(String bookingId) async {
+    if (optionsFailure != null) throw optionsFailure!;
+    return (
+      options: options,
+      accountMsisdn: accountMsisdn,
+      amount: const Money.xaf(12300),
     );
   }
+
+  @override
+  Future<PaymentIntentDto> startPayment({
+    required String bookingId,
+    required String railId,
+    required String payerMsisdn,
+    required String idempotencyKey,
+  }) async {
+    startedPayments.add((
+      railId: railId,
+      payerMsisdn: payerMsisdn,
+      key: idempotencyKey,
+    ));
+    if (startPaymentFailure != null) throw startPaymentFailure!;
+    return PaymentIntentDto(
+      id: 'pi-1',
+      state: 'pending',
+      railId: railId,
+      amount: const Money.xaf(12300),
+      createdAt: DateTime.utc(2026, 8, 9, 6),
+      pollAfterSeconds: 0,
+    );
+  }
+
+  @override
+  Future<PaymentIntentDto> paymentStatus(String intentId) async {
+    final state = statusScript.isEmpty
+        ? 'pending'
+        : (statusScript.length == 1
+              ? statusScript.first
+              : statusScript.removeAt(0));
+    return PaymentIntentDto(
+      id: intentId,
+      state: state,
+      railId: 'cg.mtn_momo',
+      amount: const Money.xaf(12300),
+      createdAt: DateTime.utc(2026, 8, 9, 6),
+      failureCode: state == 'failed' ? 'payment.wrong_pin' : null,
+      pollAfterSeconds: 0,
+    );
+  }
+
+  static BookingDto _demoBooking(List<PassengerDto> passengers) => BookingDto(
+    id: 'bk-1',
+    ref: 'BEL-7QK4M2',
+    state: 'pending_payment',
+    departureId: 'dep-1',
+    operatorName: 'Ocean du Nord',
+    originCity: 'BZV',
+    destinationCity: 'PNR',
+    departsAt: DateTime.utc(2026, 8, 10, 6),
+    arrivesAt: DateTime.utc(2026, 8, 10, 14),
+    passengers: passengers,
+    fare: const Money.xaf(12000),
+    serviceFee: const Money.xaf(300),
+    total: const Money.xaf(12300),
+    createdAt: DateTime.utc(2026, 8, 9),
+    paymentCode: 'K4M2Q',
+    paymentDeadline: DateTime.utc(2026, 8, 9, 10),
+  );
 
   @override
   Future<void> release(String holdId) async => released.add(holdId);

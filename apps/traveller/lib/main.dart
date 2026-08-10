@@ -4,6 +4,7 @@ import 'package:bel_client/bel_client.dart';
 import 'package:flutter/material.dart';
 
 import 'src/application/booking_flow.dart';
+import 'src/application/payment_flow.dart';
 import 'src/application/ports/identity_gateway.dart';
 import 'src/application/ports/travel_gateway.dart';
 import 'src/application/sign_in_flow.dart';
@@ -79,6 +80,7 @@ Future<void> main() async {
       catalog: catalog,
       flow: BookingFlow(gateway: gateway, isSignedIn: () => identity.isSignedIn),
       signIn: SignInFlow(gateway: identity),
+      payment: PaymentFlow(gateway: gateway),
       language: language,
     ),
   );

@@ -30,6 +30,14 @@ abstract final class Format {
       amount.format(locale: locale);
 
   /// `2026-08-15`, for the wire. Never shown to anyone.
+  /// `+242 06 123 45 67` — grouped the way Congolese numbers are read aloud.
+  ///
+  /// Delegates to the domain, which owns the grouping, and degrades to the
+  /// raw digits for anything it cannot parse: a half-typed number in a field
+  /// must still render as what was typed.
+  static String msisdn(String value) =>
+      PhoneNumber.parse(value).valueOrNull?.format() ?? value;
+
   static String isoDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'

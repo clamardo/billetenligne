@@ -746,6 +746,86 @@ final class PostgresOperatorConsole implements OperatorConsole {
     );
   });
 
+  // ── Getting paid ──────────────────────────────────────────────────────────
+
+  @override
+  Future<List<PaymentAccountSummary>> paymentAccounts(String operatorId) =>
+      _db.transaction(DbScope.tenant(operatorId), (tx) async {
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT id, rail_id, msisdn, display_name, verified_at, active
+              FROM operator_payment_accounts
+             WHERE operator_id = @operator AND active
+             ORDER BY rail_id
+          '''),
+          parameters: {'operator': TypedValue(Type.uuid, operatorId)},
+        );
+
+        return [
+          for (final row in rows)
+            PaymentAccountSummary(
+              id: row.toColumnMap()['id'].toString(),
+              railId: row.toColumnMap()['rail_id'] as String,
+              msisdn: row.toColumnMap()['msisdn'] as String,
+              displayName: row.toColumnMap()['display_name'] as String,
+              verified: row.toColumnMap()['verified_at'] != null,
+              active: row.toColumnMap()['active'] as bool,
+            ),
+        ];
+      });
+
+  @override
+  Future<PaymentAccountSummary?> savePaymentAccount({
+    required String operatorId,
+    required String railId,
+    required String msisdn,
+    required String displayName,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // Deactivate rather than replace. An intent that already pushed money at
+    // the old number has to keep resolving to it when somebody disputes the
+    // payment six weeks from now — and the partial unique index covers only
+    // active rows, which is what makes keeping the history possible.
+    await tx.execute(
+      Sql.named('''
+        UPDATE operator_payment_accounts
+           SET active = FALSE, updated_at = now()
+         WHERE operator_id = @operator AND rail_id = @rail AND active
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'rail': TypedValue(Type.text, railId),
+      },
+      ignoreRows: true,
+    );
+
+    final rows = await tx.execute(
+      Sql.named('''
+        INSERT INTO operator_payment_accounts
+          (operator_id, rail_id, msisdn, display_name)
+        VALUES (@operator, @rail, @msisdn, @name)
+        RETURNING id, rail_id, msisdn, display_name, verified_at, active
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'rail': TypedValue(Type.text, railId),
+        'msisdn': TypedValue(Type.text, msisdn),
+        'name': TypedValue(Type.text, displayName),
+      },
+    );
+
+    final row = rows.first.toColumnMap();
+    return PaymentAccountSummary(
+      id: row['id'].toString(),
+      railId: row['rail_id'] as String,
+      msisdn: row['msisdn'] as String,
+      displayName: row['display_name'] as String,
+      // Never on creation. A typo here sends every franc to a stranger,
+      // permanently, because mobile money has no chargeback.
+      verified: false,
+      active: true,
+    );
+  });
+
   // ── Encoding ──────────────────────────────────────────────────────────────
 
   static VehicleSummary _vehicle(Map<String, dynamic> r) => VehicleSummary(

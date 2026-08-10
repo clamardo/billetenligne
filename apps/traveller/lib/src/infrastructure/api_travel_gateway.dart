@@ -1,5 +1,6 @@
 import 'package:bel_client/bel_client.dart';
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_domain/bel_domain.dart';
 
 import '../application/ports/travel_gateway.dart';
 
@@ -37,6 +38,35 @@ final class ApiTravelGateway implements TravelGateway {
 
   @override
   Future<void> release(String holdId) => _client.releaseHold(holdId);
+
+  @override
+  Future<BookingDto> booking(String bookingId) async {
+    final all = await _client.bookings();
+    return all.firstWhere((b) => b.id == bookingId);
+  }
+
+  @override
+  Future<({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})>
+  paymentOptions(String bookingId) => _client.paymentOptions(bookingId);
+
+  @override
+  Future<PaymentIntentDto> startPayment({
+    required String bookingId,
+    required String railId,
+    required String payerMsisdn,
+    required String idempotencyKey,
+  }) => _client.startPayment(
+    StartPaymentRequest(
+      bookingId: bookingId,
+      railId: railId,
+      payerMsisdn: payerMsisdn,
+    ),
+    idempotencyKey: idempotencyKey,
+  );
+
+  @override
+  Future<PaymentIntentDto> paymentStatus(String intentId) =>
+      _client.paymentStatus(intentId);
 
   @override
   Future<BookingDto> reserve({

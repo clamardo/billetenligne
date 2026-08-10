@@ -84,3 +84,5 @@ travel:
     total: "Total à payer"
     deadline: "À payer avant {time}, sinon les places repartent en vente."
     afterPayment: "Une fois payé, votre billet apparaît ici avec son code QR."
+    payNow: "Payer maintenant par mobile money"
+    payLater: "Payer à l'agence"

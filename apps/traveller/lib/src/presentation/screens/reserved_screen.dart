@@ -27,11 +27,17 @@ final class ReservedScreen extends StatelessWidget {
   const ReservedScreen({
     required this.booking,
     required this.onDone,
+    this.onPayNow,
     super.key,
   });
 
   final BookingDto booking;
   final VoidCallback onDone;
+
+  /// Pay by mobile money instead of walking in. Null when no rail is
+  /// available — and the screen then says nothing about it rather than
+  /// showing a button that cannot work.
+  final VoidCallback? onPayNow;
 
   @override
   Widget build(BuildContext context) {
@@ -164,8 +170,21 @@ final class ReservedScreen extends StatelessWidget {
             ),
 
             SizedBox(height: kilo.space.s5),
+
+            if (onPayNow != null) ...[
+              // Offered above "done", because paying now is what most people
+              // came to do — the agency code is the fallback for somebody
+              // without a wallet, not the other way round.
+              KButton(
+                label: context.t('travel.reserved.payNow'),
+                icon: Icons.smartphone,
+                onPressed: onPayNow,
+              ),
+              SizedBox(height: kilo.space.s2),
+            ],
+
             KButton(
-              label: context.t('common.actions.done'),
+              label: context.t('travel.reserved.payLater'),
               tone: KButtonTone.secondary,
               onPressed: onDone,
             ),

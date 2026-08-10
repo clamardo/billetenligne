@@ -408,6 +408,81 @@ check "a traveller sees their own booking" "yes" \
   "$(curl -s -H "$BOOK_AUTH" "$BASE/public/v1/bookings" \
      | grep -q '"state":"pending_payment"' && echo yes || echo no)"
 
+# ── Paying by mobile money ──────────────────────────────────────────────────
+#
+# The fakes composition runs one fake rail with one verified collection
+# account, so the whole funnel is walkable over a real socket with no
+# credentials — including the states that only exist because a rail refused.
+booking_id="$(sed 's/.*"id":"\([^"]*\)".*/\1/' <<<"$booking")"
+
+options="$(curl -s -H "$BOOK_AUTH" \
+  "$BASE/public/v1/bookings/$booking_id/payment-options")"
+
+check "payment options are offered" "yes" \
+  "$(grep -q '"railId"' <<<"$options" && echo yes || echo no)"
+# A number with no name beside it is what a scam looks like. Both travel.
+check "each option says where the money goes" "yes" \
+  "$(grep -q '"collectionMsisdn"' <<<"$options" \
+     && grep -q '"collectionName"' <<<"$options" && echo yes || echo no)"
+# The server never sends prose (ADR-0008): a catalog key, not a sentence.
+check "the wallet label is a catalog key" "yes" \
+  "$(grep -q '"labelKey"' <<<"$options" && echo yes || echo no)"
+# Carries a merchant number and the traveller's own.
+check "payment options are never shared-cached" "yes" \
+  "$(curl -sD - -o /dev/null -H "$BOOK_AUTH" \
+     "$BASE/public/v1/bookings/$booking_id/payment-options" \
+     | tr -d '\r' | grep -qi '^cache-control: private, no-store' \
+     && echo yes || echo no)"
+
+pay_body="$(curl -s -X POST "$BASE/public/v1/payments" \
+  -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: smoke-pay-$$" \
+  -d "{\"bookingId\":\"$booking_id\",\"railId\":\"cg.fake_money\",\"payerMsisdn\":\"061234567\"}")"
+
+# `pending`, never `paid`: nobody has typed a PIN yet, and saying otherwise is
+# a lie the waiting screen would repeat.
+check "starting a payment answers pending" "yes" \
+  "$(grep -q '"state":"pending"' <<<"$pay_body" && echo yes || echo no)"
+check "the amount comes from the booking" "yes" \
+  "$(grep -q '"amount":{"minor":12300,"currency":"XAF"}' <<<"$pay_body" \
+     && echo yes || echo no)"
+check "the app is told when to poll" "yes" \
+  "$(grep -q '"pollAfterSeconds"' <<<"$pay_body" && echo yes || echo no)"
+
+check "paying needs an account" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/payments" \
+     -H 'Content-Type: application/json' -H 'Idempotency-Key: anon-pay' \
+     -d '{"bookingId":"x","railId":"cg.fake_money","payerMsisdn":"061234567"}')"
+# A duplicate tap must not put two PIN prompts on one handset.
+check "paying without an idempotency key is 400" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/payments" \
+     -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+     -d "{\"bookingId\":\"$booking_id\",\"railId\":\"cg.fake_money\",\"payerMsisdn\":\"061234567\"}")"
+
+intent_id="$(sed 's/.*"id":"\([^"]*\)".*/\1/' <<<"$pay_body")"
+check "the traveller can watch their own payment" "200" \
+  "$(status -H "$BOOK_AUTH" "$BASE/public/v1/payments/$intent_id")"
+check "another traveller cannot" "401" \
+  "$(status "$BASE/public/v1/payments/$intent_id")"
+
+# The rail refused outright: a specific code, not "payment failed".
+declined="$(curl -s -X POST "$BASE/public/v1/payments" \
+  -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: smoke-decline-$$" \
+  -d "{\"bookingId\":\"$booking_id\",\"railId\":\"cg.fake_money\",\"payerMsisdn\":\"060000000\"}")"
+check "a decline names its reason" "yes" \
+  "$(grep -q '"code":"payment.insufficient_funds"' <<<"$declined" \
+     && echo yes || echo no)"
+
+# A callback is untrusted input, and an unknown reference is far more likely a
+# stale retry than a problem worth breaking delivery over.
+check "an unknown callback is answered 200, not 404" "200" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/hooks/payments/fake" \
+     -H 'Content-Type: application/json' -d '{"referenceId":"nope"}')"
+check "a callback for an unknown rail is answered 200" "200" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/hooks/payments/nope" \
+     -H 'Content-Type: application/json' -d '{}')"
+
 check "the profile needs an account" "401" "$(status "$BASE/public/v1/me")"
 me="$(curl -s -H "Authorization: Bearer $session_token" "$BASE/public/v1/me")"
 check "the profile is the address that signed in" "yes" \

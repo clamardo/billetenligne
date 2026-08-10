@@ -225,7 +225,7 @@ final class DemoTravelGateway implements TravelGateway {
     // A fixed code, printed on the screen's own hint in the demo: there is no
     // agency to walk into here, and a random one would make the flow
     // unreviewable.
-    return BookingDto(
+    return _booking = BookingDto(
       id: 'bk-demo-${++_counter}',
       ref: 'BEL-DEMO$_counter',
       state: 'pending_payment',
@@ -244,6 +244,135 @@ final class DemoTravelGateway implements TravelGateway {
       paymentDeadline: _now.add(const Duration(hours: 4)),
     );
   }
+
+
+  // ── Paying ────────────────────────────────────────────────────────────────
+  //
+  // A demo rail that behaves like a real one: the prompt takes a few seconds
+  // to be answered, and one number always declines. The states people never
+  // see in development are the ones that ship broken, so the failure path is
+  // reachable here without a test harness.
+
+  BookingDto? _booking;
+  PaymentIntentDto? _intent;
+  var _polls = 0;
+
+  /// Type this to watch the decline screen.
+  static const decliningMsisdn = '060000000';
+
+  @override
+  Future<BookingDto> booking(String bookingId) async {
+    await Future<void>.delayed(latency);
+    return _booking!;
+  }
+
+  @override
+  Future<({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})>
+  paymentOptions(String bookingId) async {
+    await Future<void>.delayed(latency);
+    final total = _booking?.total ?? const Money.xaf(12300);
+    return (
+      options: const [
+        PaymentOptionDto(
+          railId: 'cg.mtn_momo',
+          operatorId: 'mtn',
+          labelKey: 'enum.MobileOperator.mtn',
+          collectionMsisdn: '242060000001',
+          collectionName: 'Ocean du Nord',
+          ussdCode: '*105#',
+          recommended: true,
+        ),
+        PaymentOptionDto(
+          railId: 'cg.airtel_money',
+          operatorId: 'airtel',
+          labelKey: 'enum.MobileOperator.airtel',
+          collectionMsisdn: '242050000002',
+          collectionName: 'Ocean du Nord',
+          ussdCode: '*128#',
+        ),
+      ],
+      accountMsisdn: '242061234567',
+      amount: total,
+    );
+  }
+
+  @override
+  Future<PaymentIntentDto> startPayment({
+    required String bookingId,
+    required String railId,
+    required String payerMsisdn,
+    required String idempotencyKey,
+  }) async {
+    await Future<void>.delayed(latency);
+    _polls = 0;
+
+    if (payerMsisdn.replaceAll(RegExp(r'[^0-9]'), '').endsWith(decliningMsisdn)) {
+      throw const ServerRefused(
+        422,
+        ApiError(code: 'payment.insufficient_funds'),
+      );
+    }
+
+    return _intent = PaymentIntentDto(
+      id: 'pi-demo-${++_counter}',
+      state: 'pending',
+      railId: railId,
+      amount: _booking?.total ?? const Money.xaf(12300),
+      createdAt: _now,
+      expiresAt: _now.add(const Duration(minutes: 10)),
+      pollAfterSeconds: 1,
+    );
+  }
+
+  @override
+  Future<PaymentIntentDto> paymentStatus(String intentId) async {
+    await Future<void>.delayed(latency);
+
+    // Two polls of waiting, so the waiting screen is actually seen. A demo
+    // that settles instantly is a demo where nobody notices the spinner is
+    // wrong.
+    if (++_polls < 3) return _intent!;
+
+    _booking = _paid(_booking!);
+    return _intent = PaymentIntentDto(
+      id: _intent!.id,
+      state: 'captured',
+      railId: _intent!.railId,
+      amount: _intent!.amount,
+      createdAt: _intent!.createdAt,
+      bookingRef: _booking!.ref,
+    );
+  }
+
+  static BookingDto _paid(BookingDto booking) => BookingDto(
+    id: booking.id,
+    ref: booking.ref,
+    state: 'confirmed',
+    departureId: booking.departureId,
+    operatorName: booking.operatorName,
+    originCity: booking.originCity,
+    destinationCity: booking.destinationCity,
+    departsAt: booking.departsAt,
+    arrivesAt: booking.arrivesAt,
+    passengers: booking.passengers,
+    fare: booking.fare,
+    serviceFee: booking.serviceFee,
+    total: booking.total,
+    createdAt: booking.createdAt,
+    tickets: [
+      for (final p in booking.passengers)
+        TicketDto(
+          id: 'tk-demo-${p.seatLabel}',
+          bookingRef: booking.ref,
+          seatLabel: p.seatLabel ?? '',
+          passengerName: p.fullName,
+          qrPayload: '1|BEL|${booking.ref}|${p.seatLabel}|demo',
+          rotatingSecret: 'demo',
+          keyId: 1,
+          issuedAt: booking.createdAt,
+        ),
+    ],
+  );
 
   @override
   Future<void> release(String holdId) async {

@@ -1,6 +1,7 @@
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_traveller/src/application/booking_flow.dart';
+import 'package:bel_traveller/src/application/payment_flow.dart';
 import 'package:bel_traveller/src/application/sign_in_flow.dart';
 import 'package:bel_traveller/src/infrastructure/demo_identity_gateway.dart';
 import 'package:bel_traveller/src/infrastructure/demo_travel_gateway.dart';
@@ -68,6 +69,7 @@ void main() {
         catalog: catalog,
         flow: flow,
         signIn: SignInFlow(gateway: identity),
+        payment: PaymentFlow(gateway: gateway),
         language: language,
       ),
     );
