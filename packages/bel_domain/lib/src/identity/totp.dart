@@ -162,9 +162,7 @@ final class Base32 {
   /// Tolerant on input: padding, spaces and lower case are all things a human
   /// types when an app asks them to enter a key by hand.
   static List<int>? decode(String encoded) {
-    final cleaned = encoded
-        .toUpperCase()
-        .replaceAll(RegExp(r'[\s=]'), '');
+    final cleaned = encoded.toUpperCase().replaceAll(RegExp(r'[\s=]'), '');
 
     final out = <int>[];
     var buffer = 0;

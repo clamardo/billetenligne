@@ -820,6 +820,87 @@ check "the profile is the address that signed in" "yes" \
 check "the profile carries no roles" "yes" \
   "$(grep -q '"roles"' <<<"$me" && echo no || echo yes)"
 
+# ── Self-signup (03-operator-lifecycle.md §2.2) ─────────────────────────────
+#
+# The one surface where a member of the public writes into `operators`. What
+# a socket proves here and a unit test cannot: the route is closed to
+# anonymous callers, the status the applicant lands in is the only one the
+# database would accept, and the two refusals that matter — a second
+# application, and a submission with gaps — are typed conflicts rather than
+# 500s.
+echo
+echo "── self-signup"
+
+check "an application needs an account" "401" \
+  "$(status "$BASE/public/v1/operator-applications")"
+check "a fresh account has none" "404" \
+  "$(status -H "Authorization: Bearer $session_token" \
+     "$BASE/public/v1/operator-applications")"
+check "a two-letter company is refused by name" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/operator-applications" \
+     -H "Authorization: Bearer $session_token" \
+     -H 'Content-Type: application/json' -d '{"legalName":"OK"}')"
+
+started="$(curl -s -X POST "$BASE/public/v1/operator-applications" \
+  -H "Authorization: Bearer $session_token" \
+  -H 'Content-Type: application/json' \
+  -d '{"legalName":"Sotrapo SARL"}')"
+check "starting one lands in application_draft" "yes" \
+  "$(grep -q '"status":"application_draft"' <<<"$started" && echo yes || echo no)"
+check "the operator code is generated, not chosen" "yes" \
+  "$(grep -q '"code":"SOTRAP-' <<<"$started" && echo yes || echo no)"
+
+check "a second application is a typed conflict" "yes" \
+  "$(curl -s -X POST "$BASE/public/v1/operator-applications" \
+     -H "Authorization: Bearer $session_token" \
+     -H 'Content-Type: application/json' \
+     -d '{"legalName":"Sotrapo Deux"}' \
+     | grep -q '"code":"application.already_exists"' && echo yes || echo no)"
+
+check "submitting an empty wizard is refused, with a code" "yes" \
+  "$(curl -s -X POST "$BASE/public/v1/operator-applications/submit" \
+     -H "Authorization: Bearer $session_token" \
+     | grep -q '"code":"application.incomplete"' && echo yes || echo no)"
+
+saved="$(curl -s -X PUT "$BASE/public/v1/operator-applications" \
+  -H "Authorization: Bearer $session_token" \
+  -H 'Content-Type: application/json' \
+  -d '{"legalName":"Sotrapo SARL","tradingName":"Sotrapo",
+       "rccmNumber":"CG-BZV-01-2019-B12-00123","taxId":"M2019110000123",
+       "legalForm":"sarl","registeredAddress":"4 rue Fulbert Youlou, Dolisie",
+       "yearFounded":2019,"ownerName":"Prosper Loubaki",
+       "ownerIdType":"passport","ownerIdNumber":"19CD98765",
+       "ownerPhone":"+242060192286","ownerEmail":"prosper@sotrapo.cg",
+       "transportLicenceNumber":"TR-2025-0044",
+       "transportLicenceExpires":"2032-03-31","insurerName":"NSIA Congo",
+       "fleetInsuranceExpires":"2032-01-31",
+       "routesServed":"Dolisie - Pointe-Noire","fleetSize":3,
+       "stationCount":2,"dailyDepartures":4,"settlementKind":"momo",
+       "settlementAccountName":"Sotrapo",
+       "settlementAccountRef":"+242060192286","agreementAccepted":true}')"
+check "the wizard saves what it was given" "yes" \
+  "$(grep -q '"ownerEmail":"prosper@sotrapo.cg"' <<<"$saved" && echo yes || echo no)"
+# A date, not an instant: a certificate valid until the 30th must not read as
+# expired on the 30th because somebody sent UTC midnight.
+check "an expiry travels as a day" "yes" \
+  "$(grep -q '"fleetInsuranceExpires":"2032-01-31"' <<<"$saved" && echo yes || echo no)"
+
+submitted="$(curl -s -X POST "$BASE/public/v1/operator-applications/submit" \
+  -H "Authorization: Bearer $session_token")"
+check "a complete application reaches the queue" "yes" \
+  "$(grep -q '"status":"under_review"' <<<"$submitted" && echo yes || echo no)"
+check "and locks behind the review" "yes" \
+  "$(curl -s -X PUT "$BASE/public/v1/operator-applications" \
+     -H "Authorization: Bearer $session_token" \
+     -H 'Content-Type: application/json' -d '{"legalName":"Sotrapo SARL"}' \
+     | grep -q '"code":"application.locked"' && echo yes || echo no)"
+
+# The applicant never becomes staff by applying. Only activation does that,
+# and the console refuses anybody who belongs to no tenant.
+check "an applicant is not yet an operator" "403" \
+  "$(status -H "Authorization: Bearer $session_token" "$BASE/console/v1/me")"
+
 # ── The Dart client against this same server ────────────────────────────────
 #
 # curl proves the HTTP surface; this proves the seam the *app* actually uses —

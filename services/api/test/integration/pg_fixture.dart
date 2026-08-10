@@ -202,6 +202,28 @@ final class PgFixture {
     return [for (final row in rows) row.toColumnMap()];
   }
 
+  /// What this account holds on this operator. Empty when they are not staff
+  /// of it at all — which is what an applicant looks like right up to the
+  /// moment their application is activated.
+  Future<List<String>> staffRoles(String operatorId, String userId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT roles FROM operator_staff
+         WHERE operator_id = @operator AND user_id = @user
+           AND revoked_at IS NULL
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'user': TypedValue(Type.uuid, userId),
+      },
+    );
+    if (rows.isEmpty) return const [];
+    return [
+      for (final role in rows.first.toColumnMap()['roles'] as List)
+        role.toString(),
+    ];
+  }
+
   Future<String> operatorStatus(String operatorId) async {
     final rows = await _seed.execute(
       Sql.named('SELECT status::text AS s FROM operators WHERE id = @id'),

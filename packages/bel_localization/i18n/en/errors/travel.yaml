@@ -28,6 +28,11 @@ errors:
     not_confirmed: "This ticket was never paid for — there is nothing to refund."
     not_possible: "This ticket cannot be refunded."
     claim_not_open: "This refund code is not valid: unknown, already collected, or expired."
+  application:
+    already_exists: "You already have an application in progress. Finish it, or contact us to open a second one."
+    not_found: "No application has been started with this account yet."
+    locked: "Your application is under review. You will be able to edit it if we ask for anything more."
+    incomplete: "Some information is still missing. Complete the steps flagged before sending."
   hold:
     seat_unavailable: "Seat {seats} was just taken. Please choose another."
     expired: "Your reservation expired."

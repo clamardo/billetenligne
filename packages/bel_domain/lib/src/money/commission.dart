@@ -53,8 +53,7 @@ final class CommissionTerm {
   }
 
   @override
-  bool operator ==(Object other) =>
-      other is CommissionTerm && other.bps == bps;
+  bool operator ==(Object other) => other is CommissionTerm && other.bps == bps;
 
   @override
   int get hashCode => bps.hashCode;

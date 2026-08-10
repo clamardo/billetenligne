@@ -24,6 +24,7 @@ import 'application/ports/city_catalogue.dart';
 import 'application/ports/operator_console.dart';
 import 'application/ports/payment_gateway.dart';
 import 'application/ports/payment_store.dart';
+import 'application/ports/operator_applications.dart';
 import 'application/ports/platform_console.dart';
 import 'application/ports/departure_catalogue.dart';
 import 'application/ports/notification_gateway.dart';
@@ -46,10 +47,12 @@ import 'infrastructure/azure/azure_blob_store.dart';
 import 'infrastructure/memory/memory_object_store.dart';
 import 'infrastructure/memory/memory_seat_inventory.dart';
 import 'infrastructure/memory/memory_second_factors.dart';
+import 'infrastructure/memory/memory_operator_applications.dart';
 import 'infrastructure/memory/memory_storefronts.dart';
 import 'infrastructure/postgres/postgres_departure_catalogue.dart';
 import 'infrastructure/postgres/postgres_booking_store.dart';
 import 'infrastructure/postgres/postgres_identity.dart';
+import 'infrastructure/postgres/postgres_operator_applications.dart';
 import 'infrastructure/postgres/postgres_operator_console.dart';
 import 'infrastructure/postgres/postgres_operator_directory.dart';
 import 'infrastructure/postgres/postgres_payment_store.dart';
@@ -83,6 +86,7 @@ final class Services {
     required this.console,
     required this.platform,
     required this.storefronts,
+    required this.applications,
     required this.storage,
     required this.payments,
     required this.payForBooking,
@@ -127,6 +131,12 @@ final class Services {
   /// from and the public page a stranger opens. One port, because the live
   /// preview in that editor is only honest if it previews the same record.
   final Storefronts storefronts;
+
+  /// Self-signup (`03-operator-lifecycle.md` §2.2). On the **public** surface
+  /// and not the console's, because an applicant belongs to no tenant yet —
+  /// that is the whole situation — so the console's middleware would refuse
+  /// them before a handler ran.
+  final OperatorApplications applications;
 
   /// Where a logo goes.
   ///
@@ -241,6 +251,7 @@ final class Services {
       console: PostgresOperatorConsole(db, timeZone: Market.current.timeZone),
       platform: PostgresPlatformConsole(db),
       storefronts: PostgresStorefronts(db),
+      applications: PostgresOperatorApplications(db),
       // Falls back to the in-memory store rather than refusing to start. A
       // deployment with a database and no storage account is a real state —
       // it is every deployment on the day before the storage account is
@@ -348,6 +359,7 @@ final class Services {
       console: const UnavailableOperatorConsole(),
       platform: const UnavailablePlatformConsole(),
       storefronts: MemoryStorefronts.demo(),
+      applications: MemoryOperatorApplications(clock: clock),
       storage: MemoryObjectStore(),
       payments: memoryPayments,
       payForBooking: PayForBooking(

@@ -116,6 +116,31 @@ final class AuditEntry {
   final String? subjectId;
 }
 
+/// The wizard's answers, as the reviewer reads them.
+///
+/// Null for every operator that arrived before self-signup existed — which is
+/// the first ten, by SQL, in a room. Nullable rather than empty on purpose: a
+/// reviewer must be able to tell "applied and left step 4 blank" from "never
+/// applied at all", and an empty record says the first about the second.
+final class SubmittedApplication {
+  const SubmittedApplication({
+    required this.facts,
+    this.submittedAt,
+    this.settlementVerifiedAt,
+  });
+
+  final ApplicationFacts facts;
+  final DateTime? submittedAt;
+
+  /// Set when the name-check or micro-deposit came back. Nothing writes it
+  /// yet: the verification is a third-party call this deployment does not
+  /// make, so a reviewer compares the two names themselves — which is what
+  /// [ApplicationFacts.settlementNameMatchesLegalName] is for.
+  final DateTime? settlementVerifiedAt;
+
+  bool get isSubmitted => submittedAt != null;
+}
+
 /// Everything about one operator on one page, because tab-hunting during a
 /// review is how a missing insurance certificate gets approved.
 final class OperatorDetail {
@@ -123,9 +148,11 @@ final class OperatorDetail {
     required this.summary,
     required this.documents,
     required this.trail,
+    this.application,
   });
 
   final OperatorSummary summary;
+  final SubmittedApplication? application;
   final List<KybDocument> documents;
 
   /// Newest first, and capped: the point is what has happened to this

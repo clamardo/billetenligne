@@ -54,6 +54,12 @@ Future<Response> onRequest(RequestContext context, String id) async {
   return Response.json(
     body: AdminOperatorDetailDto(
       operator: adminOperatorDto(detail.summary),
+      // The wizard's own answers, so the reviewer's checklist is computed by
+      // the same domain code that drove the applicant's progress bar. Two
+      // implementations of "what is missing" is how an application gets
+      // approved with a gap in it.
+      application: detail.application?.facts,
+      submittedAt: detail.application?.submittedAt,
       documents: [
         for (final d in detail.documents)
           KybDocumentDto(

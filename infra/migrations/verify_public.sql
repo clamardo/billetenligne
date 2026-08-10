@@ -227,3 +227,113 @@ BEGIN
   RAISE NOTICE 'OK  operator isolation survives the public policies';
 END
 $$;
+
+-- ── 8. An applicant may create a draft operator and may not approve it ──────
+--
+-- 0015 opens the narrowest write on `operators` the public role has ever
+-- had, and the whole safety of it rests on two things: an INSERT policy that
+-- pins `status`, and a *column-level* UPDATE grant. Column grants are easy to
+-- widen by accident — `GRANT UPDATE ON operators` is one word shorter than
+-- the correct statement — so the difference is executed here.
+DO $$
+DECLARE
+  aline    TEXT := '55555555-5555-5555-5555-555555555551';
+  serge    TEXT := '55555555-5555-5555-5555-555555555552';
+  applied  UUID;
+  visible  INT;
+BEGIN
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', '', true);
+  PERFORM set_config('app.user_id', aline, true);
+
+  -- The id is chosen before the row exists, and that is forced rather than
+  -- stylistic: `INSERT … RETURNING id` also evaluates the SELECT policy, and
+  -- the applicant's read is granted by the *application* row, which cannot
+  -- exist until the operator does. Two statements and a generated id instead
+  -- of one statement and a hole in the read policy.
+  applied := gen_random_uuid();
+
+  INSERT INTO operators (id, code, legal_name, market_code, status)
+  VALUES (applied, 'APPLIC-001', 'Sotrapo SARL', 'CG', 'application_draft');
+
+  INSERT INTO operator_applications (operator_id, applicant_user_id)
+  VALUES (applied, aline::UUID);
+
+  -- Creating an operator that is already selling.
+  BEGIN
+    INSERT INTO operators (code, legal_name, market_code, status)
+    VALUES ('APPLIC-002', 'Instant Success SARL', 'CG', 'active');
+    RAISE EXCEPTION 'FAIL: the public role created an ACTIVE operator';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  -- Approving their own application.
+  BEGIN
+    UPDATE operators SET status = 'active' WHERE id = applied;
+    RAISE EXCEPTION 'FAIL: an applicant approved their own application';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  -- Setting their own commission to nothing.
+  BEGIN
+    UPDATE operators SET commission_bps = 0 WHERE id = applied;
+    RAISE EXCEPTION 'FAIL: an applicant set their own commission';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  -- What they may do: correct the name they typed.
+  UPDATE operators SET legal_name = 'Sotrapo S.A.R.L.' WHERE id = applied;
+
+  -- And somebody else's application is not theirs to read or to edit.
+  PERFORM set_config('app.user_id', serge, true);
+
+  SELECT count(*) INTO visible FROM operator_applications;
+  IF visible <> 0 THEN
+    RAISE EXCEPTION 'FAIL: an applicant saw % other applications', visible;
+  END IF;
+
+  UPDATE operators SET legal_name = 'Serge Transport' WHERE id = applied;
+  IF FOUND THEN
+    RAISE EXCEPTION 'FAIL: an applicant edited a stranger''s application';
+  END IF;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  an applicant may draft an operator and may not approve, price or steal one';
+END
+$$;
+
+-- ── 9. Review does not need the applicant's permission, and vice versa ──────
+-- The reviewer works under bel_admin and must see every application; the
+-- operator, once activated, sees exactly its own.
+DO $$
+DECLARE
+  visible INT;
+BEGIN
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.public', 'off', true);
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.user_id', '', true);
+
+  SELECT count(*) INTO visible FROM operator_applications;
+  IF visible < 1 THEN
+    RAISE EXCEPTION 'FAIL: the review queue cannot see applications';
+  END IF;
+
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', '22222222-2222-2222-2222-222222222222', true);
+
+  SELECT count(*) INTO visible FROM operator_applications;
+  IF visible <> 0 THEN
+    RAISE EXCEPTION 'FAIL: an operator saw % applications that are not its own', visible;
+  END IF;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  the review queue sees every application and an operator sees only its own';
+END
+$$;

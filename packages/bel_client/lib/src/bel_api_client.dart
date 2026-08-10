@@ -321,6 +321,50 @@ final class BelApiClient {
 
   /// What cancelling this booking would give back, under the terms it was
   /// sold with. A quote, not a refund.
+  // ── Onboarding (03-operator-lifecycle.md §2.2) ────────────────────────────
+
+  /// Whatever this account is applying with, or null when it has never
+  /// started.
+  ///
+  /// Null rather than a thrown 404, because "no application" is the normal
+  /// state of every account on the platform — it is what a traveller who has
+  /// never thought about selling tickets looks like, and a client that has to
+  /// catch an exception to learn that is a client that logs an error a
+  /// million times a day.
+  Future<OperatorApplicationDto?> myApplication() async {
+    try {
+      return OperatorApplicationDto.fromJson(
+        await _get('/public/v1/operator-applications'),
+      );
+    } on ServerRefused catch (e) {
+      if (e.status == 404) return null;
+      rethrow;
+    }
+  }
+
+  Future<OperatorApplicationDto> startApplication(String legalName) async =>
+      OperatorApplicationDto.fromJson(
+        await _postJson('/public/v1/operator-applications', {
+          'legalName': legalName,
+        }),
+      );
+
+  /// Saves the whole record. Called constantly by the wizard — §2.2's "save
+  /// on every field" — and safe to repeat because it replaces rather than
+  /// merges.
+  Future<OperatorApplicationDto> saveApplication(ApplicationFacts facts) async {
+    final body = await _putJson(
+      '/public/v1/operator-applications',
+      ApplicationFactsDto(facts).toJson(),
+    );
+    return OperatorApplicationDto.fromJson(body ?? const {});
+  }
+
+  Future<OperatorApplicationDto> submitApplication() async =>
+      OperatorApplicationDto.fromJson(
+        await _postJson('/public/v1/operator-applications/submit', const {}),
+      );
+
   Future<RefundOfferDto> refundOffer(String bookingRef) async =>
       RefundOfferDto.fromJson(
         await _get('/console/v1/bookings/$bookingRef/refund'),

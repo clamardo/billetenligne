@@ -190,7 +190,9 @@ final class BrandAsset {
 
       final marker = bytes[offset + 1];
       // Standalone markers carry no length: padding, restarts, and SOI/EOI.
-      if (marker == 0xD8 || marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7)) {
+      if (marker == 0xD8 ||
+          marker == 0x01 ||
+          (marker >= 0xD0 && marker <= 0xD7)) {
         offset += 2;
         continue;
       }

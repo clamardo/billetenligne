@@ -1,4 +1,7 @@
+import 'package:bel_domain/bel_domain.dart';
+
 import '../json/json_codec.dart';
+import '../onboarding/application_dto.dart';
 import 'operator_lifecycle.dart';
 
 /// An operator, as our own back office lists them.
@@ -176,22 +179,45 @@ final class AdminOperatorDetailDto {
     required this.operator,
     this.documents = const [],
     this.trail = const [],
+    this.application,
+    this.submittedAt,
   });
 
   final AdminOperatorDto operator;
+
+  /// What the applicant typed into the wizard, or null for an operator that
+  /// arrived before self-signup existed. The reviewer's checklist is computed
+  /// from it by the same domain code the applicant's progress bar used, so
+  /// the two cannot disagree about what is missing.
+  final ApplicationFacts? application;
+
+  final DateTime? submittedAt;
   final List<KybDocumentDto> documents;
   final List<AuditEntryDto> trail;
 
-  Map<String, Object?> toJson() => {
+  Map<String, Object?> toJson() => Wire.compact({
     'operator': operator.toJson(),
+    'application': application == null
+        ? null
+        : ApplicationFactsDto(application!).toJson(),
+    'submittedAt': submittedAt == null ? null : Wire.instant(submittedAt!),
     'documents': [for (final d in documents) d.toJson()],
     'trail': [for (final e in trail) e.toJson()],
-  };
+  });
 
   factory AdminOperatorDetailDto.fromJson(Map<String, Object?> json) =>
       AdminOperatorDetailDto(
         operator: AdminOperatorDto.fromJson(
           Wire.requireMap(json['operator'], 'operator'),
+        ),
+        application: json['application'] == null
+            ? null
+            : ApplicationFactsDto.fromJson(
+                Wire.requireMap(json['application'], 'application'),
+              ).facts,
+        submittedAt: Wire.readInstantOrNull(
+          json['submittedAt'],
+          field: 'submittedAt',
         ),
         documents: Wire.readList(
           json['documents'],

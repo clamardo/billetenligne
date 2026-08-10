@@ -70,7 +70,8 @@ final class Recurrence {
 
   static Result<Recurrence, InvalidRecurrence> parse(String rrule) {
     final parts = <String, String>{};
-    for (final segment in rrule.toUpperCase().replaceAll('RRULE:', '').split(';')) {
+    for (final segment
+        in rrule.toUpperCase().replaceAll('RRULE:', '').split(';')) {
       if (segment.trim().isEmpty) continue;
       final eq = segment.indexOf('=');
       if (eq <= 0) return Err(InvalidRecurrence('malformed part "$segment"'));
@@ -91,7 +92,8 @@ final class Recurrence {
     if (freq == null) return const Err(InvalidRecurrence('missing FREQ'));
 
     final interval = int.tryParse(parts['INTERVAL'] ?? '1') ?? 0;
-    if (interval < 1) return const Err(InvalidRecurrence('INTERVAL must be >= 1'));
+    if (interval < 1)
+      return const Err(InvalidRecurrence('INTERVAL must be >= 1'));
 
     switch (freq) {
       case 'DAILY':
@@ -151,8 +153,7 @@ final class Recurrence {
     if (day.isBefore(from)) return false;
 
     return switch (frequency) {
-      RecurrenceFrequency.daily =>
-        day.difference(from).inDays % interval == 0,
+      RecurrenceFrequency.daily => day.difference(from).inDays % interval == 0,
       RecurrenceFrequency.weekly =>
         weekdays.contains(day.weekday) &&
             // Weeks counted from the anchor's own week, so INTERVAL=2 on a

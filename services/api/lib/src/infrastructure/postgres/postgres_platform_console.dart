@@ -131,8 +131,34 @@ final class PostgresPlatformConsole implements PlatformConsole {
       parameters: {'id': TypedValue(Type.uuid, operatorId)},
     );
 
+    // The wizard's own answers. Absent for every operator onboarded before
+    // self-signup existed, which is why it is nullable rather than empty: a
+    // reviewer must be able to tell "applied and left step 4 blank" from
+    // "arrived by SQL in the first week".
+    final application = await tx.execute(
+      Sql.named('''
+            SELECT legal_form, registered_address, year_founded,
+                   owner_name, owner_id_type, owner_id_number,
+                   owner_phone, owner_email,
+                   transport_licence_number, transport_licence_expires,
+                   insurer_name, fleet_insurance_expires,
+                   routes_served, fleet_size, station_count, daily_departures,
+                   settlement_kind, settlement_account_name,
+                   settlement_account_ref, settlement_verified_at,
+                   agreement_accepted_at, submitted_at
+              FROM operator_applications WHERE operator_id = @id
+          '''),
+      parameters: {'id': TypedValue(Type.uuid, operatorId)},
+    );
+
     return OperatorDetail(
       summary: _summary(rows.first.toColumnMap()),
+      application: application.isEmpty
+          ? null
+          : _application(
+              application.first.toColumnMap(),
+              rows.first.toColumnMap(),
+            ),
       documents: [
         for (final row in documents)
           KybDocument(
@@ -199,6 +225,31 @@ final class PostgresPlatformConsole implements PlatformConsole {
     );
 
     if (moved.isEmpty) return const Err(DecisionRefusal.illegalTransition);
+
+    // Activation is the moment an application becomes a business, and this
+    // is what makes that true rather than ceremonial: the person who filled
+    // in the wizard becomes the operator's first `org_owner`, in the same
+    // transaction as the status change.
+    //
+    // Without it, "approved" meant somebody still had to run an INSERT by
+    // hand before the operator could sign in — which is the phone call the
+    // whole self-signup path exists to remove. `ON CONFLICT DO NOTHING`
+    // because reinstating a suspended operator lands here too, and the owner
+    // they already had is not a second owner.
+    if (decision == OperatorDecision.activate) {
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO operator_staff (operator_id, user_id, roles, accepted_at)
+          SELECT a.operator_id, a.applicant_user_id,
+                 ARRAY['org_owner'], now()
+            FROM operator_applications a
+           WHERE a.operator_id = @id
+          ON CONFLICT (operator_id, user_id) DO NOTHING
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, operatorId)},
+        ignoreRows: true,
+      );
+    }
 
     await _audit(
       tx,
@@ -420,6 +471,50 @@ final class PostgresPlatformConsole implements PlatformConsole {
       ignoreRows: true,
     );
   }
+
+  /// The application row and the operator row read as one record: legal
+  /// name, RCCM and NIU live on `operators` because they are the operator's
+  /// identity rather than the application's, and a reviewer does not care
+  /// which table they came out of.
+  static SubmittedApplication _application(
+    Map<String, dynamic> a,
+    Map<String, dynamic> o,
+  ) => SubmittedApplication(
+    submittedAt: a['submitted_at'] as DateTime?,
+    settlementVerifiedAt: a['settlement_verified_at'] as DateTime?,
+    facts: ApplicationFacts(
+      legalName: o['legal_name'] as String?,
+      tradingName: o['trading_name'] as String?,
+      rccmNumber: o['rccm_number'] as String?,
+      taxId: o['tax_id'] as String?,
+      legalForm: a['legal_form'] as String?,
+      registeredAddress: a['registered_address'] as String?,
+      yearFounded: a['year_founded'] as int?,
+      ownerName: a['owner_name'] as String?,
+      ownerIdType: a['owner_id_type'] as String?,
+      ownerIdNumber: a['owner_id_number'] as String?,
+      ownerPhone: a['owner_phone'] as String?,
+      ownerEmail: a['owner_email'] as String?,
+      transportLicenceNumber: a['transport_licence_number'] as String?,
+      transportLicenceExpires: _date(a['transport_licence_expires']),
+      insurerName: a['insurer_name'] as String?,
+      fleetInsuranceExpires: _date(a['fleet_insurance_expires']),
+      routesServed: a['routes_served'] as String?,
+      fleetSize: a['fleet_size'] as int?,
+      stationCount: a['station_count'] as int?,
+      dailyDepartures: a['daily_departures'] as int?,
+      settlementKind: a['settlement_kind'] as String?,
+      settlementAccountName: a['settlement_account_name'] as String?,
+      settlementAccountRef: a['settlement_account_ref'] as String?,
+      agreementAccepted: a['agreement_accepted_at'] != null,
+    ),
+  );
+
+  static DateTime? _date(Object? v) => switch (v) {
+    DateTime d => DateTime.utc(d.year, d.month, d.day),
+    String s => DateTime.tryParse(s),
+    _ => null,
+  };
 
   static OperatorSummary _summary(Map<String, dynamic> r) => OperatorSummary(
     id: r['id'].toString(),

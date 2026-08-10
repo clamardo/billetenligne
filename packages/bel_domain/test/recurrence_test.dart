@@ -17,7 +17,11 @@ void main() {
 
     test('weekly on named days', () {
       final r = Recurrence.parse('FREQ=WEEKLY;BYDAY=MO,WE,FR').valueOrNull!;
-      expect(r.weekdays, {DateTime.monday, DateTime.wednesday, DateTime.friday});
+      expect(r.weekdays, {
+        DateTime.monday,
+        DateTime.wednesday,
+        DateTime.friday,
+      });
       expect(r.toRRule(), 'FREQ=WEEKLY;BYDAY=MO,WE,FR');
     });
 
@@ -51,8 +55,9 @@ void main() {
     // materialise the WRONG departures, sell seats on them, and the operator
     // would find out when a coach did not arrive.
     test('an unsupported part is named, not ignored', () {
-      final failure = Recurrence.parse('FREQ=WEEKLY;BYDAY=MO;BYSETPOS=1')
-          .failureOrNull!;
+      final failure = Recurrence.parse(
+        'FREQ=WEEKLY;BYDAY=MO;BYSETPOS=1',
+      ).failureOrNull!;
       // "Unsupported RRULE" sends a dispatcher to support. Naming the part
       // does not.
       expect(failure.params['reason'], contains('BYSETPOS'));
@@ -67,7 +72,10 @@ void main() {
     test('UNTIL and COUNT are refused rather than silently dropped', () {
       // The pattern row carries valid_from / valid_until, so a bound inside
       // the rule would be a second, silently disagreeing source of truth.
-      expect(Recurrence.parse('FREQ=DAILY;UNTIL=20261231T000000Z').isErr, isTrue);
+      expect(
+        Recurrence.parse('FREQ=DAILY;UNTIL=20261231T000000Z').isErr,
+        isTrue,
+      );
       expect(Recurrence.parse('FREQ=DAILY;COUNT=10').isErr, isTrue);
     });
 
@@ -109,35 +117,35 @@ void main() {
     });
 
     test('every other day, counted from the anchor', () {
-      final dates = Recurrence.daily(interval: 2).datesBetween(
-        monday,
-        day(2026, 8, 9),
-        anchor: monday,
-      );
+      final dates = Recurrence.daily(
+        interval: 2,
+      ).datesBetween(monday, day(2026, 8, 9), anchor: monday);
       expect(dates.map((d) => d.day), [3, 5, 7, 9]);
     });
 
-    test('a fortnightly rule counts weeks from the anchor, as RFC 5545 does',
-        () {
-      // Anchored on Wednesday 5 August, running Mondays, every other week.
-      //
-      // The answer is 17 and 31 August, and the reasoning is worth writing
-      // down because the intuitive answer is 10 August and it is wrong. Week
-      // zero is the anchor's OWN week (3–9 August); its Monday is the 3rd,
-      // which precedes the anchor and therefore does not run. Week one
-      // (10–16) is skipped by the interval. Week two starts on the 17th.
-      //
-      // Counting from the anchor's week rather than from a fixed epoch is
-      // what makes this stable: an epoch-based count gives a different answer
-      // depending on which week of the year the schedule happened to start.
-      final wednesday = day(2026, 8, 5);
-      final dates = Recurrence.weekly(
-        {DateTime.monday},
-        interval: 2,
-      ).datesBetween(wednesday, day(2026, 9, 1), anchor: wednesday);
+    test(
+      'a fortnightly rule counts weeks from the anchor, as RFC 5545 does',
+      () {
+        // Anchored on Wednesday 5 August, running Mondays, every other week.
+        //
+        // The answer is 17 and 31 August, and the reasoning is worth writing
+        // down because the intuitive answer is 10 August and it is wrong. Week
+        // zero is the anchor's OWN week (3–9 August); its Monday is the 3rd,
+        // which precedes the anchor and therefore does not run. Week one
+        // (10–16) is skipped by the interval. Week two starts on the 17th.
+        //
+        // Counting from the anchor's week rather than from a fixed epoch is
+        // what makes this stable: an epoch-based count gives a different answer
+        // depending on which week of the year the schedule happened to start.
+        final wednesday = day(2026, 8, 5);
+        final dates = Recurrence.weekly(
+          {DateTime.monday},
+          interval: 2,
+        ).datesBetween(wednesday, day(2026, 9, 1), anchor: wednesday);
 
-      expect(dates.map((d) => '${d.month}-${d.day}'), ['8-17', '8-31']);
-    });
+        expect(dates.map((d) => '${d.month}-${d.day}'), ['8-17', '8-31']);
+      },
+    );
 
     test('nothing runs before the schedule starts', () {
       final dates = Recurrence.daily().datesBetween(

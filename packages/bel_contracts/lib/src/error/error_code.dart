@@ -108,6 +108,25 @@ final class ErrorCode {
   /// the old secret.
   static const mfaAlreadyEnrolled = 'mfa.already_enrolled';
 
+  // ── Onboarding (03-operator-lifecycle.md §2.2) ─────────────────────────
+
+  /// This account already has an application in flight. Not a duplicate
+  /// request — a second business, which is a conversation rather than a form.
+  static const applicationAlreadyExists = 'application.already_exists';
+
+  /// Nothing to save or submit: this account has never started one.
+  static const applicationNotFound = 'application.not_found';
+
+  /// Under review, approved or rejected. The wizard reopens when a reviewer
+  /// asks for information and not before, because an application being edited
+  /// underneath the person reading it is worse than a locked one.
+  static const applicationLocked = 'application.locked';
+
+  /// Submitted with gaps. The client already knew — the checklist is domain
+  /// code both sides compile — so this is the server declining to take its
+  /// word for it.
+  static const applicationIncomplete = 'application.incomplete';
+
   // ── Brand assets (03-operator-lifecycle.md §2.4) ───────────────────────
 
   /// Not PNG, JPEG or SVG — sniffed from the bytes, never from the header the

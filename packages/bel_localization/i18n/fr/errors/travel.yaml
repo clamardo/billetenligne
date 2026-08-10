@@ -28,6 +28,11 @@ errors:
     not_confirmed: "Ce billet n'a pas été payé — il n'y a rien à rembourser."
     not_possible: "Ce billet ne peut pas être remboursé."
     claim_not_open: "Ce code de remboursement n'est pas valable : inconnu, déjà encaissé ou expiré."
+  application:
+    already_exists: "Vous avez déjà une demande en cours. Terminez-la ou contactez-nous pour en ouvrir une seconde."
+    not_found: "Aucune demande n'a encore été commencée avec ce compte."
+    locked: "Votre demande est en cours d'examen. Vous pourrez la modifier si nous vous demandons un complément."
+    incomplete: "Il manque encore des informations. Complétez les étapes signalées avant d'envoyer."
   hold:
     seat_unavailable: "La place {seats} vient d'être prise. Choisissez-en une autre."
     expired: "Votre réservation a expiré."

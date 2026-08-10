@@ -154,9 +154,7 @@ void main() {
     });
 
     test('a truncated PNG is unreadable, not accepted blind', () {
-      final truncated = Uint8List.fromList(
-        png(64, 64).take(20).toList(),
-      );
+      final truncated = Uint8List.fromList(png(64, 64).take(20).toList());
       expect(
         BrandAsset.inspect(truncated, kind: BrandAssetKind.logo).problem,
         BrandAssetProblem.unreadable,
@@ -165,7 +163,12 @@ void main() {
 
     test('a JPEG with no frame header is unreadable', () {
       final headerOnly = Uint8List.fromList([
-        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10,
+        0xFF,
+        0xD8,
+        0xFF,
+        0xE0,
+        0x00,
+        0x10,
         ...List.filled(20, 0),
       ]);
       expect(
