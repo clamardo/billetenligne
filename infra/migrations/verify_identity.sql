@@ -152,3 +152,79 @@ BEGIN
   RAISE NOTICE 'OK  one address means one account, whatever case it is typed in';
 END
 $$;
+
+-- ── 6. The second factor's seed is not reachable from a sales surface ───────
+--
+-- The whole point of TOTP here is that compromising the console does not get
+-- you the back office. A grant on `user_totp` from `bel_app` or `bel_admin`
+-- would quietly undo that: the seed is enough to compute every future code.
+DO $$
+BEGIN
+  IF NOT has_table_privilege('bel_identity', 'user_totp', 'SELECT') THEN
+    RAISE EXCEPTION 'FAIL: the identity surface cannot read a second factor';
+  END IF;
+
+  IF has_table_privilege('bel_public', 'user_totp', 'SELECT')
+  OR has_table_privilege('bel_app', 'user_totp', 'SELECT')
+  OR has_table_privilege('bel_admin', 'user_totp', 'SELECT')
+  OR has_table_privilege('bel_public', 'user_totp_recovery', 'SELECT')
+  OR has_table_privilege('bel_app', 'user_totp_recovery', 'SELECT')
+  OR has_table_privilege('bel_admin', 'user_totp_recovery', 'SELECT') THEN
+    RAISE EXCEPTION 'FAIL: a sales surface can read the seed guarding the back office';
+  END IF;
+
+  -- A burned recovery code is evidence of an incident. A surface that can
+  -- delete its own evidence cannot be audited.
+  IF has_table_privilege('bel_identity', 'user_totp_recovery', 'DELETE') THEN
+    RAISE EXCEPTION 'FAIL: a used recovery code can be erased';
+  END IF;
+
+  RAISE NOTICE 'OK  the second factor seed lives on the identity surface alone';
+END
+$$;
+
+-- ── 7. Retiring a recovery code is an UPDATE, never a DELETE ────────────────
+--
+-- Section 6 refuses `bel_identity` the DELETE. That refusal is only survivable
+-- because re-enrolment has somewhere else to go — `superseded_at` — and a
+-- schema that lost that column would turn the refusal into a runtime error
+-- during enrolment, which is the worst place to find out.
+DO $$
+DECLARE
+  retired INTEGER;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'user_totp_recovery' AND column_name = 'superseded_at'
+  ) THEN
+    RAISE EXCEPTION 'FAIL: recovery codes have no way to be retired without DELETE';
+  END IF;
+
+  -- And the retirement is real: a superseded code is not spendable.
+  -- `user_accounts_reachable` refuses a row nobody could ever be contacted
+  -- on, so this fixture carries an address.
+  INSERT INTO user_accounts (id, language, email)
+  VALUES ('00000000-0000-0000-0000-0000000000f2', 'fr', 'retired@example.cg')
+  ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO user_totp_recovery (user_id, code_hash, superseded_at)
+  VALUES ('00000000-0000-0000-0000-0000000000f2', 'retired-hash', now())
+  ON CONFLICT (user_id, code_hash) DO UPDATE SET superseded_at = now();
+
+  UPDATE user_totp_recovery
+     SET used_at = now()
+   WHERE user_id = '00000000-0000-0000-0000-0000000000f2'
+     AND code_hash = 'retired-hash'
+     AND used_at IS NULL
+     AND superseded_at IS NULL;
+  GET DIAGNOSTICS retired = ROW_COUNT;
+
+  IF retired <> 0 THEN
+    RAISE EXCEPTION 'FAIL: a superseded recovery code can still be spent';
+  END IF;
+
+  DELETE FROM user_accounts WHERE id = '00000000-0000-0000-0000-0000000000f2';
+
+  RAISE NOTICE 'OK  a retired recovery code is kept as evidence and refused as a key';
+END
+$$;

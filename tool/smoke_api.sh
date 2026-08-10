@@ -558,6 +558,64 @@ check "the admin identity endpoint is closed too" "403" \
 check "the reconciliation queue is closed too" "403" \
   "$(status -H "$AUTH" "$BASE/admin/v1/payments")"
 
+# ── The second factor ───────────────────────────────────────────────────────
+#
+# The arithmetic is proved in the unit suite against RFC 6238's own vectors,
+# and the round trip is proved by the Dart client below, which can compute a
+# code. What is proved here is the part only a socket shows: who the routes
+# turn away, what they refuse to echo, and that a forged half-session is a
+# typed 401 rather than a stack trace.
+check "the second factor is closed to anonymous" "401" \
+  "$(status "$BASE/public/v1/auth/second-factor")"
+
+mfa_status="$(curl -s -H "Authorization: Bearer $session_token" \
+  "$BASE/public/v1/auth/second-factor")"
+# A traveller is never asked for one. A second factor in front of a coach
+# ticket is a barrier protecting one person's own bookings (ADR-0013).
+check "a traveller is not obliged to hold one" "yes" \
+  "$(grep -q '"required":false' <<<"$mfa_status" && echo yes || echo no)"
+check "and has none enrolled" "yes" \
+  "$(grep -q '"enrolled":false' <<<"$mfa_status" && echo yes || echo no)"
+
+mfa_enrolment="$(curl -s -X POST -H "Authorization: Bearer $session_token" \
+  "$BASE/public/v1/auth/second-factor")"
+check "enrolment returns a scannable secret" "yes" \
+  "$(grep -q '"provisioningUri":"otpauth://totp/' <<<"$mfa_enrolment" \
+     && echo yes || echo no)"
+# Eight, printed once. The server keeps only their HMACs.
+check "enrolment returns eight recovery codes" "8" \
+  "$(grep -o '"recoveryCodes":\[[^]]*\]' <<<"$mfa_enrolment" \
+     | tr ',' '\n' | grep -c '[A-Z2-9]\{5\}-[A-Z2-9]\{5\}')"
+
+# The secret is handed over once, at enrolment. A status endpoint that echoed
+# it would hand every future code to anybody holding a live session.
+check "the status never echoes the secret" "yes" \
+  "$(curl -s -H "Authorization: Bearer $session_token" \
+     "$BASE/public/v1/auth/second-factor" \
+     | grep -q 'secretBase32' && echo no || echo yes)"
+
+check "a wrong confirmation code is 401" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/auth/second-factor/confirm" \
+     -H "Authorization: Bearer $session_token" \
+     -H 'Content-Type: application/json' -d '{"code":"000000"}')"
+
+# A half-session is a signed claim about who half-signed in. Without the
+# signature it is a claim typed by the caller.
+forged="$(curl -s -X POST "$BASE/public/v1/auth/sessions/mfa" \
+  -H 'Content-Type: application/json' \
+  -d '{"mfaToken":"YS1wYXlsb2Fk.notasignature","code":"000000"}')"
+check "a forged half-session is refused" "yes" \
+  "$(grep -q '"code":"mfa.expired"' <<<"$forged" && echo yes || echo no)"
+check "the refusal carries no prose" "yes" \
+  "$(grep -q '"message"' <<<"$forged" && echo no || echo yes)"
+check "a half-session cannot be sent as a bearer token" "401" \
+  "$(status -H "Authorization: Bearer YS1wYXlsb2Fk.notasignature" \
+     "$BASE/public/v1/me")"
+
+curl -s -o /dev/null -X DELETE -H "Authorization: Bearer $session_token" \
+  "$BASE/public/v1/auth/second-factor"
+
 check "the profile needs an account" "401" "$(status "$BASE/public/v1/me")"
 me="$(curl -s -H "Authorization: Bearer $session_token" "$BASE/public/v1/me")"
 check "the profile is the address that signed in" "yes" \

@@ -12,4 +12,11 @@ final class HmacSha256Authenticator implements MessageAuthenticator {
   @override
   List<int> hmacSha256({required List<int> key, required List<int> message}) =>
       c.Hmac(c.sha256, key).convert(message).bytes;
+
+  /// RFC 6238 and nothing else. The interoperability constraint is the whole
+  /// reason: Google Authenticator, Aegis and 1Password compute HMAC-SHA1, and
+  /// a stronger primitive nobody's phone implements is not a stronger control.
+  @override
+  List<int> hmacSha1({required List<int> key, required List<int> message}) =>
+      c.Hmac(c.sha1, key).convert(message).bytes;
 }

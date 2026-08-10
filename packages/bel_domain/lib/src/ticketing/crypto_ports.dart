@@ -20,6 +20,13 @@ abstract interface class SignatureVerifier {
 
 abstract interface class MessageAuthenticator {
   List<int> hmacSha256({required List<int> key, required List<int> message});
+
+  /// HMAC-SHA1, for RFC 6238 only.
+  ///
+  /// Present because authenticator apps read RFC 6238 as it was deployed and
+  /// nothing else. It is not an invitation to use SHA-1 anywhere else in this
+  /// codebase, and there is exactly one caller: [Totp].
+  List<int> hmacSha1({required List<int> key, required List<int> message});
 }
 
 /// Signs tickets. Server-side only — no client implements this.

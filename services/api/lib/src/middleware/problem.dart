@@ -22,20 +22,26 @@ final class Problem {
     ErrorCode.phoneInvalid => 400,
     ErrorCode.unauthorized ||
     ErrorCode.otpIncorrect ||
-    ErrorCode.otpExpired => 401,
-    ErrorCode.forbidden || ErrorCode.operatorSuspended => 403,
+    ErrorCode.otpExpired ||
+    ErrorCode.mfaIncorrect ||
+    ErrorCode.mfaExpired => 401,
+    ErrorCode.forbidden ||
+    ErrorCode.operatorSuspended ||
+    ErrorCode.mfaEnrolmentRequired => 403,
     ErrorCode.notFound || ErrorCode.bookingInvalidRef => 404,
     ErrorCode.conflict ||
     ErrorCode.seatUnavailable ||
     ErrorCode.holdAlreadyConsumed ||
     ErrorCode.departureSoldOut ||
-    ErrorCode.idempotencyKeyReused => 409,
+    ErrorCode.idempotencyKeyReused ||
+    ErrorCode.mfaAlreadyEnrolled => 409,
     // 410: the resource genuinely existed and is now gone. A hold that
     // timed out is not a 400 — the client did nothing wrong.
     ErrorCode.holdExpired || ErrorCode.holdExpiredDuringPayment => 410,
     ErrorCode.rateLimited ||
     ErrorCode.otpTooManyAttempts ||
-    ErrorCode.otpResendTooSoon => 429,
+    ErrorCode.otpResendTooSoon ||
+    ErrorCode.mfaLocked => 429,
     ErrorCode.unavailable || ErrorCode.paymentPspUnavailable => 503,
     ErrorCode.internal => 500,
     // 422: well-formed, but the rules refuse it. Refund windows, policy

@@ -174,29 +174,177 @@ final class AccountDto {
 /// every subsequent request carries the ID token. We own the challenge —
 /// which is what lets us send it over a channel we can measure — and Firebase
 /// owns the session, refresh rotation and revocation (ADR-0018).
+///
+/// It is **nullable**, and that is the whole second-factor design on the wire.
+/// A back-office account with an authenticator enrolled gets no token here,
+/// only an [mfaToken] to exchange at `/auth/sessions/mfa` once they have typed
+/// a six-digit code. Modelling that as a null rather than as a second response
+/// type means a client that ignores the field gets a null-check crash on its
+/// first staff sign-in, instead of a session it was never granted.
 final class SessionDto {
   const SessionDto({
-    required this.customToken,
     required this.account,
     required this.isNewAccount,
+    this.customToken,
+    this.mfaToken,
+    this.mustEnrolSecondFactor = false,
   });
 
-  final String customToken;
+  /// Present unless a second factor is still owed. Never both this and
+  /// [mfaToken].
+  final String? customToken;
+
+  /// The half-session: single-purpose, five minutes, and worthless without a
+  /// code the holder still has to compute.
+  final String? mfaToken;
+
+  /// Staff who signed in but have nothing enrolled. They hold a real session —
+  /// refusing one would have locked out every existing staff account the hour
+  /// this shipped, including the people who would have to fix it — and the app
+  /// puts them on the enrolment screen and nowhere else.
+  final bool mustEnrolSecondFactor;
+
   final AccountDto account;
 
   /// True on the request that created the account. The app uses it to decide
   /// whether to ask for a name, and nothing security-relevant hangs on it.
   final bool isNewAccount;
 
-  Map<String, Object?> toJson() => {
+  bool get needsSecondFactor => mfaToken != null;
+
+  Map<String, Object?> toJson() => Wire.compact({
     'customToken': customToken,
+    'mfaToken': mfaToken,
+    'mustEnrolSecondFactor': mustEnrolSecondFactor ? true : null,
     'account': account.toJson(),
     'isNewAccount': isNewAccount,
-  };
+  });
 
   factory SessionDto.fromJson(Map<String, Object?> json) => SessionDto(
-    customToken: Wire.requireString(json['customToken'], 'customToken'),
+    customToken: json['customToken'] as String?,
+    mfaToken: json['mfaToken'] as String?,
+    mustEnrolSecondFactor: json['mustEnrolSecondFactor'] == true,
     account: AccountDto.fromJson(Wire.requireMap(json['account'], 'account')),
     isNewAccount: json['isNewAccount'] == true,
   );
+}
+
+/// "Here is my authenticator code."
+///
+/// Either [code] or [recoveryCode], never both. A recovery code is the phone
+/// that fell in the river, and it is spent on use.
+final class VerifySecondFactorRequest {
+  const VerifySecondFactorRequest({
+    required this.mfaToken,
+    this.code,
+    this.recoveryCode,
+  });
+
+  final String mfaToken;
+  final String? code;
+  final String? recoveryCode;
+
+  Map<String, Object?> toJson() => Wire.compact({
+    'mfaToken': mfaToken,
+    'code': code,
+    'recoveryCode': recoveryCode,
+  });
+
+  factory VerifySecondFactorRequest.fromJson(Map<String, Object?> json) {
+    final code = json['code'] as String?;
+    final recovery = json['recoveryCode'] as String?;
+    if ((code == null) == (recovery == null)) {
+      throw const WireFormatException(
+        'code',
+        'supply exactly one of code or recoveryCode',
+      );
+    }
+    return VerifySecondFactorRequest(
+      mfaToken: Wire.requireString(json['mfaToken'], 'mfaToken'),
+      code: code,
+      recoveryCode: recovery,
+    );
+  }
+}
+
+/// What a fresh enrolment hands back — once, and never again.
+///
+/// The [recoveryCodes] are stored only as HMACs, so this response is the only
+/// time they exist in readable form. A list a live session could re-read is a
+/// list an attacker holding that session could re-read too.
+final class SecondFactorEnrolmentDto {
+  const SecondFactorEnrolmentDto({
+    required this.secretBase32,
+    required this.provisioningUri,
+    required this.recoveryCodes,
+  });
+
+  /// Shown as text beside the QR code, because a laptop showing a QR code to
+  /// a phone is a laptop, and a vendor entering this on the same device is
+  /// common enough that "scan it" alone would strand them.
+  final String secretBase32;
+
+  final String provisioningUri;
+  final List<String> recoveryCodes;
+
+  Map<String, Object?> toJson() => {
+    'secretBase32': secretBase32,
+    'provisioningUri': provisioningUri,
+    'recoveryCodes': recoveryCodes,
+  };
+
+  factory SecondFactorEnrolmentDto.fromJson(Map<String, Object?> json) =>
+      SecondFactorEnrolmentDto(
+        secretBase32: Wire.requireString(json['secretBase32'], 'secretBase32'),
+        provisioningUri: Wire.requireString(
+          json['provisioningUri'],
+          'provisioningUri',
+        ),
+        recoveryCodes: [
+          for (final code in (json['recoveryCodes'] as List? ?? const []))
+            code as String,
+        ],
+      );
+}
+
+/// Whether this account has an authenticator, and how much of its recovery
+/// list is left. Never the secret, and never the codes.
+final class SecondFactorStatusDto {
+  const SecondFactorStatusDto({
+    required this.enrolled,
+    required this.required_,
+    this.confirmedAt,
+    this.recoveryCodesRemaining = 0,
+  });
+
+  final bool enrolled;
+
+  /// Whether this account is one the platform obliges to hold a factor —
+  /// operator staff and platform staff, decided from the database and not
+  /// from anything the client sent.
+  final bool required_;
+
+  final DateTime? confirmedAt;
+
+  /// Surfaced so the console can nag before the list runs out. Somebody down
+  /// to their last code is one lost phone from a support call.
+  final int recoveryCodesRemaining;
+
+  Map<String, Object?> toJson() => Wire.compact({
+    'enrolled': enrolled,
+    'required': required_,
+    'confirmedAt': confirmedAt == null ? null : Wire.instant(confirmedAt!),
+    'recoveryCodesRemaining': recoveryCodesRemaining,
+  });
+
+  factory SecondFactorStatusDto.fromJson(Map<String, Object?> json) =>
+      SecondFactorStatusDto(
+        enrolled: json['enrolled'] == true,
+        required_: json['required'] == true,
+        confirmedAt: Wire.readInstantOrNull(
+          json['confirmedAt'],
+          field: 'confirmedAt',
+        ),
+        recoveryCodesRemaining: (json['recoveryCodesRemaining'] as int?) ?? 0,
+      );
 }

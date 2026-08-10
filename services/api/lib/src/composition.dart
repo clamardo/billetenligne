@@ -33,6 +33,7 @@ import 'application/ports/user_directory.dart';
 import 'application/pay_for_booking.dart';
 import 'application/reserve_booking.dart';
 import 'application/search_departures.dart';
+import 'application/second_factor_sign_in.dart';
 import 'application/sign_in.dart';
 import 'infrastructure/db/database.dart';
 import 'infrastructure/memory/memory_booking_store.dart';
@@ -41,6 +42,7 @@ import 'infrastructure/memory/memory_payment_store.dart';
 import 'infrastructure/memory/memory_city_catalogue.dart';
 import 'infrastructure/memory/memory_identity.dart';
 import 'infrastructure/memory/memory_seat_inventory.dart';
+import 'infrastructure/memory/memory_second_factors.dart';
 import 'infrastructure/memory/memory_storefronts.dart';
 import 'infrastructure/postgres/postgres_departure_catalogue.dart';
 import 'infrastructure/postgres/postgres_booking_store.dart';
@@ -51,6 +53,7 @@ import 'infrastructure/postgres/postgres_payment_store.dart';
 import 'infrastructure/postgres/postgres_platform_console.dart';
 import 'infrastructure/postgres/postgres_idempotency_store.dart';
 import 'infrastructure/postgres/postgres_seat_inventory.dart';
+import 'infrastructure/postgres/postgres_second_factors.dart';
 import 'infrastructure/postgres/postgres_storefronts.dart';
 import 'middleware/idempotency.dart';
 import 'ports/auth_gateway.dart';
@@ -71,6 +74,7 @@ final class Services {
     required this.holdSeats,
     required this.searchDepartures,
     required this.signIn,
+    required this.secondFactor,
     required this.reserveBooking,
     required this.bookings,
     required this.console,
@@ -94,6 +98,13 @@ final class Services {
   final HoldSeats holdSeats;
   final SearchDepartures searchDepartures;
   final SignIn signIn;
+
+  /// The authenticator step in front of both back offices.
+  ///
+  /// A field on `Services` rather than something the sign-in route builds,
+  /// because three routes need it — sign in, enrol, confirm — and the one
+  /// thing they must agree on is the key that signs the half-session.
+  final SecondFactorSignIn secondFactor;
   final ReserveBooking reserveBooking;
   final BookingStore bookings;
 
@@ -186,6 +197,16 @@ final class Services {
         codeKey: _codeKey(env),
         clock: clock,
       ),
+      // Shares `_codeKey` with the sign-in above on purpose: both sign a
+      // short-lived claim about the same person, minutes apart, and a second
+      // key would be a second thing to rotate and a second way to get it
+      // wrong.
+      secondFactor: SecondFactorSignIn(
+        factors: PostgresSecondFactors(db),
+        mac: const HmacSha256Authenticator(),
+        signingKey: _codeKey(env),
+        clock: clock,
+      ),
       reserveBooking: ReserveBooking(bookings: bookings),
       bookings: bookings,
       console: PostgresOperatorConsole(db, timeZone: Market.current.timeZone),
@@ -244,7 +265,19 @@ final class Services {
     );
 
     final catalogue = MemoryDepartureCatalogue(inventory, clock: clock);
-    final directory = MemoryUserDirectory(clock: clock);
+    final directory = MemoryUserDirectory(clock: clock)
+      // The account behind `FakeAuthGateway.demo`'s bearer. Seeded rather than
+      // left absent so the demo token is a *whole* traveller — one that can
+      // read its profile and enrol a second factor, not just hold a seat.
+      ..seed(
+        Account(
+          id: 'u-demo-traveller',
+          authUid: 'demo',
+          language: 'fr',
+          email: 'demo@billetenligne.cg',
+          emailVerifiedAt: clock.now(),
+        ),
+      );
     final memoryBookings = MemoryBookingStore(
       inventory: inventory,
       issuer: _ticketIssuer,
@@ -268,6 +301,12 @@ final class Services {
         render: _renderSignInMessage,
         mac: const HmacSha256Authenticator(),
         codeKey: _developmentCodeKey,
+        clock: clock,
+      ),
+      secondFactor: SecondFactorSignIn(
+        factors: MemorySecondFactors(now: clock.now),
+        mac: const HmacSha256Authenticator(),
+        signingKey: _developmentCodeKey,
         clock: clock,
       ),
       reserveBooking: ReserveBooking(bookings: memoryBookings),

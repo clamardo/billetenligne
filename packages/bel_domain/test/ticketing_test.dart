@@ -46,6 +46,14 @@ final class FakeSignatures implements SignatureVerifier, TicketSigner {
 /// exercise window arithmetic and truncation. The adapter swaps in the real
 /// primitive behind the same port.
 final class FakeMac implements MessageAuthenticator {
+  /// The TOTP path is exercised against the RFC 6238 vectors in
+  /// `identity_test.dart`, with the real primitive. Faking it here would
+  /// prove nothing about interoperability, which is the only thing that
+  /// matters about that algorithm.
+  @override
+  List<int> hmacSha1({required List<int> key, required List<int> message}) =>
+      hmacSha256(key: key, message: message).sublist(0, 20);
+
   @override
   List<int> hmacSha256({required List<int> key, required List<int> message}) {
     final out = <int>[];

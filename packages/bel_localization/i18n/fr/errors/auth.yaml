@@ -14,3 +14,9 @@ errors:
     expired: "Ce code n'est plus valable. Demandez-en un nouveau."
     too_many_attempts: "Trop d'essais. Demandez un nouveau code."
     resend_too_soon: "Patientez encore {seconds} s avant de demander un nouveau code."
+  mfa:
+    incorrect: "Code incorrect. Il vous reste {remaining} essai(s)."
+    expired: "Cette connexion a expiré. Recommencez."
+    locked: "Trop d'essais. Réessayez dans {seconds} s."
+    enrolment_required: "Configurez d'abord votre application d'authentification."
+    already_enrolled: "Une application d'authentification est déjà configurée sur ce compte."

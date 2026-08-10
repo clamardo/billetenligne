@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:bel_api/src/application/second_factor_sign_in.dart';
+import 'package:bel_api/src/application/ports/user_directory.dart';
 import 'package:bel_api/src/application/sign_in.dart';
 import 'package:bel_api/src/composition.dart';
 import 'package:bel_api/src/middleware/problem.dart';
@@ -38,16 +40,37 @@ Future<Response> onRequest(RequestContext context) async {
       Problem.fromFailure(failure, traceId: trace),
       trace,
     ),
-    Ok(:final value) => await _issue(context.read<AuthGateway>(), value, trace),
+    Ok(:final value) => await _issue(
+      context.read<AuthGateway>(),
+      services.secondFactor,
+      value,
+      trace,
+    ),
   };
 }
 
 Future<Response> _issue(
   AuthGateway gateway,
+  SecondFactorSignIn secondFactor,
   SignedIn signedIn,
   String trace,
 ) async {
   final account = signedIn.account;
+  final step = await secondFactor.stepFor(account);
+
+  // No session yet. The half-session is signed rather than stored — it is
+  // single-purpose, five minutes long, and useless without a code the holder
+  // still has to compute, so a row in a table would buy nothing but a table.
+  if (step case SecondFactorProve(:final halfSession)) {
+    return _session(
+      SessionDto(
+        mfaToken: halfSession,
+        isNewAccount: signedIn.isNewAccount,
+        account: _profile(account),
+      ),
+      trace,
+    );
+  }
 
   // The Firebase UID is our account id. We choose it rather than letting
   // Firebase mint one, because the alternative is a round trip to Firebase in
@@ -55,22 +78,34 @@ Future<Response> _issue(
   // account nobody can ever sign in to.
   final token = await gateway.mintCustomToken(uid: account.authUid ?? account.id);
 
-  return Response.json(
-    statusCode: HttpStatus.ok,
-    body: SessionDto(
+  return _session(
+    SessionDto(
       customToken: token,
+      // Staff with nothing enrolled sign in and land on the enrolment screen
+      // and nowhere else. Refusing the session instead would have locked out
+      // every existing staff account the hour this shipped — including the
+      // people who would have to fix it.
+      mustEnrolSecondFactor: step is SecondFactorMustEnrol,
       isNewAccount: signedIn.isNewAccount,
-      account: AccountDto(
-        id: account.id,
-        language: account.language,
-        email: account.email,
-        phone: account.phone,
-        fullName: account.fullName,
-      ),
-    ).toJson(),
-    headers: {BelHeaders.traceId: trace},
+      account: _profile(account),
+    ),
+    trace,
   );
 }
+
+AccountDto _profile(Account account) => AccountDto(
+  id: account.id,
+  language: account.language,
+  email: account.email,
+  phone: account.phone,
+  fullName: account.fullName,
+);
+
+Response _session(SessionDto session, String trace) => Response.json(
+  statusCode: HttpStatus.ok,
+  body: session.toJson(),
+  headers: {BelHeaders.traceId: trace},
+);
 
 Response _error(int status, ApiError error, String trace) => Response.json(
   statusCode: status,

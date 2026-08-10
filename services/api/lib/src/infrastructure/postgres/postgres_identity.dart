@@ -81,6 +81,24 @@ final class PostgresUserDirectory implements UserDirectory {
       });
 
   @override
+  Future<Account?> byId(String id) =>
+      _db.transaction(const DbScope.identity(), (tx) async {
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT $_columns,
+                   staff.operator_id AS staff_operator_id,
+                   staff.roles       AS staff_roles,
+                   staff.station_ids AS staff_station_ids,
+                   platform.role     AS platform_role
+              FROM user_accounts $_staffJoin $_platformJoin
+             WHERE user_accounts.id = @id
+          '''),
+          parameters: {'id': TypedValue(Type.uuid, id)},
+        );
+        return rows.isEmpty ? null : _account(rows.first.toColumnMap());
+      });
+
+  @override
   Future<({Account account, bool created})> forVerifiedEmail({
     required String email,
     required String language,

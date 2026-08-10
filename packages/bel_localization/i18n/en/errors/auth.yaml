@@ -14,3 +14,9 @@ errors:
     expired: "That code is no longer valid. Ask for a new one."
     too_many_attempts: "Too many attempts. Ask for a new code."
     resend_too_soon: "Wait another {seconds}s before asking for a new code."
+  mfa:
+    incorrect: "Incorrect code. You have {remaining} attempt(s) left."
+    expired: "That sign-in expired. Start again."
+    locked: "Too many attempts. Try again in {seconds}s."
+    enrolment_required: "Set up your authenticator app first."
+    already_enrolled: "This account already has an authenticator app."

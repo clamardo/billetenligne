@@ -5,6 +5,8 @@ import 'dart:io';
 
 import 'package:bel_client/bel_client.dart';
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_crypto/bel_crypto.dart';
+import 'package:bel_domain/bel_domain.dart';
 import 'package:test/test.dart';
 
 /// The client against a real server.
@@ -140,5 +142,68 @@ void main() {
     );
 
     expect(replay.id, first.id);
+  });
+
+  /// The second factor, end to end over a socket.
+  ///
+  /// This is the one place the whole loop is provable: enrol, take the secret
+  /// the server generated, compute a code from it with a real HMAC-SHA1, and
+  /// have the server accept it. curl cannot do the arithmetic and the unit
+  /// suite never crosses the wire, so a base32 alphabet off by one character —
+  /// or a window computed from local time instead of UTC — would survive both
+  /// and fail on the first vendor's phone.
+  group('the second factor', () {
+    test('enrol, confirm, and be counted as enrolled', () async {
+      // A traveller is not obliged to hold one. That is the line the design
+      // draws, and it is drawn from the account rather than from the client.
+      final before = await client.secondFactor();
+      expect(before.required_, isFalse);
+
+      final enrolment = await client.beginSecondFactor();
+      expect(enrolment.recoveryCodes, hasLength(8));
+      expect(enrolment.provisioningUri, startsWith('otpauth://totp/'));
+
+      // Unconfirmed is not enrolled: the server must not count a secret
+      // nobody has proven they can compute.
+      expect((await client.secondFactor()).enrolled, isFalse);
+
+      final code = Totp.compute(
+        secret: Base32.decode(enrolment.secretBase32)!,
+        counter: Totp.windowAt(DateTime.now().toUtc()),
+        mac: const HmacSha256Authenticator(),
+      );
+      await client.confirmSecondFactor(code);
+
+      final after = await client.secondFactor();
+      expect(after.enrolled, isTrue);
+      expect(after.recoveryCodesRemaining, 8);
+
+      // And a live factor is not silently overwritten by a second enrolment.
+      final replaced = await client
+          .beginSecondFactor()
+          .then<ApiFailure?>((_) => null, onError: (Object e) => e as ApiFailure);
+      expect((replaced! as ServerRefused).code, ErrorCode.mfaAlreadyEnrolled);
+
+      await client.disableSecondFactor();
+      expect((await client.secondFactor()).enrolled, isFalse);
+    });
+
+    test('a forged half-session names nobody', () async {
+      final failure = await client
+          .verifySecondFactor(
+            const VerifySecondFactorRequest(
+              mfaToken: 'forged.signature',
+              code: '000000',
+            ),
+          )
+          .then<ApiFailure?>((_) => null, onError: (Object e) => e as ApiFailure);
+
+      final refused = failure! as ServerRefused;
+      expect(refused.status, 401);
+      expect(refused.code, ErrorCode.mfaExpired);
+      // The app renders this key; a code the catalog does not know would show
+      // a raw dotted string to somebody trying to sign in.
+      expect(refused.messageKey, 'errors.mfa.expired');
+    });
   });
 }

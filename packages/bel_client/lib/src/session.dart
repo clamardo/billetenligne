@@ -78,8 +78,22 @@ final class BelSession {
   /// token is short-lived and a traveller who signs in and then loses signal
   /// should have a *refresh* token in hand, not a credential that expires in
   /// an hour and cannot be renewed.
+  ///
+  /// Throws on a response that still owes a second factor. That is a caller
+  /// bug rather than a runtime condition — the sign-in flow is what decides
+  /// between "adopt this" and "ask for six digits" — and it throws here so
+  /// the bug surfaces in the first test that makes it, rather than as a
+  /// session nobody was granted.
   Future<void> adopt(SessionDto signIn) async {
-    _session = await _firebase.exchangeCustomToken(signIn.customToken);
+    final token = signIn.customToken;
+    if (token == null) {
+      throw StateError(
+        'This sign-in still owes a second factor. Exchange its mfaToken at '
+        'verifySecondFactor first.',
+      );
+    }
+
+    _session = await _firebase.exchangeCustomToken(token);
     _account = signIn.account;
     await _store.write(_session!.refreshToken);
     _changes.add(_account);

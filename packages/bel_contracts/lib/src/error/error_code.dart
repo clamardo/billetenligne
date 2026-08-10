@@ -69,6 +69,30 @@ final class ErrorCode {
   /// after waiting — which is why it carries the wait rather than a bare 429.
   static const otpResendTooSoon = 'otp.resend_too_soon';
 
+  // ── Second factor (ADR-0013) ───────────────────────────────────────────
+
+  /// The authenticator code did not match. Deliberately distinct from
+  /// [otpIncorrect]: the recovery a person needs is different — check the
+  /// clock on their phone, not their inbox.
+  static const mfaIncorrect = 'mfa.incorrect';
+
+  /// The half-session between "the emailed code was right" and "the
+  /// authenticator code was right" has expired. Start again.
+  static const mfaExpired = 'mfa.expired';
+
+  /// Too many wrong codes in a row. Carries the wait: a factor locked with no
+  /// stated end is a support call.
+  static const mfaLocked = 'mfa.locked';
+
+  /// The surface requires a second factor and this account has none enrolled.
+  static const mfaEnrolmentRequired = 'mfa.enrolment_required';
+
+  /// Enrolment was asked for on an account that already has a **confirmed**
+  /// factor. Replacing one is its own act — silently overwriting it here would
+  /// turn a stray click into a lockout of the person whose phone still holds
+  /// the old secret.
+  static const mfaAlreadyEnrolled = 'mfa.already_enrolled';
+
   // ── Tenancy / operator lifecycle ───────────────────────────────────────
   static const operatorSuspended = 'operator.suspended';
   static const operatorNotActive = 'operator.not_active';

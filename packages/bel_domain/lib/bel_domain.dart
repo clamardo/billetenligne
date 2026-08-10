@@ -15,6 +15,7 @@ export 'src/money/ledger.dart';
 export 'src/money/money.dart';
 export 'src/identity/email_address.dart';
 export 'src/identity/phone_number.dart';
+export 'src/identity/totp.dart';
 export 'src/market/market.dart';
 export 'src/market/payment_rail.dart';
 export 'src/booking/booking_ref.dart';

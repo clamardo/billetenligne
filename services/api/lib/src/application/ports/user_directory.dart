@@ -87,6 +87,11 @@ abstract interface class UserDirectory {
   /// on every authenticated request.
   Future<Account?> byAuthUid(String authUid);
 
+  /// Resolves our own account id. Used where a caller has already been
+  /// identified by something other than a token — the second-factor exchange,
+  /// which holds a half-session naming an account but no Firebase UID yet.
+  Future<Account?> byId(String id);
+
   /// The account for a **verified** address, creating one if this is the first
   /// time we have seen it.
   ///

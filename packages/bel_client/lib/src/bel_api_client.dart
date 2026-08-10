@@ -128,6 +128,49 @@ final class BelApiClient {
     return SessionDto.fromJson(body ?? const {});
   }
 
+  /// Prove the second factor, and get the session the first half withheld.
+  ///
+  /// Not retried either, and for the same reason: every attempt is counted
+  /// against a factor that locks after five, so a silent retry would spend
+  /// somebody's budget on one typed code.
+  Future<SessionDto> verifySecondFactor(
+    VerifySecondFactorRequest request,
+  ) async {
+    final body = await _send(
+      'POST',
+      '/public/v1/auth/sessions/mfa',
+      body: request.toJson(),
+    );
+    return SessionDto.fromJson(body ?? const {});
+  }
+
+  /// Whether this account has an authenticator, and whether it owes one.
+  Future<SecondFactorStatusDto> secondFactor() async =>
+      SecondFactorStatusDto.fromJson(
+        await _get('/public/v1/auth/second-factor'),
+      );
+
+  /// Begin enrolment.
+  ///
+  /// The recovery codes in the answer exist in readable form **here and
+  /// nowhere else** — the server stores only their HMACs. A caller that
+  /// discards this response has discarded them.
+  Future<SecondFactorEnrolmentDto> beginSecondFactor() async {
+    final body = await _send('POST', '/public/v1/auth/second-factor');
+    return SecondFactorEnrolmentDto.fromJson(body ?? const {});
+  }
+
+  /// Finish enrolment by proving the app can compute a code. Until this
+  /// succeeds the stored secret is inert.
+  Future<void> confirmSecondFactor(String code) => _send(
+    'POST',
+    '/public/v1/auth/second-factor/confirm',
+    body: {'code': code},
+  );
+
+  Future<void> disableSecondFactor() =>
+      _send('DELETE', '/public/v1/auth/second-factor');
+
   /// The signed-in traveller's own profile.
   ///
   /// How the app learns that a token it still holds is no longer good: a

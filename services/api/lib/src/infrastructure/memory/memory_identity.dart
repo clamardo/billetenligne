@@ -28,6 +28,9 @@ final class MemoryUserDirectory implements UserDirectory {
   }
 
   @override
+  Future<Account?> byId(String id) async => _byId[id];
+
+  @override
   Future<({Account account, bool created})> forVerifiedEmail({
     required String email,
     required String language,
