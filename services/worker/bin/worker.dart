@@ -9,15 +9,24 @@ import 'package:bel_api/src/composition.dart';
 import 'package:bel_worker/src/outbox_drain.dart';
 import 'package:bel_worker/src/payment_poller.dart';
 import 'package:bel_worker/src/sweepers.dart';
+import 'package:bel_worker/src/timetable_horizon.dart';
 
 /// One pass, then exit.
 ///
 /// **Run-once, not a service.** It deploys as a cron job (a KEDA ScaledJob in
-/// production), and that shape is the reason it is safe to be behind: nothing
-/// here is a correctness guarantee, so a pass that does not run costs a tidier
-/// database and nothing else. A long-lived process would need health checks,
-/// restart policies and a story about what happens when two of them are alive
-/// — for work that is three UPDATEs and a queue.
+/// production), and that shape is the reason it is safe to be behind. A
+/// long-lived process would need health checks, restart policies and a story
+/// about what happens when two of them are alive — for work that is three
+/// UPDATEs, a queue and a materialisation.
+///
+/// Most of these passes are tidy-up over a property that already holds
+/// elsewhere, so a pass that does not run costs a tidier database and nothing
+/// else. **Two are not.** `payments` is the difference between a traveller
+/// boarding and a traveller who paid and cannot; `departures` keeps the far
+/// edge of the sales window moving, and a night it is skipped is a night
+/// nobody can book three weeks out — recoverable by a dispatcher in the
+/// console, which is how it worked before this pass existed, but not
+/// invisible.
 ///
 ///   dart run bin/worker.dart              # every pass
 ///   dart run bin/worker.dart outbox       # just the drain
@@ -54,6 +63,11 @@ Future<int> main(List<String> args) async {
   final services = Services.resolve();
 
   final sweepers = Sweepers(db);
+  final horizon = TimetableHorizon(
+    db: db,
+    console: services.console,
+    clock: services.clock,
+  );
   final poller = PaymentPoller(
     payments: services.payments,
     pay: services.payForBooking,
@@ -62,8 +76,7 @@ Future<int> main(List<String> args) async {
     db: db,
     notifications: notifications,
     catalog: CatalogLoader.fromDirectory(
-      Platform.environment['BEL_I18N_DIR'] ??
-          'packages/bel_localization/i18n',
+      Platform.environment['BEL_I18N_DIR'] ?? 'packages/bel_localization/i18n',
     ),
   );
 
@@ -75,6 +88,11 @@ Future<int> main(List<String> args) async {
     'payments': poller.poll,
     // Then the drain — the only other pass a traveller notices.
     'outbox': drain.drain,
+    // Then the one pass here that creates rather than tidies. After the two
+    // a traveller notices, because a night without new inventory at the far
+    // edge of a three-week window is a smaller problem than a payment left
+    // unresolved.
+    'departures': horizon.extend,
     'holds': sweepers.expireHolds,
     'reservations': sweepers.expireReservations,
     'challenges': sweepers.purgeChallenges,

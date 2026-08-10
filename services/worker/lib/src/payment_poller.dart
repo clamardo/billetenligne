@@ -50,7 +50,8 @@ final class PaymentPoller {
           state: PaymentState.indeterminate,
           source: 'reconciliation',
           raw: {
-            'reason': 'no terminal answer within '
+            'reason':
+                'no terminal answer within '
                 '${PaymentIntent.indeterminateAfter.inMinutes} minutes',
           },
         );

@@ -10,6 +10,7 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_worker/src/outbox_drain.dart';
 import 'package:bel_worker/src/sweepers.dart';
+import 'package:bel_worker/src/timetable_horizon.dart';
 import 'package:postgres/postgres.dart';
 import 'package:test/test.dart';
 
@@ -73,7 +74,8 @@ void main() {
   });
 
   var seq = 0;
-  String unique(String p) => '$p${++seq}${DateTime.now().microsecondsSinceEpoch % 10000}';
+  String unique(String p) =>
+      '$p${++seq}${DateTime.now().microsecondsSinceEpoch % 10000}';
 
   Future<String> aDeparture() async {
     // Every helper call makes its own route, so the board can be filtered
@@ -297,7 +299,10 @@ void main() {
           RETURNING id
         '''),
         parameters: {
-          'ref': TypedValue(Type.text, unique('R').substring(0, 6).toUpperCase()),
+          'ref': TypedValue(
+            Type.text,
+            unique('R').substring(0, 6).toUpperCase(),
+          ),
           'operator': TypedValue(Type.uuid, operatorId),
           'departure': TypedValue(Type.uuid, departureId),
           'user': TypedValue(Type.uuid, userId),
@@ -385,5 +390,177 @@ void main() {
        WHERE destination = 'old@example.cg'
     ''');
     expect(recent.first.toColumnMap()['n'], 0);
+  });
+  group('the sales horizon', () {
+    /// A pattern running daily from [validFrom], with a coach on it.
+    Future<String> aPattern({required DateTime validFrom}) async {
+      final layout = await console.saveLayout(
+        operatorId: operatorId,
+        name: unique('H'),
+        layout: SeatLayout.busStandard49(),
+      );
+      final vehicle = await console.saveVehicle(
+        operatorId: operatorId,
+        registration: unique('HK'),
+        layoutId: layout.id,
+      );
+      final route = await console.saveRoute(
+        operatorId: operatorId,
+        code: unique('HR'),
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        durationMinutes: 450,
+      );
+      final pattern = await console.savePattern(
+        operatorId: operatorId,
+        routeId: route!.id,
+        recurrence: Recurrence.daily(),
+        departureTime: '06:00',
+        fare: const Money.xaf(12000),
+        validFrom: validFrom,
+        vehicleId: vehicle!.id,
+      );
+      return pattern!.id;
+    }
+
+    TimetableHorizon horizonAt(DateTime now, {Duration? window}) =>
+        TimetableHorizon(
+          db: db,
+          console: console,
+          clock: FixedClock(now),
+          horizon: window ?? const Duration(days: 21),
+        );
+
+    test('a rolling window is filled without anybody asking', () async {
+      final today = DateTime.utc(2030, 5, 1, 3);
+      await aPattern(validFrom: DateTime.utc(2030, 5, 1));
+
+      final result = await horizonAt(
+        today,
+        window: const Duration(days: 6),
+      ).extend();
+
+      // Seven local days, inclusive of today.
+      expect(result.affected, greaterThanOrEqualTo(7));
+
+      final board = await console.board(
+        operatorId: operatorId,
+        localDate: DateTime.utc(2030, 5, 6),
+      );
+      expect(board, isNotEmpty);
+    });
+
+    test('running it twice creates nothing the second time', () async {
+      final today = DateTime.utc(2030, 6, 1, 3);
+      await aPattern(validFrom: DateTime.utc(2030, 6, 1));
+
+      final first = await horizonAt(
+        today,
+        window: const Duration(days: 6),
+      ).extend();
+      final second = await horizonAt(
+        today,
+        window: const Duration(days: 6),
+      ).extend();
+
+      // Idempotent by construction, which is what makes a cron job that
+      // overlaps yesterday's window a no-op rather than a second coach on one
+      // road.
+      expect(first.affected, greaterThan(0));
+      expect(second.affected, 0);
+    });
+
+    test('the window rolls forward one day at a time', () async {
+      final monday = DateTime.utc(2030, 7, 1, 3);
+      await aPattern(validFrom: DateTime.utc(2030, 7, 1));
+
+      await horizonAt(monday, window: const Duration(days: 3)).extend();
+      final edge = await console.board(
+        operatorId: operatorId,
+        localDate: DateTime.utc(2030, 7, 5),
+      );
+      // Nothing beyond the window yet: a horizon that materialised every date
+      // a rule allows would write a million seat rows for a timetable that
+      // will be edited next month.
+      expect(edge, isEmpty);
+
+      final tomorrow = await horizonAt(
+        monday.add(const Duration(days: 1)),
+        window: const Duration(days: 3),
+      ).extend();
+
+      // Exactly the one new day at the far edge.
+      expect(tomorrow.affected, greaterThan(0));
+      expect(
+        await console.board(
+          operatorId: operatorId,
+          localDate: DateTime.utc(2030, 7, 5),
+        ),
+        isNotEmpty,
+      );
+    });
+
+    test('a suspended operator gains no inventory overnight', () async {
+      final today = DateTime.utc(2030, 8, 1, 3);
+      final patternId = await aPattern(validFrom: DateTime.utc(2030, 8, 1));
+
+      await seed.execute(
+        Sql.named("UPDATE operators SET status = 'suspended' WHERE id = @id"),
+        parameters: {'id': TypedValue(Type.uuid, operatorId)},
+      );
+      addTearDown(() async {
+        await seed.execute(
+          Sql.named("UPDATE operators SET status = 'active' WHERE id = @id"),
+          parameters: {'id': TypedValue(Type.uuid, operatorId)},
+        );
+      });
+
+      final result = await horizonAt(
+        today,
+        window: const Duration(days: 6),
+      ).extend();
+
+      // Their existing departures are the lifecycle path's business. This
+      // pass simply stops adding to them.
+      expect(result.affected, 0);
+      expect(patternId, isNotEmpty);
+    });
+
+    test('an inactive pattern is left alone', () async {
+      final today = DateTime.utc(2030, 9, 1, 3);
+      final patternId = await aPattern(validFrom: DateTime.utc(2030, 9, 1));
+      await seed.execute(
+        Sql.named(
+          'UPDATE departure_patterns SET active = FALSE WHERE id = @id',
+        ),
+        parameters: {'id': TypedValue(Type.uuid, patternId)},
+      );
+
+      await horizonAt(today, window: const Duration(days: 6)).extend();
+
+      // Not `result.affected`: other patterns in this suite are still live,
+      // and the pass is deliberately cross-tenant. The claim is about this
+      // pattern, so the assertion has to be about this pattern.
+      final rows = await seed.execute(
+        Sql.named('SELECT count(*) FROM departures WHERE pattern_id = @id'),
+        parameters: {'id': TypedValue(Type.uuid, patternId)},
+      );
+      expect(rows.first.first, 0);
+    });
+
+    test('a backlog is reported rather than silently truncated', () async {
+      final today = DateTime.utc(2030, 10, 1, 3);
+      await aPattern(validFrom: DateTime.utc(2030, 10, 1));
+      await aPattern(validFrom: DateTime.utc(2030, 10, 1));
+
+      final result = await horizonAt(
+        today,
+        window: const Duration(days: 2),
+      ).extend(limit: 1);
+
+      // A scheduler running once a day against a hundred operators should see
+      // a visible problem, not a silent backlog.
+      expect(result.name, contains('more due'));
+    });
   });
 }

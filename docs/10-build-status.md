@@ -34,7 +34,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Hold seats, end to end** | ✅ done | Route → use case → Postgres. 50-way race proven; 30 tests |
 | Idempotency against the database | ✅ done | `ON CONFLICT DO NOTHING`; a refusal is never stored as the answer |
 | **Release a hold** — `DELETE /public/v1/holds/{id}` | ✅ done | Scoped to the owner; releasing twice is a no-op |
-| **`services/worker`** | ✅ done | Outbox drain plus three sweepers. Run-once, not a service |
+| **`services/worker`** | ✅ done | Outbox drain, the payment poller, the sales horizon and three sweepers. Run-once, not a service |
 | **Search** — `GET /public/v1/trips` | ✅ done | Open to anonymous; local-day correct; 14 unit + 14 integration tests |
 | **Seat map** — `GET /public/v1/departures/{id}/seatmap` | ✅ done | Layout + live availability in one response, never cached |
 | **Booking + cash payment** | ✅ done | Reserve → pay at agency → ledger → ticket, one transaction. 71 integration tests |
@@ -57,6 +57,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Object storage** | ✅ done | `ObjectStore` port, Azure Blob adapter over REST, and an in-memory one. What we accept is sniffed from the bytes; 40 KB / 512 px for a logo, refused with the number to get under rather than downscaled. 10 tests against real Azurite (`tool/storage.sh`), which caught a SAS signature that was wrong under sv=2020-10-02 |
 | Operator onboarding — the wizard | ⬜ not started | `03-operator-lifecycle.md` §2.2. The first ten operators are onboarded by hand, which is what the queue is for |
 | **Refund policy wizard** | ✅ done | Operators answer questions; `RefundPolicy.describe()` writes the sentences, in both languages, from the same numbers the server executes (ADR-0015 rule 3). Policies are append-only **by grant** — a booking stores `(policy_id, version)` at sale time and is judged by that version forever. Bands in the wrong order are refused, because tiers match in order and a shortest-first list silently answers everything with its most generous rate |
+| **Scheduled materialisation** | ✅ done | A rolling 21-day sales horizon, extended by the worker rather than by a dispatcher remembering. Enumerates active patterns of active operators across every tenant under the worker's platform scope, then materialises each one back under its own tenant — so the pass sees everything and writes nothing outside the operator it is writing for. Idempotent by the same unique key the console's button relies on, so a run that half-finished is fixed by running it again. A backlog past the batch limit is reported in the pass name, never silently dropped. 6 Postgres tests |
 | **Cash refunds** | ✅ done | Quote, approve, collect. Approval moves a debt rather than undoing a sale: the retained share stays credited to the operator. The ticket voids at approval, the seat goes back on sale in the same transaction, and the claim code is single-use by statement. `source` disbursement down a rail is **not** built and stops at `approved`. 5 domain · 8 Postgres · 12 smoke · 5 widget tests |
 | Email on ACS | ✅ done | Signed requests, logging fallback; **only the sign-in code routes through it so far** |
 | SMS / push on ACS + Firebase | 🔨 in progress | Port, templates, drain and channel plumbing all done; **no provisioned sender number, so the API refuses the phone channel with a 503** |
@@ -86,8 +87,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 Not started. `09-roadmap.md` has the remaining Phase 1 work in **dependency
 order**. With both consoles rendered, the vitrine complete, TOTP in front of
 both back offices, object storage built, the section builder shipped and
-refunds executing end to end, the top of it is now a scheduler for the
-worker, followed by the operator onboarding wizard and the phone channel.
+refunds executing end to end and the sales horizon extending itself, the top
+of it is now the operator onboarding wizard, followed by the phone channel.
 
 ---
 
@@ -104,8 +105,12 @@ These are true today and each one is a decision, not an oversight.
    in `services/worker`, which exists and runs it under platform scope. The
    API refuses it because a request-scoped connection is the wrong place to
    walk the whole table, and the claim path already treats a lapsed hold as
-   available — so no inventory is stranded either way. What is missing is a
-   *scheduler*: nothing runs the worker on a timer yet.
+   available — so no inventory is stranded either way. Every pass the worker
+   owns now exists, including the one that *creates* — the sales horizon. What
+   is missing is the last mile of deployment: a cron trigger in the
+   environment that invokes `dart run bin/worker.dart` each night. Until that
+   exists the passes are run by hand, and a night missed is a night nobody can
+   book at the far edge of the window.
 3. **Search has no pagination and a hard `LIMIT 100`.** One route on one day
    will not approach it. It becomes a real gap the moment the console can
    create a hundred departures, and it is a silent truncation until then —
@@ -202,7 +207,7 @@ cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
 dart run tool/check_layers.dart          # the onion rule, 265 files
 ./infra/migrations/check.sh              # 29 schema guarantees
-./tool/integration.sh                    # 117 tests on real Postgres, incl. the worker
+./tool/integration.sh                    # 130 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 155 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
@@ -213,7 +218,7 @@ twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
 **710 tests in total**, plus 155 smoke checks, 29 executed schema guarantees,
-117 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+130 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.

@@ -153,9 +153,6 @@ final class Sweepers {
       },
     );
 
-    return SweepResult(
-      name: 'challenges.purged',
-      affected: deleted.length,
-    );
+    return SweepResult(name: 'challenges.purged', affected: deleted.length);
   });
 }

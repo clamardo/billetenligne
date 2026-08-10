@@ -59,10 +59,9 @@ final class OutboxDrain {
   }
 
   /// One message. Null when the queue is empty.
-  Future<bool?> _next() =>
-      _db.transaction(const DbScope.worker(), (tx) async {
-        final rows = await tx.execute(
-          Sql.named('''
+  Future<bool?> _next() => _db.transaction(const DbScope.worker(), (tx) async {
+    final rows = await tx.execute(
+      Sql.named('''
             SELECT id, event_type, payload
               FROM outbox
              WHERE delivered_at IS NULL
@@ -72,41 +71,37 @@ final class OutboxDrain {
              LIMIT 1
              FOR UPDATE SKIP LOCKED
           '''),
-          parameters: {'max': TypedValue(Type.integer, maxAttempts)},
-        );
+      parameters: {'max': TypedValue(Type.integer, maxAttempts)},
+    );
 
-        if (rows.isEmpty) return null;
+    if (rows.isEmpty) return null;
 
-        final row = rows.first.toColumnMap();
-        final id = row['id'] as int;
-        final payload = _decode(row['payload']);
+    final row = rows.first.toColumnMap();
+    final id = row['id'] as int;
+    final payload = _decode(row['payload']);
 
-        final message = await _compose(
-          tx,
-          row['event_type'] as String,
-          payload,
-        );
+    final message = await _compose(tx, row['event_type'] as String, payload);
 
-        // Nothing to send is not a failure: a booking whose purchaser left no
-        // reachable address is a perfectly ordinary counter sale. Marked
-        // delivered so it stops being retried.
-        if (message == null) {
-          await _markDelivered(tx, id);
-          return false;
-        }
+    // Nothing to send is not a failure: a booking whose purchaser left no
+    // reachable address is a perfectly ordinary counter sale. Marked
+    // delivered so it stops being retried.
+    if (message == null) {
+      await _markDelivered(tx, id);
+      return false;
+    }
 
-        final failure = await _notifications.send(message);
+    final failure = await _notifications.send(message);
 
-        if (failure == null) {
-          await _markDelivered(tx, id);
-          return true;
-        }
+    if (failure == null) {
+      await _markDelivered(tx, id);
+      return true;
+    }
 
-        // Backoff doubles per attempt: one minute, two, four… An address that
-        // bounces would otherwise be retried at full rate for a day, and
-        // every one of those is a message we pay for.
-        await tx.execute(
-          Sql.named('''
+    // Backoff doubles per attempt: one minute, two, four… An address that
+    // bounces would otherwise be retried at full rate for a day, and
+    // every one of those is a message we pay for.
+    await tx.execute(
+      Sql.named('''
             UPDATE outbox
                SET attempts = attempts + 1,
                    last_error = @error,
@@ -114,14 +109,14 @@ final class OutboxDrain {
                      now() + make_interval(mins => power(2, attempts)::int)
              WHERE id = @id
           '''),
-          parameters: {
-            'id': TypedValue(Type.bigInteger, id),
-            'error': TypedValue(Type.text, failure.name),
-          },
-          ignoreRows: true,
-        );
-        return false;
-      });
+      parameters: {
+        'id': TypedValue(Type.bigInteger, id),
+        'error': TypedValue(Type.text, failure.name),
+      },
+      ignoreRows: true,
+    );
+    return false;
+  });
 
   Future<void> _markDelivered(TxSession tx, int id) => tx.execute(
     Sql.named('UPDATE outbox SET delivered_at = now() WHERE id = @id'),
@@ -185,9 +180,7 @@ final class OutboxDrain {
         return OutboundMessage(
           channel: phone != null ? SignInChannel.phone : SignInChannel.email,
           to: to,
-          subject: phone != null
-              ? null
-              : t('email.booking.subject', params),
+          subject: phone != null ? null : t('email.booking.subject', params),
           body: t('sms.paymentConfirmed.body', params),
           // Matches the dedupe key the writer used, so a message composed by
           // two drains is still one message.
