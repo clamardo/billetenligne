@@ -23,7 +23,7 @@ What remains before a pilot is **commercial, not technical**, which is what this
 
 **Done:** the domain, the schema with its tenancy and ledger guarantees, the public sales boundary, the whole traveller API surface, email sign-in, booking and cash payment with double-entry postings, ticket issuing, the operator console's API, `services/worker`, the typed client, the Kilo component library, the traveller app through to a payment code, the standalone boarding scanner, and CI that executes all of it.
 
-681 tests · 97 smoke checks · 26 executed schema guarantees · 90 of those tests against real Postgres.
+699 tests · 103 smoke checks · 26 executed schema guarantees · 97 of those tests against real Postgres.
 
 ---
 
@@ -67,12 +67,13 @@ Ships without a PSP. The point is to prove inventory, ticketing, boarding and th
 - ✅ **The operator console's API** — fleet, routes, timetables and the materialisation the pilot was blocked on
 - ✅ **`services/worker`** — the outbox drain that delivers a ticket, and three sweepers that are deliberately not guarantees
 - ✅ **The operator console** — Flutter web: fleet, routes, timetables, the dispatcher's day, the guichet, manifests
+- 🔨 **The vitrine** — title, tagline, accent from the closed set of eight and a header pattern, with a live preview drawn by the real widgets, plus the public storefront behind `blt.cg/o/<code>`. **Logo upload is not built**: it needs object storage, and it is named on the screen rather than hidden behind a control that does nothing
 - ✅ **The admin back office** — Flutter web: the review queue, one operator's file with its documents and trail, the six decisions, the negotiated commission, and the `indeterminate` reconciliation queue with its three exits. The stated reason lives in the frame and nothing writes without one
 
 ### Remaining, in dependency order
 
-**1. The vitrine.**
-Logo, header text, accent from the closed set of eight. Cheap, and it is what makes an operator feel the platform is theirs.
+**1. Logo upload, and the object storage it needs.**
+The vitrine ships without it. An operator gets a generated monogram in their accent — the documented default, and good enough that nobody looks abandoned — but a logo is the one part of a storefront that is genuinely *theirs*, and it needs a place to put a file: a storage port, an adapter, short-lived signed URLs, and downscaling to the sizes ADR-0009 budgets for. The same plumbing is what a KYB document scan will need, which is why it is worth building once and properly.
 
 **2. TOTP on both back-office surfaces, and the section builder.**
 The console and the admin app both sign in with a one-time code, and ADR-0013 says back office is email + password + mandatory TOTP. This moved up the list when the admin app shipped: the console's blast radius is one operator's own inventory, while the admin app reaches across every tenant and can approve an operator, change what we charge them and declare a payment captured. **It must land before refunds and payouts do**, and before the admin app leaves the pilot. The seat-layout section builder is the other half of this slice: four presets cover what runs in Congo today, and an operator whose coach matches none of them can only adjust a row count.

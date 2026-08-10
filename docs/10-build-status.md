@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-10 · after commit *The back office as an app*
+**Updated:** 2026-08-10 · after commit *The vitrine*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -15,12 +15,12 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Feature | State | Notes |
 |---|---|---|
 | Monorepo, Melos, pub workspace | ✅ done | 6 packages, 2 services and 4 apps, one `dart pub get` |
-| Layer-boundary check in CI | ✅ done | `tool/check_layers.dart`, 5 rules, 229 files |
+| Layer-boundary check in CI | ✅ done | `tool/check_layers.dart`, 5 rules, 237 files |
 | `bel_domain` — money, market, policies, state machines | ✅ done | Zero dependencies; DRC stood up entirely in test code |
 | `bel_localization` — YAML catalogs, fr + en | ✅ done | Missing-key, orphan, placeholder and SMS-length guards |
 | `bel_contracts` — wire format | ✅ done | Money is always `{minor, currency}` |
 | `bel_crypto` — Ed25519, HMAC | ✅ done | Verified against the RFC 4231 vector |
-| `bel_design` — Kilo tokens, three themes, components | ✅ done | 9 components, 58 tests; **gallery app still not built** |
+| `bel_design` — Kilo tokens, three themes, components | ✅ done | 10 components, 65 tests; **gallery app still not built** |
 | Postgres schema, RLS, ledger | ✅ done | 11 migrations, 26 executed guarantees |
 | Public sales boundary (`bel_public`) | ✅ done | 0005 — a traveller cannot mark a seat sold, proven in `verify_public.sql` |
 | Dart Frog skeleton, auth + idempotency middleware | ✅ done | 43 smoke checks over a real socket |
@@ -51,6 +51,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Operator console — the app** | ✅ done | Flutter web. Fleet, routes, timetables, the dispatcher's day, the guichet, manifests. 11 tests |
 | Admin back office — API | ✅ done | `/admin/v1`: the queue, one operator's page, six lifecycle decisions, the negotiated commission. Every read and every write audited with actor and reason. 8 integration tests |
 | **Admin back office — the app** | ✅ done | Flutter web. The review queue, one operator's file with its documents and trail, six lifecycle decisions, the negotiated commission, and the reconciliation queue. The reason lives in the frame and no write happens without one. 15 tests |
+| **The vitrine** | 🔨 in progress | Title, tagline, accent and header pattern, with a live preview drawn by the real widgets — and the public storefront at `/public/v1/operators/{code}`. **Logo upload is not built**: it needs object storage, which is its own slice |
 | Operator onboarding — the wizard | ⬜ not started | `03-operator-lifecycle.md` §2.2. The first ten operators are onboarded by hand, which is what the queue is for |
 | Refund policy wizard + execution | ⬜ not started | Domain policy engine is built and tested |
 | Email on ACS | ✅ done | Signed requests, logging fallback; **only the sign-in code routes through it so far** |
@@ -79,9 +80,10 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 ## Phase 3 and beyond
 
 Not started. `09-roadmap.md` has the remaining Phase 1 work in **dependency
-order**. With both consoles rendered, the top of it is the vitrine — the
-public page an operator can point a customer at — followed by the refund
-policy wizard and a scheduler for the worker.
+order**. With both consoles rendered and the vitrine shipped, the top of it is
+the object storage a logo upload needs — the same plumbing a KYB document scan
+will want — followed by TOTP, the refund policy wizard and a scheduler for the
+worker.
 
 ---
 
@@ -161,23 +163,23 @@ dart test packages/bel_domain packages/bel_localization \
          packages/bel_contracts packages/bel_crypto     # 225 tests
 dart test packages/bel_client                           # 32 tests
 dart test services/api -x integration                   # 150 tests
-cd packages/bel_design && flutter test   # 58 component and contrast tests
+cd packages/bel_design && flutter test   # 65 component and contrast tests
 cd apps/traveller && flutter test        # 80 app tests
-cd apps/console   && flutter test        # 11 console tests
+cd apps/console   && flutter test        # 15 console tests
 cd apps/admin     && flutter test        # 15 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 229 files
+dart run tool/check_layers.dart          # the onion rule, 237 files
 ./infra/migrations/check.sh              # 26 schema guarantees
-./tool/integration.sh                    # 90 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 97 checks, incl. the Dart client
+./tool/integration.sh                    # 97 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 103 checks, incl. the Dart client
 ```
 
 Remove `services/api/build` before counting: `dart_frog build` copies the
 whole workspace into it, and `dart test services/api` then runs every suite
 twice and reports 414.
 
-**681 tests in total**, plus 97 smoke checks and 26 executed schema
+**699 tests in total**, plus 103 smoke checks and 26 executed schema
 guarantees. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
@@ -186,6 +188,40 @@ the screens render. Both halves of that seam have broken here before.
 ---
 
 ## What the last push changed, and what it cost
+
+The vitrine. The columns have been in the schema since migration 0001 and
+nothing had ever read or written one of them.
+
+**The live preview is the whole point of the screen.** The right-hand pane
+renders the real widgets — storefront hero, search row, ticket band — from the
+form's own state, so an operator sees what a customer will see before saving.
+It cannot lie about the result because it is not a second implementation of
+it, which is the ADR-0004 bet paying its rent rather than being restated.
+
+**Every bound is refused server-side, not merely absent from the UI.** Eight
+accents, three patterns, 30 characters of title and 60 of tagline. An unknown
+accent is a 400 naming the field rather than a quiet fallback to the house
+green — a storefront rendered in a colour nobody asked for is a support call
+nobody can reproduce. The closed lists live in `bel_contracts`, because the
+server is what refuses a ninth hue and the server cannot import Flutter.
+
+**`KChip` overflowed instead of narrowing.** A trip card at 360 dp — the
+reference phone — broke its row on a spelled-out seats label. The French
+string fits and the English one is a third longer, so this was a row that
+breaks in the language we test least. Found by putting the real search row
+into the preview pane at a phone's width, which no test had done before.
+
+**A storefront must not outlive the right to sell.** It resolves through the
+public role, whose policy is already `app_is_public() AND status = 'active'`,
+so a suspended operator's page stops existing because the database stops
+returning the row. There is no status clause in the adapter, and the test
+proves it by suspending an operator rather than by reading the SQL.
+
+Logo upload is not built and is named on the screen rather than hidden behind
+a control that does nothing. Until it lands, an operator gets a generated
+monogram in their accent — which is the documented default anyway.
+
+## What the push before that changed
 
 The back office is an app. `/admin/v1` had been complete for two pushes and
 nothing rendered any of it — the queue, six decisions, the commission and the
@@ -220,7 +256,7 @@ once for client and server both, and `melos run test:apps` puts the three
 Flutter surfaces into `verify` — the traveller and console suites were green
 and ungated, which is a suite waiting to rot.
 
-## What the push before that changed
+## Three pushes back
 
 The reconciliation queue has an exit. ADR-0005 asks for this screen *before*
 launch rather than after the first incident, and half of it now exists: the
