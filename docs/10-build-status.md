@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-10 · after commit *The reconciliation queue has an exit*
+**Updated:** 2026-08-10 · after commit *The back office as an app*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -14,8 +14,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 | Feature | State | Notes |
 |---|---|---|
-| Monorepo, Melos, pub workspace | ✅ done | 8 packages + 2 apps, one `dart pub get` |
-| Layer-boundary check in CI | ✅ done | `tool/check_layers.dart`, 5 rules, 108 files |
+| Monorepo, Melos, pub workspace | ✅ done | 6 packages, 2 services and 4 apps, one `dart pub get` |
+| Layer-boundary check in CI | ✅ done | `tool/check_layers.dart`, 5 rules, 229 files |
 | `bel_domain` — money, market, policies, state machines | ✅ done | Zero dependencies; DRC stood up entirely in test code |
 | `bel_localization` — YAML catalogs, fr + en | ✅ done | Missing-key, orphan, placeholder and SMS-length guards |
 | `bel_contracts` — wire format | ✅ done | Money is always `{minor, currency}` |
@@ -50,7 +50,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Operator console — API** | ✅ done | Fleet, routes, timetables, materialisation, guichet, manifests |
 | **Operator console — the app** | ✅ done | Flutter web. Fleet, routes, timetables, the dispatcher's day, the guichet, manifests. 11 tests |
 | Admin back office — API | ✅ done | `/admin/v1`: the queue, one operator's page, six lifecycle decisions, the negotiated commission. Every read and every write audited with actor and reason. 8 integration tests |
-| Admin back office — the app | ⬜ not started | The surface exists and nothing renders it |
+| **Admin back office — the app** | ✅ done | Flutter web. The review queue, one operator's file with its documents and trail, six lifecycle decisions, the negotiated commission, and the reconciliation queue. The reason lives in the frame and no write happens without one. 15 tests |
 | Operator onboarding — the wizard | ⬜ not started | `03-operator-lifecycle.md` §2.2. The first ten operators are onboarded by hand, which is what the queue is for |
 | Refund policy wizard + execution | ⬜ not started | Domain policy engine is built and tested |
 | Email on ACS | ✅ done | Signed requests, logging fallback; **only the sign-in code routes through it so far** |
@@ -72,15 +72,16 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Commission, per operator** | ✅ done | `CommissionTerm` in basis points, read from `operators.commission_bps` when a fare settles. Netted at source; unreadable terms keep nothing rather than guess |
 | Production credentials | ⬜ not started | **Commercial, not engineering.** Both adapters run against sandbox hosts |
 | `indeterminate` reconciliation — API | ✅ done | The queue, joined to the booking, the operator and the traveller's number. Three exits: ask the rail again · captured · failed. 5 integration tests |
-| `indeterminate` reconciliation — the screen | ⬜ not started | Lives in the admin app, which is the next thing built |
+| **`indeterminate` reconciliation — the screen** | ✅ done | In the back office. Longest-waiting first, everything needed to decide in the row, three exits — and captured/failed demand a sentence about *that* payment, which becomes the `payment_events` row |
 | Payout runs and operator statements | ⬜ not started | `payable:operator:<id>` is correct and derived; nothing pays it out |
 | IRROPS / disruption tooling | ⬜ not started | P0 for this phase (`08-disruption.md`) |
 
 ## Phase 3 and beyond
 
 Not started. `09-roadmap.md` has the remaining Phase 1 work in **dependency
-order** — the operator console's app is now the top of it, and it is the only
-thing between the current build and an operator selling a real seat.
+order**. With both consoles rendered, the top of it is the vitrine — the
+public page an operator can point a customer at — followed by the refund
+policy wizard and a scheduler for the worker.
 
 ---
 
@@ -114,22 +115,24 @@ These are true today and each one is a decision, not an oversight.
    under the 160-character gate. What is missing is a provisioned ACS sender
    number, so `COMMS__SMSFROM` is blank and the API answers 503 for that
    channel rather than accepting it and leaving somebody waiting (ADR-0024).
-6. **Nobody can set an operator's commission from a screen.** The rate is a
-   term of one operator's contract and the code now treats it as one — read
-   from `operators.commission_bps` when a fare settles, in basis points,
-   proven against a real database at a rate no constant in the binary knows.
-   What is missing is the admin back office that would type it in: today it
-   is set by whoever runs the migration, and a renegotiation is an `UPDATE`.
-   Naming it here because a number that arrives by SQL is a number nobody
-   audits.
-7. **The console signs in with a one-time code, not a password and TOTP.**
-   ADR-0013 specifies email + password + mandatory TOTP for back office. The
-   deviation is documented in `apps/console/lib/src/presentation/sign_in.dart`
-   and the reasoning is sequencing: today's console configures a fleet and
-   sells a ticket, while settlement accounts, payout approval and refunds
-   above a cap — the things that ADR protects — do not exist as endpoints at
-   all. **TOTP lands before they do.** If refunds ship first, that comment is
-   the bug report.
+6. **Operator onboarding still starts outside the product.** The back office
+   can now decide an application, but nothing *creates* one: the first row in
+   `operators` arrives by SQL, and the wizard of `03-operator-lifecycle.md`
+   §2.2 is not built. That is deliberate for the first ten operators — they
+   are onboarded in a room, and the queue is what makes the decision
+   auditable afterwards — and it stops being acceptable the moment an
+   eleventh applies without a phone call.
+7. **Both back-office surfaces sign in with a one-time code, not a password
+   and TOTP.** ADR-0013 specifies email + password + mandatory TOTP. The
+   deviation is documented in each app's `sign_in.dart`, and it is now the
+   larger of the two gaps here: the console's blast radius is one operator's
+   own inventory, while the admin app reaches across every tenant and can
+   approve an operator, change what we charge them and declare a payment
+   captured. What holds today is that everything on that surface is audited
+   with an actor and a reason, and that nothing on it moves money *out* —
+   payout approval and settlement-account editing are not endpoints at all.
+   **TOTP lands before they are, and before the admin app leaves the pilot.**
+   If a payout run ships first, those comments are the bug report.
 8. **The seat-layout section builder is not built.** Four presets cover what
    actually runs in Congo and picking one takes ninety seconds, which is the
    path most operators take anyway (`06-fleet-and-routes.md` §3.2). An
@@ -161,9 +164,10 @@ dart test services/api -x integration                   # 150 tests
 cd packages/bel_design && flutter test   # 58 component and contrast tests
 cd apps/traveller && flutter test        # 80 app tests
 cd apps/console   && flutter test        # 11 console tests
+cd apps/admin     && flutter test        # 15 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 217 files
+dart run tool/check_layers.dart          # the onion rule, 229 files
 ./infra/migrations/check.sh              # 26 schema guarantees
 ./tool/integration.sh                    # 90 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 97 checks, incl. the Dart client
@@ -173,7 +177,7 @@ Remove `services/api/build` before counting: `dart_frog build` copies the
 whole workspace into it, and `dart test services/api` then runs every suite
 twice and reports 414.
 
-**666 tests in total**, plus 97 smoke checks and 26 executed schema
+**681 tests in total**, plus 97 smoke checks and 26 executed schema
 guarantees. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
@@ -182,6 +186,41 @@ the screens render. Both halves of that seam have broken here before.
 ---
 
 ## What the last push changed, and what it cost
+
+The back office is an app. `/admin/v1` had been complete for two pushes and
+nothing rendered any of it — the queue, six decisions, the commission and the
+reconciliation exits all existed and could only be reached with curl.
+
+**The reason field is in the frame, not in the dialog.** The server refuses a
+mutation without one and records it against the actor on every read
+(ADR-0011). A prompt that appears at the moment of confirming is a prompt
+people learn to type "review" into; a field attached to the whole session is
+one somebody fills in once, and can see while they work. Both consoles now
+demonstrate the same thing about audit: it is a design constraint on the
+screen, not a column on a table.
+
+**No evidence, no exit.** Declaring a payment captured or failed demands a
+sentence about *that* payment, separate from the standing reason, and the
+confirm button does not exist until there is one. It becomes the
+`payment_events` row that settles a dispute six weeks later.
+
+**The lifecycle table moved into `bel_contracts`.** The buttons the screen
+offers are now exactly the transitions the server's SQL guard allows. The
+server is still the authority — `WHERE status = ANY(@from)` is unchanged —
+but the courtesy of greying a button can no longer drift into a lie.
+
+**`NavigationRail` asserts on zero destinations.** A `viewer` holds neither
+capability this app is built from, so the first thing one of our own people
+with that role would have met is a crash. Found by the test that checks the
+rail is built from capabilities, which is the second time that property has
+caught something the screenshot would not have.
+
+Two smaller things fell out: `BelHeaders.reason` now spells `X-Bel-Reason`
+once for client and server both, and `melos run test:apps` puts the three
+Flutter surfaces into `verify` — the traveller and console suites were green
+and ungated, which is a suite waiting to rot.
+
+## What the push before that changed
 
 The reconciliation queue has an exit. ADR-0005 asks for this screen *before*
 launch rather than after the first incident, and half of it now exists: the
@@ -202,7 +241,7 @@ queue does nothing, and the test says so.
 greppable sources beat a string somebody has to parse — so the row is
 `manual` and the body names who decided and why, as data.
 
-## What the push before that changed
+## And the one before
 
 The back office, server side. `/admin/v1` — the third surface, promised in
 `02-architecture.md` since the first commit and until now entirely absent.

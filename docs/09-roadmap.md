@@ -1,6 +1,6 @@
 # BilletEnLigne — Delivery Roadmap
 
-**Status:** v2, rewritten against what actually shipped · **Date:** 2026-08-09
+**Status:** v2, rewritten against what actually shipped · **Date:** 2026-08-10
 
 Sequencing principle, unchanged and now proven: **the long poles are commercial, not technical.** Telco merchant onboarding runs 4–12 weeks and an anchor operator contract runs longer. Engineering sequences around those, never behind them — which is why the pilot below still ships without a single PSP integration.
 
@@ -23,7 +23,7 @@ What remains before a pilot is **commercial, not technical**, which is what this
 
 **Done:** the domain, the schema with its tenancy and ledger guarantees, the public sales boundary, the whole traveller API surface, email sign-in, booking and cash payment with double-entry postings, ticket issuing, the operator console's API, `services/worker`, the typed client, the Kilo component library, the traveller app through to a payment code, the standalone boarding scanner, and CI that executes all of it.
 
-666 tests · 97 smoke checks · 26 executed schema guarantees · 90 of those tests against real Postgres.
+681 tests · 97 smoke checks · 26 executed schema guarantees · 90 of those tests against real Postgres.
 
 ---
 
@@ -67,28 +67,26 @@ Ships without a PSP. The point is to prove inventory, ticketing, boarding and th
 - ✅ **The operator console's API** — fleet, routes, timetables and the materialisation the pilot was blocked on
 - ✅ **`services/worker`** — the outbox drain that delivers a ticket, and three sweepers that are deliberately not guarantees
 - ✅ **The operator console** — Flutter web: fleet, routes, timetables, the dispatcher's day, the guichet, manifests
+- ✅ **The admin back office** — Flutter web: the review queue, one operator's file with its documents and trail, the six decisions, the negotiated commission, and the `indeterminate` reconciliation queue with its three exits. The stated reason lives in the frame and nothing writes without one
 
 ### Remaining, in dependency order
 
-**1. The admin back office as an app.**
-The API is built: the queue, one operator's page, six lifecycle decisions, the negotiated commission, every read and write audited with an actor and a reason. Nothing renders it. The same app is where the `indeterminate` reconciliation queue has to live, which makes it the next thing.
-
-**2. The vitrine.**
+**1. The vitrine.**
 Logo, header text, accent from the closed set of eight. Cheap, and it is what makes an operator feel the platform is theirs.
 
-**3. Console hardening: TOTP, and the section builder.**
-The console signs in with a one-time code, and ADR-0013 says back office is email + password + mandatory TOTP. Deliberately sequenced behind the console existing at all, and **it must land before refunds and payouts do** — those are the endpoints that ADR is protecting. The seat-layout section builder is the other half: four presets cover what runs in Congo today, and an operator whose coach matches none of them can only adjust a row count.
+**2. TOTP on both back-office surfaces, and the section builder.**
+The console and the admin app both sign in with a one-time code, and ADR-0013 says back office is email + password + mandatory TOTP. This moved up the list when the admin app shipped: the console's blast radius is one operator's own inventory, while the admin app reaches across every tenant and can approve an operator, change what we charge them and declare a payment captured. **It must land before refunds and payouts do**, and before the admin app leaves the pilot. The seat-layout section builder is the other half of this slice: four presets cover what runs in Congo today, and an operator whose coach matches none of them can only adjust a row count.
 
-**4. Refund policy wizard and cash refunds.**
+**3. Refund policy wizard and cash refunds.**
 The policy engine is built and tested; the wizard and the execution path are not.
 
-**5. Scheduled materialisation in the worker.**
+**4. Scheduled materialisation in the worker.**
 The pass exists and is driven by the console; nothing yet runs it nightly, so a timetable is materialised when a dispatcher asks. Fine for a pilot with one operator, wrong at ten.
 
-**6. The reconciliation console for `indeterminate` payments — the screen.**
-The API is done and proven against real Postgres; a human resolution settles through the same path a rail's answer takes. What is missing is the screen, and it lives in the admin app, which is why that app is first on this list.
+**5. Operator onboarding as a wizard.**
+The back office can decide an application; nothing creates one. The first row in `operators` still arrives by SQL, which is fine for ten operators onboarded in a room and wrong for the eleventh who applies without a phone call (`03-operator-lifecycle.md` §2.2).
 
-**7. Phone as the second sign-in channel, and a per-IP limit on codes.**
+**6. Phone as the second sign-in channel, and a per-IP limit on codes.**
 The channel is plumbed and switched off for want of a provisioned ACS sender number. Ships with it: codes are rate-limited per *destination* today — 60 seconds between sends, five attempts per code — which bounds the cost of hammering one address, and nothing yet bounds one host asking for codes to a thousand different addresses. Every one of those is a message we pay for, so this is a cost control before it is a security control.
 
 **Exit:** the anchor operator sells real seats through our console for real cash, and conductors board with our scanner. *Revenue: zero. Learning: maximum.*
@@ -111,14 +109,14 @@ The engineering is done. What is missing is a merchant agreement, which is the l
 - ✅ **Commission netted at source, at the rate each operator negotiated** — a term of one contract, read from their row when the fare settles, in basis points. Not a market rate and not a constant: the number a large carrier argues for is not the one a two-coach family business gets
 - ✅ The full failure taxonomy, each case with its own copy and its own recovery
 - ⬜ **Production credentials.** Both adapters run against sandbox hosts today and a fake rail in development
-- 🔨 **The `indeterminate` reconciliation console — before launch, not after the first incident.** The API is built: the queue joined to the booking, the operator and a number to call, with three exits (ask the rail again · captured · failed) and the actor and reason written to the append-only event log. The screen is not
+- ✅ **The `indeterminate` reconciliation console — before launch, not after the first incident.** The queue is joined to the booking, the operator and a number to call, with three exits (ask the rail again · captured · failed) and the actor and reason written to the append-only event log. It is a screen in the back office now, and the two terminal exits refuse to fire without a sentence about what was actually seen
 - ⬜ **Disruption / IRROPS tooling** (`08-disruption.md`) — P0 here, because the first breakdown will happen in week one and the operator must handle it without calling us
 - ⬜ The ledger in anger: payout runs and operator statements
 - ⬜ The `config/markets.yaml` loader, so enabling a rail is a config push rather than a release
 
 **Exit:** a traveller pays with Airtel Money and boards. Payment success ≥ 88% first attempt.
 
-The *payment path* is built end to end and waiting on a telco. The phase is not: a launch needs the reconciliation console and IRROPS, and both are unbuilt. Saying "everything is built" here — as an earlier draft of this section did — is exactly the kind of claim this document exists to refuse.
+The *payment path* is built end to end and waiting on a telco. The phase is not: the reconciliation console now exists, but a launch also needs IRROPS, and that is unbuilt. Saying "everything is built" here — as an earlier draft of this section did — is exactly the kind of claim this document exists to refuse.
 
 ---
 
