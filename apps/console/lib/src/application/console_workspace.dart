@@ -376,6 +376,46 @@ final class ConsoleWorkspace {
     return map;
   }
 
+  /// What cancelling this booking would give back. A read, and nothing else:
+  /// the vendor says the number out loud before anybody agrees to anything.
+  Future<RefundOfferDto?> quoteRefund(String bookingRef) async {
+    RefundOfferDto? offer;
+    await _run(() async {
+      offer = await _gateway.refundOffer(bookingRef.trim());
+    });
+    return offer;
+  }
+
+  Future<IssuedRefundDto?> refund({
+    required String bookingRef,
+    required String reason,
+  }) async {
+    IssuedRefundDto? issued;
+    await _run(() async {
+      issued = await _gateway.refundBooking(
+        bookingRef: bookingRef.trim(),
+        reason: reason.trim(),
+      );
+      _notice = 'refund.issued|${issued!.bookingRef}';
+    });
+    return issued;
+  }
+
+  Future<ClaimedRefundDto?> payClaim({
+    required String claimCode,
+    required String stationId,
+  }) async {
+    ClaimedRefundDto? claimed;
+    await _run(() async {
+      claimed = await _gateway.claimRefund(
+        claimCode: claimCode.trim(),
+        stationId: stationId,
+      );
+      _notice = 'refund.paid|${claimed!.bookingRef}';
+    });
+    return claimed;
+  }
+
   Future<CounterSaleDto?> collect({
     required String paymentCode,
     required String stationId,

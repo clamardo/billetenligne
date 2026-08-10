@@ -32,6 +32,22 @@ final class ApiConsoleGateway implements ConsoleGateway {
   Future<LayoutDto> drawLayout(LayoutDraft draft) => _client.drawLayout(draft);
 
   @override
+  Future<RefundOfferDto> refundOffer(String bookingRef) =>
+      _client.refundOffer(bookingRef);
+
+  @override
+  Future<IssuedRefundDto> refundBooking({
+    required String bookingRef,
+    required String reason,
+  }) => _client.refundBooking(bookingRef: bookingRef, reason: reason);
+
+  @override
+  Future<ClaimedRefundDto> claimRefund({
+    required String claimCode,
+    required String stationId,
+  }) => _client.claimRefund(claimCode: claimCode, stationId: stationId);
+
+  @override
   Future<({List<RefundPolicyDto> items, bool hasDefault})> refundPolicies() =>
       _client.refundPolicies();
 

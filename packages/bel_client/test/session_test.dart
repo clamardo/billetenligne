@@ -47,11 +47,7 @@ final class _MovableClock implements Clock {
 }
 
 String _exchanged({String id = 'id-token-1', String refresh = 'refresh-1'}) =>
-    jsonEncode({
-      'idToken': id,
-      'refreshToken': refresh,
-      'expiresIn': '3600',
-    });
+    jsonEncode({'idToken': id, 'refreshToken': refresh, 'expiresIn': '3600'});
 
 String _refreshed({String id = 'id-token-2', String refresh = 'refresh-2'}) =>
     jsonEncode({
@@ -63,11 +59,7 @@ String _refreshed({String id = 'id-token-2', String refresh = 'refresh-2'}) =>
 SessionDto signInResponse() => const SessionDto(
   customToken: 'custom-token-from-our-api',
   isNewAccount: true,
-  account: AccountDto(
-    id: 'u-aline',
-    language: 'fr',
-    email: 'aline@example.cg',
-  ),
+  account: AccountDto(id: 'u-aline', language: 'fr', email: 'aline@example.cg'),
 );
 
 void main() {
@@ -104,7 +96,9 @@ void main() {
       expect(firebase.bodies.single['returnSecureToken'], isTrue);
       expect(
         firebase.urls.single.toString(),
-        contains('identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken'),
+        contains(
+          'identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken',
+        ),
       );
     });
 
@@ -120,8 +114,10 @@ void main() {
 
     test('persists the refresh token and nothing else', () async {
       final store = MemorySessionStore();
-      await build(_ScriptedFirebase([(200, _exchanged())]), store: store)
-          .adopt(signInResponse());
+      await build(
+        _ScriptedFirebase([(200, _exchanged())]),
+        store: store,
+      ).adopt(signInResponse());
 
       // The refresh token is the only thing worth keeping, and only in
       // platform secure storage. An ID token in a file is a bearer worth an
@@ -131,7 +127,12 @@ void main() {
 
     test('a refused exchange is not retryable', () async {
       final firebase = _ScriptedFirebase([
-        (400, jsonEncode({'error': {'message': 'INVALID_CUSTOM_TOKEN'}})),
+        (
+          400,
+          jsonEncode({
+            'error': {'message': 'INVALID_CUSTOM_TOKEN'},
+          }),
+        ),
       ]);
 
       await expectLater(
@@ -162,24 +163,33 @@ void main() {
       // null that surfaces much later as an unexplained 401.
       expect(firebase.bodies.last['grant_type'], 'refresh_token');
       expect(firebase.bodies.last['refresh_token'], 'refresh-1');
-      expect(firebase.urls.last.toString(), contains('securetoken.googleapis.com'));
+      expect(
+        firebase.urls.last.toString(),
+        contains('securetoken.googleapis.com'),
+      );
     });
 
-    test('a minute of headroom, because a 2G handshake takes seconds',
-        () async {
-      final firebase = _ScriptedFirebase([
-        (200, _exchanged()),
-        (200, _refreshed()),
-      ]);
-      final session = build(firebase);
-      await session.adopt(signInResponse());
+    test(
+      'a minute of headroom, because a 2G handshake takes seconds',
+      () async {
+        final firebase = _ScriptedFirebase([
+          (200, _exchanged()),
+          (200, _refreshed()),
+        ]);
+        final session = build(firebase);
+        await session.adopt(signInResponse());
 
-      clock.advance(const Duration(minutes: 58));
-      expect(await session.token(), 'id-token-1', reason: 'still fresh');
+        clock.advance(const Duration(minutes: 58));
+        expect(await session.token(), 'id-token-1', reason: 'still fresh');
 
-      clock.advance(const Duration(minutes: 1, seconds: 30));
-      expect(await session.token(), 'id-token-2', reason: 'inside the headroom');
-    });
+        clock.advance(const Duration(minutes: 1, seconds: 30));
+        expect(
+          await session.token(),
+          'id-token-2',
+          reason: 'inside the headroom',
+        );
+      },
+    );
 
     test('three screens waking at once produce one refresh', () async {
       final firebase = _ScriptedFirebase([
@@ -219,7 +229,12 @@ void main() {
       final session = build(
         _ScriptedFirebase([
           (200, _exchanged()),
-          (400, jsonEncode({'error': {'message': 'TOKEN_EXPIRED'}})),
+          (
+            400,
+            jsonEncode({
+              'error': {'message': 'TOKEN_EXPIRED'},
+            }),
+          ),
         ]),
       );
       await session.adopt(signInResponse());
@@ -231,10 +246,7 @@ void main() {
 
     test('offline sends the stale token rather than nothing', () async {
       final session = build(
-        _ScriptedFirebase([
-          (200, _exchanged()),
-          Exception('no route to host'),
-        ]),
+        _ScriptedFirebase([(200, _exchanged()), Exception('no route to host')]),
       );
       await session.adopt(signInResponse());
       clock.advance(const Duration(hours: 1));
@@ -256,7 +268,10 @@ void main() {
 
       expect(await session.restore(), isTrue);
       expect(await session.token(), 'id-token-2');
-      expect(firebase.bodies.single['refresh_token'], 'refresh-from-last-launch');
+      expect(
+        firebase.bodies.single['refresh_token'],
+        'refresh-from-last-launch',
+      );
     });
 
     test('nothing stored is not an error', () async {
@@ -271,7 +286,12 @@ void main() {
 
       final session = build(
         _ScriptedFirebase([
-          (401, jsonEncode({'error': {'message': 'USER_DISABLED'}})),
+          (
+            401,
+            jsonEncode({
+              'error': {'message': 'USER_DISABLED'},
+            }),
+          ),
         ]),
         store: store,
       );

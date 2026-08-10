@@ -86,6 +86,54 @@ final class _ScriptedConsole implements ConsoleGateway {
     );
   }
 
+  RefundOfferDto? offerResult;
+  IssuedRefundDto? issuedResult;
+
+  @override
+  Future<RefundOfferDto> refundOffer(String bookingRef) async {
+    saved.add('quote:$bookingRef');
+    return offerResult ??
+        RefundOfferDto(
+          bookingRef: bookingRef,
+          state: 'confirmed',
+          departsAt: DateTime.utc(2028, 3, 6),
+          fare: const Money.xaf(9000),
+          serviceFee: const Money.xaf(300),
+        );
+  }
+
+  @override
+  Future<IssuedRefundDto> refundBooking({
+    required String bookingRef,
+    required String reason,
+  }) async {
+    saved.add('refund:$bookingRef:$reason');
+    return issuedResult ??
+        IssuedRefundDto(
+          id: 'r-1',
+          bookingRef: bookingRef,
+          amount: const Money.xaf(8100),
+          destination: 'agencyCash',
+          state: 'claim_issued',
+          claimCode: 'K4M2QX',
+          claimExpiresAt: DateTime.utc(2028, 6, 1),
+        );
+  }
+
+  @override
+  Future<ClaimedRefundDto> claimRefund({
+    required String claimCode,
+    required String stationId,
+  }) async {
+    saved.add('claim:$claimCode:$stationId');
+    return ClaimedRefundDto(
+      id: 'r-1',
+      bookingRef: 'BEL-K4M2QX',
+      amount: const Money.xaf(8100),
+      stationId: stationId,
+    );
+  }
+
   List<RefundPolicyDto> policyList = const [];
   bool hasDefault = false;
 
@@ -705,6 +753,185 @@ void main() {
 
       expect(gateway.drawn, isNull);
       expect(find.text('Plans de salle'), findsOneWidget);
+    });
+  });
+
+  group('refunding at the counter', () {
+    Finder fieldNamed(String label) => find.descendant(
+      of: find.widgetWithText(KField, label),
+      matching: find.byType(TextField),
+    );
+
+    Future<ConsoleWorkspace> openRefund(
+      WidgetTester tester,
+      _ScriptedConsole gateway,
+    ) async {
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.counter);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Rembourser'));
+      await tester.pumpAndSettle();
+      return workspace;
+    }
+
+    _ScriptedConsole vendor() => _ScriptedConsole(
+      capabilities: const [
+        'booking.read',
+        'booking.sell',
+        'booking.refund',
+      ],
+    );
+
+    testWidgets('the quote is read before anything is agreed', (tester) async {
+      final gateway = vendor()
+        ..offerResult = RefundOfferDto(
+          bookingRef: 'BEL-K4M2QX',
+          state: 'confirmed',
+          departsAt: DateTime.utc(2028, 3, 6),
+          fare: const Money.xaf(9000),
+          serviceFee: const Money.xaf(300),
+          refundable: const Money.xaf(8100),
+          retained: const Money.xaf(1200),
+          rateBps: 9000,
+          destination: 'agencyCash',
+          policyName: 'Standard',
+          policyLines: const ['policy.line.tier|48|90'],
+        );
+      await openRefund(tester, gateway);
+
+      await tester.enterText(fieldNamed('Référence du billet'), 'BEL-K4M2QX');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Voir ce qui est remboursable'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('8'), findsWidgets);
+      expect(find.textContaining('Vendu sous : Standard'), findsOneWidget);
+      // The terms the booking was sold under, rendered by the domain — the
+      // same sentence the traveller read before paying.
+      expect(
+        find.textContaining('48 h avant le départ : 90 % remboursés'),
+        findsOneWidget,
+      );
+      // Quoting is a read. Nothing has been refunded.
+      expect(gateway.saved, contains('quote:BEL-K4M2QX'));
+      expect(gateway.saved.where((s) => s.startsWith('refund:')), isEmpty);
+    });
+
+    testWidgets('a ticket outside the window shows the reason, not a zero', (
+      tester,
+    ) async {
+      final gateway = vendor()
+        ..offerResult = RefundOfferDto(
+          bookingRef: 'BEL-K4M2QX',
+          state: 'confirmed',
+          departsAt: DateTime.utc(2028, 3, 6),
+          fare: const Money.xaf(9000),
+          serviceFee: const Money.xaf(300),
+          failureCode: 'refund.outside_window',
+        );
+      await openRefund(tester, gateway);
+
+      await tester.enterText(fieldNamed('Référence du billet'), 'BEL-K4M2QX');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Voir ce qui est remboursable'));
+      await tester.pumpAndSettle();
+
+      // "0 FCFA" reads as a bug to the person being told it, and the vendor
+      // has to repeat something true to somebody standing in front of them.
+      expect(
+        find.textContaining("n'est plus remboursable"),
+        findsOneWidget,
+      );
+      expect(find.text('Motif du remboursement'), findsNothing);
+    });
+
+    testWidgets('a refund needs a reason, and shows the claim code once', (
+      tester,
+    ) async {
+      final gateway = vendor()
+        ..offerResult = RefundOfferDto(
+          bookingRef: 'BEL-K4M2QX',
+          state: 'confirmed',
+          departsAt: DateTime.utc(2028, 3, 6),
+          fare: const Money.xaf(9000),
+          serviceFee: const Money.xaf(300),
+          refundable: const Money.xaf(8100),
+          retained: const Money.xaf(1200),
+          destination: 'agencyCash',
+        );
+      await openRefund(tester, gateway);
+
+      await tester.enterText(fieldNamed('Référence du billet'), 'BEL-K4M2QX');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Voir ce qui est remboursable'));
+      await tester.pumpAndSettle();
+
+      // "Why did we give this person money?" cannot be reconstructed later.
+      final blocked = tester.widget<KButton>(
+        find.widgetWithText(KButton, 'Rembourser et annuler le billet'),
+      );
+      expect(blocked.onPressed, isNull);
+      expect(find.text('Indiquez un motif.'), findsOneWidget);
+
+      await tester.enterText(
+        fieldNamed('Motif du remboursement'),
+        'Voyageur a annulé au guichet',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(KButton, 'Rembourser et annuler le billet'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        gateway.saved,
+        contains('refund:BEL-K4M2QX:Voyageur a annulé au guichet'),
+      );
+      // Blocking, and shown once: this code is the traveller's only way to
+      // collect, and a vendor who dismisses the screen without reading it out
+      // has left somebody with nothing.
+      // Scoped to the dialog: the claim field below it carries the same
+      // string as its hint, which is exactly the sample a vendor will see.
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('K4M2QX'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('présente ce code'), findsOneWidget);
+    });
+
+    testWidgets('paying a claim takes the code and the vendor\'s station', (
+      tester,
+    ) async {
+      final gateway = vendor();
+      await openRefund(tester, gateway);
+
+      await tester.enterText(fieldNamed('Code de remboursement'), 'K4M2QX');
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(KButton, "Sortir l'argent de la caisse"),
+      );
+      await tester.pumpAndSettle();
+
+      // The station is not a choice here: the money leaves the drawer the
+      // vendor is scoped to and will count at the end of their shift.
+      expect(gateway.saved, contains('claim:K4M2QX:st-bzv'));
+    });
+
+    testWidgets('a vendor who cannot refund is not offered the tab', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'booking.sell'],
+      );
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.counter);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Encaisser'), findsWidgets);
+      expect(find.text('Rembourser'), findsNothing);
     });
   });
 

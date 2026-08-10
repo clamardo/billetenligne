@@ -23,6 +23,18 @@ abstract interface class ConsoleGateway {
 
   Future<LayoutDto> drawLayout(LayoutDraft draft);
 
+  Future<RefundOfferDto> refundOffer(String bookingRef);
+
+  Future<IssuedRefundDto> refundBooking({
+    required String bookingRef,
+    required String reason,
+  });
+
+  Future<ClaimedRefundDto> claimRefund({
+    required String claimCode,
+    required String stationId,
+  });
+
   Future<({List<RefundPolicyDto> items, bool hasDefault})> refundPolicies();
 
   Future<RefundPolicyDto> saveRefundPolicy({

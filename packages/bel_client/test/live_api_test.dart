@@ -179,9 +179,10 @@ void main() {
       expect(after.recoveryCodesRemaining, 8);
 
       // And a live factor is not silently overwritten by a second enrolment.
-      final replaced = await client
-          .beginSecondFactor()
-          .then<ApiFailure?>((_) => null, onError: (Object e) => e as ApiFailure);
+      final replaced = await client.beginSecondFactor().then<ApiFailure?>(
+        (_) => null,
+        onError: (Object e) => e as ApiFailure,
+      );
       expect((replaced! as ServerRefused).code, ErrorCode.mfaAlreadyEnrolled);
 
       await client.disableSecondFactor();
@@ -196,7 +197,10 @@ void main() {
               code: '000000',
             ),
           )
-          .then<ApiFailure?>((_) => null, onError: (Object e) => e as ApiFailure);
+          .then<ApiFailure?>(
+            (_) => null,
+            onError: (Object e) => e as ApiFailure,
+          );
 
       final refused = failure! as ServerRefused;
       expect(refused.status, 401);

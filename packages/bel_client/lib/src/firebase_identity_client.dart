@@ -126,23 +126,28 @@ final class FirebaseIdentityClient {
   /// we ran the challenge ourselves (ADR-0024): the credential the traveller
   /// ends up holding is Firebase's, with Firebase's expiry, rotation and
   /// revocation behind it.
-  Future<FirebaseSession> exchangeCustomToken(String customToken) =>
-      _session(config.exchangeUrl, {
-        'token': customToken,
-        'returnSecureToken': true,
-      }, idTokenField: 'idToken', refreshField: 'refreshToken');
+  Future<FirebaseSession> exchangeCustomToken(String customToken) => _session(
+    config.exchangeUrl,
+    {'token': customToken, 'returnSecureToken': true},
+    idTokenField: 'idToken',
+    refreshField: 'refreshToken',
+  );
 
   /// Trades a refresh token for a new ID token. Firebase rotates the refresh
   /// token on use, so the answer replaces what the caller stored.
-  Future<FirebaseSession> refresh(String refreshToken) =>
-      _session(config.refreshUrl, {
-        'grant_type': 'refresh_token',
-        'refresh_token': refreshToken,
-        // The refresh endpoint answers in snake_case while the exchange
-        // endpoint answers in camelCase. Not a typo — two different Google
-        // APIs, and reading the wrong field yields a null that surfaces three
-        // screens later as an unexplained 401.
-      }, idTokenField: 'id_token', refreshField: 'refresh_token');
+  Future<FirebaseSession> refresh(String refreshToken) => _session(
+    config.refreshUrl,
+    {
+      'grant_type': 'refresh_token',
+      'refresh_token': refreshToken,
+      // The refresh endpoint answers in snake_case while the exchange
+      // endpoint answers in camelCase. Not a typo — two different Google
+      // APIs, and reading the wrong field yields a null that surfaces three
+      // screens later as an unexplained 401.
+    },
+    idTokenField: 'id_token',
+    refreshField: 'refresh_token',
+  );
 
   Future<FirebaseSession> _session(
     Uri url,

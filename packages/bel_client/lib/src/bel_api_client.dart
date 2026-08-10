@@ -319,6 +319,37 @@ final class BelApiClient {
     await _postJson('/console/v1/fleet/layouts', draft.toJson()),
   );
 
+  /// What cancelling this booking would give back, under the terms it was
+  /// sold with. A quote, not a refund.
+  Future<RefundOfferDto> refundOffer(String bookingRef) async =>
+      RefundOfferDto.fromJson(
+        await _get('/console/v1/bookings/$bookingRef/refund'),
+      );
+
+  /// Cancels the booking and records what is owed.
+  ///
+  /// The reason is mandatory and is not ceremony: it is the only thing that
+  /// answers "why did we give this person money?" six weeks later.
+  Future<IssuedRefundDto> refundBooking({
+    required String bookingRef,
+    required String reason,
+  }) async => IssuedRefundDto.fromJson(
+    await _postJson('/console/v1/bookings/$bookingRef/refund', {
+      'reason': reason,
+    }),
+  );
+
+  /// Pays a claim out of a station's drawer and closes it.
+  Future<ClaimedRefundDto> claimRefund({
+    required String claimCode,
+    required String stationId,
+  }) async => ClaimedRefundDto.fromJson(
+    await _postJson('/console/v1/refunds/claim', {
+      'claimCode': claimCode,
+      'stationId': stationId,
+    }),
+  );
+
   /// Every version of every refund policy this operator has written.
   Future<({List<RefundPolicyDto> items, bool hasDefault})>
   refundPolicies() async {

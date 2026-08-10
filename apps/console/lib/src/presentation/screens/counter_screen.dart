@@ -32,9 +32,16 @@ class _CounterScreenState extends State<CounterScreen> {
   final _phone = TextEditingController();
   final _name = TextEditingController();
   final _seat = TextEditingController();
+  final _ref = TextEditingController();
+  final _reason = TextEditingController();
+  final _claim = TextEditingController();
 
   String? _departureId;
-  var _walkIn = false;
+  _CounterMode _mode = _CounterMode.collect;
+
+  /// The last quote read aloud. Cleared the moment the reference changes, so
+  /// a vendor can never refund one booking against another's numbers.
+  RefundOfferDto? _offer;
 
   ConsoleWorkspace get _work => widget.workspace;
 
@@ -47,7 +54,7 @@ class _CounterScreenState extends State<CounterScreen> {
 
   @override
   void dispose() {
-    for (final c in [_code, _phone, _name, _seat]) {
+    for (final c in [_code, _phone, _name, _seat, _ref, _reason, _claim]) {
       c.dispose();
     }
     super.dispose();
@@ -76,25 +83,40 @@ class _CounterScreenState extends State<CounterScreen> {
         Text(context.t('console.counter.title'), style: kilo.text.h2),
         SizedBox(height: kilo.space.s4),
 
-        SegmentedButton<bool>(
+        SegmentedButton<_CounterMode>(
           segments: [
             ButtonSegment(
-              value: false,
+              value: _CounterMode.collect,
               label: Text(context.t('console.counter.collect')),
               icon: const Icon(Icons.qr_code),
             ),
             ButtonSegment(
-              value: true,
+              value: _CounterMode.walkIn,
               label: Text(context.t('console.counter.walkIn')),
               icon: const Icon(Icons.person_add),
             ),
+            // Third, because it is the rarest of the three and the two that
+            // take money should stay where a vendor's hand already goes.
+            // Absent entirely without the capability: a segment that appears
+            // and then refuses is a worse answer than one that never
+            // suggested itself.
+            if (_work.can('booking.refund'))
+              ButtonSegment(
+                value: _CounterMode.refund,
+                label: Text(context.t('console.counter.refund')),
+                icon: const Icon(Icons.undo),
+              ),
           ],
-          selected: {_walkIn},
-          onSelectionChanged: (s) => setState(() => _walkIn = s.first),
+          selected: {_mode},
+          onSelectionChanged: (s) => setState(() => _mode = s.first),
         ),
         SizedBox(height: kilo.space.s5),
 
-        if (!_walkIn) ..._collect(context) else ..._sell(context),
+        ...switch (_mode) {
+          _CounterMode.collect => _collect(context),
+          _CounterMode.walkIn => _sell(context),
+          _CounterMode.refund => _refund(context),
+        },
       ],
     );
   }
@@ -236,8 +258,212 @@ class _CounterScreenState extends State<CounterScreen> {
     await _showReceipt(sale);
   }
 
+  // ── Refund a ticket, and pay a claim ──────────────────────────────────────
+
+  List<Widget> _refund(BuildContext context) {
+    final kilo = context.kilo;
+    final offer = _offer;
+
+    return [
+      Text(context.t('console.counter.refundIntro'), style: kilo.text.body),
+      SizedBox(height: kilo.space.s3),
+
+      KField(
+        label: context.t('console.counter.bookingRef'),
+        hint: 'BEL-K4M2QX',
+        controller: _ref,
+        enabled: !_work.busy,
+        onChanged: (_) => setState(() => _offer = null),
+      ),
+      SizedBox(height: kilo.space.s3),
+      KButton(
+        label: context.t('console.counter.quote'),
+        tone: KButtonTone.secondary,
+        loading: _work.busy,
+        onPressed: _ref.text.trim().length < 6 ? null : _doQuote,
+      ),
+
+      if (offer != null) ...[
+        SizedBox(height: kilo.space.s4),
+        KCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (offer.isRefundable) ...[
+                Text(
+                  context.t('console.counter.refundable', {
+                    'amount': offer.refundable!.format(),
+                  }),
+                  style: kilo.text.h3,
+                ),
+                Text(
+                  context.t('console.counter.retained', {
+                    'amount': offer.retained!.format(),
+                  }),
+                  style: kilo.text.caption.copyWith(
+                    color: kilo.color.contentSecondary,
+                  ),
+                ),
+              ] else
+                // The reason, never "0 FCFA". A zero reads as a bug to the
+                // person being told it, and the vendor has to repeat
+                // something true to a traveller standing in front of them.
+                Text(
+                  offer.failureCode == null
+                      ? context.t('console.counter.notRefundable')
+                      : context.t('errors.${offer.failureCode}'),
+                  style: kilo.text.body.copyWith(color: kilo.color.danger),
+                ),
+
+              if (offer.policyName != null) ...[
+                SizedBox(height: kilo.space.s2),
+                Text(
+                  context.t('console.counter.soldUnder', {
+                    'name': offer.policyName!,
+                  }),
+                  style: kilo.text.caption.copyWith(
+                    color: kilo.color.contentSecondary,
+                  ),
+                ),
+              ],
+              // The same sentences the traveller read before paying, rendered
+              // from the terms stamped on the booking rather than from
+              // today's policy.
+              for (final line in offer.policyLines)
+                Padding(
+                  padding: EdgeInsets.only(top: kilo.space.s1),
+                  child: Text(
+                    '· ${context.tEncoded(line)}',
+                    style: kilo.text.caption.copyWith(
+                      color: kilo.color.contentSecondary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+
+      if (offer != null && offer.isRefundable) ...[
+        SizedBox(height: kilo.space.s3),
+        KField(
+          label: context.t('console.counter.reason'),
+          helper: context.t('console.counter.reasonHelp'),
+          controller: _reason,
+          enabled: !_work.busy,
+          onChanged: (_) => setState(() {}),
+        ),
+        SizedBox(height: kilo.space.s3),
+        KButton(
+          label: context.t('console.counter.doRefund'),
+          tone: KButtonTone.danger,
+          loading: _work.busy,
+          onPressed: _reason.text.trim().length < 3 ? null : _doRefund,
+          disabledHint: context.t('console.counter.needReason'),
+        ),
+      ],
+
+      SizedBox(height: kilo.space.s6),
+
+      // The other half of a cash refund: somebody walks back in with the code
+      // and collects. Same screen, because it is the same person's job and
+      // the same drawer.
+      Text(context.t('console.counter.payClaim'), style: kilo.text.h3),
+      SizedBox(height: kilo.space.s2),
+      KField(
+        label: context.t('console.counter.claimCode'),
+        hint: 'K4M2QX',
+        controller: _claim,
+        maxLength: 6,
+        enabled: !_work.busy,
+        onChanged: (_) => setState(() {}),
+      ),
+      SizedBox(height: kilo.space.s3),
+      KButton(
+        label: context.t('console.counter.doPayClaim'),
+        loading: _work.busy,
+        onPressed: _claim.text.trim().length < 6 ? null : _doPayClaim,
+      ),
+    ];
+  }
+
+  Future<void> _doQuote() async {
+    final offer = await _work.quoteRefund(_ref.text.trim());
+    if (!mounted) return;
+    setState(() => _offer = offer);
+  }
+
+  Future<void> _doRefund() async {
+    final issued = await _work.refund(
+      bookingRef: _ref.text.trim(),
+      reason: _reason.text.trim(),
+    );
+    if (issued == null || !mounted) return;
+
+    setState(() {
+      _offer = null;
+      _ref.clear();
+      _reason.clear();
+    });
+
+    final code = issued.claimCode;
+    if (code == null) return;
+
+    // A dialog, and deliberately a blocking one: this code is the traveller's
+    // only way to collect, it is shown once, and a vendor who dismisses the
+    // screen without reading it out has left somebody with nothing.
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(dialogContext.t('console.counter.claimTitle')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SelectableText(code, style: dialogContext.kilo.text.display),
+            SizedBox(height: dialogContext.kilo.space.s3),
+            KMoney(issued.amount.format(), size: KMoneySize.hero),
+            if (issued.claimExpiresAt != null) ...[
+              SizedBox(height: dialogContext.kilo.space.s2),
+              Text(
+                dialogContext.t('console.counter.claimExpires', {
+                  'date': _day(issued.claimExpiresAt!),
+                }),
+                style: dialogContext.kilo.text.caption,
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(dialogContext.t('common.actions.done')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _doPayClaim() async {
+    final claimed = await _work.payClaim(
+      claimCode: _claim.text.trim(),
+      stationId: _stationId!,
+    );
+    if (claimed == null || !mounted) return;
+    setState(_claim.clear);
+  }
+
   Future<void> _showReceipt(CounterSaleDto sale) => showDialog<void>(
     context: context,
     builder: (_) => TicketReceipt(sale: sale),
   );
 }
+
+/// `15/08/2026`. The order every form in Congo uses.
+String _day(DateTime at) {
+  final local = at.toLocal();
+  return '${local.day.toString().padLeft(2, '0')}/'
+      '${local.month.toString().padLeft(2, '0')}/${local.year}';
+}
+
+/// What the vendor is doing right now. Three acts, one drawer.
+enum _CounterMode { collect, walkIn, refund }

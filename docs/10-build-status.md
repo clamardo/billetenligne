@@ -49,14 +49,15 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Traveller app — reserve and pay | ✅ done | Passenger names → payment code → agency. 54 app tests |
 | **Traveller app — tickets and history** | ✅ done | Upcoming and past, unpaid reservations included with their code. The QR and its rotating secret travel inside the booking, so opening a ticket costs no request. 11 flow and widget tests |
 | **Operator console — API** | ✅ done | Fleet, routes, timetables, materialisation, guichet, manifests |
-| **Operator console — the app** | ✅ done | Flutter web. Fleet, routes, timetables, the dispatcher's day, the guichet, manifests. 25 tests |
+| **Operator console — the app** | ✅ done | Flutter web. Fleet, routes, timetables, the dispatcher's day, the guichet, manifests, refund terms and refunds. 37 tests |
 | Admin back office — API | ✅ done | `/admin/v1`: the queue, one operator's page, six lifecycle decisions, the negotiated commission. Every read and every write audited with actor and reason. 8 integration tests |
 | **Admin back office — the app** | ✅ done | Flutter web. The review queue, one operator's file with its documents and trail, six lifecycle decisions, the negotiated commission, and the reconciliation queue. The reason lives in the frame and no write happens without one. 15 tests |
 | **The vitrine** | ✅ done | Title, tagline, accent, header pattern and logo, with a live preview drawn by the real widgets — and the public storefront at `/public/v1/operators/{code}` |
 | **The seat-layout section builder** | ✅ done | The coach no preset fits, drawn section by section, with `KSeatMap` — the widget that sells the seat — redrawn on every keystroke. Start rows are computed, not typed. `Abreast` in the domain now parses to null instead of throwing, which turned three 500s into field-named 400s. 8 domain · 5 contract · 6 widget tests, and 15 smoke checks on a real socket |
 | **Object storage** | ✅ done | `ObjectStore` port, Azure Blob adapter over REST, and an in-memory one. What we accept is sniffed from the bytes; 40 KB / 512 px for a logo, refused with the number to get under rather than downscaled. 10 tests against real Azurite (`tool/storage.sh`), which caught a SAS signature that was wrong under sv=2020-10-02 |
 | Operator onboarding — the wizard | ⬜ not started | `03-operator-lifecycle.md` §2.2. The first ten operators are onboarded by hand, which is what the queue is for |
-| Refund policy wizard + execution | ⬜ not started | Domain policy engine is built and tested |
+| **Refund policy wizard** | ✅ done | Operators answer questions; `RefundPolicy.describe()` writes the sentences, in both languages, from the same numbers the server executes (ADR-0015 rule 3). Policies are append-only **by grant** — a booking stores `(policy_id, version)` at sale time and is judged by that version forever. Bands in the wrong order are refused, because tiers match in order and a shortest-first list silently answers everything with its most generous rate |
+| **Cash refunds** | ✅ done | Quote, approve, collect. Approval moves a debt rather than undoing a sale: the retained share stays credited to the operator. The ticket voids at approval, the seat goes back on sale in the same transaction, and the claim code is single-use by statement. `source` disbursement down a rail is **not** built and stops at `approved`. 5 domain · 8 Postgres · 12 smoke · 5 widget tests |
 | Email on ACS | ✅ done | Signed requests, logging fallback; **only the sign-in code routes through it so far** |
 | SMS / push on ACS + Firebase | 🔨 in progress | Port, templates, drain and channel plumbing all done; **no provisioned sender number, so the API refuses the phone channel with a 503** |
 | Session in platform secure storage | 🔨 in progress | `SessionStore` port is there; the app uses `MemorySessionStore`, so **a session lasts until the app is killed** |
@@ -84,9 +85,9 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 Not started. `09-roadmap.md` has the remaining Phase 1 work in **dependency
 order**. With both consoles rendered, the vitrine complete, TOTP in front of
-both back offices, object storage built and the section builder shipped, the
-top of it is now the refund policy wizard, followed by a scheduler for the
-worker and the operator onboarding wizard.
+both back offices, object storage built, the section builder shipped and
+refunds executing end to end, the top of it is now a scheduler for the
+worker, followed by the operator onboarding wizard and the phone channel.
 
 ---
 
@@ -188,21 +189,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 266 tests
+         packages/bel_contracts packages/bel_crypto     # 279 tests
 dart test packages/bel_client                           # 32 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 172 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 80 app tests
-cd apps/console   && flutter test        # 25 console tests
+cd apps/console   && flutter test        # 37 console tests
 cd apps/admin     && flutter test        # 15 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 257 files
-./infra/migrations/check.sh              # 27 schema guarantees
-./tool/integration.sh                    # 111 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 130 checks, incl. the Dart client
+dart run tool/check_layers.dart          # the onion rule, 265 files
+./infra/migrations/check.sh              # 29 schema guarantees
+./tool/integration.sh                    # 117 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 155 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -211,8 +212,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**685 tests in total**, plus 130 smoke checks, 27 executed schema guarantees,
-111 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**710 tests in total**, plus 155 smoke checks, 29 executed schema guarantees,
+117 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
