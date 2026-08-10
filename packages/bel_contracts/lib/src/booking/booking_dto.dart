@@ -287,9 +287,15 @@ final class TicketDto {
   /// low-density and scans fast on a cracked screen in daylight (ADR-0007).
   final String qrPayload;
 
-  /// Seeds the 30-second rotating code shown beneath the QR. A screenshot
-  /// still scans; its code is frozen, which is what fails the freshness check.
+  /// Seeds the 30-second rotating code shown beneath the QR, base64. A
+  /// screenshot still scans; its code is frozen, which is what fails the
+  /// freshness check.
   final String rotatingSecret;
+
+  /// The seed as the domain wants it. Decoded on the screen that renders the
+  /// code rather than parsed by hand in three apps.
+  List<int> get rotatingSecretBytes =>
+      Wire.readBytes(rotatingSecret, field: 'rotatingSecret');
 
   final int keyId;
   final DateTime issuedAt;

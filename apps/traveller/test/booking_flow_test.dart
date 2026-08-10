@@ -118,6 +118,20 @@ final class _ScriptedGateway implements TravelGateway {
   Future<BookingDto> booking(String bookingId) async =>
       reserveResult ??= _demoBooking(const []);
 
+  /// What the tickets screen will find. Settable, because "one paid trip and
+  /// one unpaid reservation" is the state worth testing and not one the
+  /// funnel can reach on its own.
+  List<BookingDto>? bookingsResult;
+  ApiFailure? bookingsFailure;
+  var bookingsCalls = 0;
+
+  @override
+  Future<List<BookingDto>> bookings() async {
+    bookingsCalls++;
+    if (bookingsFailure != null) throw bookingsFailure!;
+    return bookingsResult ?? [reserveResult ??= _demoBooking(const [])];
+  }
+
   @override
   Future<({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})>
   paymentOptions(String bookingId) async {

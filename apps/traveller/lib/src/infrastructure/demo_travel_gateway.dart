@@ -267,6 +267,40 @@ final class DemoTravelGateway implements TravelGateway {
   }
 
   @override
+  Future<List<BookingDto>> bookings() async {
+    await Future<void>.delayed(latency);
+    // A paid trip already in the list, so demo mode reaches the ticket — QR,
+    // rotating code and all — without anybody having to walk the funnel and
+    // pay first. The states nobody sees in development are the ones that ship
+    // broken.
+    return [if (_booking != null) _booking!, _pastTrip];
+  }
+
+  static BookingDto get _pastTrip {
+    final departed = DateTime.now().toUtc().subtract(const Duration(days: 6));
+    return _paid(
+      BookingDto(
+        id: 'bk-demo-past',
+        ref: 'BEL-4T9K2M',
+        state: 'confirmed',
+        departureId: 'dep-demo-past',
+        operatorName: 'Ocean du Nord',
+        originCity: 'Pointe-Noire',
+        destinationCity: 'Brazzaville',
+        departsAt: departed,
+        arrivesAt: departed.add(const Duration(hours: 7, minutes: 30)),
+        passengers: const [
+          PassengerDto(fullName: 'Aline Massamba', seatLabel: '7B'),
+        ],
+        fare: const Money.xaf(12000),
+        serviceFee: const Money.xaf(300),
+        total: const Money.xaf(12300),
+        createdAt: departed.subtract(const Duration(days: 2)),
+      ),
+    );
+  }
+
+  @override
   Future<({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})>
   paymentOptions(String bookingId) async {
     await Future<void>.delayed(latency);

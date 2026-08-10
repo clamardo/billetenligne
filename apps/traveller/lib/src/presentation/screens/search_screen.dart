@@ -27,12 +27,19 @@ final class SearchScreen extends StatefulWidget {
     required this.cities,
     required this.onSearch,
     this.initialQuery,
+    this.onOpenTickets,
     super.key,
   });
 
   final List<CityOption> cities;
   final void Function(SearchDeparturesQuery query) onSearch;
   final SearchDeparturesQuery? initialQuery;
+
+  /// The way to a ticket already bought. On this screen rather than behind a
+  /// tab bar because a returning traveller opens the app for exactly two
+  /// reasons — to buy a seat, or to show one they already own — and the
+  /// second must not cost a search.
+  final VoidCallback? onOpenTickets;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -69,7 +76,23 @@ class _SearchScreenState extends State<SearchScreen> {
           padding: EdgeInsets.all(kilo.space.s4),
           children: [
             SizedBox(height: kilo.space.s4),
-            Text(context.t('travel.search.title'), style: kilo.text.display),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    context.t('travel.search.title'),
+                    style: kilo.text.display,
+                  ),
+                ),
+                if (widget.onOpenTickets != null)
+                  IconButton(
+                    onPressed: widget.onOpenTickets,
+                    icon: const Icon(Icons.confirmation_number_outlined),
+                    tooltip: context.t('travel.tickets.open'),
+                  ),
+              ],
+            ),
             SizedBox(height: kilo.space.s6),
 
             Row(

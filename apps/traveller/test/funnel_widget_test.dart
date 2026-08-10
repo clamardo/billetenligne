@@ -3,11 +3,13 @@ import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_traveller/src/application/booking_flow.dart';
 import 'package:bel_traveller/src/application/payment_flow.dart';
 import 'package:bel_traveller/src/application/sign_in_flow.dart';
+import 'package:bel_traveller/src/application/tickets_flow.dart';
 import 'package:bel_traveller/src/infrastructure/demo_identity_gateway.dart';
 import 'package:bel_traveller/src/infrastructure/demo_travel_gateway.dart';
 import 'package:bel_traveller/src/presentation/app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import 'catalog_fixture.dart';
 
@@ -70,6 +72,7 @@ void main() {
         flow: flow,
         signIn: SignInFlow(gateway: identity),
         payment: PaymentFlow(gateway: gateway),
+        tickets: TicketsFlow(gateway: gateway),
         language: language,
       ),
     );
@@ -338,6 +341,48 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(flow.step, isA<Idle>());
+      expect(find.text('Où allez-vous ?'), findsOneWidget);
+    });
+  });
+
+  group('tickets', () {
+    testWidgets('a bought ticket is two taps from the search screen', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+
+      // The icon on the search screen, because a returning traveller opens
+      // this app for exactly two reasons and showing a ticket is one of them.
+      await tester.tap(find.byIcon(Icons.confirmation_number_outlined));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Mes billets'), findsWidgets);
+      expect(find.text('Voyages passés'), findsOneWidget);
+
+      await tester.tap(find.text('Pointe-Noire → Brazzaville'));
+      await tester.pumpAndSettle();
+
+      // The QR, and the six digits under it that a screenshot cannot fake.
+      expect(find.byType(QrImageView), findsOneWidget);
+      expect(find.text('Code de contrôle'), findsOneWidget);
+    });
+
+    testWidgets('closing a ticket returns to where the traveller was', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await tester.tap(find.byIcon(Icons.confirmation_number_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pointe-Noire → Brazzaville'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.text('Mes billets'), findsWidgets);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      // Back at the search screen, not at some top of the app it invented.
       expect(find.text('Où allez-vous ?'), findsOneWidget);
     });
   });

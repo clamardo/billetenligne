@@ -316,7 +316,7 @@ final class PostgresBookingStore implements BookingStore {
              payload, signature, key_id, rotating_secret)
           VALUES (@booking, @operator, @departure, @seat,
                   @payload, @signature, @keyId, @secret)
-          RETURNING id
+          RETURNING id, issued_at
         '''),
         parameters: {
           'booking': TypedValue(Type.uuid, bookingId),
@@ -336,6 +336,8 @@ final class PostgresBookingStore implements BookingStore {
           seatLabel: ticket.seatLabel,
           payload: ticket.payload,
           keyId: ticket.keyId,
+          rotatingSecret: ticket.rotatingSecret,
+          issuedAt: inserted.first.toColumnMap()['issued_at'] as DateTime,
         ),
       );
     }
@@ -559,9 +561,14 @@ final class PostgresBookingStore implements BookingStore {
     String bookingId,
   ) async {
     final rows = await tx.execute(
+      // Voided tickets included, deliberately. A refunded ticket that simply
+      // disappears from a traveller's list reads as our bug; one marked void
+      // reads as what happened, and the conductor's manifest is where a void
+      // has to *stop* somebody, not here.
       Sql.named('''
-        SELECT id, seat_label, payload, key_id
-          FROM tickets WHERE booking_id = @booking AND voided_at IS NULL
+        SELECT id, seat_label, payload, key_id, rotating_secret,
+               issued_at, voided_at
+          FROM tickets WHERE booking_id = @booking
          ORDER BY seat_label
       '''),
       parameters: {'booking': TypedValue(Type.uuid, bookingId)},
@@ -574,6 +581,9 @@ final class PostgresBookingStore implements BookingStore {
           seatLabel: row.toColumnMap()['seat_label'] as String,
           payload: row.toColumnMap()['payload'] as String,
           keyId: row.toColumnMap()['key_id'] as int,
+          rotatingSecret: row.toColumnMap()['rotating_secret'] as List<int>,
+          issuedAt: row.toColumnMap()['issued_at'] as DateTime,
+          voidedAt: row.toColumnMap()['voided_at'] as DateTime?,
         ),
     ];
   }

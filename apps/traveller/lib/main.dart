@@ -8,6 +8,7 @@ import 'src/application/payment_flow.dart';
 import 'src/application/ports/identity_gateway.dart';
 import 'src/application/ports/travel_gateway.dart';
 import 'src/application/sign_in_flow.dart';
+import 'src/application/tickets_flow.dart';
 import 'src/infrastructure/api_identity_gateway.dart';
 import 'src/infrastructure/api_travel_gateway.dart';
 import 'src/infrastructure/demo_identity_gateway.dart';
@@ -81,6 +82,7 @@ Future<void> main() async {
       flow: BookingFlow(gateway: gateway, isSignedIn: () => identity.isSignedIn),
       signIn: SignInFlow(gateway: identity),
       payment: PaymentFlow(gateway: gateway),
+      tickets: TicketsFlow(gateway: gateway),
       language: language,
     ),
   );

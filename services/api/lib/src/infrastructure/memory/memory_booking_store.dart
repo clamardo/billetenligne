@@ -159,6 +159,8 @@ final class MemoryBookingStore implements BookingStore {
             seatLabel: signed[i].seatLabel,
             payload: signed[i].payload,
             keyId: signed[i].keyId,
+            rotatingSecret: signed[i].rotatingSecret,
+            issuedAt: _clock.now(),
           ),
       ],
     );

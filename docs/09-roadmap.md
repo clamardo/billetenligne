@@ -23,7 +23,7 @@ What remains before a pilot is **commercial, not technical**, which is what this
 
 **Done:** the domain, the schema with its tenancy and ledger guarantees, the public sales boundary, the whole traveller API surface, email sign-in, booking and cash payment with double-entry postings, ticket issuing, the operator console's API, `services/worker`, the typed client, the Kilo component library, the traveller app through to a payment code, the standalone boarding scanner, and CI that executes all of it.
 
-555 tests · 86 smoke checks · 26 executed schema guarantees · 71 of those tests against real Postgres.
+649 tests · 92 smoke checks · 26 executed schema guarantees · 76 of those tests against real Postgres.
 
 ---
 
@@ -59,6 +59,7 @@ Ships without a PSP. The point is to prove inventory, ticketing, boarding and th
 - ✅ **Identity — sign in with a one-time code** (ADR-0024). Email leads, not phone: Firebase phone OTP needs a real billed project and we have no provisioned SMS sender, so we run the challenge over a rail we control and answer a correct code with a Firebase *custom token*. This is the fallback ADR-0018 already documented. Phone is a config value away — the channel is a column, an enum and a switch, and the SMS template is already written.
 
 ### Also done since
+- ✅ **Tickets and history in the app** — the QR, the live 30-second code, one ticket per seat, and unpaid reservations listed with the code to pay them. The receipt's "see my ticket" button now shows a ticket rather than returning to a search box
 - ✅ **Cities from the server**, so the app holds no copy of an operator's network
 - ✅ **Booking and cash payment** — reserve, collect, post the ledger, issue the ticket, all in one transaction
 - ✅ **Ticket issuing** — Ed25519, under 300 bytes, inside the capture
@@ -68,28 +69,25 @@ Ships without a PSP. The point is to prove inventory, ticketing, boarding and th
 
 ### Remaining, in dependency order
 
-**1. The traveller's tickets and history.**
-`GET /public/v1/bookings` is built and typed in `bel_client`. The app shows a payment code and then has nowhere to go — a confirmed booking's QR never reaches a screen.
-
-**2. Operator onboarding and admin approval.**
+**1. Operator onboarding and admin approval.**
 The admin back office, the KYB queue, approval and suspension (`03-operator-lifecycle.md`). Can trail the console: the anchor operator will be onboarded by hand.
 
-**3. The vitrine.**
+**2. The vitrine.**
 Logo, header text, accent from the closed set of eight. Cheap, and it is what makes an operator feel the platform is theirs.
 
-**4. Console hardening: TOTP, and the section builder.**
+**3. Console hardening: TOTP, and the section builder.**
 The console signs in with a one-time code, and ADR-0013 says back office is email + password + mandatory TOTP. Deliberately sequenced behind the console existing at all, and **it must land before refunds and payouts do** — those are the endpoints that ADR is protecting. The seat-layout section builder is the other half: four presets cover what runs in Congo today, and an operator whose coach matches none of them can only adjust a row count.
 
-**5. Refund policy wizard and cash refunds.**
+**4. Refund policy wizard and cash refunds.**
 The policy engine is built and tested; the wizard and the execution path are not.
 
-**6. Scheduled materialisation in the worker.**
+**5. Scheduled materialisation in the worker.**
 The pass exists and is driven by the console; nothing yet runs it nightly, so a timetable is materialised when a dispatcher asks. Fine for a pilot with one operator, wrong at ten.
 
-**7. The reconciliation console for `indeterminate` payments.**
+**6. The reconciliation console for `indeterminate` payments.**
 The queue exists and the poller fills it after fifteen minutes of silence. Nobody can work it. ADR-0005 says build this before launch rather than after the first incident, and that is still right.
 
-**8. Phone as the second sign-in channel, and a per-IP limit on codes.**
+**7. Phone as the second sign-in channel, and a per-IP limit on codes.**
 The channel is plumbed and switched off for want of a provisioned ACS sender number. Ships with it: codes are rate-limited per *destination* today — 60 seconds between sends, five attempts per code — which bounds the cost of hammering one address, and nothing yet bounds one host asking for codes to a thousand different addresses. Every one of those is a message we pay for, so this is a cost control before it is a security control.
 
 **Exit:** the anchor operator sells real seats through our console for real cash, and conductors board with our scanner. *Revenue: zero. Learning: maximum.*
@@ -183,7 +181,7 @@ Each is reasonable, and each would dilute the one thing that has to be excellent
 | Disruption overwhelms support | Support tickets per disruption | IRROPS is operator self-service and P0 in Phase 2 | Designed, not built |
 | **Nobody has used this on a real network** | — | Phase 3 manual smoke | Everything so far is an emulator on a fast connection |
 | **No operator can configure anything without us** | Time from "yes" to first departure on sale | The console app | **Closed.** An operator configures a fleet and publishes a timetable in a browser |
-| Console auth is single-factor | — | TOTP before refunds and payouts exist (slice 4) | Deliberate and dated. The endpoints ADR-0013 protects are not built |
+| Console auth is single-factor | — | TOTP before refunds and payouts exist (slice 3) | Deliberate and dated. The endpoints ADR-0013 protects are not built |
 | **Sign-in email does not arrive** | Delivery rate per hour, from day one of the pilot | Phone as a second channel — which is why it is plumbed rather than someday (ADR-0024) | **New. Email is now on the critical path of becoming a customer, and it has no fallback yet** |
 
 The first two are commercial, and they are the ones that decide the outcome. Nothing in the engineering backlog above changes either of them.

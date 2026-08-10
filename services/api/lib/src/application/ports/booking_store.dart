@@ -49,6 +49,9 @@ final class IssuedTicket {
     required this.seatLabel,
     required this.payload,
     required this.keyId,
+    required this.rotatingSecret,
+    required this.issuedAt,
+    this.voidedAt,
   });
 
   final String id;
@@ -58,6 +61,22 @@ final class IssuedTicket {
   /// density and scans fast on a cracked screen in daylight (ADR-0007).
   final String payload;
   final int keyId;
+
+  /// Seeds the 30-second code the traveller's own screen renders under the
+  /// QR. It has to reach the device — a code the device cannot compute is a
+  /// code that cannot prove the holder is not holding a screenshot — and it
+  /// reaches only *that* device, over a response marked `private, no-store`.
+  final List<int> rotatingSecret;
+
+  final DateTime issuedAt;
+
+  /// Set at refund **approval**, not completion, so a refunded ticket cannot
+  /// board while the money is still in flight. Carried rather than filtered
+  /// out: a ticket that vanishes from a traveller's list looks like our bug,
+  /// and a ticket marked void looks like what happened.
+  final DateTime? voidedAt;
+
+  bool get isVoid => voidedAt != null;
 }
 
 /// A booking, as the application layer knows it.

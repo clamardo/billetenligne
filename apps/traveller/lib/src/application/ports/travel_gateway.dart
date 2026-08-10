@@ -47,6 +47,14 @@ abstract interface class TravelGateway {
   /// One booking, refreshed.
   Future<BookingDto> booking(String bookingId);
 
+  /// Everything this traveller has bought, newest first — paid or not.
+  ///
+  /// The tickets travel inside it, QR payload and all, so opening a ticket
+  /// costs no second request. That is the point: this is the screen somebody
+  /// opens at a coach door with one bar of signal, and a list that needs a
+  /// follow-up call per ticket is a list that fails exactly there.
+  Future<List<BookingDto>> bookings();
+
   // ── Paying ────────────────────────────────────────────────────────────────
 
   /// How this booking can be paid, and where the money goes.

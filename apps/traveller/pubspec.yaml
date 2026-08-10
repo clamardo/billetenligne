@@ -14,9 +14,18 @@ dependencies:
     sdk: flutter
   bel_client: ^0.1.0
   bel_contracts: ^0.1.0
+  # HMAC, for the 30-second code under the QR. The same primitive the scanner
+  # verifies it with — one implementation, or the two disagree at a door.
+  bel_crypto: ^0.1.0
   bel_design: ^0.1.0
   bel_domain: ^0.1.0
   bel_localization: ^0.1.0
+  # Renders the QR. Taken as a dependency for the same reason the scanner
+  # takes `mobile_scanner` to read one: an encoder is Reed-Solomon plus a
+  # mask-scoring pass, and a subtle bug in either produces a code that looks
+  # right on a screen and fails at a coach door in the sun. This is the one
+  # artefact of the whole product a passenger cannot travel without.
+  qr_flutter: ^4.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

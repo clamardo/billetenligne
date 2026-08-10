@@ -483,6 +483,34 @@ check "a callback for an unknown rail is answered 200" "200" \
   "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/hooks/payments/nope" \
      -H 'Content-Type: application/json' -d '{}')"
 
+# ── A paid booking becomes a ticket on a screen ─────────────────────────────
+#
+# The fake rail settles on the second poll, so the whole path — prompt, poll,
+# capture, ledger, ticket — is walkable over a real socket with no
+# credentials. Everything the ticket screen renders has to arrive in this one
+# response: a ticket that needs a second call is a ticket that fails at a
+# coach door with one bar of signal.
+curl -s -o /dev/null -H "$BOOK_AUTH" "$BASE/public/v1/payments/$intent_id"
+settled="$(curl -s -H "$BOOK_AUTH" "$BASE/public/v1/payments/$intent_id")"
+check "polling settles the payment" "yes" \
+  "$(grep -q '"state":"captured"' <<<"$settled" && echo yes || echo no)"
+
+paid="$(curl -s -H "$BOOK_AUTH" "$BASE/public/v1/bookings")"
+check "the booking is confirmed" "yes" \
+  "$(grep -q '"state":"confirmed"' <<<"$paid" && echo yes || echo no)"
+check "the confirmed booking carries its ticket" "yes" \
+  "$(grep -q '"qrPayload"' <<<"$paid" && echo yes || echo no)"
+# Without the seed the device cannot compute the 30-second code, and a
+# screenshot becomes indistinguishable from the real screen (ADR-0007).
+check "the ticket carries its rotating secret" "yes" \
+  "$(grep -q '"rotatingSecret"' <<<"$paid" && echo yes || echo no)"
+check "the ticket names its passenger and seat" "yes" \
+  "$(grep -q '"passengerName"' <<<"$paid" && grep -q '"seatLabel"' <<<"$paid" \
+     && echo yes || echo no)"
+# A bearer that outlives its purpose is one somebody eventually finds.
+check "the payment code is gone once paid" "yes" \
+  "$(grep -q '"paymentCode"' <<<"$paid" && echo no || echo yes)"
+
 check "the profile needs an account" "401" "$(status "$BASE/public/v1/me")"
 me="$(curl -s -H "Authorization: Bearer $session_token" "$BASE/public/v1/me")"
 check "the profile is the address that signed in" "yes" \

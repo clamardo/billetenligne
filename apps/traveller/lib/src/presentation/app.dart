@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../application/booking_flow.dart';
 import '../application/payment_flow.dart';
 import '../application/sign_in_flow.dart';
+import '../application/tickets_flow.dart';
 import 'l10n.dart';
 import 'screens/hold_screen.dart';
 import 'screens/results_screen.dart';
@@ -19,6 +20,8 @@ import 'screens/payment_screen.dart';
 import 'screens/payment_waiting_screen.dart';
 import 'screens/reserved_screen.dart';
 import 'screens/seat_map_screen.dart';
+import 'screens/ticket_screen.dart';
+import 'screens/tickets_screen.dart';
 import 'screens/sign_in_screen.dart';
 import 'widgets/failure_view.dart';
 
@@ -35,6 +38,7 @@ final class TravellerApp extends StatelessWidget {
     required this.flow,
     required this.signIn,
     required this.payment,
+    required this.tickets,
     this.language = 'fr',
     super.key,
   });
@@ -43,6 +47,7 @@ final class TravellerApp extends StatelessWidget {
   final BookingFlow flow;
   final SignInFlow signIn;
   final PaymentFlow payment;
+  final TicketsFlow tickets;
   final String language;
 
   @override
@@ -54,7 +59,12 @@ final class TravellerApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: KiloTheme.materialTheme(),
       darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
-      home: _Funnel(flow: flow, signIn: signIn, payment: payment),
+      home: _Funnel(
+        flow: flow,
+        signIn: signIn,
+        payment: payment,
+        tickets: tickets,
+      ),
     ),
   );
 }
@@ -64,11 +74,13 @@ class _Funnel extends StatefulWidget {
     required this.flow,
     required this.signIn,
     required this.payment,
+    required this.tickets,
   });
 
   final BookingFlow flow;
   final SignInFlow signIn;
   final PaymentFlow payment;
+  final TicketsFlow tickets;
 
   @override
   State<_Funnel> createState() => _FunnelState();
@@ -85,6 +97,13 @@ class _FunnelState extends State<_Funnel> {
 
   StreamSubscription<BookingStep>? _subscription;
   StreamSubscription<PaymentStep>? _paymentSubscription;
+  StreamSubscription<TicketsStep>? _ticketsSubscription;
+
+  /// True while the tickets flow owns the screen. Layered over the funnel in
+  /// the same way paying is: whatever the traveller was doing is still
+  /// underneath, and closing the ticket returns them to it rather than to the
+  /// top of the app.
+  var _viewingTickets = false;
 
   /// True while the payment flow owns the screen. The booking flow's step is
   /// still `Reserved` underneath, which is what makes backing out of paying
@@ -102,6 +121,9 @@ class _FunnelState extends State<_Funnel> {
     _paymentSubscription = widget.payment.steps.listen((_) {
       if (mounted) setState(() {});
     });
+    _ticketsSubscription = widget.tickets.steps.listen((_) {
+      if (mounted) setState(() {});
+    });
     // The city list is the first thing the search screen needs and the app
     // holds no copy of it.
     _flow.start();
@@ -111,6 +133,7 @@ class _FunnelState extends State<_Funnel> {
   void dispose() {
     _subscription?.cancel();
     _paymentSubscription?.cancel();
+    _ticketsSubscription?.cancel();
     super.dispose();
   }
 
@@ -122,6 +145,9 @@ class _FunnelState extends State<_Funnel> {
 
   @override
   Widget build(BuildContext context) {
+    // Tickets first: somebody who opened their ticket while a hold was
+    // counting down is looking at the ticket, not at the countdown.
+    if (_viewingTickets) return _ticketsScreen(context);
     if (_paying) return _paymentScreen(context);
 
     final step = _flow.step;
@@ -137,6 +163,7 @@ class _FunnelState extends State<_Funnel> {
         ],
         initialQuery: _flow.lastQuery,
         onSearch: _flow.search,
+        onOpenTickets: _openTickets,
       ),
 
       Searching() => Scaffold(
@@ -293,9 +320,16 @@ class _FunnelState extends State<_Funnel> {
 
       PaymentSucceeded() => PaymentReceiptScreen(
         step: step,
+        // "See my ticket" now shows the ticket. It used to return to the
+        // search screen, which is the one thing somebody who has just paid is
+        // not looking for.
         onDone: () {
-          setState(() => _paying = false);
+          setState(() {
+            _paying = false;
+            _viewingTickets = true;
+          });
           _flow.reset();
+          widget.tickets.loadAndOpen(step.booking.id);
         },
       ),
 
@@ -314,6 +348,53 @@ class _FunnelState extends State<_Funnel> {
       ),
     };
   }
+
+  /// The tickets flow's screens, layered over the funnel.
+  Widget _ticketsScreen(BuildContext context) {
+    final step = widget.tickets.step;
+
+    return switch (step) {
+      TicketsLoading() => Scaffold(
+        appBar: AppBar(leading: BackButton(onPressed: _closeTickets)),
+        body: KStateView(KLoading(context.t('travel.tickets.loading'))),
+      ),
+
+      TicketsReady(:final upcoming, :final past, :final stale) => TicketsScreen(
+        upcoming: upcoming,
+        past: past,
+        stale: stale,
+        onOpen: widget.tickets.open,
+        onRefresh: widget.tickets.refresh,
+        onBack: _closeTickets,
+        onSearch: _closeTickets,
+      ),
+
+      ViewingTicket(:final booking, :final seatIndex) => switch (step.ticket) {
+        // A booking with no ticket cannot reach this step — the flow refuses
+        // to open one — so this arm is the type system's, not a state.
+        null => const SizedBox.shrink(),
+        final ticket => TicketScreen(
+          booking: booking,
+          ticket: ticket,
+          seatIndex: seatIndex,
+          onSeat: widget.tickets.showSeat,
+          onClose: widget.tickets.closeTicket,
+        ),
+      },
+
+      TicketsFailed(:final failure) => Scaffold(
+        appBar: AppBar(leading: BackButton(onPressed: _closeTickets)),
+        body: FailureView(failure, onRetry: widget.tickets.load),
+      ),
+    };
+  }
+
+  void _openTickets() {
+    setState(() => _viewingTickets = true);
+    widget.tickets.load();
+  }
+
+  void _closeTickets() => setState(() => _viewingTickets = false);
 
   /// Leaves paying without losing the reservation. The payment code and its
   /// deadline are still on the screen underneath.

@@ -265,7 +265,15 @@ final class Services {
         // One fake rail, so a fresh clone can walk the whole payment funnel
         // with no credentials and no network — including the failure screens,
         // which is what `FakePaymentGateway.decliningMsisdn` is for.
-        gateways: {'cg.fake_money': FakePaymentGateway(clock: clock)},
+        //
+        // Scripted to settle on the second poll rather than left silent. A
+        // fake that never captures means a fresh clone can never reach a
+        // confirmed booking, a ticket or a QR — and the states nobody sees in
+        // development are exactly the ones that ship broken. One poll of
+        // waiting first, so the waiting screen is actually seen.
+        gateways: {
+          'cg.fake_money': FakePaymentGateway(clock: clock)..settlesAfter(1),
+        },
       ),
       railIds: const {'cg.fake_money'},
       // A demo traveller, so a fresh clone can hold a seat without standing up

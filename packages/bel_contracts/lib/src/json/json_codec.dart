@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:bel_domain/bel_domain.dart';
 
 /// Wire encoding helpers.
@@ -58,6 +60,23 @@ final class Wire {
 
   /// Durations travel as whole seconds. Enough resolution for a hold
   /// countdown, and unambiguous across languages.
+  /// Raw bytes on the wire: standard base64, because JSON has no byte type
+  /// and hex would cost twice the bytes on a metered prepaid bundle.
+  ///
+  /// Used for the ticket's rotating secret, which is the only binary this API
+  /// hands to a client — and it hands it to exactly one device, over a
+  /// response marked `private, no-store`.
+  static String bytes(List<int> raw) => base64.encode(raw);
+
+  static List<int> readBytes(Object? raw, {String field = 'bytes'}) {
+    final text = requireString(raw, field);
+    try {
+      return base64.decode(text);
+    } on FormatException catch (e) {
+      throw WireFormatException(field, 'is not base64: ${e.message}');
+    }
+  }
+
   static int seconds(Duration d) => d.inSeconds;
 
   static Duration readSeconds(Object? raw, {String field = 'duration'}) {

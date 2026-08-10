@@ -15,6 +15,7 @@ import 'package:bel_api/src/infrastructure/postgres/postgres_operator_directory.
 import 'package:bel_api/src/infrastructure/postgres/postgres_payment_store.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_seat_inventory.dart';
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_crypto/bel_crypto.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:test/test.dart';
 
@@ -182,6 +183,42 @@ void main() {
     expect(await fixture.ledgerRowsFor(it.booking.id), 4);
     expect(await fixture.ticketCount(it.booking.id), 1);
     expect(await fixture.unbalancedTxnCount(), 0);
+  });
+
+  test('the ticket a traveller gets back can actually be presented', () async {
+    final it = await pending();
+    rail.settlesAfter(0);
+    await pay.reconcile(intentId: it.intentId, railId: railId);
+
+    final mine = await bookings.forTraveller(userId);
+    final ticket = mine.firstWhere((b) => b.id == it.booking.id).tickets.single;
+
+    // The QR the screen renders decodes to this booking and this seat. Read
+    // back out of Postgres rather than off the object the capture returned,
+    // because BYTEA and TIMESTAMPTZ are where a round trip goes wrong.
+    final decoded = TicketPayload.decode(ticket.payload);
+    expect(decoded.valueOrNull!.payload.bookingRef, it.booking.ref.value);
+    expect(decoded.valueOrNull!.payload.seatLabel, '1A');
+
+    // And the six digits under it are computable on the device, which is the
+    // whole reason the secret travels: a screenshot scans, and fails here.
+    expect(ticket.rotatingSecret, hasLength(32));
+    final now = DateTime.now().toUtc();
+    final code = RotatingCode.current(
+      secret: ticket.rotatingSecret,
+      now: now,
+      mac: const HmacSha256Authenticator(),
+    );
+    expect(
+      RotatingCode.isFresh(
+        presented: code,
+        secret: ticket.rotatingSecret,
+        now: now,
+        mac: const HmacSha256Authenticator(),
+      ),
+      isTrue,
+    );
+    expect(ticket.isVoid, isFalse);
   });
 
   test('every answer is written, whether or not it moved anything', () async {

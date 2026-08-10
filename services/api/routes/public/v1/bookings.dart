@@ -181,8 +181,37 @@ BookingDto _toDto(BookingRecord record) => BookingDto(
   createdAt: record.createdAt,
   paymentCode: record.paymentCode,
   paymentDeadline: record.paymentDeadline,
-  tickets: const [],
+  // Everything needed to render and verify this ticket offline travels in
+  // the response, including the rotating secret. A ticket that needs the
+  // network to display is not a ticket (ADR-0003), and a device that cannot
+  // compute the freshness code cannot prove its holder is not holding a
+  // screenshot of somebody else's QR.
+  tickets: [
+    for (final ticket in record.tickets)
+      TicketDto(
+        id: ticket.id,
+        bookingRef: record.ref.display,
+        seatLabel: ticket.seatLabel,
+        // Off the booking's own seat rows rather than out of the signed
+        // payload: decoding our own signature to read a name we already have
+        // is work done twice, and the two cannot disagree — the payload was
+        // signed from these rows.
+        passengerName: _passengerOn(record, ticket.seatLabel),
+        qrPayload: ticket.payload,
+        rotatingSecret: Wire.bytes(ticket.rotatingSecret),
+        keyId: ticket.keyId,
+        issuedAt: ticket.issuedAt,
+        voidedAt: ticket.voidedAt,
+      ),
+  ],
 );
+
+String _passengerOn(BookingRecord record, String seatLabel) {
+  for (final seat in record.seats) {
+    if (seat.seatLabel == seatLabel) return seat.passengerName;
+  }
+  return '';
+}
 
 Response _error(int status, ApiError error, String trace) => Response.json(
   statusCode: status,

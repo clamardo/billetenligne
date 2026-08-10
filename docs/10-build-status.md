@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-10 · after commit *Mobile money, end to end*
+**Updated:** 2026-08-10 · after commit *The ticket reaches a screen*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -40,13 +40,13 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Booking + cash payment** | ✅ done | Reserve → pay at agency → ledger → ticket, one transaction. 71 integration tests |
 | **Double-entry ledger** | ✅ done | Chart of accounts in the domain; balance proven by the `ledger_txn_balances` view |
 | **Ticket issue** | ✅ done | Issued inside the capture transaction, Ed25519-signed, under 300 bytes |
-| Ticket delivery to the app | 🔨 in progress | Composed and queued by the outbox, drained by `services/worker`; **the traveller app has no ticket screen yet** |
+| Ticket delivery to the app | ✅ done | Issued, queued for SMS by the outbox, and rendered in the app: QR, live 30-second code, one ticket per seat |
 | Boarding scanner (standalone app) | ✅ done | Camera, five verdicts, offline, debug simulator |
 | **Traveller app — browse and hold** | ✅ done | Onboardingless search → results → seat map → hold → release. 45 tests |
 | **Identity — sign in with an emailed code** | ✅ done | Challenge → Firebase custom token → ID token. Server, client and app. ADR-0024 |
 | `bel_client` — typed API client | ✅ done | Retries, idempotency keys, offline taxonomy, Firebase session refresh. 32 tests |
 | Traveller app — reserve and pay | ✅ done | Passenger names → payment code → agency. 54 app tests |
-| Traveller app — tickets and history | ⬜ not started | The list endpoint exists; the screens do not |
+| **Traveller app — tickets and history** | ✅ done | Upcoming and past, unpaid reservations included with their code. The QR and its rotating secret travel inside the booking, so opening a ticket costs no request. 11 flow and widget tests |
 | **Operator console — API** | ✅ done | Fleet, routes, timetables, materialisation, guichet, manifests |
 | **Operator console — the app** | ✅ done | Flutter web. Fleet, routes, timetables, the dispatcher's day, the guichet, manifests. 11 tests |
 | Admin back office | ⬜ not started | |
@@ -134,10 +134,11 @@ These are true today and each one is a decision, not an oversight.
    operator whose coach matches no preset can adjust the row count and no
    more. Named on the screen rather than hidden behind a control that does
    nothing.
-9. **A confirmed booking's ticket never reaches a screen.** It is issued,
-   signed, stored and queued for SMS. The traveller app shows a payment code
-   and then has nowhere to go: no ticket screen, no booking history. The
-   endpoint (`GET /public/v1/bookings`) is there and typed in `bel_client`.
+9. **A ticket lives only in memory on the device.** It renders offline once
+   loaded — everything it needs travels inside the booking — but nothing is
+   persisted, so a cold start with no network shows an empty list rather than
+   yesterday's QR. Drift/SQLite on device is Phase 3, and until it lands
+   "works offline" means "works offline while the app is alive".
 10. **The catalog is copied, not shared, into the apps.** `bel_localization`
    is pure Dart — the API imports it — so it cannot declare Flutter assets,
    and Flutter refuses `..` in asset paths. `tool/sync_i18n.sh` copies it and
@@ -152,25 +153,25 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 218 tests
+         packages/bel_contracts packages/bel_crypto     # 222 tests
 dart test packages/bel_client                           # 32 tests
-dart test services/api -x integration                   # 131 tests
+dart test services/api -x integration                   # 150 tests
 cd packages/bel_design && flutter test   # 58 component and contrast tests
-cd apps/traveller && flutter test        # 54 app tests
+cd apps/traveller && flutter test        # 80 app tests
 cd apps/console   && flutter test        # 11 console tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 187 files
+dart run tool/check_layers.dart          # the onion rule, 204 files
 ./infra/migrations/check.sh              # 26 schema guarantees
-./tool/integration.sh                    # 71 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 86 checks, incl. the Dart client
+./tool/integration.sh                    # 76 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 92 checks, incl. the Dart client
 ```
 
 Remove `services/api/build` before counting: `dart_frog build` copies the
 whole workspace into it, and `dart test services/api` then runs every suite
 twice and reports 414.
 
-**555 tests in total**, plus 86 smoke checks and 26 executed schema
+**649 tests in total**, plus 92 smoke checks and 26 executed schema
 guarantees. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
@@ -179,6 +180,37 @@ the screens render. Both halves of that seam have broken here before.
 ---
 
 ## What the last push changed, and what it cost
+
+The ticket reaches a screen. Until this push the product could take
+somebody's money, sign a ticket, store it and text it — and the app that
+took the money had nowhere to show it. `travel.reserved.afterPayment`
+said "once paid, your ticket appears here with its QR code", and it did
+not.
+
+**The server was quietly the larger half.** `GET /public/v1/bookings`
+mapped `tickets: const []` — a literal empty list — so the endpoint the
+roadmap called "built and typed in `bel_client`" could never have
+rendered a ticket. `IssuedTicket` carried no rotating secret and no
+issue time, and `_readTickets` did not select them. Nothing was wrong
+with the plan; the last twenty percent of it had not been written.
+
+**The rotating secret goes to the device, deliberately.** A signature
+proves a ticket is authentic and says nothing about who is holding it —
+a screenshot of a friend's QR scans perfectly. The six digits under the
+QR are what kills that, and the device can only compute them if it has
+the seed. It travels in a `private, no-store` response and nowhere else.
+
+**The QR is black on white in every theme.** Dark mode inverts a code
+into something many cheap scanners refuse, and the conductor's handset
+is exactly that scanner.
+
+**The fake rail never settled.** It answered `unknown` forever in the
+in-memory composition, so a fresh clone could start a payment and never
+reach a confirmed booking, a ticket or a QR — the whole reason the fake
+exists. It now settles on the second poll, and six smoke checks walk
+prompt → poll → capture → ticket over a real socket with no credentials.
+
+## What the push before that changed
 
 Mobile money, end to end — the part that sells this product.
 

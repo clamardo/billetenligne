@@ -40,6 +40,9 @@ final class ApiTravelGateway implements TravelGateway {
   Future<void> release(String holdId) => _client.releaseHold(holdId);
 
   @override
+  Future<List<BookingDto>> bookings() => _client.bookings();
+
+  @override
   Future<BookingDto> booking(String bookingId) async {
     final all = await _client.bookings();
     return all.firstWhere((b) => b.id == bookingId);
