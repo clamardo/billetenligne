@@ -628,6 +628,58 @@ void main() {
     });
   });
 
+  group('a statement on the wire', () {
+    PayoutRunDto run({int net = 3516000}) => PayoutRunDto(
+      id: 'p-1',
+      operatorId: 'op-1',
+      operatorName: 'Océan du Nord',
+      periodStart: t0,
+      periodEnd: t0.add(const Duration(days: 7)),
+      onlineSalesCount: 412,
+      onlineGross: const Money.xaf(3708000),
+      cashSalesCount: 188,
+      cashGross: const Money.xaf(1692000),
+      commission: const Money.xaf(185400),
+      serviceFees: const Money.xaf(180000),
+      refunds: const Money.xaf(126000),
+      payable: const Money.xaf(3708000),
+      tills: const Money.xaf(192000),
+      net: Money.xaf(net),
+      state: 'approved',
+      preparedAt: t0,
+      destination: 'MoMo ****4471',
+    );
+
+    test('the cash sales travel, even though they are never paid out', () {
+      // "Where is my cash money?" is the first question an operator asks
+      // about a statement, every time. Omitting the line that answers it
+      // would generate the phone call the statement exists to prevent.
+      final back = PayoutRunDto.fromJson(run().toJson());
+
+      expect(back.cashSalesCount, 188);
+      expect(back.cashGross, const Money.xaf(1692000));
+      expect(back.tills, const Money.xaf(192000));
+    });
+
+    test('the net is signed, and a reader can check it', () {
+      // Both halves of the difference travel. A reader who cannot see the
+      // payable and the tills cannot verify the number they are being paid.
+      final back = PayoutRunDto.fromJson(run().toJson());
+      expect(back.payable.minor - back.tills.minor, back.net.minor);
+      expect(back.isPayable, isTrue);
+
+      final owing = PayoutRunDto.fromJson(run(net: -54000).toJson());
+      expect(owing.operatorOwesUs, isTrue);
+      expect(owing.isPayable, isFalse);
+    });
+
+    test('a run nobody has paid yet carries no payment date', () {
+      final json = run().toJson();
+      expect(json.containsKey('paidAt'), isFalse);
+      expect(PayoutRunDto.fromJson(json).paidAt, isNull);
+    });
+  });
+
   group('nulls are omitted', () {
     test('absent optional fields do not travel', () {
       // Absent and null mean the same thing to every client, and omitting

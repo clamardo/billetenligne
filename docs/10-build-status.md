@@ -84,6 +84,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **IRROPS — declaring, and telling everybody** | ✅ done | The dispatcher declares one of six kinds and everything downstream is derived: the departure's new status, the exemption on every booking, one message per passenger. All of it in **one transaction** — bookings marked involuntary with no declaration behind them is a refund entitlement nobody can account for. A disruption is **public** (the follower of a shared trip link holds no account and is exactly the person who otherwise phones the agency), **not editable afterwards** by a column-level grant, and **one open per departure** by a partial unique index, so "what is happening to my coach?" has one answer. A short delay entitles nobody to anything — the threshold is an hour, it lives in the domain, and the console asks it rather than restating it. 16 domain · 6 contract · 12 Postgres · 5 worker · 7 smoke · 6 console · 2 traveller tests |
 | **IRROPS — the rescue coach** | ✅ done | Option ① of `08-disruption.md` §2.2: a different vehicle, the same journey. The seats are **remapped by the domain** — a passenger keeps their label only when the new coach has one of the same kind, because `1D` is a window on a 2+2 and the middle of the back block on a 2+3. Every ticket is **re-signed** in the same transaction as the new manifest, since the QR carries the seat (ADR-0007). A coach that cannot seat everybody is refused **with the number short**, so a dispatcher knows which coach to look for next. Holds with nothing behind them are released rather than slid onto a different seat under somebody who is looking at a seat map. The swap supersedes the breakdown that caused it. 9 domain · 2 contract · 6 Postgres · 5 smoke · 6 console tests |
 | **IRROPS — the rebooking wave** | ✅ done | Option ② of `08-disruption.md` §2.2: the passengers go on the operator's own next departure. **Every replacement seat is taken before a single old one is released** (§2.4) inside one transaction, so a paid passenger never exists without a seat. **Partial coverage is a success** — "18 / 42" is what a dispatcher acts on, and refusing anything short of everybody would mean the tool only works on the days it is not needed. A party moves whole or not at all, in the order people booked, which is the only rule that can be said out loud to whoever is left. No fare difference, ever, even onto a dearer departure (ADR-0016). 13 domain · 2 contract · 13 Postgres · 2 worker · 5 smoke · 3 console tests |
+| **Payout runs** | 🟡 server only | `04-payments.md` §6.2. Prepare · approve · release, and the gap between them is the control: **an operator cannot create, approve or edit their own payout**, by grant rather than by handler, and **the person who prepared a run cannot approve it**. The amount is the ledger's own balance (`payable:operator` less their tills) read again at release, never the sum of the statement's line items. Releasing debits the payable and credits every till plus the bank in one movement, which is what makes "cash sales never generate a payout" true in the books. A week of nothing but cash is negative — the operator owes us the fees — and is refused as a transfer. 8 domain · 3 contract · 13 Postgres · 8 smoke · 2 schema guarantees. **No screens yet** |
 | IRROPS — protection, and the passenger's own choice | ⬜ not started | `08-disruption.md` §2.2 options ③ and ⑤: a standing inter-operator agreement (§5) with settlement through our ledger, and letting the passengers pick between the options themselves (§3.2). Both need something that does not exist yet — an agreement table, and a traveller-facing choice screen |
 
 ## Phase 3 and beyond
@@ -201,7 +202,7 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 341 tests
+         packages/bel_contracts packages/bel_crypto     # 352 tests
 dart test packages/bel_client                           # 32 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 177 tests
@@ -212,10 +213,10 @@ cd apps/console   && flutter test        # 59 console tests
 cd apps/admin     && flutter test        # 18 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 289 files
-./infra/migrations/check.sh              # 32 schema guarantees
-./tool/integration.sh                    # 180 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 191 checks, incl. the Dart client
+dart run tool/check_layers.dart          # the onion rule, 296 files
+./infra/migrations/check.sh              # 34 schema guarantees
+./tool/integration.sh                    # 193 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 199 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -224,8 +225,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**809 tests in total**, plus 191 smoke checks, 32 executed schema guarantees,
-180 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**820 tests in total**, plus 199 smoke checks, 34 executed schema guarantees,
+193 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -240,6 +241,48 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+The payout run, server side (`04-payments.md` §6.2). The ledger has been
+correct since the first sale and nothing has ever taken money out of it: an
+operator could see what we owed them and had no way to be paid it.
+
+**An operator cannot pay themselves, by grant.** `bel_app` gets SELECT on
+`payout_runs` and nothing else — no INSERT, no UPDATE, no column exception.
+Two-person control on money leaving (ADR-0011) is worth nothing if the party
+being paid can move the row that pays them, and a privilege holds against code
+written next year by somebody who never read the migration. An executed schema
+guarantee proves it rather than the file claiming it.
+
+**Two people, not two roles.** The store refuses an approval by whoever
+prepared the run. One super-admin pressing both buttons is a formality, and
+this is the largest single movement of money the platform makes.
+
+**The amount is the ledger's balance, not the sum of the statement.** The line
+items describe the week and exist to be read and argued with; the money is
+`payable:operator:<id>` less the operator's tills, read again at release. A
+payout that summed a period would drift from the ledger the first time
+anything landed a day late, and then two numbers would both claim to be the
+debt.
+
+**The drawers are settled in the same movement as the transfer.** An
+operator's till is their asset that we have been carrying against what we owe
+them, so releasing a payout debits the whole payable and credits every till
+plus the bank. That is what makes "cash sales never generate a payout" true in
+the ledger rather than only on the statement — and a week of nothing but cash
+comes out *negative*, which is the operator owing us the service fees, refused
+as a transfer and left as a conversation.
+
+**What it cost:** a migration with four constraints and two executed
+guarantees, thirteen tests against real Postgres, eight domain tests, and one
+fixture that posts a rail capture directly — building a whole mobile-money
+capture to produce three ledger rows would have tested the rail rather than the
+run.
+
+What is **not** built: the statement PDF, the admin screen that works this
+queue, and the console screen where an operator reads their own statements.
+The routes and the client methods exist; the screens are the next push.
+
+## What the rebooking-wave push changed, and what it cost
 
 The rebooking wave: when there is no spare coach, the passengers go on the
 operator's own next departure. Option ② of `08-disruption.md` §2.2, and the

@@ -436,3 +436,105 @@ BEGIN
   RAISE NOTICE 'OK  a departure has at most one open disruption';
 END
 $$;
+
+-- ── 12. An operator cannot pay themselves ───────────────────────────────────
+--
+-- The claim 0018 rests on. Two-person control on money leaving (ADR-0011) is
+-- worth nothing if the party being paid can insert a run, approve it, or
+-- change the amount — so the grant gives `bel_app` SELECT and nothing else,
+-- and this executes that rather than trusting the file to have said it.
+DO $$
+DECLARE
+  visible INT;
+  run UUID := 'eeeeeeee-0000-0000-0000-000000000001';
+BEGIN
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  INSERT INTO payout_runs
+    (id, operator_id, period_start, period_end, currency,
+     payable_minor, tills_minor, net_minor)
+  VALUES
+    (run, '11111111-1111-1111-1111-111111111111',
+     now() - INTERVAL '7 days', now(), 'XAF', 3708000, 192000, 3516000);
+
+  -- The operator may read their own statement. That is what it is for.
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', '11111111-1111-1111-1111-111111111111', true);
+
+  SELECT count(*) INTO visible FROM payout_runs WHERE id = run;
+  IF visible <> 1 THEN
+    RAISE EXCEPTION 'FAIL: an operator cannot read their own statement';
+  END IF;
+
+  BEGIN
+    UPDATE payout_runs SET state = 'approved' WHERE id = run;
+    RAISE EXCEPTION 'FAIL: an operator approved their own payout';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  BEGIN
+    INSERT INTO payout_runs
+      (operator_id, period_start, period_end, currency,
+       payable_minor, tills_minor, net_minor)
+    VALUES
+      ('11111111-1111-1111-1111-111111111111',
+       now() - INTERVAL '14 days', now() - INTERVAL '7 days',
+       'XAF', 9000000, 0, 9000000);
+    RAISE EXCEPTION 'FAIL: an operator raised their own payout run';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  an operator reads their statement and cannot move it';
+END
+$$;
+
+-- ── 13. The same week cannot be paid twice ──────────────────────────────────
+--
+-- The one mistake in 0018 that cannot be undone with an UPDATE. A partial
+-- unique index rather than a convention, and voided runs excluded so a
+-- mistake can be voided and redone.
+DO $$
+DECLARE
+  operator UUID := '11111111-1111-1111-1111-111111111111';
+  window_start TIMESTAMPTZ := date_trunc('day', now() - INTERVAL '30 days');
+  window_end   TIMESTAMPTZ := date_trunc('day', now() - INTERVAL '23 days');
+  first_run UUID;
+BEGIN
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  INSERT INTO payout_runs
+    (operator_id, period_start, period_end, currency,
+     payable_minor, tills_minor, net_minor)
+  VALUES (operator, window_start, window_end, 'XAF', 100000, 0, 100000)
+  RETURNING id INTO first_run;
+
+  BEGIN
+    INSERT INTO payout_runs
+      (operator_id, period_start, period_end, currency,
+       payable_minor, tills_minor, net_minor)
+    VALUES (operator, window_start, window_end, 'XAF', 100000, 0, 100000);
+    RAISE EXCEPTION 'FAIL: the same week was paid twice';
+  EXCEPTION WHEN unique_violation THEN
+    NULL;
+  END;
+
+  -- Voiding the first releases the week, so a mistake can be redone.
+  UPDATE payout_runs SET state = 'void' WHERE id = first_run;
+
+  INSERT INTO payout_runs
+    (operator_id, period_start, period_end, currency,
+     payable_minor, tills_minor, net_minor)
+  VALUES (operator, window_start, window_end, 'XAF', 100000, 0, 100000);
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  one payout per operator per week, and a void reopens it';
+END
+$$;

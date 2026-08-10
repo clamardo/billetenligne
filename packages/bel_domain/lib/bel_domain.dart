@@ -12,6 +12,7 @@ export 'src/shared/clock.dart';
 export 'src/money/currency.dart';
 export 'src/money/commission.dart';
 export 'src/money/ledger.dart';
+export 'src/money/payout.dart';
 export 'src/money/money.dart';
 export 'src/identity/email_address.dart';
 export 'src/identity/phone_number.dart';

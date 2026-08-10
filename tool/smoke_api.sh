@@ -779,6 +779,35 @@ check "the admin identity endpoint is closed too" "403" \
   "$(status -H "$AUTH" "$BASE/admin/v1/me")"
 check "the reconciliation queue is closed too" "403" \
   "$(status -H "$AUTH" "$BASE/admin/v1/payments")"
+check "the payout queue is closed too" "403" \
+  "$(status -H "$AUTH" "$BASE/admin/v1/payouts")"
+# The party being paid does not get to move the row that pays them, and the
+# first line of that is the same 403 everybody else gets.
+check "a traveller cannot prepare a payout" "403" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/admin/v1/payouts" \
+     -H "$AUTH" -H 'Content-Type: application/json' \
+     -d '{"operatorId":"00000000-0000-0000-0000-000000000001","periodStart":"2026-08-01T00:00:00Z","periodEnd":"2026-08-08T00:00:00Z"}')"
+check "a traveller cannot approve one either" "403" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/admin/v1/payouts/00000000-0000-0000-0000-000000000001/decision" \
+     -H "$AUTH" -H 'Content-Type: application/json' \
+     -d '{"decision":"approve"}')"
+check "an operator cannot reach the payout queue" "403" \
+  "$(status -H "$OP_AUTH" "$BASE/admin/v1/payouts")"
+
+# ── An operator reads their own statements, and nothing else ────────────────
+check "statements are closed to anonymous" "401" \
+  "$(status "$BASE/console/v1/statements")"
+check "a traveller has no statements" "403" \
+  "$(status -H "$AUTH" "$BASE/console/v1/statements")"
+# Past validation and into the store, which needs a database. The route
+# itself is read-only by construction: there is no POST.
+check "an operator gets past the capability check" "503" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/statements")"
+check "there is no way to write one from the console" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/statements" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d '{}')"
 
 # ── The second factor ───────────────────────────────────────────────────────
 #

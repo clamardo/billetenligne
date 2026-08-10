@@ -1,6 +1,7 @@
 import 'package:bel_domain/bel_domain.dart';
 
 import '../application/ports/disruption_desk.dart';
+import '../application/ports/payout_desk.dart';
 import '../application/ports/operator_console.dart';
 import '../application/ports/platform_console.dart';
 
@@ -284,4 +285,43 @@ final class UnavailableDisruptionDesk implements DisruptionDesk {
     required DateTime from,
     required DateTime to,
   }) async => throw const ConsoleRequiresDatabase();
+}
+
+/// The payout run, without a database.
+///
+/// Every method refuses. There is no in-memory payout: the amount comes from
+/// the ledger's own balances, and a fake ledger that answered with a number
+/// would be a number somebody eventually screenshots.
+final class UnavailablePayouts implements PayoutDesk {
+  const UnavailablePayouts();
+
+  @override
+  Future<Result<PayoutRun, PayoutRefusal>> prepare({
+    required String operatorId,
+    required DateTime from,
+    required DateTime to,
+    required String actorUserId,
+  }) async => throw const ConsoleRequiresDatabase();
+
+  @override
+  Future<Result<PayoutRun, PayoutRefusal>> approve({
+    required String runId,
+    required String actorUserId,
+  }) async => throw const ConsoleRequiresDatabase();
+
+  @override
+  Future<Result<PayoutRun, PayoutRefusal>> release({
+    required String runId,
+    required String actorUserId,
+    required String reference,
+    String? destination,
+  }) async => throw const ConsoleRequiresDatabase();
+
+  @override
+  Future<List<PayoutRun>> pending({required String actorUserId}) async =>
+      throw const ConsoleRequiresDatabase();
+
+  @override
+  Future<List<PayoutRun>> statementsFor(String operatorId) async =>
+      throw const ConsoleRequiresDatabase();
 }

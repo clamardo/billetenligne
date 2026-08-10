@@ -585,6 +585,38 @@ final class BelApiClient {
     ),
   );
 
+  /// This operator's own payout statements, newest first.
+  ///
+  /// A read and only a read. The party being paid does not get to move the
+  /// row that pays them — there is no console method to write one, because
+  /// there is no route, because the grant does not allow it.
+  Future<List<PayoutRunDto>> statements() async => Wire.readList(
+    (await _get('/console/v1/statements'))['items'],
+    PayoutRunDto.fromJson,
+    field: 'items',
+  );
+
+  /// The platform's payout queue: prepared and not yet paid, oldest first.
+  Future<List<PayoutRunDto>> payoutQueue() async => Wire.readList(
+    (await _get('/admin/v1/payouts'))['items'],
+    PayoutRunDto.fromJson,
+    field: 'items',
+  );
+
+  Future<PayoutRunDto> preparePayout(PreparePayoutRequest request) async =>
+      PayoutRunDto.fromJson(
+        await _postJson('/admin/v1/payouts', request.toJson()),
+      );
+
+  /// Approve a prepared run, or release an approved one. Two calls on
+  /// purpose, by two different people (ADR-0011).
+  Future<PayoutRunDto> decidePayout({
+    required String runId,
+    required PayoutDecisionRequest request,
+  }) async => PayoutRunDto.fromJson(
+    await _postJson('/admin/v1/payouts/$runId/decision', request.toJson()),
+  );
+
   /// Move the passengers onto another of this operator's departures.
   ///
   /// Partial coverage is a success — the answer says how many are still on

@@ -36,3 +36,4 @@ export 'src/error/api_error.dart';
 export 'src/error/error_code.dart';
 export 'src/json/json_codec.dart';
 export 'src/payment/payment_dto.dart';
+export 'src/payout/payout_dto.dart';

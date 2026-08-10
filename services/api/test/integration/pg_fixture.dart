@@ -8,6 +8,7 @@ import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_booking_store.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_seat_inventory.dart';
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart';
 
 /// The world a booking test needs, seeded through the front door.
@@ -396,6 +397,57 @@ final class PgFixture {
   /// Read from `account_balances`, the view the payout run will use, rather
   /// than summed by the test — a test that computes the balance its own way
   /// proves the arithmetic it wrote, not the arithmetic that ships.
+  /// A settled online sale, posted straight into the ledger.
+  ///
+  /// Not routed through the payment adapters: this fixture exists so a payout
+  /// test has something to pay out, and building a whole mobile-money capture
+  /// to produce three ledger rows would test the rail rather than the run.
+  Future<void> railCapture({
+    required String operatorId,
+    required int fareMinor,
+    required int serviceFeeMinor,
+    required int commissionMinor,
+    String rail = 'cg.airtel_money',
+  }) async {
+    final posting = Postings.railCapture(
+      operatorId: operatorId,
+      rail: rail,
+      fare: Money(fareMinor, Currency.xaf),
+      serviceFee: Money(serviceFeeMinor, Currency.xaf),
+      commission: Money(commissionMinor, Currency.xaf),
+    ).valueOrNull!;
+
+    final created = await _seed.execute('SELECT gen_random_uuid() AS id');
+    final txnId = created.first.toColumnMap()['id'].toString();
+
+    // One transaction for the whole movement. The balance trigger is a
+    // DEFERRABLE constraint trigger, so posting these rows one autocommitted
+    // statement at a time fires it after the first entry — correctly, and
+    // uselessly.
+    await _seed.runTx((tx) async {
+      for (final entry in posting.entries) {
+        await tx.execute(
+          Sql.named("""
+          INSERT INTO ledger_entries
+            (txn_id, account, direction, amount_minor, currency,
+             operator_id, memo)
+          VALUES (@txn, @account, @direction::ledger_direction, @amount,
+                  @currency, @operator, @memo)
+        """),
+          parameters: {
+            'txn': TypedValue(Type.uuid, txnId),
+            'account': TypedValue(Type.text, entry.account),
+            'direction': TypedValue(Type.text, entry.direction.name),
+            'amount': TypedValue(Type.bigInteger, entry.amount.minor),
+            'currency': TypedValue(Type.text, entry.amount.currency.code),
+            'operator': TypedValue(Type.uuid, entry.operatorId ?? operatorId),
+            'memo': TypedValue(Type.text, entry.memo),
+          },
+        );
+      }
+    });
+  }
+
   Future<int> accountBalance(String account) async {
     final rows = await _seed.execute(
       Sql.named(

@@ -22,6 +22,7 @@ import 'application/ports/booking_store.dart';
 import 'application/ports/ticket_issuer.dart';
 import 'application/ports/city_catalogue.dart';
 import 'application/ports/disruption_desk.dart';
+import 'application/ports/payout_desk.dart';
 import 'application/ports/operator_console.dart';
 import 'application/ports/payment_gateway.dart';
 import 'application/ports/payment_store.dart';
@@ -55,6 +56,7 @@ import 'infrastructure/postgres/postgres_booking_store.dart';
 import 'infrastructure/postgres/postgres_identity.dart';
 import 'infrastructure/postgres/postgres_operator_applications.dart';
 import 'infrastructure/postgres/postgres_disruptions.dart';
+import 'infrastructure/postgres/postgres_payouts.dart';
 import 'infrastructure/postgres/postgres_operator_console.dart';
 import 'infrastructure/postgres/postgres_operator_directory.dart';
 import 'infrastructure/postgres/postgres_payment_store.dart';
@@ -87,6 +89,7 @@ final class Services {
     required this.bookings,
     required this.console,
     required this.disruptions,
+    required this.payouts,
     required this.platform,
     required this.storefronts,
     required this.applications,
@@ -130,6 +133,11 @@ final class Services {
   /// within seconds: declaring writes a record, moves the departure, marks
   /// the bookings and queues a message to everybody on board.
   final DisruptionDesk disruptions;
+
+  /// The payout run (`04-payments.md` §6.2). On the platform surface on
+  /// purpose: an operator reads their statements and cannot write one, which
+  /// is what makes two-person control on money leaving mean anything.
+  final PayoutDesk payouts;
 
   /// Our own back office. Refuses without a database for the same reason the
   /// operator console does — and more so: every read here is meant to cross
@@ -266,6 +274,7 @@ final class Services {
       bookings: bookings,
       console: PostgresOperatorConsole(db, timeZone: Market.current.timeZone),
       disruptions: PostgresDisruptions(db, issuer: _ticketIssuer),
+      payouts: PostgresPayouts(db),
       platform: PostgresPlatformConsole(db),
       storefronts: PostgresStorefronts(db),
       applications: PostgresOperatorApplications(db),
@@ -391,6 +400,7 @@ final class Services {
       bookings: memoryBookings,
       console: const UnavailableOperatorConsole(),
       disruptions: const UnavailableDisruptionDesk(),
+      payouts: const UnavailablePayouts(),
       platform: const UnavailablePlatformConsole(),
       storefronts: MemoryStorefronts.demo(),
       applications: MemoryOperatorApplications(clock: clock),
