@@ -83,6 +83,14 @@ final class OperatorScreen extends StatelessWidget {
         _Commission(workspace: workspace, operator: operator),
         SizedBox(height: kilo.space.s4),
 
+        if (detail.application != null) ...[
+          _Application(
+            facts: detail.application!,
+            submittedAt: detail.submittedAt,
+          ),
+          SizedBox(height: kilo.space.s4),
+        ],
+
         _Documents(documents: detail.documents),
         SizedBox(height: kilo.space.s4),
 
@@ -431,6 +439,118 @@ class _CommissionState extends State<_Commission> {
     if (bps < 0 || bps > CommissionTerm.maxBps) return null;
     return bps;
   }
+}
+
+/// What the applicant answered, and what they did not.
+///
+/// The checklist is `ApplicationFacts.missing` — the same call that drove the
+/// applicant's progress bar and the same one the server refuses a submission
+/// with. Two implementations of "what is missing" is how an application gets
+/// approved with a gap in it, so there is one.
+///
+/// The settlement name check is the one automatic comparison this screen
+/// makes: §2.2 requires the account name to match the legal name, the
+/// name-check API is not wired, and a reviewer comparing two strings by eye
+/// forty times a week will eventually not.
+class _Application extends StatelessWidget {
+  const _Application({required this.facts, this.submittedAt});
+
+  final ApplicationFacts facts;
+  final DateTime? submittedAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+    final now = DateTime.now().toUtc();
+    final missing = facts.missing(asOf: now);
+
+    return KCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(context.t('admin.operator.application'), style: kilo.text.h2),
+          SizedBox(height: kilo.space.s3),
+
+          if (missing.isEmpty)
+            Text(
+              context.t('admin.operator.applicationComplete'),
+              style: kilo.text.body.copyWith(color: kilo.color.success),
+            )
+          else
+            Text(
+              '${context.t('admin.operator.applicationMissing')} : '
+              '${missing.map((f) => context.t('application.field.$f')).join(', ')}',
+              style: kilo.text.body.copyWith(color: kilo.color.warning),
+            ),
+
+          if (facts.settlementAccountName != null &&
+              !facts.settlementNameMatchesLegalName) ...[
+            SizedBox(height: kilo.space.s2),
+            Text(
+              context.t('admin.operator.settlementMismatch'),
+              style: kilo.text.body.copyWith(color: kilo.color.warning),
+            ),
+          ],
+
+          SizedBox(height: kilo.space.s3),
+          for (final entry in _entries())
+            Padding(
+              padding: EdgeInsets.only(bottom: kilo.space.s1),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 220,
+                    child: Text(
+                      context.t('application.field.${entry.$1}'),
+                      style: kilo.text.caption.copyWith(
+                        color: kilo.color.contentSecondary,
+                      ),
+                    ),
+                  ),
+                  Expanded(child: Text(entry.$2, style: kilo.text.body)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Only what was answered. A reviewer reading twenty of these does not need
+  /// twenty-four rows of "—"; the gaps are named once, above, in the language
+  /// of the checklist.
+  List<(String, String)> _entries() => [
+    for (final entry in <String, Object?>{
+      'legalForm': facts.legalForm,
+      'registeredAddress': facts.registeredAddress,
+      'yearFounded': facts.yearFounded,
+      'ownerName': facts.ownerName,
+      'ownerIdType': facts.ownerIdType,
+      'ownerIdNumber': facts.ownerIdNumber,
+      'ownerPhone': facts.ownerPhone,
+      'ownerEmail': facts.ownerEmail,
+      'transportLicenceNumber': facts.transportLicenceNumber,
+      'transportLicenceExpires': _day(facts.transportLicenceExpires),
+      'insurerName': facts.insurerName,
+      'fleetInsuranceExpires': _day(facts.fleetInsuranceExpires),
+      'routesServed': facts.routesServed,
+      'fleetSize': facts.fleetSize,
+      'stationCount': facts.stationCount,
+      'dailyDepartures': facts.dailyDepartures,
+      'settlementKind': facts.settlementKind,
+      'settlementAccountName': facts.settlementAccountName,
+      'settlementAccountRef': facts.settlementAccountRef,
+    }.entries)
+      if (entry.value != null && '${entry.value}'.trim().isNotEmpty)
+        (entry.key, '${entry.value}'),
+  ];
+
+  static String? _day(DateTime? v) => v == null
+      ? null
+      : '${v.year.toString().padLeft(4, '0')}-'
+            '${v.month.toString().padLeft(2, '0')}-'
+            '${v.day.toString().padLeft(2, '0')}';
 }
 
 class _Documents extends StatelessWidget {

@@ -75,3 +75,42 @@ policy:
       agencyCash: "Remboursé en espèces, à l'agence, en personne."
       creditNote: "Remboursé en avoir, valable sur un prochain voyage."
       travellerChoice: "Vous choisissez comment être remboursé."
+
+# Le dossier d'inscription d'un transporteur (03-operator-lifecycle.md §2.2).
+# Le domaine renvoie des NOMS DE CHAMPS — `rccmNumber`, `ownerPhone` — jamais
+# des phrases : c'est la même liste qui alimente la barre de progression du
+# demandeur et la liste de contrôle de l'examinateur, et deux implémentations
+# de « ce qui manque » finissent toujours par diverger.
+application:
+  step:
+    entreprise: "Entreprise"
+    dirigeant: "Dirigeant"
+    licences: "Licences"
+    exploitation: "Exploitation"
+    encaissement: "Encaissement"
+    accord: "Accord"
+  field:
+    legalName: "Raison sociale"
+    tradingName: "Nom commercial"
+    rccmNumber: "Numéro RCCM (registre du commerce)"
+    taxId: "Numéro NIU (identifiant fiscal)"
+    legalForm: "Forme juridique"
+    registeredAddress: "Siège social"
+    yearFounded: "Année de création"
+    ownerName: "Nom complet du dirigeant"
+    ownerIdType: "Type de pièce d'identité"
+    ownerIdNumber: "Numéro de la pièce"
+    ownerPhone: "Téléphone du dirigeant"
+    ownerEmail: "E-mail du dirigeant"
+    transportLicenceNumber: "Numéro de licence de transport"
+    transportLicenceExpires: "Expiration de la licence"
+    insurerName: "Assureur de la flotte"
+    fleetInsuranceExpires: "Expiration de l'assurance"
+    routesServed: "Lignes desservies"
+    fleetSize: "Nombre de cars"
+    stationCount: "Nombre d'agences"
+    dailyDepartures: "Départs par jour"
+    settlementKind: "Type de compte d'encaissement"
+    settlementAccountName: "Nom du titulaire du compte"
+    settlementAccountRef: "Numéro du compte ou du portefeuille"
+    agreement: "Acceptation des conditions"

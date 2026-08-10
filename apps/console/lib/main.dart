@@ -2,7 +2,9 @@ import 'package:bel_client/bel_client.dart';
 import 'package:flutter/material.dart';
 
 import 'src/application/console_workspace.dart';
+import 'src/application/onboarding_workspace.dart';
 import 'src/infrastructure/api_console_gateway.dart';
+import 'src/infrastructure/api_onboarding_gateway.dart';
 import 'src/infrastructure/web_file_picker.dart';
 import 'src/presentation/l10n.dart';
 import 'src/presentation/sign_in.dart';
@@ -54,6 +56,9 @@ Future<void> main() async {
         // a button that opens nothing.
         files: const WebFilePicker(),
       ),
+      // Built only if the server says this account belongs to no operator.
+      buildOnboarding: () =>
+          OnboardingWorkspace(gateway: ApiOnboardingGateway(client)),
     ),
   );
 }

@@ -45,6 +45,10 @@ admin:
     offboarded: "Offboarded"
     rejected: "Rejected"
   operator:
+    application: "The onboarding application"
+    applicationComplete: "Application complete."
+    applicationMissing: "Still missing"
+    settlementMismatch: "The settlement account name does not match the legal name. Check before activating."
     back: "Back to applications"
     identity: "Identity"
     legalName: "Legal name"

@@ -46,6 +46,10 @@ admin:
     offboarded: "Sortie"
     rejected: "Refusée"
   operator:
+    application: "Le dossier d'inscription"
+    applicationComplete: "Dossier complet."
+    applicationMissing: "Il manque"
+    settlementMismatch: "Le nom du compte d'encaissement ne correspond pas à la raison sociale. À vérifier avant activation."
     back: "Retour aux dossiers"
     identity: "Identité"
     legalName: "Raison sociale"

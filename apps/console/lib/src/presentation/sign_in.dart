@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bel_backoffice/bel_backoffice.dart';
 import 'package:bel_client/bel_client.dart';
 import 'package:bel_design/bel_design.dart';
@@ -5,8 +7,10 @@ import 'package:bel_localization/bel_localization.dart';
 import 'package:flutter/material.dart';
 
 import '../application/console_workspace.dart';
+import '../application/onboarding_workspace.dart';
 import 'app.dart';
 import 'l10n.dart';
+import 'screens/onboarding_screen.dart';
 
 /// Signed in or not, and the screen for the second case.
 ///
@@ -28,6 +32,7 @@ final class ConsoleRoot extends StatefulWidget {
     required this.session,
     required this.client,
     required this.buildWorkspace,
+    required this.buildOnboarding,
     super.key,
   });
 
@@ -36,12 +41,26 @@ final class ConsoleRoot extends StatefulWidget {
   final BelApiClient client;
   final ConsoleWorkspace Function() buildWorkspace;
 
+  /// Built only for somebody who turns out to belong to no operator. The two
+  /// are never alive at once: an applicant has no fleet to load and a
+  /// dispatcher has no application to fill in.
+  final OnboardingWorkspace Function() buildOnboarding;
+
   @override
   State<ConsoleRoot> createState() => _ConsoleRootState();
 }
 
 class _ConsoleRootState extends State<ConsoleRoot> {
   ConsoleWorkspace? _workspace;
+
+  /// Set when the person who just signed in is staff of nothing. Not an
+  /// error: it is what every operator looks like on the day before we
+  /// activate them, and showing them a console with six empty tabs would be
+  /// showing them a product that appears broken.
+  OnboardingWorkspace? _onboarding;
+
+  /// True while we are finding out which of the two they are.
+  var _resolving = false;
 
   /// True while somebody is moving their authenticator to a new phone. Held
   /// here rather than pushed onto a Navigator because it replaces the whole
@@ -50,8 +69,70 @@ class _ConsoleRootState extends State<ConsoleRoot> {
   /// enrolment.
   var _managingSecondFactor = false;
 
+  /// Console or wizard, decided by the server rather than by a claim in the
+  /// token. `/console/v1/me` answers 403 for somebody who belongs to no
+  /// tenant — the middleware re-reads membership per request precisely so a
+  /// revoked one cannot be carried in a session — so the refusal *is* the
+  /// answer, and a client-side guess would be a second opinion about
+  /// authorisation.
+  Future<void> _resolveSurface() async {
+    setState(() => _resolving = true);
+    try {
+      await widget.client.consoleIdentity();
+      if (mounted) setState(() => _workspace = widget.buildWorkspace());
+    } on ServerRefused catch (e) {
+      if (!mounted) return;
+      if (e.status == 403) {
+        final onboarding = widget.buildOnboarding();
+        setState(() => _onboarding = onboarding);
+        unawaited(onboarding.load());
+      } else {
+        // Any other refusal is the console's own problem to surface — the
+        // workspace has a failure banner and a trace id, and inventing a
+        // second error surface here would hide it behind a signup form.
+        setState(() => _workspace = widget.buildWorkspace());
+      }
+    } finally {
+      if (mounted) setState(() => _resolving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final onboarding = _onboarding;
+    if (onboarding != null) {
+      return Localized(
+        catalog: widget.catalog,
+        initialLanguage: 'fr',
+        child: MaterialApp(
+          title: 'BilletEnLigne — Inscription',
+          debugShowCheckedModeBanner: false,
+          theme: KiloTheme.materialTheme(),
+          home: StreamBuilder<void>(
+            stream: onboarding.changes,
+            builder: (context, _) => OnboardingScreen(workspace: onboarding),
+          ),
+        ),
+      );
+    }
+
+    // The gap between "the code was right" and "here is your surface" is one
+    // request. Blank for that beat reads as a failed sign-in, so it says
+    // something instead.
+    if (_resolving) {
+      return Localized(
+        catalog: widget.catalog,
+        initialLanguage: 'fr',
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: KiloTheme.materialTheme(),
+          home: const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+      );
+    }
+
     final workspace = _workspace;
     if (workspace != null) {
       if (_managingSecondFactor) {
@@ -95,8 +176,7 @@ class _ConsoleRootState extends State<ConsoleRoot> {
             title: context.t('console.signIn.title'),
             icon: Icons.directions_bus_filled_outlined,
             t: context.t,
-            onSignedIn: () =>
-                setState(() => _workspace = widget.buildWorkspace()),
+            onSignedIn: _resolveSurface,
           ),
         ),
       ),

@@ -75,3 +75,42 @@ policy:
       agencyCash: "Refunded in cash, at the agency, in person."
       creditNote: "Refunded as credit for a future trip."
       travellerChoice: "You choose how to be refunded."
+
+# A carrier's onboarding application (03-operator-lifecycle.md §2.2). The
+# domain returns FIELD NAMES — `rccmNumber`, `ownerPhone` — never sentences:
+# it is the one list behind both the applicant's progress bar and the
+# reviewer's checklist, and two implementations of "what is missing" always
+# drift apart.
+application:
+  step:
+    entreprise: "Company"
+    dirigeant: "Owner"
+    licences: "Licences"
+    exploitation: "Operations"
+    encaissement: "Settlement"
+    accord: "Agreement"
+  field:
+    legalName: "Legal name"
+    tradingName: "Trading name"
+    rccmNumber: "RCCM number (commercial register)"
+    taxId: "NIU number (tax identifier)"
+    legalForm: "Legal form"
+    registeredAddress: "Registered address"
+    yearFounded: "Year founded"
+    ownerName: "Owner's full name"
+    ownerIdType: "ID document type"
+    ownerIdNumber: "ID document number"
+    ownerPhone: "Owner's phone"
+    ownerEmail: "Owner's email"
+    transportLicenceNumber: "Transport licence number"
+    transportLicenceExpires: "Licence expires"
+    insurerName: "Fleet insurer"
+    fleetInsuranceExpires: "Insurance expires"
+    routesServed: "Routes served"
+    fleetSize: "Coaches"
+    stationCount: "Agencies"
+    dailyDepartures: "Departures per day"
+    settlementKind: "Settlement account type"
+    settlementAccountName: "Account holder name"
+    settlementAccountRef: "Account or wallet number"
+    agreement: "Terms accepted"

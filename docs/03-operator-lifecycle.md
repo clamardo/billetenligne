@@ -1,6 +1,6 @@
 # BilletEnLigne — Operator Lifecycle & Back Offices
 
-**Status:** Draft v1 · **Date:** 2026-08-09
+**Status:** Draft v1, §2.1–2.3 built · **Date:** 2026-08-10
 **Implements:** ADR-0011 (tenancy/RBAC) · ADR-0013 (auth) · ADR-0015 (policy) · **Related:** `04-payments.md`
 
 ---
@@ -49,6 +49,8 @@ An operator is a state machine. Every transition is audited, reversible where it
 
 **Self-signup** (how it scales): `console.billetenligne.cg/inscription`. Company name, owner name, phone, email, city, fleet size. Verified by OTP.
 
+**As built**, the entry point is the console's own sign-in rather than a separate address: somebody signs in with the emailed code every traveller uses, the server is asked who they are, and an account that belongs to no operator gets the wizard where the console would be. That is deliberate — an applicant has no fleet, no till and no today, and a console with six empty tabs reads as a broken product. The application creates an `operators` row in `application_draft` immediately, so there is something of their own from the first minute; they become **staff** of it only at activation.
+
 Either way the goal is the same: **the operator should reach "I can see my own dashboard" in under 15 minutes**, even though they cannot sell yet. Nothing kills B2B onboarding like a form that ends in "we'll be in touch".
 
 ### 2.2 The application wizard
@@ -59,10 +61,10 @@ Six steps, saveable at every point, resumable from any device, with a progress b
 |---|---|---|
 | **1 · Entreprise** | Legal name, trading name, RCCM number, NIU (tax id), legal form, registered address, year founded | RCCM/NIU format-validated client-side |
 | **2 · Dirigeant** | Owner full name, ID type + number, ID scan, selfie, phone, email | Screened in step 5 |
-| **3 · Licences** | Transport operating licence, fleet insurance certificate, technical inspection certificates | **Each with an expiry date** — see §3.3 |
+| **3 · Licences** | Transport operating licence, fleet insurance certificate, technical inspection certificates | **Each with an expiry date** — see §3.3. **As built, this step collects the numbers and the expiry dates only.** The scans live in `kyb_documents`, which the public role has no grant on and will not be given one — a table of identity documents is the last one to open to the internet, and `verify_public.sql` executes that refusal. A reviewer asks for the images; camera-first upload is its own slice |
 | **4 · Exploitation** | Routes served, fleet size, stations/agencies, typical daily departures | Drives our launch effort estimate |
 | **5 · Encaissement** | Settlement account: MoMo Business wallet or bank. Account name must match legal name | Verified by name-check or micro-deposit |
-| **6 · Accord** | Commission rate, payout frequency, platform floor terms (ADR-0015), signature | E-signed, PDF archived |
+| **6 · Accord** | Commission rate, payout frequency, platform floor terms (ADR-0015), signature | E-signed, PDF archived. **As built:** the acceptance and its timestamp are recorded; there is no e-signature vendor and no archived PDF, because recording consent we can produce beats recording a document we cannot |
 
 Design rules that matter for this audience:
 

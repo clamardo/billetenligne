@@ -4,7 +4,11 @@ import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_console/src/application/console_workspace.dart';
 import 'package:bel_console/src/application/ports/console_gateway.dart';
 import 'package:bel_console/src/application/ports/file_picker.dart';
+import 'package:bel_console/src/application/ports/onboarding_gateway.dart';
+import 'package:bel_console/src/application/onboarding_workspace.dart';
 import 'package:bel_console/src/presentation/app.dart';
+import 'package:bel_console/src/presentation/l10n.dart';
+import 'package:bel_console/src/presentation/screens/onboarding_screen.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:flutter/material.dart';
@@ -775,11 +779,7 @@ void main() {
     }
 
     _ScriptedConsole vendor() => _ScriptedConsole(
-      capabilities: const [
-        'booking.read',
-        'booking.sell',
-        'booking.refund',
-      ],
+      capabilities: const ['booking.read', 'booking.sell', 'booking.refund'],
     );
 
     testWidgets('the quote is read before anything is agreed', (tester) async {
@@ -838,10 +838,7 @@ void main() {
 
       // "0 FCFA" reads as a bug to the person being told it, and the vendor
       // has to repeat something true to somebody standing in front of them.
-      expect(
-        find.textContaining("n'est plus remboursable"),
-        findsOneWidget,
-      );
+      expect(find.textContaining("n'est plus remboursable"), findsOneWidget);
       expect(find.text('Motif du remboursement'), findsNothing);
     });
 
@@ -1339,6 +1336,302 @@ void main() {
       expect(find.text('Vitrine'), findsNothing);
     });
   });
+
+  group('self-signup', () {
+    /// Far enough out that a certificate is valid whenever this runs.
+    final expiry = DateTime.utc(2032, 3, 31);
+
+    ApplicationFacts complete() => ApplicationFacts(
+      legalName: 'Sotrapo SARL',
+      rccmNumber: 'CG-BZV-01-2019-B12-00123',
+      taxId: 'M2019110000123',
+      legalForm: 'sarl',
+      registeredAddress: '4 rue Fulbert Youlou, Dolisie',
+      ownerName: 'Prosper Loubaki',
+      ownerIdType: 'passport',
+      ownerIdNumber: '19CD98765',
+      ownerPhone: '+242060192286',
+      ownerEmail: 'prosper@sotrapo.cg',
+      transportLicenceNumber: 'TR-2025-0044',
+      transportLicenceExpires: expiry,
+      insurerName: 'NSIA Congo',
+      fleetInsuranceExpires: expiry,
+      routesServed: 'Dolisie - Pointe-Noire',
+      fleetSize: 3,
+      stationCount: 2,
+      settlementKind: 'momo',
+      settlementAccountName: 'Sotrapo',
+      settlementAccountRef: '+242060192286',
+      agreementAccepted: true,
+    );
+
+    OperatorApplicationDto application({
+      required ApplicationFacts facts,
+      String status = 'application_draft',
+      String? decisionReason,
+    }) => OperatorApplicationDto(
+      operatorId: 'op-1',
+      code: 'SOTRAP-K4M',
+      status: status,
+      facts: facts,
+      createdAt: DateTime.utc(2030),
+      decisionReason: decisionReason,
+    );
+
+    Future<OnboardingWorkspace> pumpWizard(
+      WidgetTester tester,
+      _ScriptedOnboarding gateway,
+    ) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final workspace = OnboardingWorkspace(
+        gateway: gateway,
+        clock: FixedClock(DateTime.utc(2030, 6, 1)),
+      );
+      await tester.pumpWidget(
+        Localized(
+          catalog: catalog,
+          initialLanguage: 'fr',
+          child: MaterialApp(
+            theme: KiloTheme.materialTheme(),
+            home: StreamBuilder<void>(
+              stream: workspace.changes,
+              builder: (context, _) => OnboardingScreen(workspace: workspace),
+            ),
+          ),
+        ),
+      );
+      await workspace.load();
+      await tester.pumpAndSettle();
+      return workspace;
+    }
+
+    Finder fieldNamed(String label) => find.descendant(
+      of: find.widgetWithText(KField, label),
+      matching: find.byType(TextField),
+    );
+
+    testWidgets('an account with no application is asked one question', (
+      tester,
+    ) async {
+      final gateway = _ScriptedOnboarding();
+      await pumpWizard(tester, gateway);
+
+      // Not six steps and an RCCM number. One field, because §2.1 wants
+      // somebody looking at their own dossier inside fifteen minutes.
+      expect(find.text('Vendre vos billets sur BilletEnLigne'), findsWidgets);
+      expect(fieldNamed('Raison sociale'), findsOneWidget);
+      expect(find.text('Entreprise'), findsNothing);
+
+      await tester.enterText(fieldNamed('Raison sociale'), 'Sotrapo SARL');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Commencer'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.calls, contains('start:Sotrapo SARL'));
+      expect(find.text('Entreprise'), findsWidgets);
+    });
+
+    testWidgets('the checklist names what is missing, not how far you got', (
+      tester,
+    ) async {
+      final gateway = _ScriptedOnboarding(
+        existing: application(
+          facts: const ApplicationFacts(legalName: 'Sotrapo SARL'),
+        ),
+      );
+      await pumpWizard(tester, gateway);
+
+      // The label a person reads, from the catalog — never the field name the
+      // domain emitted.
+      expect(
+        find.textContaining('Numéro RCCM (registre du commerce)'),
+        findsWidgets,
+      );
+      expect(find.textContaining('rccmNumber'), findsNothing);
+    });
+
+    testWidgets('an expired insurance certificate reads as missing', (
+      tester,
+    ) async {
+      final gateway = _ScriptedOnboarding(
+        existing: application(
+          facts: complete().copyWith(
+            fleetInsuranceExpires: DateTime.utc(2029, 12, 31),
+          ),
+        ),
+      );
+      final workspace = await pumpWizard(tester, gateway);
+
+      // Present on the form and still outstanding: a date in the past reads
+      // as answered on a checklist, which is worse than a blank.
+      expect(workspace.missing, ['fleetInsuranceExpires']);
+      expect(workspace.canSubmit, isFalse);
+      expect(
+        tester
+            .widget<KButton>(find.widgetWithText(KButton, 'Envoyer le dossier'))
+            .onPressed,
+        isNull,
+      );
+    });
+
+    testWidgets('a complete application can be sent, and then locks', (
+      tester,
+    ) async {
+      final gateway = _ScriptedOnboarding(
+        existing: application(facts: complete()),
+      );
+      final workspace = await pumpWizard(tester, gateway);
+
+      expect(workspace.canSubmit, isTrue);
+      await tester.tap(find.text('Envoyer le dossier'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.calls, contains('submit'));
+      expect(workspace.isUnderReview, isTrue);
+      expect(find.textContaining("en cours d'examen"), findsOneWidget);
+      // Nothing to save and nothing to send while somebody is reading it.
+      expect(find.text('Envoyer le dossier'), findsNothing);
+    });
+
+    testWidgets('typing is never blocked on a request', (tester) async {
+      final gateway = _ScriptedOnboarding(
+        existing: application(
+          facts: const ApplicationFacts(legalName: 'Sotrapo SARL'),
+        ),
+      );
+      final workspace = await pumpWizard(tester, gateway);
+
+      await tester.enterText(
+        fieldNamed('Numéro RCCM (registre du commerce)'),
+        'CG-BZV-01-2019-B12-00123',
+      );
+      await tester.pumpAndSettle();
+
+      // Held locally, and said out loud — somebody who closes the tab is
+      // entitled to know whether the last two minutes are anywhere.
+      expect(gateway.calls, isNot(contains('save')));
+      expect(workspace.hasUnsavedChanges, isTrue);
+      expect(find.text('Modifications non enregistrées'), findsOneWidget);
+
+      await tester.tap(find.text('Enregistrer'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.calls, contains('save'));
+      expect(workspace.facts.rccmNumber, 'CG-BZV-01-2019-B12-00123');
+      expect(workspace.hasUnsavedChanges, isFalse);
+    });
+
+    testWidgets('clearing a field is a change the server hears about', (
+      tester,
+    ) async {
+      final gateway = _ScriptedOnboarding(
+        existing: application(
+          facts: complete().copyWith(tradingName: 'Sotrapo'),
+        ),
+      );
+      final workspace = await pumpWizard(tester, gateway);
+
+      await tester.enterText(fieldNamed('Nom commercial'), '');
+      await tester.pumpAndSettle();
+
+      // The trap `copyWith` sets: a null there means "leave it alone", so a
+      // deleted trading name would never reach the server.
+      expect(workspace.facts.tradingName, isNull);
+      expect(workspace.facts.legalName, 'Sotrapo SARL');
+    });
+
+    testWidgets("a reviewer's own words are quoted back", (tester) async {
+      final gateway = _ScriptedOnboarding(
+        existing: application(
+          facts: complete(),
+          status: 'info_requested',
+          decisionReason: "L'attestation d'assurance est illisible",
+        ),
+      );
+      final workspace = await pumpWizard(tester, gateway);
+
+      expect(
+        find.text("L'attestation d'assurance est illisible"),
+        findsOneWidget,
+      );
+      // `info_requested` reopens the wizard exactly where the gap is — a
+      // dossier that reopens read-only is a support call.
+      expect(workspace.isUnderReview, isFalse);
+    });
+  });
+}
+
+/// An application the test holds in memory.
+///
+/// It enforces the two rules the server enforces — a locked application
+/// refuses a save, and an incomplete one refuses a submit — because a fake
+/// looser than the real thing teaches the screen habits the server will
+/// refuse.
+final class _ScriptedOnboarding implements OnboardingGateway {
+  _ScriptedOnboarding({this.existing});
+
+  OperatorApplicationDto? existing;
+  final calls = <String>[];
+
+  @override
+  Future<OperatorApplicationDto?> mine() async {
+    calls.add('mine');
+    return existing;
+  }
+
+  @override
+  Future<OperatorApplicationDto> start(String legalName) async {
+    calls.add('start:$legalName');
+    return existing = OperatorApplicationDto(
+      operatorId: 'op-new',
+      code: 'SOTRAP-K4M',
+      status: 'application_draft',
+      facts: ApplicationFacts(legalName: legalName),
+      createdAt: DateTime.utc(2030),
+    );
+  }
+
+  @override
+  Future<OperatorApplicationDto> save(ApplicationFacts facts) async {
+    calls.add('save');
+    final current = existing!;
+    if (!current.isEditable) {
+      throw const ServerRefused(
+        409,
+        ApiError(code: ErrorCode.applicationLocked),
+      );
+    }
+    return existing = OperatorApplicationDto(
+      operatorId: current.operatorId,
+      code: current.code,
+      status: current.status,
+      facts: facts,
+      createdAt: current.createdAt,
+    );
+  }
+
+  @override
+  Future<OperatorApplicationDto> submit() async {
+    calls.add('submit');
+    final current = existing!;
+    if (!current.facts.isSubmittable(asOf: DateTime.utc(2030))) {
+      throw const ServerRefused(
+        409,
+        ApiError(code: ErrorCode.applicationIncomplete),
+      );
+    }
+    return existing = OperatorApplicationDto(
+      operatorId: current.operatorId,
+      code: current.code,
+      status: 'under_review',
+      facts: current.facts,
+      createdAt: current.createdAt,
+      submittedAt: DateTime.utc(2030, 1, 2),
+    );
+  }
 }
 
 /// A file dialog that has already decided.

@@ -205,6 +205,92 @@ void main() {
     });
   });
 
+  group("the applicant's own answers", () {
+    /// The operator page is a long ListView and off-screen children are not
+    /// built, so a card below the fold is genuinely absent from the tree.
+    Future<void> scrollToEnd(WidgetTester tester) async {
+      for (var i = 0; i < 6; i++) {
+        await tester.drag(find.byType(ListView).first, const Offset(0, -400));
+        await tester.pumpAndSettle();
+      }
+    }
+
+    testWidgets('the checklist is the applicant\'s, not a second one', (
+      tester,
+    ) async {
+      final gateway = _ScriptedAdmin(
+        capabilities: const ['platform.operator.review'],
+      )..roster = [_operator()];
+      gateway.file = AdminOperatorDetailDto(
+        operator: _operator(),
+        submittedAt: DateTime.utc(2026, 8, 2),
+        application: const ApplicationFacts(
+          legalName: 'Océan du Nord SARL',
+          ownerName: 'Angèle Mbemba',
+          ownerPhone: '+242060192286',
+          settlementKind: 'momo',
+          settlementAccountName: 'Océan du Nord',
+        ),
+      );
+
+      final workspace = await pump(tester, gateway);
+      await workspace.open('op-1');
+      await tester.pumpAndSettle();
+      await scrollToEnd(tester);
+
+      expect(find.text('Angèle Mbemba'), findsOneWidget);
+      // Named in the reader's language, from the same list the applicant saw.
+      expect(find.textContaining('Il manque'), findsWidgets);
+      expect(
+        find.textContaining('Numéro RCCM (registre du commerce)'),
+        findsWidgets,
+      );
+      expect(find.textContaining('rccmNumber'), findsNothing);
+    });
+
+    testWidgets('a settlement account in somebody else\'s name is flagged', (
+      tester,
+    ) async {
+      final gateway = _ScriptedAdmin(
+        capabilities: const ['platform.operator.review'],
+      )..roster = [_operator()];
+      gateway.file = AdminOperatorDetailDto(
+        operator: _operator(),
+        application: const ApplicationFacts(
+          legalName: 'Océan du Nord SARL',
+          settlementAccountName: 'Trans Bony Voyages',
+        ),
+      );
+
+      final workspace = await pump(tester, gateway);
+      await workspace.open('op-1');
+      await tester.pumpAndSettle();
+      await scrollToEnd(tester);
+
+      // The one automatic comparison this screen makes, because a reviewer
+      // reading two strings forty times a week will eventually not.
+      expect(find.textContaining('ne correspond pas'), findsOneWidget);
+    });
+
+    testWidgets('an operator onboarded before self-signup shows no card', (
+      tester,
+    ) async {
+      final gateway = _ScriptedAdmin(
+        capabilities: const ['platform.operator.review'],
+      )..roster = [_operator()];
+      gateway.file = AdminOperatorDetailDto(operator: _operator());
+
+      final workspace = await pump(tester, gateway);
+      await workspace.open('op-1');
+      await tester.pumpAndSettle();
+      await scrollToEnd(tester);
+
+      // Null rather than empty, so "applied and left it blank" and "arrived
+      // by SQL in the first week" do not read the same.
+      expect(find.text("Le dossier d'inscription"), findsNothing);
+    });
+  });
+
   group('nothing happens without a reason', () {
     testWidgets('every decision is disabled until one is typed', (
       tester,
@@ -220,7 +306,10 @@ void main() {
 
       final approve = tester.widget<InkWell>(
         find
-            .ancestor(of: find.text('Approuver'), matching: find.byType(InkWell))
+            .ancestor(
+              of: find.text('Approuver'),
+              matching: find.byType(InkWell),
+            )
             .first,
       );
       expect(approve.onTap, isNull);
@@ -232,7 +321,10 @@ void main() {
       await statePolicy(tester, workspace);
       final enabled = tester.widget<InkWell>(
         find
-            .ancestor(of: find.text('Approuver'), matching: find.byType(InkWell))
+            .ancestor(
+              of: find.text('Approuver'),
+              matching: find.byType(InkWell),
+            )
             .first,
       );
       expect(enabled.onTap, isNotNull);
