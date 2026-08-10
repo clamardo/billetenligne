@@ -16,9 +16,11 @@ abstract interface class ConsoleGateway {
 
   Future<LayoutDto> saveLayout({
     required String name,
-    String? preset,
+    required String preset,
     int? rows,
   });
+
+  Future<LayoutDto> drawLayout(LayoutDraft draft);
 
   Future<List<VehicleDto>> vehicles();
 

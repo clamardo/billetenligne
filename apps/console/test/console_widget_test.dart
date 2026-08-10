@@ -53,7 +53,7 @@ final class _ScriptedConsole implements ConsoleGateway {
   @override
   Future<LayoutDto> saveLayout({
     required String name,
-    String? preset,
+    required String preset,
     int? rows,
   }) async {
     saved.add('layout:$name:$preset:$rows');
@@ -63,6 +63,25 @@ final class _ScriptedConsole implements ConsoleGateway {
       version: 1,
       capacity: 49,
       mode: 'bus',
+      vehicleCount: 0,
+    );
+  }
+
+  /// Kept as the encoded JSON rather than the draft, because what a test
+  /// should assert about a drawn layout is what went on the wire — a draft
+  /// object can be right while its encoding drops a field.
+  Map<String, Object?>? drawn;
+
+  @override
+  Future<LayoutDto> drawLayout(LayoutDraft draft) async {
+    drawn = draft.toJson();
+    saved.add('draw:${draft.name}:${draft.capacity}');
+    return LayoutDto(
+      id: 'l-2',
+      name: draft.name,
+      version: 1,
+      capacity: draft.capacity,
+      mode: draft.mode.name,
       vehicleCount: 0,
     );
   }
@@ -498,6 +517,170 @@ void main() {
     // has to reassign one before the passengers arrive.
     expect(gateway.saved, contains('status:v-1:maintenance'));
     expect(find.textContaining("n'ont plus de car"), findsOneWidget);
+  });
+
+  group('the section builder', () {
+    /// Opens Fleet and taps "Dessiner un plan". Every test here starts the
+    /// same way, and the setup is longer than the assertion in most of them.
+    /// The `TextField` inside a `KField` with this label.
+    ///
+    /// `KField` renders its label as a sibling of the input rather than as an
+    /// `InputDecoration`, so `widgetWithText(TextField, …)` finds nothing.
+    Finder fieldNamed(String label) => find.descendant(
+      of: find.widgetWithText(KField, label),
+      matching: find.byType(TextField),
+    );
+
+    Future<ConsoleWorkspace> openBuilder(
+      WidgetTester tester,
+      _ScriptedConsole gateway,
+    ) async {
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.fleet);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dessiner un plan'));
+      await tester.pumpAndSettle();
+      return workspace;
+    }
+
+    testWidgets('a coach is drawn, and the preview is the real seat map', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      // The default section is ten rows of 2+2. The preview is KSeatMap —
+      // the widget that sells the seat — so an operator sees the traveller's
+      // screen rather than a drawing of one.
+      expect(find.byType(KSeatMap), findsOneWidget);
+      expect(find.text('40 places'), findsOneWidget);
+      // Labels come from the domain, and I is skipped because a capital I
+      // reads as a 1 on a seat sticker.
+      expect(find.text('1A'), findsOneWidget);
+      expect(find.text('10D'), findsOneWidget);
+    });
+
+    testWidgets('a typo empties the preview instead of crashing it', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      // `9+9` is eighteen seats across, which used to walk off the end of the
+      // letter table with a RangeError. The section simply stops being
+      // drawable, and says so.
+      await tester.enterText(fieldNamed('Sièges de front'), '9+9');
+      await tester.pumpAndSettle();
+
+      expect(find.byType(KSeatMap), findsNothing);
+      expect(find.text('Aucune place pour l\'instant.'), findsOneWidget);
+      expect(
+        find.textContaining('ne peut pas être dessinée'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a nameless layout cannot be saved', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      // The default sections are workable; only the name is missing. A
+      // disabled save with no explanation is the most common way software
+      // strands somebody, so the hint is asserted too.
+      final save = tester.widget<KButton>(
+        find.widgetWithText(KButton, 'Enregistrer'),
+      );
+      expect(save.onPressed, isNull);
+      expect(find.textContaining('Complétez le nom'), findsOneWidget);
+      expect(gateway.drawn, isNull);
+    });
+
+    testWidgets('a second section starts where the first one ends', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tester.enterText(fieldNamed('Nom du plan'), 'Car 51');
+      // Below the fold on a 1280×800 laptop once the first section is drawn.
+      await tester.ensureVisible(find.text('Ajouter une section'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ajouter une section'));
+      await tester.pumpAndSettle();
+
+      // The 5-across rear bench every generic tool forgets: one row, five
+      // seats, starting at 11 because the section above it ends at 10. The
+      // operator never counts.
+      await tester.enterText(fieldNamed('Sièges de front').last, '5');
+      await tester.enterText(fieldNamed('Rangées').last, '1');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Commence à la rangée 11'), findsOneWidget);
+      expect(find.text('45 places'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(KButton, 'Enregistrer'));
+      await tester.pumpAndSettle();
+
+      // What went on the wire, not what the draft held: a draft can be right
+      // while its encoding drops a field.
+      final sent = gateway.drawn!;
+      expect(sent['name'], 'Car 51');
+      expect(sent['mode'], 'bus');
+      final sections = sent['sections']! as List;
+      expect(sections, hasLength(2));
+      expect((sections[1] as Map)['abreast'], '5');
+      expect((sections[1] as Map)['startRow'], 11);
+      expect(gateway.saved, contains('draw:Car 51:45'));
+      // Back on the fleet screen, with the layout named.
+      expect(find.textContaining('Car 51'), findsWidgets);
+    });
+
+    testWidgets('a VIP section is priced, and only one way', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tester.enterText(fieldNamed('Nom du plan'), 'VIP avant');
+      await tester.tap(find.text('Prix de base'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Multiplié').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(fieldNamed('Multiplicateur'), '1,5');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(KButton, 'Enregistrer'));
+      await tester.pumpAndSettle();
+
+      final section = (gateway.drawn!['sections']! as List).first as Map;
+      // A comma is what a French keyboard produces and what an operator will
+      // type. It is a decimal point here or it is a fare of nothing.
+      expect(section['fareMultiplier'], 1.5);
+      // Never both. The server refuses a section priced two ways, and the
+      // encoder is what guarantees the console never sends one.
+      expect(section.containsKey('fareSupplement'), isFalse);
+    });
+
+    testWidgets('a cancelled draw sends nothing', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(gateway.drawn, isNull);
+      expect(find.text('Plans de salle'), findsOneWidget);
+    });
   });
 
   group('the vitrine', () {

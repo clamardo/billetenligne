@@ -23,9 +23,12 @@ final class ApiConsoleGateway implements ConsoleGateway {
   @override
   Future<LayoutDto> saveLayout({
     required String name,
-    String? preset,
+    required String preset,
     int? rows,
   }) => _client.saveLayout(name: name, preset: preset, rows: rows);
+
+  @override
+  Future<LayoutDto> drawLayout(LayoutDraft draft) => _client.drawLayout(draft);
 
   @override
   Future<List<VehicleDto>> vehicles() => _client.vehicles();

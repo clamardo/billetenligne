@@ -149,6 +149,23 @@ final class ConsoleWorkspace {
     await _loadSection();
   });
 
+  /// Saves a layout drawn section by section.
+  ///
+  /// Refuses locally first. The server refuses the same layout for the same
+  /// reasons, but an operator who has just spent twenty minutes drawing a
+  /// coach should not learn about a bad row count from a round trip.
+  Future<void> drawLayout(LayoutDraft draft) => _run(() async {
+    if (!draft.isValid) {
+      _notice = 'layout.invalid';
+      return;
+    }
+    final saved = await _gateway.drawLayout(draft);
+    _notice = saved.version > 1
+        ? 'layout.savedVersion|${saved.name}|${saved.version}'
+        : 'layout.saved|${saved.name}';
+    await _loadSection();
+  });
+
   Future<void> saveVehicle({
     required String registration,
     required String layoutId,

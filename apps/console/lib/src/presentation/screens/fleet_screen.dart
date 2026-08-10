@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../application/console_workspace.dart';
 import '../l10n.dart';
+import 'layout_builder_screen.dart';
 
 /// Layouts and coaches.
 ///
@@ -12,10 +13,12 @@ import '../l10n.dart';
 /// and pointed at by every identical coach; the seat map an operator checks
 /// here is the one every one of those coaches sells.
 ///
-/// **The presets are the default path and the editor is not built yet.** Four
-/// presets cover what actually runs in Congo, and picking one takes ninety
-/// seconds. The section builder is a real gap, and it is named on the screen
-/// rather than hidden behind a control that does nothing.
+/// **Presets are the default path; the builder is the way out of it.** Four
+/// presets cover what actually runs in Congo and picking one takes ninety
+/// seconds, so they stay the first control. The section builder sits beside
+/// them for the coach that matches none — a 2+3 with a five-across rear
+/// bench, an aircraft with a first cabin — and it is a screen rather than a
+/// dialog because drawing one honestly takes twenty minutes.
 final class FleetScreen extends StatelessWidget {
   const FleetScreen({required this.workspace, super.key});
 
@@ -48,6 +51,20 @@ final class FleetScreen extends StatelessWidget {
                 fullWidth: false,
                 icon: Icons.add,
                 onPressed: () => _addLayout(context),
+              ),
+            ),
+            SizedBox(width: kilo.space.s2),
+            // Secondary, and next to the presets rather than behind them: an
+            // operator who needs it needs it on their first afternoon, and an
+            // operator who does not should not wonder what they are missing.
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: KButton(
+                label: context.t('console.fleet.builder.open'),
+                fullWidth: false,
+                tone: KButtonTone.secondary,
+                icon: Icons.grid_on,
+                onPressed: () => _drawLayout(context),
               ),
             ),
           ],
@@ -200,7 +217,9 @@ final class FleetScreen extends StatelessWidget {
                     ])
                       DropdownMenuItem(
                         value: p,
-                        child: Text(dialogContext.t('console.fleet.presets.$p')),
+                        child: Text(
+                          dialogContext.t('console.fleet.presets.$p'),
+                        ),
                       ),
                   ],
                   onChanged: (v) => setState(() => preset = v ?? preset),
@@ -237,6 +256,19 @@ final class FleetScreen extends StatelessWidget {
       preset: preset,
       rows: int.tryParse(rows.text.trim()),
     );
+  }
+
+  /// Opens the builder, and saves whatever comes back.
+  ///
+  /// The screen returns a [LayoutDraft] or nothing — it does no saving of its
+  /// own, so the one place that talks to the workspace is still this one, and
+  /// a cancelled draw is indistinguishable from never having opened it.
+  Future<void> _drawLayout(BuildContext context) async {
+    final draft = await Navigator.of(context).push<LayoutDraft>(
+      MaterialPageRoute(builder: (_) => const LayoutBuilderScreen()),
+    );
+    if (draft == null) return;
+    await workspace.drawLayout(draft);
   }
 
   Future<void> _addVehicle(BuildContext context) async {
@@ -315,10 +347,8 @@ class _StatusMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PopupMenuButton<String>(
     tooltip: context.t('console.fleet.changeStatus'),
-    onSelected: (status) => workspace.setVehicleStatus(
-      vehicleId: vehicle.id,
-      status: status,
-    ),
+    onSelected: (status) =>
+        workspace.setVehicleStatus(vehicleId: vehicle.id, status: status),
     itemBuilder: (context) => [
       for (final status in const [
         'active',

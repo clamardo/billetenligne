@@ -131,6 +131,10 @@ Rules that make it usable:
 - **Aperçu voyageur** renders the exact widget the traveller sees, at phone width. Same code, so no surprises (ADR-0004).
 - **Undo/redo.** Templates are versioned: editing a template used by vehicles with sold departures creates a **new version**, and existing departures keep the layout they were sold with — same principle as refund policies (ADR-0015).
 
+**What is built, as of the section-builder slice.** Sections are added, deleted and edited from the right rail; class, rows, abreast, pitch and a per-section fare (a multiplier *or* a supplement, never both) are all live; the start row of each section is **computed** from the ones above it rather than typed, because asking somebody to keep a running total is how a layout gets two row 12s; numbering is chosen once for the whole layout rather than per section; and the preview is `KSeatMap` — the widget that sells the seat — redrawn on every keystroke, with the capacity beside the save button.
+
+Four things in the sketch above are **not** built, and are listed rather than implied: **tap-to-cycle and drag-to-paint** blocked cells, **placing features** (door, lavatory, exit, driver), **reordering** sections, and **undo/redo**. Blocked seats and features are already in the storage format and honoured everywhere downstream — a layout that has them renders and sells correctly — so what is missing is the editing gesture, not the model. A section that cannot be drawn is simply omitted from the preview and named in red, which is the same judgement the server makes; the save button is disabled with the reason rather than enabled into a 400.
+
 ### 3.4 What the traveller sees — a diagram, never a photo
 
 The seat map is a **generated vector diagram** built from the layout: a coach or fuselage silhouette selected by mode and rough capacity, sections visually separated and labelled, doors, exits, lavatory and driver/cockpit marked. ~2 KB, renders instantly, identical in the app, the console preview and the PDF manifest.

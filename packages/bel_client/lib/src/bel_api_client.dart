@@ -228,7 +228,9 @@ final class BelApiClient {
   /// Server-driven: a rail appears only if this deployment can reach it AND
   /// the operator has a verified account on it. Enabling one is a config push
   /// rather than an app release (ADR-0006).
-  Future<({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})>
+  Future<
+    ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
+  >
   paymentOptions(String bookingId) async {
     final body = await _get('/public/v1/bookings/$bookingId/payment-options');
     return (
@@ -296,18 +298,25 @@ final class BelApiClient {
   /// against the twenty minutes the section builder takes.
   Future<LayoutDto> saveLayout({
     required String name,
-    String? preset,
+    required String preset,
     int? rows,
-    List<Map<String, Object?>>? sections,
-    String mode = 'bus',
   }) async => LayoutDto.fromJson(
     await _postJson('/console/v1/fleet/layouts', {
       'name': name,
-      if (preset != null) 'preset': preset,
+      'preset': preset,
       if (rows != null) 'rows': rows,
-      if (sections != null) 'sections': sections,
-      'mode': mode,
     }),
+  );
+
+  /// Creates a layout drawn section by section, for the coach no preset fits.
+  ///
+  /// Separate from [saveLayout] rather than an optional argument on it,
+  /// because the two are different requests with different failure modes: a
+  /// preset can only be misspelled, and a draft can be wrong in eleven places.
+  /// [LayoutDraft.isValid] answers the same question the server will, so the
+  /// screen refuses before the socket does.
+  Future<LayoutDto> drawLayout(LayoutDraft draft) async => LayoutDto.fromJson(
+    await _postJson('/console/v1/fleet/layouts', draft.toJson()),
   );
 
   Future<List<VehicleDto>> vehicles() async => Wire.readList(
@@ -425,9 +434,10 @@ final class BelApiClient {
         field: 'items',
       );
 
-  Future<ManifestDto> manifest(String departureId) async => ManifestDto.fromJson(
-    await _get('/console/v1/departures/$departureId/manifest'),
-  );
+  Future<ManifestDto> manifest(String departureId) async =>
+      ManifestDto.fromJson(
+        await _get('/console/v1/departures/$departureId/manifest'),
+      );
 
   /// Collect against a reservation made on a phone.
   Future<CounterSaleDto> collectPayment({
@@ -452,12 +462,16 @@ final class BelApiClient {
     required String stationId,
     String? idempotencyKey,
   }) async => CounterSaleDto.fromJson(
-    await _postJson('/console/v1/bookings', {
-      'departureId': departureId,
-      'buyerPhone': buyerPhone,
-      'stationId': stationId,
-      'passengers': [for (final p in passengers) p.toJson()],
-    }, idempotencyKey: idempotencyKey ?? IdempotencyKey.generate()),
+    await _postJson(
+      '/console/v1/bookings',
+      {
+        'departureId': departureId,
+        'buyerPhone': buyerPhone,
+        'stationId': stationId,
+        'passengers': [for (final p in passengers) p.toJson()],
+      },
+      idempotencyKey: idempotencyKey ?? IdempotencyKey.generate(),
+    ),
   );
 
   // ── The vitrine ───────────────────────────────────────────────────────────

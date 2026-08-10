@@ -2,6 +2,7 @@
 # back office. No screen-specific strings here.
 common:
   actions:
+    save: "Save"
     copy: "Copy"
     done: "Done"
     search: "Search"
