@@ -85,6 +85,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **IRROPS — the rescue coach** | ✅ done | Option ① of `08-disruption.md` §2.2: a different vehicle, the same journey. The seats are **remapped by the domain** — a passenger keeps their label only when the new coach has one of the same kind, because `1D` is a window on a 2+2 and the middle of the back block on a 2+3. Every ticket is **re-signed** in the same transaction as the new manifest, since the QR carries the seat (ADR-0007). A coach that cannot seat everybody is refused **with the number short**, so a dispatcher knows which coach to look for next. Holds with nothing behind them are released rather than slid onto a different seat under somebody who is looking at a seat map. The swap supersedes the breakdown that caused it. 9 domain · 2 contract · 6 Postgres · 5 smoke · 6 console tests |
 | **IRROPS — the rebooking wave** | ✅ done | Option ② of `08-disruption.md` §2.2: the passengers go on the operator's own next departure. **Every replacement seat is taken before a single old one is released** (§2.4) inside one transaction, so a paid passenger never exists without a seat. **Partial coverage is a success** — "18 / 42" is what a dispatcher acts on, and refusing anything short of everybody would mean the tool only works on the days it is not needed. A party moves whole or not at all, in the order people booked, which is the only rule that can be said out loud to whoever is left. No fare difference, ever, even onto a dearer departure (ADR-0016). 13 domain · 2 contract · 13 Postgres · 2 worker · 5 smoke · 3 console tests |
 | **Payout runs** | ✅ done | `04-payments.md` §6.2. Prepare · approve · release, and the gap between them is the control: **an operator cannot create, approve or edit their own payout**, by grant rather than by handler, and **the person who prepared a run cannot approve it**. The amount is the ledger's own balance (`payable:operator` less their tills) read again at release, never the sum of the statement's line items. Releasing debits the payable and credits every till plus the bank in one movement, which is what makes "cash sales never generate a payout" true in the books. A week of nothing but cash is negative — the operator owes us the fees — and is refused as a transfer. The back office works the queue — the whole statement is in the row, because the person approving is agreeing to a number — and the operator reads their own statements in the console, cash line included. 8 domain · 3 contract · 13 Postgres · 8 smoke · 2 schema guarantees · 5 back-office · 3 console tests |
+| **`config/markets.yaml` is loaded** | ✅ done | ADR-0006, and the gap this document named first. The file is now the authority for the currency, the service fee, the dialling table and the rails; `Market.congoBrazzaville` is the **fallback** for when there is no file. A missing file falls back — that is every unit test and every fresh clone — and a **malformed one kills the process before it is healthy**, because an instance that comes up green serving last release's rails is the failure worth refusing. Enabling Orange Money, or a carrier renumbering, is a file and a restart. A currency whose exponent we do not know is refused by name, never guessed. 19 API tests · 7 smoke checks, two of them a second server started against a different file |
 | IRROPS — protection, and the passenger's own choice | ⬜ not started | `08-disruption.md` §2.2 options ③ and ⑤: a standing inter-operator agreement (§5) with settlement through our ledger, and letting the passengers pick between the options themselves (§3.2). Both need something that does not exist yet — an agreement table, and a traveller-facing choice screen |
 
 ## Phase 3 and beyond
@@ -95,8 +96,10 @@ both back offices, object storage built, the section builder shipped and
 refunds executing end to end, the sales horizon extending itself and an
 operator able to sign themselves up, and the phone channel plumbed behind an
 announcement, **every engineering item in Phase 1 is built.** What remains
-there is commercial. Phase 2 is where the unbuilt work now lives: the
-re-accommodation plan, payout runs, and the `config/markets.yaml` loader.
+there is commercial. Phase 2 is where the unbuilt work
+lived: the re-accommodation plan, payout runs and the `config/markets.yaml`
+loader are all built, and what is left there is a telco's sandbox becoming
+production credentials, inter-operator protection, and the statement PDF.
 
 ---
 
@@ -104,10 +107,14 @@ re-accommodation plan, payout runs, and the `config/markets.yaml` loader.
 
 These are true today and each one is a decision, not an oversight.
 
-1. **`config/markets.yaml` is loaded by nothing.** The API still reads the
-   compiled-in `Market.congoBrazzaville`. Until the loader exists, enabling
-   Orange Money needs a release rather than a config push — which is exactly
-   what ADR-0006 says it should not need.
+1. **A rail enabled in the file still needs credentials to be collectable.**
+   The loader exists and `config/markets.yaml` is the authority (see below),
+   but two switches have to agree: the file says a rail is *offered*, and
+   `ORANGE__CLIENTID` and its adapter say it can be *collected on*. That is
+   deliberate — announcing a rail we hold no keys for would put a tile on the
+   payment screen that takes a PIN and loses it — but it does mean switching
+   on Orange Money for real is a config push **plus** an adapter, and only the
+   first half is a one-line change today.
 2. **`sweepExpired` throws `UnimplementedError` in the API's Postgres
    adapter.** Deliberate, and no longer a gap in the product: the sweep lives
    in `services/worker`, which exists and runs it under platform scope. The
@@ -205,7 +212,7 @@ dart test packages/bel_domain packages/bel_localization \
          packages/bel_contracts packages/bel_crypto     # 352 tests
 dart test packages/bel_client                           # 32 tests
 rm -rf services/api/build                               # see below — it matters
-dart test services/api -x integration -x storage        # 177 tests
+dart test services/api -x integration -x storage        # 196 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 87 app tests
@@ -213,10 +220,10 @@ cd apps/console   && flutter test        # 62 console tests
 cd apps/admin     && flutter test        # 23 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 298 files
+dart run tool/check_layers.dart          # the onion rule, 300 files
 ./infra/migrations/check.sh              # 34 schema guarantees
 ./tool/integration.sh                    # 193 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 199 checks, incl. the Dart client
+./tool/smoke_api.sh                      # 206 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -225,7 +232,7 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**828 tests in total**, plus 199 smoke checks, 34 executed schema guarantees,
+**847 tests in total**, plus 206 smoke checks, 34 executed schema guarantees,
 193 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
@@ -241,6 +248,53 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+`config/markets.yaml` is finally read by something. It was the first entry
+under "known gaps" for a reason: the file was written carefully, commented at
+length, and loaded by nothing at all.
+
+**The file is the authority; the constant is the fallback.** The API used to
+answer `/public/v1/market` from `Market.congoBrazzaville` compiled into the
+binary, which made ADR-0006 a comment. Now it parses the file at startup and
+serves that, and the constant is what runs when there is no file — a fresh
+clone, a unit test, CI. That way round matters: nothing is ever rail-less on
+first launch, and nothing that *is* configured is silently overridden by a
+constant.
+
+**A missing file falls back. A malformed one stops the process.** The
+asymmetry is the whole design. Absent is a normal state. Present-and-wrong is
+somebody's deliberate push, and the failure mode we must not have is a deploy
+that reports success while serving the rails of the release before it — so the
+market file is read in `main.dart`, before the socket opens, and a bad one
+means the instance never becomes healthy, the rollout stops, and the previous
+version keeps serving. The smoke suite proves both halves by starting a second
+server on another port against a different file.
+
+**The dialling table moved too, and that is the quieter half.** ADR-0005 has
+always said carrier prefixes are configuration because operators renumber.
+They were still a constant in three code paths: the number a traveller signs
+in with, the wallet the payment screen pre-selects, and the settlement account
+an operator registers in the console. All three now parse against the market's
+table, so a renumbering is the same config push as a rail.
+
+**A currency we do not know the exponent of is refused by name.** Not
+defaulted to two, not skipped. XAF is zero-decimal and the exponent is what
+decides whether 9 000 is nine thousand or ninety — the classic bug in this
+market, and not one to guess past on the strength of a typo in a YAML file.
+
+**The two definitions are checked against each other**, and the test earned
+its keep on the first run: the compiled-in fallback was offering `cg.card` as
+enabled while the file had it switched off. A fresh clone could tap a card
+rail that no deployment would have shown it. That is exactly the drift a
+fallback grows when nothing compares it to the thing it is falling back from.
+
+**What it cost:** one `yaml` dependency, a loader in the API's infrastructure
+layer, a `main.dart` that exists only to fail early, nineteen tests, seven
+smoke checks — and `Market` losing `nameFr`/`nameEn` in favour of the catalog
+key it should always have carried, since a market that enumerates languages is
+a second place to edit when a third one arrives.
+
+## What the payout screens push changed, and what it cost
 
 The payout screens: the back office works the queue, and an operator reads
 their own statements.

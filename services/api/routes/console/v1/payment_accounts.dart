@@ -51,7 +51,7 @@ Future<Response> onRequest(RequestContext context) async {
           // Which rails could be configured at all, so the console offers a
           // closed list rather than a free-text rail id.
           'availableRails': [
-            for (final rail in Market.current.rails)
+            for (final rail in context.read<Services>().market.rails)
               if (rail.kind == PaymentRailKind.mobileMoney)
                 {'railId': rail.id, 'labelKey': rail.labelKey},
           ],
@@ -82,7 +82,10 @@ Future<Response> onRequest(RequestContext context) async {
       // Parsed and normalised to E.164 before it is stored. A number kept as
       // typed is a number the rail will not recognise, and the failure
       // surfaces months later as "the operator never got paid".
-      final parsed = PhoneNumber.parse('$msisdn');
+      final parsed = PhoneNumber.parse(
+        '$msisdn',
+        table: context.read<Services>().market.msisdn,
+      );
       if (parsed case Err(:final failure)) {
         return Response.json(
           statusCode: HttpStatus.badRequest,

@@ -17,5 +17,6 @@ dependencies:
   dart_frog: ^1.1.0
   http: ^1.2.0
   postgres: ^3.5.0
+  yaml: ^3.1.2
 dev_dependencies:
   test: ^1.25.0

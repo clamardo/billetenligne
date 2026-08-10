@@ -28,9 +28,14 @@ pass=0
 fail=0
 server_pid=""
 
+config_pid=""
+
 cleanup() {
   [[ -n "$server_pid" ]] && kill "$server_pid" 2>/dev/null || true
   wait "$server_pid" 2>/dev/null || true
+  [[ -n "$config_pid" ]] && kill "$config_pid" 2>/dev/null || true
+  wait "$config_pid" 2>/dev/null || true
+  rm -f /tmp/bel-smoke-markets.yaml /tmp/bel-smoke-markets-broken.yaml
 }
 trap cleanup EXIT
 
@@ -1073,6 +1078,76 @@ else
   printf '   \033[31mFAIL\033[0m the typed client could not complete the funnel\n'
   echo "$client_out" | sed 's/^/       /'
 fi
+
+# ── A rail is enabled by pushing a file ─────────────────────────────────────
+#
+# The claim ADR-0006 makes, over a socket: the rails an app renders come from
+# `config/markets.yaml`, so switching Orange Money on is a config push and a
+# restart rather than a release — which matters in a market where a large
+# share of handsets never update.
+#
+# A second server, on its own port, started against a different file. Nothing
+# is rebuilt and no Dart changes; the only difference is the YAML.
+echo
+echo "── a rail is enabled by pushing a file"
+
+CONFIG_PORT=$((PORT + 1))
+CONFIG_BASE="http://localhost:$CONFIG_PORT"
+
+sed -e '/id: cg.orange_money/,/disabledReasonKey/ s/enabled: false/enabled: true/' \
+    -e 's/serviceFeeMinor: 300/serviceFeeMinor: 450/' \
+    "$API_DIR/../../config/markets.yaml" > /tmp/bel-smoke-markets.yaml
+
+check "the pushed file differs from the shipped one" "yes" \
+  "$(cmp -s /tmp/bel-smoke-markets.yaml "$API_DIR/../../config/markets.yaml" \
+    && echo no || echo yes)"
+
+(cd "$API_DIR" && exec env PORT="$CONFIG_PORT" \
+  BEL_MARKETS_FILE=/tmp/bel-smoke-markets.yaml \
+  dart build/bin/server.dart >/tmp/bel-smoke-config.log 2>&1) &
+config_pid=$!
+
+for _ in $(seq 1 40); do
+  if curl -sf "$CONFIG_BASE/health" >/dev/null 2>&1; then break; fi
+  sleep 0.25
+done
+
+pushed="$(curl -s "$CONFIG_BASE/public/v1/market")"
+check "the pushed market is served" "200" "$(status "$CONFIG_BASE/public/v1/market")"
+check "Orange Money is now enabled" "yes" \
+  "$(grep -q '"id":"cg.orange_money","kind":"mobileMoney","labelKey":"enum.MobileOperator.orange"[^}]*"enabled":true' <<<"$pushed" && echo yes || echo no)"
+check "and the shipped file still says otherwise" "yes" \
+  "$(grep -q '"id":"cg.orange_money"[^}]*"enabled":false' <<<"$market" && echo yes || echo no)"
+check "the service fee moved with the file" "yes" \
+  "$(grep -q '"serviceFee":{"minor":450,"currency":"XAF"}' <<<"$pushed" && echo yes || echo no)"
+
+kill "$config_pid" 2>/dev/null || true
+wait "$config_pid" 2>/dev/null || true
+config_pid=""
+
+# A file that is present and wrong must not fall back. Serving last release's
+# rails under a green deploy is the failure this refuses to have.
+printf 'defaultMarket: CG\nmarkets:\n  - code: CG\n    currency: ZWL\n' \
+  > /tmp/bel-smoke-markets-broken.yaml
+(cd "$API_DIR" && exec env PORT="$CONFIG_PORT" \
+  BEL_MARKETS_FILE=/tmp/bel-smoke-markets-broken.yaml \
+  dart build/bin/server.dart >/tmp/bel-smoke-broken.log 2>&1) &
+config_pid=$!
+
+broken_up="no"
+for _ in $(seq 1 20); do
+  if curl -sf "$CONFIG_BASE/health" >/dev/null 2>&1; then broken_up="yes"; break; fi
+  sleep 0.25
+done
+
+check "a malformed file does not serve stale rails" "no" "$broken_up"
+check "and says which currency it could not read" "yes" \
+  "$(grep -q 'unknown currency ZWL' /tmp/bel-smoke-broken.log && echo yes || echo no)"
+
+kill "$config_pid" 2>/dev/null || true
+wait "$config_pid" 2>/dev/null || true
+config_pid=""
+
 
 # ── One host, many addresses ────────────────────────────────────────────────
 #

@@ -31,8 +31,7 @@ import 'payment_rail.dart';
 final class Market {
   const Market({
     required this.code,
-    required this.nameFr,
-    required this.nameEn,
+    required this.nameKey,
     required this.currency,
     required this.msisdn,
     required this.timeZone,
@@ -46,8 +45,13 @@ final class Market {
   /// ISO 3166-1 alpha-2.
   final String code;
 
-  final String nameFr;
-  final String nameEn;
+  /// Translation-catalog key for the country's name
+  /// (`reference.countries.CG`). The name itself lives in
+  /// `i18n/{lang}/reference/countries.yaml` and never here — a market that
+  /// carried `nameFr` and `nameEn` would be a second place a language is
+  /// enumerated, and would have nothing to say the day a third one arrives
+  /// (ADR-0008).
+  final String nameKey;
 
   /// XAF here — and it is zero-decimal, which is the most consequential fact
   /// about money in this market.
@@ -111,8 +115,7 @@ final class Market {
 
   static const congoBrazzaville = Market(
     code: 'CG',
-    nameFr: 'République du Congo',
-    nameEn: 'Republic of the Congo',
+    nameKey: 'reference.countries.CG',
     currency: Currency.xaf,
     msisdn: MsisdnPrefixTable.congoBrazzaville,
     timeZone: 'Africa/Brazzaville',
@@ -148,7 +151,16 @@ final class Market {
         enabled: false,
         disabledReasonKey: 'payment.rail.comingSoon',
       ),
-      PaymentRail(id: 'cg.card', kind: PaymentRailKind.card),
+      // Off for the same reason Orange Money is, and it must *say* so: the
+      // fallback and `config/markets.yaml` are checked against each other, and
+      // a rail this offered but the file did not would be one a fresh clone
+      // could tap and a deployment could not.
+      PaymentRail(
+        id: 'cg.card',
+        kind: PaymentRailKind.card,
+        enabled: false,
+        disabledReasonKey: 'payment.rail.comingSoon',
+      ),
       PaymentRail(id: 'cg.cash', kind: PaymentRailKind.cash),
     ],
   );
@@ -156,9 +168,14 @@ final class Market {
   /// Every market the platform serves. Exactly one, on purpose.
   static const all = <Market>[congoBrazzaville];
 
-  /// There is no market picker. Until a second country exists, resolution is a
-  /// constant — and saying so in code is more honest than a lookup that can
-  /// only ever return one answer.
+  /// The **compiled-in fallback**, not the authority.
+  ///
+  /// The server resolves the live market from `config/markets.yaml` at
+  /// startup and serves it from `/public/v1/market`, so enabling a rail or
+  /// fixing a renumbered prefix is a config push rather than a release
+  /// (ADR-0006). This constant is what runs when that file is absent — a
+  /// fresh clone, a unit test, an app that has not reached the network yet —
+  /// so nothing is ever rail-less on first launch.
   static const current = congoBrazzaville;
 
   static Market? byCode(String code) {

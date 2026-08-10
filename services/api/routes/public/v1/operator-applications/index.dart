@@ -5,7 +5,6 @@ import 'package:bel_api/src/composition.dart';
 import 'package:bel_api/src/middleware/problem.dart';
 import 'package:bel_api/src/ports/auth_gateway.dart';
 import 'package:bel_contracts/bel_contracts.dart';
-import 'package:bel_domain/bel_domain.dart';
 import 'package:dart_frog/dart_frog.dart';
 
 /// `/public/v1/operator-applications` — self-signup (§2.1, §2.2).
@@ -89,7 +88,7 @@ Future<Response> _start(
   final started = await applications.start(
     userId: userId,
     legalName: legalName,
-    marketCode: Market.current.code,
+    marketCode: context.read<Services>().market.code,
   );
 
   return started.fold(

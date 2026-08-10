@@ -96,8 +96,7 @@ void main() {
 
     const drc = Market(
       code: 'CD',
-      nameFr: 'République démocratique du Congo',
-      nameEn: 'Democratic Republic of the Congo',
+      nameKey: 'reference.countries.CD',
       currency: Currency.cdf,
       msisdn: drcPrefixes,
       timeZone: 'Africa/Kinshasa',

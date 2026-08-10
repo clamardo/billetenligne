@@ -133,7 +133,7 @@ Future<Response> _counterSale(
   final phone = body['buyerPhone'];
   if (phone is! String) return _badRequest(trace, 'buyerPhone');
 
-  final number = PhoneNumber.parse(phone);
+  final number = PhoneNumber.parse(phone, table: services.market.msisdn);
   if (number case Err(:final failure)) {
     return _error(HttpStatus.badRequest, failure.code, trace);
   }

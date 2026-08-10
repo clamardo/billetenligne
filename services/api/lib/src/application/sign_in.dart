@@ -156,6 +156,7 @@ final class SignIn {
     this.maxAttempts = 5,
     this.sourceWindow = const Duration(hours: 1),
     this.maxPerSource = 30,
+    this.msisdn = MsisdnPrefixTable.congoBrazzaville,
   }) : _challenges = challenges,
        _directory = directory,
        _notifications = notifications,
@@ -167,6 +168,13 @@ final class SignIn {
        // generator is predictable from a handful of observations, and the
        // observations are free: anyone can ask for a code.
        _random = random ?? Random.secure();
+
+  /// How a typed number becomes an MSISDN: dialling code, national length and
+  /// the carrier prefixes. Injected rather than taken from the default,
+  /// because the table is configuration (`config/markets.yaml`, ADR-0005) —
+  /// a carrier that renumbers must not need a release before its subscribers
+  /// can sign in.
+  final MsisdnPrefixTable msisdn;
 
   final AuthChallenges _challenges;
   final UserDirectory _directory;
@@ -418,7 +426,7 @@ final class SignIn {
 
   Result<(String, String, SignInChannel), SignInFailure> _normalisePhone(
     String raw,
-  ) => PhoneNumber.parse(raw).fold(
+  ) => PhoneNumber.parse(raw, table: msisdn).fold(
     (phone) => Ok((phone.e164, _maskPhone(phone), SignInChannel.phone)),
     (failure) => Err(UnusableAddress(failure)),
   );

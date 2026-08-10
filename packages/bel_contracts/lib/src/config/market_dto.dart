@@ -205,7 +205,7 @@ final class MarketDto {
   factory MarketDto.fromDomain(Market m, {List<String>? signInChannels}) =>
       MarketDto(
         code: m.code,
-        nameKey: 'reference.countries.${m.code}',
+        nameKey: m.nameKey,
         currency: m.currency.code,
         currencyExponent: m.currency.exponent,
         diallingCode: m.diallingCode,

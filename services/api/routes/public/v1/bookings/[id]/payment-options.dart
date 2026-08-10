@@ -52,10 +52,13 @@ Future<Response> onRequest(RequestContext context, String id) async {
   // refused by the rail, and the app says which before anything is sent.
   final ownCarrier = account?.phone == null
       ? null
-      : PhoneNumber.parse(account!.phone!).valueOrNull?.operator;
+      : PhoneNumber.parse(
+          account!.phone!,
+          table: services.market.msisdn,
+        ).valueOrNull?.operator;
   final recommendedRail = ownCarrier == null
       ? null
-      : Market.current.railForOperator(ownCarrier)?.id;
+      : services.market.railForOperator(ownCarrier)?.id;
 
   final options = <PaymentOptionDto>[];
   for (final a in accounts) {
@@ -63,14 +66,15 @@ Future<Response> onRequest(RequestContext context, String id) async {
     // is worse than absent: it is a button that takes a PIN and loses it.
     if (!services.railIds.contains(a.railId)) continue;
 
-    final rail = _railFor(a.railId);
+    final rail = services.market.railById(a.railId);
 
-    // A rail the compiled-in market does not describe is still offered, and
+    // A rail the configured market does not describe is still offered, and
     // that is deliberate: ADR-0006 makes this list server-driven precisely so
-    // a rail can be added without an app release, and gating it on a constant
-    // in the binary would defeat that. The market entry supplies the label
-    // and the USSD fallback when there is one; without it the rail id is the
-    // key, which the catalog can grow an entry for at any time.
+    // a rail can be added without an app release, and gating it on the file
+    // would put a verified account behind a config push. The market entry
+    // supplies the label and the USSD fallback when there is one; without it
+    // the rail id is the key, which the catalog can grow an entry for at any
+    // time.
     if (rail != null && !rail.enabled) continue;
 
     options.add(
@@ -106,13 +110,6 @@ Future<Response> onRequest(RequestContext context, String id) async {
       HttpHeaders.cacheControlHeader: 'private, no-store',
     },
   );
-}
-
-PaymentRail? _railFor(String railId) {
-  for (final rail in Market.current.rails) {
-    if (rail.id == railId) return rail;
-  }
-  return null;
 }
 
 Response _error(int status, ApiError error, String trace) => Response.json(

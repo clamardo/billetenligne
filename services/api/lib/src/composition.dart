@@ -39,6 +39,7 @@ import 'application/reserve_booking.dart';
 import 'application/search_departures.dart';
 import 'application/second_factor_sign_in.dart';
 import 'application/sign_in.dart';
+import 'infrastructure/config/market_catalog.dart';
 import 'infrastructure/db/database.dart';
 import 'infrastructure/memory/memory_booking_store.dart';
 import 'infrastructure/memory/memory_operator_directory.dart';
@@ -97,6 +98,7 @@ final class Services {
     required this.payments,
     required this.payForBooking,
     required this.railIds,
+    required this.market,
     required this.authGateway,
     required this.directory,
     required this.catalogue,
@@ -188,6 +190,15 @@ final class Services {
   /// cannot reach is absent rather than present-and-broken.
   final Set<String> railIds;
 
+  /// The country this deployment serves, read from `config/markets.yaml` at
+  /// startup rather than compiled in (ADR-0006).
+  ///
+  /// Every handler that needs a currency, a dialling code, a service fee or a
+  /// rail list reads it from here — `Market.current` is now only the fallback
+  /// that runs when there is no file. That is the whole difference between
+  /// enabling Orange Money with a config push and enabling it with a release.
+  final Market market;
+
   /// Who the caller is. Firebase behind a real database, a deterministic fake
   /// otherwise — the same condition under which the inventory is a fake, so a
   /// token that works locally is worthless anywhere real.
@@ -220,6 +231,7 @@ final class Services {
     Clock clock = const SystemClock(),
   }) {
     final env = environment ?? Platform.environment;
+    final market = marketCatalog(env).defaultMarket;
     final url = env['DATABASE_URL'];
 
     if (url == null || url.isEmpty) {
@@ -228,10 +240,7 @@ final class Services {
 
     final db = Database.open(url);
     final inventory = PostgresSeatInventory(db);
-    final catalogue = PostgresDepartureCatalogue(
-      db,
-      timeZone: Market.current.timeZone,
-    );
+    final catalogue = PostgresDepartureCatalogue(db, timeZone: market.timeZone);
 
     final directory = PostgresUserDirectory(db);
 
@@ -241,11 +250,11 @@ final class Services {
     // not something to fetch per request.
     final bookings = PostgresBookingStore(db, issuer: _ticketIssuer);
     final paymentStore = PostgresPaymentStore(db);
-    final rails = _railsFrom(env);
+    final rails = _railsFrom(env, market);
 
     return Services._(
-      holdSeats: HoldSeats(inventory: inventory),
-      searchDepartures: SearchDepartures(catalogue: catalogue),
+      holdSeats: HoldSeats(inventory: inventory, market: market),
+      searchDepartures: SearchDepartures(catalogue: catalogue, market: market),
       signIn: SignIn(
         challenges: PostgresAuthChallenges(db),
         // Tunable without a deploy, like `max_attempts` is a column rather
@@ -259,6 +268,7 @@ final class Services {
         mac: const HmacSha256Authenticator(),
         codeKey: _codeKey(env),
         clock: clock,
+        msisdn: market.msisdn,
       ),
       // Shares `_codeKey` with the sign-in above on purpose: both sign a
       // short-lived claim about the same person, minutes apart, and a second
@@ -270,9 +280,9 @@ final class Services {
         signingKey: _codeKey(env),
         clock: clock,
       ),
-      reserveBooking: ReserveBooking(bookings: bookings),
+      reserveBooking: ReserveBooking(bookings: bookings, market: market),
       bookings: bookings,
-      console: PostgresOperatorConsole(db, timeZone: Market.current.timeZone),
+      console: PostgresOperatorConsole(db, timeZone: market.timeZone),
       disruptions: PostgresDisruptions(db, issuer: _ticketIssuer),
       payouts: PostgresPayouts(db),
       platform: PostgresPlatformConsole(db),
@@ -285,6 +295,7 @@ final class Services {
       storage: AzureBlobStore.fromEnvironment(env) ?? MemoryObjectStore(),
       payments: paymentStore,
       payForBooking: PayForBooking(
+        market: market,
         payments: paymentStore,
         bookings: bookings,
         // The commission is a term of one operator's contract, so it is read
@@ -293,6 +304,7 @@ final class Services {
         gateways: rails,
       ),
       railIds: rails.keys.toSet(),
+      market: market,
       authGateway: FirebaseAuthGateway(
         config: FirebaseConfig.fromEnvironment(env),
         directory: directory,
@@ -334,6 +346,7 @@ final class Services {
     NotificationGateway? notifications,
     Map<String, String>? environment,
   }) {
+    final market = marketCatalog(environment).defaultMarket;
     final inventory = MemorySeatInventory(
       clock: clock,
       departures:
@@ -372,8 +385,8 @@ final class Services {
     );
 
     return Services._(
-      holdSeats: HoldSeats(inventory: inventory),
-      searchDepartures: SearchDepartures(catalogue: catalogue),
+      holdSeats: HoldSeats(inventory: inventory, market: market),
+      searchDepartures: SearchDepartures(catalogue: catalogue, market: market),
       signIn: SignIn(
         challenges: MemoryAuthChallenges(clock: clock),
         directory: directory,
@@ -389,6 +402,7 @@ final class Services {
         // real one does. A fake that is more permissive than the server is a
         // fake that lets a limit ship untested.
         maxPerSource: _maxPerSource(environment ?? Platform.environment),
+        msisdn: market.msisdn,
       ),
       secondFactor: SecondFactorSignIn(
         factors: MemorySecondFactors(now: clock.now),
@@ -396,7 +410,7 @@ final class Services {
         signingKey: _developmentCodeKey,
         clock: clock,
       ),
-      reserveBooking: ReserveBooking(bookings: memoryBookings),
+      reserveBooking: ReserveBooking(bookings: memoryBookings, market: market),
       bookings: memoryBookings,
       console: const UnavailableOperatorConsole(),
       disruptions: const UnavailableDisruptionDesk(),
@@ -407,6 +421,7 @@ final class Services {
       storage: MemoryObjectStore(),
       payments: memoryPayments,
       payForBooking: PayForBooking(
+        market: market,
         payments: memoryPayments,
         bookings: memoryBookings,
         // The demo operator on the seed rate. A real one has negotiated.
@@ -427,6 +442,7 @@ final class Services {
         },
       ),
       railIds: const {'cg.fake_money'},
+      market: market,
       // A demo traveller, so a fresh clone can hold a seat without standing up
       // Firebase first — and a fake, so this token cannot reach a real
       // database even by accident.
@@ -531,11 +547,6 @@ final class Services {
     };
   }
 
-  /// Loaded once, from disk.
-  ///
-  /// `BEL_I18N_DIR` because the working directory differs between `dart_frog
-  /// dev`, `dart test` and a built binary, and a catalog that resolves in one
-  /// of those and not the others is a feature that works until it is deployed.
   /// The rails this deployment can actually collect on.
   ///
   /// Credentials-driven, not a compiled-in list: a rail with no credentials is
@@ -543,7 +554,15 @@ final class Services {
   /// Orange Money a config push rather than a release (ADR-0006). The map is
   /// also what the payment options endpoint intersects with the operator's
   /// verified accounts, so a rail we cannot reach is never offered.
-  static Map<String, PaymentGateway> _railsFrom(Map<String, String> env) {
+  ///
+  /// Two halves of the same switch, deliberately kept apart: `markets.yaml`
+  /// says a rail is *offered*, credentials say it can be *collected on*, and a
+  /// rail needs both. Announcing one we hold no keys for would put a tile on
+  /// the payment screen that fails on tap.
+  static Map<String, PaymentGateway> _railsFrom(
+    Map<String, String> env,
+    Market market,
+  ) {
     final rails = <String, PaymentGateway>{};
 
     final mtnKey = env['MTN__SUBSCRIPTIONKEY'] ?? '';
@@ -568,8 +587,8 @@ final class Services {
         ),
         clientId: airtelId,
         clientSecret: env['AIRTEL__CLIENTSECRET'] ?? '',
-        country: Market.current.code,
-        currency: Market.current.currency.code,
+        country: market.code,
+        currency: market.currency.code,
       );
     }
 
@@ -589,9 +608,31 @@ final class Services {
   /// resolved because key generation is async and composition is not.
   static final TicketIssuer _ticketIssuer = _LazyTicketIssuer();
 
+  /// Loaded once, from disk.
+  ///
+  /// `BEL_I18N_DIR` because the working directory differs between `dart_frog
+  /// dev`, `dart test` and a built binary, and a catalog that resolves in one
+  /// of those and not the others is a feature that works until it is deployed.
   static final TranslationCatalog _catalog = CatalogLoader.fromDirectory(
     Platform.environment['BEL_I18N_DIR'] ?? _findI18nDirectory(),
   );
+
+  /// The markets this deployment serves, read once from `config/markets.yaml`.
+  ///
+  /// Cached in a static because composition runs per process, not per request
+  /// — and because a rail list that could change between pricing a booking
+  /// and charging for it would be worse than one compiled in.
+  static MarketCatalog? _markets;
+
+  /// Reads and validates `config/markets.yaml`, once per process.
+  ///
+  /// Public because `main.dart` calls it before the socket opens: a malformed
+  /// file must stop the deploy rather than let an instance come up healthy
+  /// and serve the rails of the release before it.
+  static MarketCatalog marketCatalog([Map<String, String>? environment]) =>
+      _markets ??= MarketCatalog.load(
+        environment: environment ?? Platform.environment,
+      );
 
   /// Walks up from the current directory looking for the catalog. Ugly, and
   /// the alternative is every entry point knowing how deep it is in the tree.

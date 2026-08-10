@@ -69,7 +69,13 @@ Future<Response> onRequest(RequestContext context) async {
       if (body['materialise'] == true) {
         return _materialise(console, scope, body, trace);
       }
-      return _save(console, scope, body, trace);
+      return _save(
+        console,
+        context.read<Services>().market,
+        scope,
+        body,
+        trace,
+      );
 
     default:
       return Response(statusCode: HttpStatus.methodNotAllowed);
@@ -78,6 +84,7 @@ Future<Response> onRequest(RequestContext context) async {
 
 Future<Response> _save(
   dynamic console,
+  Market market,
   TenantScope scope,
   Map<String, Object?> body,
   String trace,
@@ -123,7 +130,7 @@ Future<Response> _save(
     routeId: routeId,
     recurrence: recurrence.valueOrNull!,
     departureTime: time,
-    fare: Money(fareMinor, Market.current.currency),
+    fare: Money(fareMinor, market.currency),
     validFrom: from,
     id: body['id'] as String?,
     vehicleId: body['vehicleId'] as String?,
