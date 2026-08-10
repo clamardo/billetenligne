@@ -1,4 +1,5 @@
 import '../json/json_codec.dart';
+import 'operator_lifecycle.dart';
 
 /// An operator, as our own back office lists them.
 ///
@@ -83,13 +84,14 @@ final class AdminOperatorDto {
       );
 
   /// The lifecycle states a reviewer has to act on.
-  bool get isPending => const {
-    'registered',
-    'application_draft',
-    'under_review',
-    'kyb_verifying',
-    'info_requested',
-  }.contains(status);
+  ///
+  /// Named here as well as on [OperatorLifecycle] because the queue screen
+  /// sends exactly this list as its filter, and one table shared by the
+  /// server's SQL guard and the client's filter is one table that cannot
+  /// disagree with itself.
+  static const pendingStatuses = OperatorLifecycle.pending;
+
+  bool get isPending => pendingStatuses.contains(status);
 }
 
 final class KybDocumentDto {
@@ -272,6 +274,11 @@ final class AdminIdentityDto {
 
   final String? email;
   final String? fullName;
+
+  /// The same shape `ConsoleIdentityDto` offers, so a screen written against
+  /// one reads the same as a screen written against the other. A hint for
+  /// drawing navigation — never the thing that decides.
+  bool can(String capability) => capabilities.contains(capability);
 
   Map<String, Object?> toJson() => Wire.compact({
     'userId': userId,

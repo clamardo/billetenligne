@@ -37,6 +37,14 @@ scripts:
       its own verdict proves nothing.
     run: melos exec --scope=bel_scanner -- flutter test
 
+  test:apps:
+    description: >-
+      The three Flutter surfaces: the traveller funnel, the operator console
+      and the back office. Widget tests rather than goldens — what they guard
+      is behaviour a screenshot cannot see, like the back office refusing
+      every write until somebody has stated a reason.
+    run: melos exec --scope="bel_traveller,bel_console,bel_admin" -- flutter test
+
   test:design:
     description: >-
       Kilo contrast gates. Accessibility is a build gate, not a review comment.
@@ -64,6 +72,7 @@ scripts:
       melos run test:domain && \
       melos run test:api && \
       melos run test:design && \
+      melos run test:apps && \
       melos run test:scanner && \
       melos run smoke:api && \
       melos run test:schema

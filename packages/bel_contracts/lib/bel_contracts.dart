@@ -15,6 +15,7 @@
 library;
 
 export 'src/admin/admin_dto.dart';
+export 'src/admin/operator_lifecycle.dart';
 export 'src/admin/reconciliation_dto.dart';
 export 'src/auth/auth_dto.dart';
 export 'src/booking/booking_dto.dart';

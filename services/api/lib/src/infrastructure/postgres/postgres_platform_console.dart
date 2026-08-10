@@ -1,3 +1,4 @@
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart' hide Result;
 
@@ -23,33 +24,14 @@ final class PostgresPlatformConsole implements PlatformConsole {
 
   /// Which states a decision may be taken from.
   ///
-  /// `03-operator-lifecycle.md` §1, as a table rather than as a chain of ifs.
-  /// Approving something already active is not a no-op — it is a sign the
-  /// reviewer is looking at the wrong row.
-  static const _from = <OperatorDecision, List<String>>{
-    OperatorDecision.approve: [
-      'registered',
-      'application_draft',
-      'under_review',
-      'kyb_verifying',
-      'info_requested',
-    ],
-    OperatorDecision.activate: ['approved'],
-    OperatorDecision.requestInfo: [
-      'registered',
-      'under_review',
-      'kyb_verifying',
-    ],
-    OperatorDecision.reject: [
-      'registered',
-      'application_draft',
-      'under_review',
-      'kyb_verifying',
-      'info_requested',
-    ],
-    OperatorDecision.suspend: ['approved', 'active'],
-    OperatorDecision.reinstate: ['suspended'],
-  };
+  /// The table lives in `bel_contracts` because the back office greys the
+  /// same buttons this guard refuses, and a screen whose affordances disagree
+  /// with the server is a screen that produces 409s nobody can explain.
+  /// **This is still the authority** — the SQL below is conditional on it, so
+  /// two reviewers approving one application at the same moment produce one
+  /// approval.
+  static List<String> _from(OperatorDecision decision) =>
+      OperatorLifecycle.allowedFrom[decision.name]!.toList();
 
   static const _summaryColumns = '''
     o.id, o.code, o.legal_name, o.trading_name, o.market_code,
@@ -212,7 +194,7 @@ final class PostgresPlatformConsole implements PlatformConsole {
         'id': TypedValue(Type.uuid, operatorId),
         'to': TypedValue(Type.text, decision.status),
         'reason': TypedValue(Type.text, reason),
-        'from': TypedValue(Type.textArray, _from[decision]!),
+        'from': TypedValue(Type.textArray, _from(decision)),
       },
     );
 

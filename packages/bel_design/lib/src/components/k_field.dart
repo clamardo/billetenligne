@@ -20,6 +20,7 @@ final class KField extends StatelessWidget {
     this.enabled = true,
     this.autofocus = false,
     this.maxLength,
+    this.maxLines = 1,
     super.key,
   });
 
@@ -34,6 +35,11 @@ final class KField extends StatelessWidget {
   final bool enabled;
   final bool autofocus;
   final int? maxLength;
+
+  /// More than one turns this into a note field. The back office needs one:
+  /// "say exactly what is missing" does not fit on a line, and a reviewer who
+  /// cannot see what they typed writes less of it.
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -60,6 +66,7 @@ final class KField extends StatelessWidget {
             ),
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (prefix != null)
                 Padding(
@@ -74,6 +81,7 @@ final class KField extends StatelessWidget {
                   keyboardType: keyboardType,
                   onChanged: onChanged,
                   maxLength: maxLength,
+                  maxLines: maxLines,
                   style: kilo.text.bodyLg,
                   decoration: InputDecoration(
                     hintText: hint,

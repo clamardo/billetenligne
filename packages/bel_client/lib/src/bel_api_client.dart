@@ -417,6 +417,104 @@ final class BelApiClient {
     }, idempotencyKey: idempotencyKey ?? IdempotencyKey.generate()),
   );
 
+  // ── Back office ───────────────────────────────────────────────────────────
+
+  /// Every call below carries [BelHeaders.reason].
+  ///
+  /// Not a nicety: the admin middleware refuses a mutation without it with a
+  /// 400, and records it against the actor on every read. The parameter is
+  /// therefore required on writes and defaulted on reads — a queue that
+  /// cannot be listed without typing a sentence is a queue nobody works, and
+  /// the actor and the subject are recorded either way.
+  Future<AdminIdentityDto> adminIdentity() async =>
+      AdminIdentityDto.fromJson(await _get('/admin/v1/me'));
+
+  /// The review queue. Empty [statuses] means everybody.
+  Future<List<AdminOperatorDto>> adminOperators({
+    Set<String> statuses = const {},
+    String? reason,
+  }) async => Wire.readList(
+    (await _get(
+      '/admin/v1/operators',
+      query: statuses.isEmpty ? null : {'status': statuses.join(',')},
+      reason: reason,
+    ))['items'],
+    AdminOperatorDto.fromJson,
+    field: 'items',
+  );
+
+  /// One operator's file: the agreement, the documents and the trail.
+  Future<AdminOperatorDetailDto> adminOperator(
+    String id, {
+    String? reason,
+  }) async => AdminOperatorDetailDto.fromJson(
+    await _get('/admin/v1/operators/$id', reason: reason),
+  );
+
+  /// approve · activate · requestInfo · reject · suspend · reinstate.
+  ///
+  /// **Never retried.** A 409 means this operator has moved on since the
+  /// screen was drawn, and repeating the request cannot help — it can only
+  /// hide from the reviewer that they were looking at a stale row.
+  Future<AdminOperatorDto> decideOperator({
+    required String id,
+    required String decision,
+    required String reason,
+    String? detail,
+  }) async => AdminOperatorDto.fromJson(
+    await _postJson('/admin/v1/operators/$id/decision', {
+      'decision': decision,
+      'reason': reason,
+      if (detail != null) 'detail': detail,
+    }, reason: reason),
+  );
+
+  /// What this client negotiated, in basis points.
+  Future<AdminOperatorDto> setOperatorCommission({
+    required String id,
+    required int commissionBps,
+    required String reason,
+  }) async => AdminOperatorDto.fromJson(
+    await _send(
+      'PUT',
+      '/admin/v1/operators/$id/commission',
+      body: {'commissionBps': commissionBps, 'reason': reason},
+      reason: reason,
+    ).then((body) => body ?? const {}),
+  );
+
+  /// Payments the rail never settled (ADR-0005). Longest-waiting first.
+  Future<List<UnresolvedPaymentDto>> unresolvedPayments({
+    String? reason,
+  }) async => Wire.readList(
+    (await _get('/admin/v1/payments', reason: reason))['items'],
+    UnresolvedPaymentDto.fromJson,
+    field: 'items',
+  );
+
+  /// `reask` · `captured` · `failed` — the queue's only exits.
+  ///
+  /// [reason] is the standing one, sent in the header; [evidence] is what was
+  /// actually seen about *this* payment — a merchant statement line, a
+  /// screenshot of a wallet. The server joins them into one `payment_events`
+  /// row, and that row is the only thing that settles a dispute six weeks
+  /// later. They are two parameters because they are two different claims.
+  Future<UnresolvedPaymentDto> resolvePayment({
+    required String intentId,
+    required String outcome,
+    required String reason,
+    String? evidence,
+    String? failureCode,
+  }) async => UnresolvedPaymentDto.fromJson(
+    await _postJson('/admin/v1/payments/$intentId/resolution', {
+      'outcome': outcome,
+      'reason': evidence == null || evidence.trim().isEmpty
+          ? reason
+          : evidence.trim(),
+      if (failureCode != null) 'failureCode': failureCode,
+    }, reason: reason),
+  );
+
   // ── Plumbing ──────────────────────────────────────────────────────────────
 
   static String _isoDate(DateTime d) =>
@@ -434,12 +532,14 @@ final class BelApiClient {
     String path,
     Map<String, Object?> body, {
     String? idempotencyKey,
+    String? reason,
   }) async {
     final result = await _send(
       'POST',
       path,
       body: body,
       idempotencyKey: idempotencyKey,
+      reason: reason,
       idempotent: idempotencyKey != null,
     );
     return result ?? const {};
@@ -448,8 +548,15 @@ final class BelApiClient {
   Future<Map<String, Object?>> _get(
     String path, {
     Map<String, String>? query,
+    String? reason,
   }) async {
-    final body = await _send('GET', path, query: query, idempotent: true);
+    final body = await _send(
+      'GET',
+      path,
+      query: query,
+      reason: reason,
+      idempotent: true,
+    );
     return body ?? const {};
   }
 
@@ -475,6 +582,7 @@ final class BelApiClient {
     Map<String, String>? query,
     Map<String, Object?>? body,
     String? idempotencyKey,
+    String? reason,
     bool idempotent = false,
   }) async {
     final uri = _base.replace(
@@ -487,6 +595,8 @@ final class BelApiClient {
       BelHeaders.language: language,
       if (body != null) 'Content-Type': 'application/json',
       if (idempotencyKey != null) BelHeaders.idempotencyKey: idempotencyKey,
+      if (reason != null && reason.trim().isNotEmpty)
+        BelHeaders.reason: reason.trim(),
       if (appVersion != null) BelHeaders.appVersion: appVersion!,
       if (deviceId != null) BelHeaders.deviceId: deviceId!,
     };

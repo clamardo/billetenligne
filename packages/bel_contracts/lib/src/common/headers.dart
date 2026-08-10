@@ -22,6 +22,14 @@ final class BelHeaders {
   /// resolves authoritatively from the account.
   static const market = 'X-Market';
 
+  /// Why one of our own people is reaching across a tenant boundary.
+  ///
+  /// Required on every write to `/admin/v1` and recorded on every read
+  /// (ADR-0011). It lives here rather than only in the server so that the
+  /// back office and the middleware cannot disagree about its spelling — a
+  /// disagreement whose symptom is a 400 nobody can explain.
+  static const reason = 'X-Bel-Reason';
+
   static const appVersion = 'X-App-Version';
   static const deviceId = 'X-Device-Id';
 }

@@ -34,7 +34,9 @@ Handler middleware(Handler handler) => handler.use(_platformScope());
 /// *actor* on every row, which is the part that cannot be reconstructed.
 const defaultReadReason = 'back office review';
 
-const reasonHeader = 'X-Bel-Reason';
+/// Spelled once, in the contracts package, so the back office and this
+/// middleware cannot disagree about it.
+const reasonHeader = BelHeaders.reason;
 
 Middleware _platformScope() =>
     (handler) => (context) async {
