@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-09 · after commit *The traveller can now pay*
+**Updated:** 2026-08-09 · after commit *The operator console, as an app*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -48,7 +48,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Traveller app — reserve and pay | ✅ done | Passenger names → payment code → agency. 54 app tests |
 | Traveller app — tickets and history | ⬜ not started | The list endpoint exists; the screens do not |
 | **Operator console — API** | ✅ done | Fleet, routes, timetables, materialisation, guichet, manifests |
-| Operator console — the app itself | ⬜ not started | **The largest remaining gap.** Every endpoint it needs exists and is tested; nobody can click any of them |
+| **Operator console — the app** | ✅ done | Flutter web. Fleet, routes, timetables, the dispatcher's day, the guichet, manifests. 11 tests |
 | Admin back office | ⬜ not started | |
 | Operator onboarding + approval queue | ⬜ not started | Designed in `03-operator-lifecycle.md` |
 | Refund policy wizard + execution | ⬜ not started | Domain policy engine is built and tested |
@@ -92,16 +92,27 @@ These are true today and each one is a decision, not an oversight.
    under the 160-character gate. What is missing is a provisioned ACS sender
    number, so `COMMS__SMSFROM` is blank and the API answers 503 for that
    channel rather than accepting it and leaving somebody waiting (ADR-0024).
-6. **Nobody can use the operator console.** Every endpoint exists, is
-   scoped, capability-checked and covered by integration tests — and there is
-   no app in front of them. An operator cannot add a coach without curl,
-   which means the pilot is blocked on a Flutter web build and nothing else.
-7. **A confirmed booking's ticket never reaches a screen.** It is issued,
+6. **The console signs in with a one-time code, not a password and TOTP.**
+   ADR-0013 specifies email + password + mandatory TOTP for back office. The
+   deviation is documented in `apps/console/lib/src/presentation/sign_in.dart`
+   and the reasoning is sequencing: today's console configures a fleet and
+   sells a ticket, while settlement accounts, payout approval and refunds
+   above a cap — the things that ADR protects — do not exist as endpoints at
+   all. **TOTP lands before they do.** If refunds ship first, that comment is
+   the bug report.
+
+7. **The seat-layout section builder is not built.** Four presets cover what
+   actually runs in Congo and picking one takes ninety seconds, which is the
+   path most operators take anyway (`06-fleet-and-routes.md` §3.2). An
+   operator whose coach matches no preset can adjust the row count and no
+   more. Named on the screen rather than hidden behind a control that does
+   nothing.
+8. **A confirmed booking's ticket never reaches a screen.** It is issued,
    signed, stored and queued for SMS. The traveller app shows a payment code
    and then has nowhere to go: no ticket screen, no booking history. The
    endpoint (`GET /public/v1/bookings`) is there and typed in `bel_client`.
 
-8. **The catalog is copied, not shared, into the apps.** `bel_localization` is
+9. **The catalog is copied, not shared, into the apps.** `bel_localization` is
    pure Dart — the API imports it — so it cannot declare Flutter assets, and
    Flutter refuses `..` in asset paths. `tool/sync_i18n.sh` copies it and
    `i18n_freshness_test` fails the build if a copy drifts.
@@ -122,8 +133,10 @@ dart test packages/bel_client                           # 32 tests
 dart test services/api -x integration                   # 131 tests
 cd packages/bel_design && flutter test   # 58 component and contrast tests
 cd apps/traveller && flutter test        # 54 app tests
+cd apps/console   && flutter test        # 11 console tests
+cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 162 files
+dart run tool/check_layers.dart          # the onion rule, 178 files
 ./infra/migrations/check.sh              # 26 schema guarantees
 ./tool/integration.sh                    # 71 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 72 checks, incl. the Dart client
@@ -133,7 +146,7 @@ Remove `services/api/build` before counting: `dart_frog build` copies the
 whole workspace into it, and `dart test services/api` then runs every suite
 twice and reports 414.
 
-**515 tests in total**, plus 72 smoke checks and 26 executed schema
+**525 tests in total**, plus 72 smoke checks and 26 executed schema
 guarantees. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
@@ -142,6 +155,21 @@ the screens render. Both halves of that seam have broken here before.
 ---
 
 ## What the last pushes changed, and what they cost
+
+Seven commits: identity, cities, money, the console's API, the worker, the
+traveller's payment screen, and the console itself. **An operator can now put
+a coach on a road and take cash for it without touching curl**, which is the
+first time that has been true.
+
+The first `flutter build web` earned its keep immediately. `bel_localization`
+fingerprinted its catalog with 64-bit FNV-1a, which ran correctly on the
+server, in the workers and under `dart test`, and which dart2js refuses
+outright — an int is a double in JavaScript and `0xcbf29ce484222325` cannot be
+represented exactly. That package is imported by the server *and* three
+Flutter apps, one of which is now a web build, so the constraint is permanent
+and there is a test asserting the hash width so it cannot come back.
+
+## What the six before that changed
 
 Six commits: identity, cities, money, the console's API, the worker, and
 the traveller's payment screen. The build went from "a traveller can hold a

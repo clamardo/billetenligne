@@ -15,15 +15,15 @@ Search → Seat map → Hold → Sign in → Book → Pay → Ticket → Board
   ✅        ✅        ✅       ✅       ✅     ✅      ✅       ✅
 ```
 
-**Every box is ticked, and the pilot still cannot run.** That sentence is the honest state of this project and it is worth sitting with rather than explaining away.
+**Phase 1 is functionally complete.** A traveller signs in with an emailed code, holds a seat, names their passengers, gets a payment code, walks into an agency, a vendor takes the cash at a real till, the ledger balances, a signed ticket is issued and queued for delivery, and a conductor scans it offline. An operator draws a seat layout, adds a coach, opens a route, publishes a timetable and prints a manifest — in a browser, with no curl anywhere.
 
-The funnel is complete end to end: a traveller signs in with an emailed code, holds a seat, names their passengers, gets a payment code, walks into an agency, a vendor takes the cash, the ledger balances, a signed ticket is issued and queued for delivery, and a conductor scans it offline. Every step of that is executed by a test against real Postgres.
+Every step of that is executed by a test, most of them against real Postgres.
 
-What is missing is not a step in the funnel. It is that **an operator cannot reach any of it without curl.** Every console endpoint exists — fleet, routes, timetables, materialisation, the guichet, manifests — scoped, capability-checked and covered. There is no app in front of them.
+What remains before a pilot is **commercial, not technical**, which is what this roadmap said in its first line and is now literally true: an anchor operator has to sign, and somebody has to sit with them while they configure their fleet.
 
 **Done:** the domain, the schema with its tenancy and ledger guarantees, the public sales boundary, the whole traveller API surface, email sign-in, booking and cash payment with double-entry postings, ticket issuing, the operator console's API, `services/worker`, the typed client, the Kilo component library, the traveller app through to a payment code, the standalone boarding scanner, and CI that executes all of it.
 
-515 tests · 72 smoke checks · 26 executed schema guarantees · 71 of those tests against real Postgres.
+525 tests · 72 smoke checks · 26 executed schema guarantees · 71 of those tests against real Postgres.
 
 ---
 
@@ -64,21 +64,21 @@ Ships without a PSP. The point is to prove inventory, ticketing, boarding and th
 - ✅ **Ticket issuing** — Ed25519, under 300 bytes, inside the capture
 - ✅ **The operator console's API** — fleet, routes, timetables and the materialisation the pilot was blocked on
 - ✅ **`services/worker`** — the outbox drain that delivers a ticket, and three sweepers that are deliberately not guarantees
+- ✅ **The operator console** — Flutter web: fleet, routes, timetables, the dispatcher's day, the guichet, manifests
 
 ### Remaining, in dependency order
 
-**1. The operator console, as an app.**
-Flutter web. Sign-in, the fleet screens with the cabin-section designer and its presets, routes, the timetable editor, the dispatcher's day view, the guichet, manifests.
-*This is the only thing between the current build and an operator selling a real seat.* Every endpoint it needs exists and is tested; nobody can click one.
-
-**2. The traveller's tickets and history.**
+**1. The traveller's tickets and history.**
 `GET /public/v1/bookings` is built and typed in `bel_client`. The app shows a payment code and then has nowhere to go — a confirmed booking's QR never reaches a screen.
 
-**3. Operator onboarding and admin approval.**
+**2. Operator onboarding and admin approval.**
 The admin back office, the KYB queue, approval and suspension (`03-operator-lifecycle.md`). Can trail the console: the anchor operator will be onboarded by hand.
 
-**4. The vitrine.**
+**3. The vitrine.**
 Logo, header text, accent from the closed set of eight. Cheap, and it is what makes an operator feel the platform is theirs.
+
+**4. Console hardening: TOTP, and the section builder.**
+The console signs in with a one-time code, and ADR-0013 says back office is email + password + mandatory TOTP. Deliberately sequenced behind the console existing at all, and **it must land before refunds and payouts do** — those are the endpoints that ADR is protecting. The seat-layout section builder is the other half: four presets cover what runs in Congo today, and an operator whose coach matches none of them can only adjust a row count.
 
 **5. Refund policy wizard and cash refunds.**
 The policy engine is built and tested; the wizard and the execution path are not.
@@ -90,6 +90,8 @@ The pass exists and is driven by the console; nothing yet runs it nightly, so a 
 The channel is plumbed and switched off for want of a provisioned ACS sender number. Ships with it: codes are rate-limited per *destination* today — 60 seconds between sends, five attempts per code — which bounds the cost of hammering one address, and nothing yet bounds one host asking for codes to a thousand different addresses. Every one of those is a message we pay for, so this is a cost control before it is a security control.
 
 **Exit:** the anchor operator sells real seats through our console for real cash, and conductors board with our scanner. *Revenue: zero. Learning: maximum.*
+
+Everything that exit requires is now built. What is left is a signature.
 
 **In parallel, from now:** Airtel and MTN merchant paperwork, the Orange Money conversation, the anchor operator LOI. **This is the actual critical path and no amount of engineering shortens it.**
 
@@ -169,7 +171,8 @@ Each is reasonable, and each would dilute the one thing that has to be excellent
 | Travellers do not trust prepayment | Funnel drop at the payment screen | SMS receipts, honest scarcity, visible refund policy, cash retained | Design done; unproven |
 | Disruption overwhelms support | Support tickets per disruption | IRROPS is operator self-service and P0 in Phase 2 | Designed, not built |
 | **Nobody has used this on a real network** | — | Phase 3 manual smoke | Everything so far is an emulator on a fast connection |
-| **No operator can configure anything without us** | Time from "yes" to first departure on sale | The console app — roadmap slice 1 | **The build's own bottleneck. Everything else in Phase 1 is done and unusable because of it** |
+| **No operator can configure anything without us** | Time from "yes" to first departure on sale | The console app | **Closed.** An operator configures a fleet and publishes a timetable in a browser |
+| Console auth is single-factor | — | TOTP before refunds and payouts exist (slice 4) | Deliberate and dated. The endpoints ADR-0013 protects are not built |
 | **Sign-in email does not arrive** | Delivery rate per hour, from day one of the pilot | Phone as a second channel — which is why it is plumbed rather than someday (ADR-0024) | **New. Email is now on the critical path of becoming a customer, and it has no fallback yet** |
 
 The first two are commercial, and they are the ones that decide the outcome. Nothing in the engineering backlog above changes either of them.
