@@ -115,7 +115,12 @@ console:
   vitrine:
     title: "Your storefront"
     intro: "This is what a traveller sees before choosing your company. All of it stays editable, forever."
-    logoNotYet: "Logo upload is coming. Until then your initials are drawn in your colour — no storefront is left blank."
+    logoNotYet: "Logo upload is not available on this server. Your initials are drawn in your colour — no storefront is ever left empty."
+    logo: "Logo"
+    logoRules: "PNG, JPEG or SVG. 40 KB maximum, 512 px per side."
+    logoUpload: "Upload"
+    logoReplace: "Replace"
+    logoRemove: "Remove the logo"
     titleFr: "Title (FR)"
     titleEn: "Title (EN)"
     taglineFr: "Tagline (FR)"
@@ -144,6 +149,8 @@ console:
     previewTicket: "At the top of the ticket"
   notice:
     vitrine.saved: "Storefront saved. Travellers will see \"{a1}\"."
+    vitrine.assetSaved: "Image saved. It is on your storefront already."
+    vitrine.assetRemoved: "Image removed. Your initials take its place again."
     layout.saved: "Layout \"{a1}\" saved."
     layout.savedVersion: "Layout \"{a1}\" saved as version {a2} — departures already sold keep the old one."
     vehicle.saved: "Coach {a1} saved."

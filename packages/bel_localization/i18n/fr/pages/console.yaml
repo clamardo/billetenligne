@@ -115,7 +115,12 @@ console:
   vitrine:
     title: "Votre vitrine"
     intro: "C'est ce que voit un voyageur avant de choisir votre compagnie. Tout est modifiable, à tout moment."
-    logoNotYet: "Le téléversement de logo arrive bientôt. En attendant, vos initiales sont dessinées dans votre couleur — aucune vitrine ne reste vide."
+    logoNotYet: "Sur ce serveur, le téléversement de logo n'est pas disponible. Vos initiales sont dessinées dans votre couleur — aucune vitrine ne reste vide."
+    logo: "Logo"
+    logoRules: "PNG, JPEG ou SVG. 40 Ko maximum, 512 px de côté."
+    logoUpload: "Téléverser"
+    logoReplace: "Remplacer"
+    logoRemove: "Retirer le logo"
     titleFr: "Titre (FR)"
     titleEn: "Titre (EN)"
     taglineFr: "Accroche (FR)"
@@ -144,6 +149,8 @@ console:
     previewTicket: "En haut du billet"
   notice:
     vitrine.saved: "Vitrine enregistrée. « {a1} » est ce que verront les voyageurs."
+    vitrine.assetSaved: "Image enregistrée. Elle apparaît déjà sur votre vitrine."
+    vitrine.assetRemoved: "Image retirée. Vos initiales reprennent la place."
     layout.saved: "Plan « {a1} » enregistré."
     layout.savedVersion: "Plan « {a1} » enregistré en version {a2} — les départs déjà vendus gardent l'ancienne."
     vehicle.saved: "Car {a1} enregistré."

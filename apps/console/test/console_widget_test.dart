@@ -3,6 +3,7 @@ import 'package:bel_design/bel_design.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_console/src/application/console_workspace.dart';
 import 'package:bel_console/src/application/ports/console_gateway.dart';
+import 'package:bel_console/src/application/ports/file_picker.dart';
 import 'package:bel_console/src/presentation/app.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
@@ -224,6 +225,24 @@ final class _ScriptedConsole implements ConsoleGateway {
   }
 
   @override
+  Future<VitrineDto> uploadVitrineAsset({
+    required String asset,
+    required List<int> bytes,
+    required String mimeType,
+  }) async {
+    saved.add('upload:$asset:${bytes.length}:$mimeType');
+    return vitrineRow = vitrineRow.withAssetUrls(
+      logoUrl: 'https://storage.test/operators/op-1/logo.png',
+    );
+  }
+
+  @override
+  Future<VitrineDto> removeVitrineAsset(String asset) async {
+    saved.add('remove:$asset');
+    return vitrineRow = vitrineRow.withAssetUrls();
+  }
+
+  @override
   Future<CounterSaleDto> sell({
     required String departureId,
     required String buyerPhone,
@@ -258,8 +277,9 @@ void main() {
 
   Future<ConsoleWorkspace> pump(
     WidgetTester tester,
-    _ScriptedConsole gateway,
-  ) async {
+    _ScriptedConsole gateway, {
+    FilePicker? files,
+  }) async {
     // A realistic agency laptop rather than the 800x600 default. The console
     // is a desktop product and testing it at a phone's width would either
     // fail honestly or push the layout into shapes no operator will see.
@@ -269,7 +289,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
 
-    final workspace = ConsoleWorkspace(gateway: gateway);
+    final workspace = ConsoleWorkspace(gateway: gateway, files: files);
     await tester.pumpWidget(
       ConsoleApp(catalog: catalog, workspace: workspace),
     );
@@ -481,6 +501,105 @@ void main() {
   });
 
   group('the vitrine', () {
+    testWidgets('with nowhere to pick a file, no upload button is offered', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'vitrine.manage'],
+      );
+      final workspace = await pump(tester, gateway);
+
+      workspace.openSection(ConsoleSection.vitrine);
+      await tester.pumpAndSettle();
+
+      // A button that cannot open a dialog is worse than a sentence saying
+      // what the default is.
+      expect(find.text('Téléverser'), findsNothing);
+      expect(find.byType(KMonogram), findsWidgets);
+    });
+
+    testWidgets('a chosen file is sent, and the preview shows it', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'vitrine.manage'],
+      );
+      final picker = _ScriptedPicker(
+        const PickedFile(
+          name: 'logo.png',
+          bytes: [1, 2, 3, 4],
+          mimeType: 'image/png',
+        ),
+      );
+      final workspace = await pump(tester, gateway, files: picker);
+
+      workspace.openSection(ConsoleSection.vitrine);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Téléverser'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('upload:logo:4:image/png'));
+      // Only the formats the server will actually accept are offered, so the
+      // dialog does not let somebody choose a GIF and then refuse it.
+      expect(picker.accepted, contains('image/svg+xml'));
+      expect(picker.accepted, isNot(contains('image/gif')));
+
+      // The mark replaces the monogram in the preview, from the response
+      // rather than from a URL the client built.
+      expect(find.byType(Image), findsWidgets);
+    });
+
+    // Opening a file dialog and closing it again is the common outcome, and a
+    // screen that showed a failure for it would be wrong more often than
+    // right.
+    testWidgets('a dismissed dialog sends nothing and shows no error', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'vitrine.manage'],
+      );
+      final workspace = await pump(tester, gateway, files: _ScriptedPicker(null));
+
+      workspace.openSection(ConsoleSection.vitrine);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Téléverser'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, isEmpty);
+      expect(workspace.failure, isNull);
+      expect(workspace.busy, isFalse);
+    });
+
+    testWidgets('removing it puts the monogram back', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'vitrine.manage'],
+      );
+      final workspace = await pump(
+        tester,
+        gateway,
+        files: _ScriptedPicker(
+          const PickedFile(
+            name: 'logo.png',
+            bytes: [1, 2, 3, 4],
+            mimeType: 'image/png',
+          ),
+        ),
+      );
+
+      workspace.openSection(ConsoleSection.vitrine);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Téléverser'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Retirer le logo'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('remove:logo'));
+      expect(find.byType(KMonogram), findsWidgets);
+    });
+
     testWidgets('the closed sets are the ones the server refuses by', (
       tester,
     ) async {
@@ -553,4 +672,18 @@ void main() {
       expect(find.text('Vitrine'), findsNothing);
     });
   });
+}
+
+/// A file dialog that has already decided.
+final class _ScriptedPicker implements FilePicker {
+  _ScriptedPicker(this._file);
+
+  final PickedFile? _file;
+  List<String> accepted = const [];
+
+  @override
+  Future<PickedFile?> pick({List<String> accept = const []}) async {
+    accepted = accept;
+    return _file;
+  }
 }

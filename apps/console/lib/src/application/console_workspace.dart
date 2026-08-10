@@ -4,6 +4,7 @@ import 'package:bel_client/bel_client.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 
 import 'ports/console_gateway.dart';
+import 'ports/file_picker.dart';
 
 /// Which section of the console is open.
 ///
@@ -23,9 +24,18 @@ enum ConsoleSection { today, counter, fleet, network, timetable, vitrine }
 /// `package:flutter/foundation` and the layer check refuses Flutter in the
 /// application layer.
 final class ConsoleWorkspace {
-  ConsoleWorkspace({required ConsoleGateway gateway}) : _gateway = gateway;
+  ConsoleWorkspace({required ConsoleGateway gateway, FilePicker? files})
+    : _gateway = gateway,
+      _files = files;
 
   final ConsoleGateway _gateway;
+
+  /// Null when there is nowhere to pick a file from — a widget test, or any
+  /// build that is not the browser. The vitrine screen hides the upload
+  /// control rather than offering one that cannot open anything.
+  final FilePicker? _files;
+
+  bool get canUploadAssets => _files != null;
   final _changes = StreamController<void>.broadcast();
 
   Stream<void> get changes => _changes.stream;
@@ -243,6 +253,35 @@ final class ConsoleWorkspace {
     final saved = await _gateway.saveVitrine(request);
     vitrine = saved;
     _notice = 'vitrine.saved|${saved.titleFor('fr')}';
+  });
+
+  /// Asks for a file and sends it.
+  ///
+  /// A dismissed dialog is not an error and not a busy spinner: the common
+  /// outcome of opening a file picker is closing it again, and a screen that
+  /// showed a failure for that would be wrong more often than right.
+  Future<void> uploadVitrineAsset(String asset) async {
+    final picker = _files;
+    if (picker == null) return;
+
+    final file = await picker.pick(
+      accept: const ['image/png', 'image/jpeg', 'image/svg+xml'],
+    );
+    if (file == null) return;
+
+    await _run(() async {
+      vitrine = await _gateway.uploadVitrineAsset(
+        asset: asset,
+        bytes: file.bytes,
+        mimeType: file.mimeType,
+      );
+      _notice = 'vitrine.assetSaved|$asset';
+    });
+  }
+
+  Future<void> removeVitrineAsset(String asset) => _run(() async {
+    vitrine = await _gateway.removeVitrineAsset(asset);
+    _notice = 'vitrine.assetRemoved|$asset';
   });
 
   Future<ManifestDto?> manifest(String departureId) async {

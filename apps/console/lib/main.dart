@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'src/application/console_workspace.dart';
 import 'src/infrastructure/api_console_gateway.dart';
+import 'src/infrastructure/web_file_picker.dart';
 import 'src/presentation/l10n.dart';
 import 'src/presentation/sign_in.dart';
 
@@ -47,7 +48,13 @@ Future<void> main() async {
       session: session,
       client: client,
       buildWorkspace: () =>
-          ConsoleWorkspace(gateway: ApiConsoleGateway(client)),
+          ConsoleWorkspace(
+            gateway: ApiConsoleGateway(client),
+            // The one thing this app does that a widget test cannot. Absent,
+            // the vitrine screen omits the upload control rather than showing
+            // a button that opens nothing.
+            files: const WebFilePicker(),
+          ),
     ),
   );
 }

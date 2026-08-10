@@ -18,6 +18,9 @@ dependencies:
   bel_design: ^0.1.0
   bel_domain: ^0.1.0
   bel_localization: ^0.1.0
+  # The file dialog. There is no Flutter API for one, and a plugin would
+  # wrap exactly the fifteen lines in `web_file_picker.dart`.
+  web: ^1.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

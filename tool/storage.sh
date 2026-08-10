@@ -49,12 +49,16 @@ for _ in $(seq 1 40); do
   sleep 0.5
 done
 
+# The file, not the directory. `dart_frog build` copies the whole workspace
+# into services/api/build, so a directory run finds a stale second copy of this
+# suite and reports twice the tests — which is how a green run once hid a
+# failure in a file that no longer existed.
 echo "── storage adapter"
 cd "$HERE"
 if STORAGE__ACCOUNT="$ACCOUNT" \
    STORAGE__KEY="$KEY" \
    STORAGE__ENDPOINT="http://127.0.0.1:$PORT/$ACCOUNT" \
-   dart test services/api --tags storage; then
+   dart test services/api/test/integration/object_store_test.dart --tags storage; then
   green "── storage checks passed"
 else
   red "── storage checks failed"

@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-10 · after commit *TOTP on both back offices*
+**Updated:** 2026-08-10 · after commit *Logo upload, end to end*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -15,7 +15,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Feature | State | Notes |
 |---|---|---|
 | Monorepo, Melos, pub workspace | ✅ done | 7 packages, 2 services and 4 apps, one `dart pub get` |
-| Layer-boundary check in CI | ✅ done | `tool/check_layers.dart`, 5 rules, 248 files |
+| Layer-boundary check in CI | ✅ done | `tool/check_layers.dart`, 5 rules, 255 files |
 | `bel_domain` — money, market, policies, state machines | ✅ done | Zero dependencies; DRC stood up entirely in test code |
 | `bel_localization` — YAML catalogs, fr + en | ✅ done | Missing-key, orphan, placeholder and SMS-length guards |
 | `bel_contracts` — wire format | ✅ done | Money is always `{minor, currency}` |
@@ -52,7 +52,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Operator console — the app** | ✅ done | Flutter web. Fleet, routes, timetables, the dispatcher's day, the guichet, manifests. 11 tests |
 | Admin back office — API | ✅ done | `/admin/v1`: the queue, one operator's page, six lifecycle decisions, the negotiated commission. Every read and every write audited with actor and reason. 8 integration tests |
 | **Admin back office — the app** | ✅ done | Flutter web. The review queue, one operator's file with its documents and trail, six lifecycle decisions, the negotiated commission, and the reconciliation queue. The reason lives in the frame and no write happens without one. 15 tests |
-| **The vitrine** | 🔨 in progress | Title, tagline, accent and header pattern, with a live preview drawn by the real widgets — and the public storefront at `/public/v1/operators/{code}`. **Logo upload is not built**: it needs object storage, which is its own slice |
+| **The vitrine** | ✅ done | Title, tagline, accent, header pattern and logo, with a live preview drawn by the real widgets — and the public storefront at `/public/v1/operators/{code}` |
+| **Object storage** | ✅ done | `ObjectStore` port, Azure Blob adapter over REST, and an in-memory one. What we accept is sniffed from the bytes; 40 KB / 512 px for a logo, refused with the number to get under rather than downscaled. 10 tests against real Azurite (`tool/storage.sh`), which caught a SAS signature that was wrong under sv=2020-10-02 |
 | Operator onboarding — the wizard | ⬜ not started | `03-operator-lifecycle.md` §2.2. The first ten operators are onboarded by hand, which is what the queue is for |
 | Refund policy wizard + execution | ⬜ not started | Domain policy engine is built and tested |
 | Email on ACS | ✅ done | Signed requests, logging fallback; **only the sign-in code routes through it so far** |
@@ -81,10 +82,10 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 ## Phase 3 and beyond
 
 Not started. `09-roadmap.md` has the remaining Phase 1 work in **dependency
-order**. With both consoles rendered, the vitrine shipped and TOTP in front of
-both back offices, the top of it is the object storage a logo upload needs —
-the same plumbing a KYB document scan will want — followed by the seat-layout
-section builder, the refund policy wizard and a scheduler for the worker.
+order**. With both consoles rendered, the vitrine complete, TOTP in front of
+both back offices and object storage built, the top of it is now the
+seat-layout section builder, followed by the refund policy wizard and a
+scheduler for the worker.
 
 ---
 
@@ -142,18 +143,33 @@ These are true today and each one is a decision, not an oversight.
    check it against, and a bug in one would ship as a code that scans cleanly
    and produces a factor that never matches. The setup key is typed instead,
    in groups of four, which every authenticator app accepts.
-8. **The seat-layout section builder is not built.** Four presets cover what
+8. **A cover photo can be uploaded but has no control in the console.** The
+   API takes one — same port, same sniffing, a bigger budget — and the
+   storefront renders one when it is there. What is missing is the picker,
+   and it is missing because the storefront was designed to look complete
+   without a cover (`03-operator-lifecycle.md` §2.4: "a storefront that looks
+   empty without one is a broken design"). Building a control for a field most
+   operators will never fill was not worth the slice.
+9. **Brand assets are capped rather than downscaled.** The spec asks for three
+   raster sizes and a monochrome variant; what ships refuses anything over
+   40 KB or 512 px instead. Re-encoding somebody's brand mark is a silent
+   change to the one asset they care about most — a resample softens a
+   wordmark, and a PNG round trip through a quantiser shifts the colour they
+   chose — and the alternative was carrying an image decoder in an API process
+   serving fourteen operators. It becomes a real gap when an operator arrives
+   with a 2000 px logo they cannot re-export themselves.
+10. **The seat-layout section builder is not built.** Four presets cover what
    actually runs in Congo and picking one takes ninety seconds, which is the
    path most operators take anyway (`06-fleet-and-routes.md` §3.2). An
    operator whose coach matches no preset can adjust the row count and no
    more. Named on the screen rather than hidden behind a control that does
    nothing.
-9. **A ticket lives only in memory on the device.** It renders offline once
+11. **A ticket lives only in memory on the device.** It renders offline once
    loaded — everything it needs travels inside the booking — but nothing is
    persisted, so a cold start with no network shows an empty list rather than
    yesterday's QR. Drift/SQLite on device is Phase 3, and until it lands
    "works offline" means "works offline while the app is alive".
-10. **The catalog is copied, not shared, into the apps.** `bel_localization`
+12. **The catalog is copied, not shared, into the apps.** `bel_localization`
    is pure Dart — the API imports it — so it cannot declare Flutter assets,
    and Flutter refuses `..` in asset paths. `tool/sync_i18n.sh` copies it and
    `i18n_freshness_test` fails the build if a copy drifts.
@@ -167,20 +183,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 240 tests
+         packages/bel_contracts packages/bel_crypto     # 253 tests
 dart test packages/bel_client                           # 32 tests
-dart test services/api -x integration                   # 584 tests
+dart test services/api -x integration -x storage        # 597 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 80 app tests
-cd apps/console   && flutter test        # 15 console tests
+cd apps/console   && flutter test        # 19 console tests
 cd apps/admin     && flutter test        # 15 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 248 files
+dart run tool/check_layers.dart          # the onion rule, 255 files
 ./infra/migrations/check.sh              # 27 schema guarantees
 ./tool/integration.sh                    # 111 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 113 checks, incl. the Dart client
+./tool/smoke_api.sh                      # 115 checks, incl. the Dart client
+./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
 Remove `services/api/build` before counting: `dart_frog build` copies the
@@ -188,8 +205,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,061 tests in total**, plus 113 smoke checks, 27 executed schema guarantees
-and 111 further tests against real Postgres. The smoke run now includes the *typed client* against the running
+**1,091 tests in total**, plus 115 smoke checks, 27 executed schema guarantees,
+111 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -197,6 +214,50 @@ the screens render. Both halves of that seam have broken here before.
 ---
 
 ## What the last push changed, and what it cost
+
+Logo upload, and the object storage under it. The columns have been in the
+schema since migration 0001 and nothing had ever written one, because a logo
+needs somewhere to put a file.
+
+**What we accept is decided by the bytes.** A `Content-Type` is a claim, and
+this one decides what we later serve back to a browser — a caller who could
+choose it could have a PNG served as `text/html`, which is how an image upload
+becomes stored XSS. PNG, JPEG and SVG by magic number, with dimensions read out
+of the PNG IHDR chunk and the JPEG frame header.
+
+**A cap rather than a downscale, and that is a decision rather than a
+shortcut.** Re-encoding somebody's brand mark is a silent change to the one
+asset they care about most: a resample softens a wordmark and a PNG round trip
+through a quantiser shifts the colour they chose. Refusing tells them, in the
+screen where they can fix it, in the tool that made the file. It also keeps an
+image decoder out of an API process serving fourteen operators. The gap this
+leaves is named above.
+
+A 40 KB PNG can still be 4000 px square — PNG compresses flat colour extremely
+well — and decoding that is 64 MB of bitmap for a mark rendered at 32 dp. The
+byte cap alone would not have caught it, which is why there is a pixel cap too.
+
+**`publicUrl` and `signedUrl` are separate methods rather than one with a
+flag.** A logo is on a poster and in a cached page, and a signature that
+expires would break an image nobody was protecting; a KYB document must never
+be readable by URL alone. A boolean argument in the wrong place would publish a
+passport, so it is a property of the container instead.
+
+**Azurite caught a bug review did not.** The service SAS string-to-sign carries
+`signedEncryptionScope` from sv=2020-12-06 onward, and we were signing it under
+2020-10-02. Azure answers that with a 403 and no indication of which of fifteen
+lines was wrong. Worse: the first version of those tests ran against the
+*public* container, where every one passed without a signature ever being
+checked. They run against a private one now, which is the container the feature
+exists for.
+
+**The file dialog is a port.** There is no Flutter API for one, and the console
+is the only surface that needs it — so `FilePicker` has a `package:web`
+implementation in the app and a constant in the tests, and the vitrine screen
+omits the upload control entirely when there is nothing behind it. A button
+that opens nothing is worse than a sentence saying what the default is.
+
+## What the push before that changed
 
 TOTP, in front of both back offices. It was item 2 on the roadmap and it was
 taken ahead of item 1: logo upload needs object storage that does not exist
@@ -250,7 +311,7 @@ is pure Dart so the API can read the same YAML from disk.
 listed only under `melos test:apps`, and nothing in the CI workflow installs
 melos. Both are now named steps, as is the new package.
 
-## What the push before that changed
+## And the push before that
 
 The vitrine. The columns have been in the schema since migration 0001 and
 nothing had ever read or written one of them.
@@ -284,7 +345,7 @@ Logo upload is not built and is named on the screen rather than hidden behind
 a control that does nothing. Until it lands, an operator gets a generated
 monogram in their accent — which is the documented default anyway.
 
-## And the push before that
+## Three pushes back
 
 The back office is an app. `/admin/v1` had been complete for two pushes and
 nothing rendered any of it — the queue, six decisions, the commission and the
@@ -319,7 +380,7 @@ once for client and server both, and `melos run test:apps` puts the three
 Flutter surfaces into `verify` — the traveller and console suites were green
 and ungated, which is a suite waiting to rot.
 
-## Three pushes back
+## Four pushes back
 
 The reconciliation queue has an exit. ADR-0005 asks for this screen *before*
 launch rather than after the first incident, and half of it now exists: the
@@ -340,7 +401,7 @@ queue does nothing, and the test says so.
 greppable sources beat a string somebody has to parse — so the row is
 `manual` and the body names who decided and why, as data.
 
-## And the one before
+## Five pushes back
 
 The back office, server side. `/admin/v1` — the third surface, promised in
 `02-architecture.md` since the first commit and until now entirely absent.
@@ -368,7 +429,7 @@ proven with two concurrent calls against real Postgres rather than asserted.
 actor, the subject and the stated reason, because "who looked at Ocean du
 Nord's revenue, and why" is a question asked after the fact.
 
-## And before that
+## Six pushes back
 
 The ticket reaches a screen. Until this push the product could take
 somebody's money, sign a ticket, store it and text it — and the app that
@@ -399,7 +460,7 @@ reach a confirmed booking, a ticket or a QR — the whole reason the fake
 exists. It now settles on the second poll, and six smoke checks walk
 prompt → poll → capture → ticket over a real socket with no credentials.
 
-## Earlier pushes
+## Seven pushes back
 
 Mobile money, end to end — the part that sells this product.
 
@@ -422,7 +483,7 @@ server-driven list. A rail this deployment can reach, that the operator has
 a verified account on, is now offered whether or not a constant in the
 binary mentions it.
 
-## What the seven before that changed
+## Earlier pushes
 
 Seven commits: identity, cities, money, the console's API, the worker, the
 traveller's payment screen, and the console itself. **An operator can now put

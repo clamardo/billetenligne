@@ -129,6 +129,24 @@ final class ApiConsoleGateway implements ConsoleGateway {
       _client.saveVitrine(request);
 
   @override
+  Future<VitrineDto> uploadVitrineAsset({
+    required String asset,
+    required List<int> bytes,
+    required String mimeType,
+  }) => _client.uploadVitrineAsset(
+    asset: asset,
+    bytes: bytes,
+    // The browser's guess, or `application/octet-stream` when it has none —
+    // a blank Content-Type makes some proxies drop the body. The server
+    // sniffs the bytes either way.
+    contentType: mimeType.isEmpty ? 'application/octet-stream' : mimeType,
+  );
+
+  @override
+  Future<VitrineDto> removeVitrineAsset(String asset) =>
+      _client.removeVitrineAsset(asset);
+
+  @override
   Future<CounterSaleDto> sell({
     required String departureId,
     required String buyerPhone,

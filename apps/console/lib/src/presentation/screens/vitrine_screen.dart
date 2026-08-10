@@ -167,25 +167,7 @@ class _Form extends StatelessWidget {
         ),
         SizedBox(height: kilo.space.s4),
 
-        // Named rather than hidden behind a control that does nothing, which
-        // is the rule this console already follows for the section builder.
-        KCard(
-          tone: kilo.color.surfaceSunken,
-          child: Row(
-            children: [
-              Icon(Icons.image_outlined, color: kilo.color.contentSecondary),
-              SizedBox(width: kilo.space.s3),
-              Expanded(
-                child: Text(
-                  context.t('console.vitrine.logoNotYet'),
-                  style: kilo.text.bodySm.copyWith(
-                    color: kilo.color.contentSecondary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        _LogoField(state: state, vitrine: vitrine, enabled: canSave),
         SizedBox(height: kilo.space.s4),
 
         _Field(
@@ -406,6 +388,7 @@ class _Preview extends StatelessWidget {
             tagline: pending.taglineFor(language),
             accent: state._accent,
             pattern: state._pattern,
+            logo: _logoMark(vitrine, 56),
           ),
         ),
         SizedBox(height: kilo.space.s2),
@@ -447,6 +430,7 @@ class _Preview extends StatelessWidget {
             accent: state._accent,
             pattern: state._pattern,
             compact: true,
+            logo: _logoMark(vitrine, 40),
           ),
         ),
         SizedBox(height: kilo.space.s2),
@@ -457,6 +441,148 @@ class _Preview extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The uploaded mark, or null so [KBrandHeader] falls back to its monogram.
+///
+/// Keyed off the **URL** rather than the storage key: a deployment with no
+/// storage configured still has a key in the row it cannot serve, and a broken
+/// image is worse than the generated tile that was always the documented
+/// default.
+Widget? _logoMark(VitrineDto vitrine, double size) {
+  final url = vitrine.logoUrl;
+  if (url == null) return null;
+
+  return Image.network(
+    url,
+    width: size,
+    height: size,
+    fit: BoxFit.contain,
+    // A logo that 404s — storage moved, the blob was deleted underneath us —
+    // falls back to nothing, which is what makes the header draw its monogram
+    // instead of a broken-image glyph on somebody's storefront.
+    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+  );
+}
+
+/// The logo control: what is there now, and the two things you can do to it.
+class _LogoField extends StatelessWidget {
+  const _LogoField({
+    required this.state,
+    required this.vitrine,
+    required this.enabled,
+  });
+
+  final _VitrineScreenState state;
+  final VitrineDto vitrine;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+    final workspace = state.widget.workspace;
+    final url = vitrine.logoUrl;
+
+    // No picker means no browser — a widget test, or any build that is not
+    // the console's. Offering a button that cannot open a dialog is worse
+    // than saying what the default is.
+    if (!workspace.canUploadAssets) {
+      return KCard(
+        tone: kilo.color.surfaceSunken,
+        child: Row(
+          children: [
+            Icon(Icons.image_outlined, color: kilo.color.contentSecondary),
+            SizedBox(width: kilo.space.s3),
+            Expanded(
+              child: Text(
+                context.t('console.vitrine.logoNotYet'),
+                style: kilo.text.bodySm.copyWith(
+                  color: kilo.color.contentSecondary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return KCard(
+      tone: kilo.color.surfaceSunken,
+      child: Row(
+        children: [
+          // The mark at the size it is actually read at, next to the button
+          // that changes it. A 200 px preview of a 32 dp mark would flatter a
+          // logo that is unreadable where it lands.
+          SizedBox(
+            width: 56,
+            height: 56,
+            child: url == null
+                ? KMonogram(
+                    name: vitrine.titleFor(context.language),
+                    accent: state._accent,
+                    size: 56,
+                  )
+                : _logoMark(vitrine, 56),
+          ),
+          SizedBox(width: kilo.space.s3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  context.t('console.vitrine.logo'),
+                  style: kilo.text.label,
+                ),
+                SizedBox(height: kilo.space.s1),
+                // The constraints, before the dialog rather than after the
+                // refusal. Every one of them is enforced server-side, and
+                // reading them here is what keeps somebody from exporting the
+                // wrong file twice.
+                Text(
+                  context.t('console.vitrine.logoRules'),
+                  style: kilo.text.caption.copyWith(
+                    color: kilo.color.contentSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: kilo.space.s3),
+          // Bounded, because `KButton` stretches by default and a Row gives
+          // its non-flexible children unbounded width. A ceiling rather than a
+          // fixed size: "Remplacer" and "Replace" are not the same length, and
+          // a hard width would clip one of them.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
+            child: KButton(
+              label: context.t(
+                url == null
+                    ? 'console.vitrine.logoUpload'
+                    : 'console.vitrine.logoReplace',
+              ),
+              tone: KButtonTone.secondary,
+              icon: Icons.upload_outlined,
+              fullWidth: false,
+              onPressed: enabled && !workspace.busy
+                  ? () => workspace.uploadVitrineAsset('logo')
+                  : null,
+            ),
+          ),
+          if (url != null) ...[
+            SizedBox(width: kilo.space.s2),
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: context.t('console.vitrine.logoRemove'),
+              onPressed: enabled && !workspace.busy
+                  ? () => workspace.removeVitrineAsset('logo')
+                  : null,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

@@ -86,6 +86,20 @@ abstract interface class ConsoleGateway {
 
   Future<VitrineDto> saveVitrine(SaveVitrineRequest request);
 
+  /// Uploads a logo or a cover, and answers with the whole vitrine.
+  ///
+  /// The whole vitrine rather than a URL, so the preview re-renders from one
+  /// response instead of stitching a new URL into state it already holds —
+  /// and so a rejected upload leaves the screen showing what is actually
+  /// stored rather than what was attempted.
+  Future<VitrineDto> uploadVitrineAsset({
+    required String asset,
+    required List<int> bytes,
+    required String mimeType,
+  });
+
+  Future<VitrineDto> removeVitrineAsset(String asset);
+
   Future<CounterSaleDto> sell({
     required String departureId,
     required String buyerPhone,

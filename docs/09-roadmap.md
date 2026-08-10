@@ -23,7 +23,7 @@ What remains before a pilot is **commercial, not technical**, which is what this
 
 **Done:** the domain, the schema with its tenancy and ledger guarantees, the public sales boundary, the whole traveller API surface, email sign-in, booking and cash payment with double-entry postings, ticket issuing, the operator console's API, `services/worker`, the typed client, the Kilo component library, the traveller app through to a payment code, the standalone boarding scanner, and CI that executes all of it.
 
-1,061 tests · 113 smoke checks · 27 executed schema guarantees · 111 further tests against real Postgres.
+1,091 tests · 115 smoke checks · 27 executed schema guarantees · 111 further tests against real Postgres, and 10 against real Azurite.
 
 ---
 
@@ -67,30 +67,27 @@ Ships without a PSP. The point is to prove inventory, ticketing, boarding and th
 - ✅ **The operator console's API** — fleet, routes, timetables and the materialisation the pilot was blocked on
 - ✅ **`services/worker`** — the outbox drain that delivers a ticket, and three sweepers that are deliberately not guarantees
 - ✅ **The operator console** — Flutter web: fleet, routes, timetables, the dispatcher's day, the guichet, manifests
-- 🔨 **The vitrine** — title, tagline, accent from the closed set of eight and a header pattern, with a live preview drawn by the real widgets, plus the public storefront behind `blt.cg/o/<code>`. **Logo upload is not built**: it needs object storage, and it is named on the screen rather than hidden behind a control that does nothing
+- ✅ **The vitrine** — title, tagline, accent from the closed set of eight and a header pattern, with a live preview drawn by the real widgets, plus the public storefront behind `blt.cg/o/<code>` — and now the logo, with the object storage it needed. What we accept is decided by the **bytes**, never by the header a caller sent, and it is a cap rather than a downscale: re-encoding somebody's brand mark is a silent change to the one asset they care about most, so 40 KB and 512 px are refused with the number to get under rather than resampled behind their back
 - ✅ **The admin back office** — Flutter web: the review queue, one operator's file with its documents and trail, the six decisions, the negotiated commission, and the `indeterminate` reconciliation queue with its three exits. The stated reason lives in the frame and nothing writes without one
 - ✅ **TOTP on both back-office surfaces** (ADR-0013) — RFC 6238, proved against the RFC's own Appendix B vectors before a line of the flow existed. Taken ahead of logo upload because it is a control on a live cross-tenant surface and needed no infrastructure that did not already exist. Three decisions worth restating: **travellers are never asked** (a second factor in front of a coach ticket protects one person's own bookings); **enrolment is not enforced by refusing to sign in** — staff with nothing enrolled get a session and land on the enrolment screen and nowhere else, because the alternative locked out every existing staff account the hour it shipped; and the half-session between the emailed code and the authenticator code is a **signed claim, not a row**. The flow lives in `bel_backoffice` so the console and the admin app cannot drift into asking differently
 
 ### Remaining, in dependency order
 
-**1. Logo upload, and the object storage it needs.**
-The vitrine ships without it. An operator gets a generated monogram in their accent — the documented default, and good enough that nobody looks abandoned — but a logo is the one part of a storefront that is genuinely *theirs*, and it needs a place to put a file: a storage port, an adapter, short-lived signed URLs, and downscaling to the sizes ADR-0009 budgets for. The same plumbing is what a KYB document scan will need, which is why it is worth building once and properly.
-
-**2. The seat-layout section builder.**
+**1. The seat-layout section builder.**
 Four presets cover what runs in Congo today, and an operator whose coach matches none of them can only adjust a row count. Was bundled with TOTP; TOTP shipped without it, because a security control and a layout editor have nothing to do with each other and pairing them only delayed one of them.
 
-Two things TOTP left behind, both small and both stated rather than buried: there is **no QR code** on the enrolment screen — a QR encoder is a few hundred lines of Reed–Solomon and this repository has no independent decoder to check one against, so a bug would ship as a code that scans cleanly and produces a factor that never matches; the setup key is typed instead, which every authenticator app accepts. And the TOTP **seed is not encrypted at rest**: a KMS key living in the same environment as the database is reassurance rather than a control, and claiming otherwise would be worse than naming the gap.
+Three things the last two slices left behind, all small and all stated rather than buried. There is **no QR code** on the TOTP enrolment screen — a QR encoder is a few hundred lines of Reed–Solomon and this repository has no independent decoder to check one against, so a bug would ship as a code that scans cleanly and produces a factor that never matches; the setup key is typed instead, which every authenticator app accepts. The TOTP **seed is not encrypted at rest**: a KMS key living in the same environment as the database is reassurance rather than a control. And a **cover photo** can be uploaded by the API but has no control in the console — the storefront was designed to look complete without one, and building the picker for a field most operators will never fill was not worth the slice.
 
-**3. Refund policy wizard and cash refunds.**
+**2. Refund policy wizard and cash refunds.**
 The policy engine is built and tested; the wizard and the execution path are not.
 
-**4. Scheduled materialisation in the worker.**
+**3. Scheduled materialisation in the worker.**
 The pass exists and is driven by the console; nothing yet runs it nightly, so a timetable is materialised when a dispatcher asks. Fine for a pilot with one operator, wrong at ten.
 
-**5. Operator onboarding as a wizard.**
+**4. Operator onboarding as a wizard.**
 The back office can decide an application; nothing creates one. The first row in `operators` still arrives by SQL, which is fine for ten operators onboarded in a room and wrong for the eleventh who applies without a phone call (`03-operator-lifecycle.md` §2.2).
 
-**6. Phone as the second sign-in channel, and a per-IP limit on codes.**
+**5. Phone as the second sign-in channel, and a per-IP limit on codes.**
 The channel is plumbed and switched off for want of a provisioned ACS sender number. Ships with it: codes are rate-limited per *destination* today — 60 seconds between sends, five attempts per code — which bounds the cost of hammering one address, and nothing yet bounds one host asking for codes to a thousand different addresses. Every one of those is a message we pay for, so this is a cost control before it is a security control.
 
 **Exit:** the anchor operator sells real seats through our console for real cash, and conductors board with our scanner. *Revenue: zero. Learning: maximum.*

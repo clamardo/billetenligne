@@ -478,6 +478,37 @@ final class BelApiClient {
         ).then((body) => body ?? const {}),
       );
 
+  /// Uploads a logo or a cover.
+  ///
+  /// Raw bytes with a content type, not multipart: one file and no
+  /// accompanying fields, so multipart would mean a boundary protocol to
+  /// carry exactly what a request body already carries. The server sniffs the
+  /// bytes regardless — [contentType] is a courtesy to proxies, not a claim it
+  /// trusts.
+  ///
+  /// Answers with the whole vitrine, so the editor's preview re-renders from
+  /// one response rather than stitching a URL into state it already holds.
+  Future<VitrineDto> uploadVitrineAsset({
+    required String asset,
+    required List<int> bytes,
+    required String contentType,
+  }) async => VitrineDto.fromJson(
+    await _send(
+      'PUT',
+      '/console/v1/vitrine/$asset',
+      rawBody: bytes,
+      contentType: contentType,
+    ).then((body) => body ?? const {}),
+  );
+
+  Future<VitrineDto> removeVitrineAsset(String asset) async =>
+      VitrineDto.fromJson(
+        await _send(
+          'DELETE',
+          '/console/v1/vitrine/$asset',
+        ).then((body) => body ?? const {}),
+      );
+
   /// The public storefront behind `blt.cg/o/<code>`. Anonymous, and cacheable.
   Future<StorefrontDto> storefront(String code) async =>
       StorefrontDto.fromJson(await _get('/public/v1/operators/$code'));
