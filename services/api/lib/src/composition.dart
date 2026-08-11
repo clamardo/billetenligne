@@ -23,6 +23,7 @@ import 'application/ports/ticket_issuer.dart';
 import 'application/ports/city_catalogue.dart';
 import 'application/ports/disruption_desk.dart';
 import 'application/ports/payout_desk.dart';
+import 'application/ports/protection_desk.dart';
 import 'application/ports/operator_console.dart';
 import 'application/ports/payment_gateway.dart';
 import 'application/ports/payment_store.dart';
@@ -58,6 +59,7 @@ import 'infrastructure/postgres/postgres_identity.dart';
 import 'infrastructure/postgres/postgres_operator_applications.dart';
 import 'infrastructure/postgres/postgres_disruptions.dart';
 import 'infrastructure/postgres/postgres_payouts.dart';
+import 'infrastructure/postgres/postgres_protection.dart';
 import 'infrastructure/postgres/postgres_operator_console.dart';
 import 'infrastructure/postgres/postgres_operator_directory.dart';
 import 'infrastructure/postgres/postgres_payment_store.dart';
@@ -91,6 +93,7 @@ final class Services {
     required this.console,
     required this.disruptions,
     required this.payouts,
+    required this.protection,
     required this.platform,
     required this.storefronts,
     required this.applications,
@@ -140,6 +143,13 @@ final class Services {
   /// purpose: an operator reads their statements and cannot write one, which
   /// is what makes two-person control on money leaving mean anything.
   final PayoutDesk payouts;
+
+  /// Inter-operator protection agreements (`08-disruption.md` §5). On the
+  /// tenant scope of whoever is asking, because 0019 is the one table in this
+  /// schema a row of which belongs to *two* operators — the policies let
+  /// either party read it and only the proposer write it, so the adapter does
+  /// not have to be careful.
+  final ProtectionDesk protection;
 
   /// Our own back office. Refuses without a database for the same reason the
   /// operator console does — and more so: every read here is meant to cross
@@ -285,6 +295,7 @@ final class Services {
       console: PostgresOperatorConsole(db, timeZone: market.timeZone),
       disruptions: PostgresDisruptions(db, issuer: _ticketIssuer),
       payouts: PostgresPayouts(db),
+      protection: PostgresProtection(db),
       platform: PostgresPlatformConsole(db),
       storefronts: PostgresStorefronts(db),
       applications: PostgresOperatorApplications(db),
@@ -415,6 +426,7 @@ final class Services {
       console: const UnavailableOperatorConsole(),
       disruptions: const UnavailableDisruptionDesk(),
       payouts: const UnavailablePayouts(),
+      protection: const UnavailableProtection(),
       platform: const UnavailablePlatformConsole(),
       storefronts: MemoryStorefronts.demo(),
       applications: MemoryOperatorApplications(clock: clock),

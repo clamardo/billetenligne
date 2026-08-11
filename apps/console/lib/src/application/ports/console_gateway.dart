@@ -66,6 +66,19 @@ abstract interface class ConsoleGateway {
   /// read — there is no write on this port because there is no route.
   Future<List<PayoutRunDto>> statements();
 
+  /// Standing protection agreements, in either role (`08-disruption.md` §5).
+  Future<List<ProtectionAgreementDto>> protectionAgreements();
+
+  Future<ProtectionAgreementDto> proposeAgreement(
+    ProposeAgreementRequest request,
+  );
+
+  /// `accept` · `decline` · `suspend` · `resume` · `end`.
+  Future<ProtectionAgreementDto> decideAgreement({
+    required String agreementId,
+    required AgreementDecisionRequest request,
+  });
+
   Future<List<VehicleDto>> vehicles();
 
   Future<VehicleDto> saveVehicle({

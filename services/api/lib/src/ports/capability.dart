@@ -20,6 +20,14 @@ final class Capability {
   static const departureManage = 'departure.manage';
   static const departureCancel = 'departure.cancel';
   static const disruptionDeclare = 'disruption.declare';
+
+  /// Writing and agreeing to an inter-operator protection agreement
+  /// (`08-disruption.md` §5). Separate from `disruption.declare` because a
+  /// dispatcher declares a breakdown at the roadside and must not, in the
+  /// same moment, be able to commit their company to a standing rate with a
+  /// competitor. Reading one needs only `booking.read` — the dispatcher has
+  /// to see that option ③ exists before they can use it.
+  static const protectionManage = 'protection.manage';
   static const boardingScan = 'boarding.scan';
 
   // Configuration
@@ -50,7 +58,7 @@ final class Capability {
       bookingRefundAboveCap, tillOpen, tillClose, departureManage,
       departureCancel, disruptionDeclare, boardingScan, fleetManage,
       routeManage, pricingManage, policyManage, vitrineManage, staffManage,
-      financeRead, payoutApprove,
+      financeRead, payoutApprove, protectionManage,
       // The only role that can redirect where the money goes. Guarded further
       // by fresh 2FA and a 24 h cooling-off, because settlement-account
       // takeover is the highest-value fraud against a platform like this.
@@ -74,6 +82,7 @@ final class Capability {
       vitrineManage,
       staffManage,
       financeRead,
+      protectionManage,
     },
     'finance': {bookingRead, financeRead, bookingRefundAboveCap},
     'fleet_manager': {bookingRead, fleetManage},

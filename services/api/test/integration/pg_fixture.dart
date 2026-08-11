@@ -81,7 +81,8 @@ final class PgFixture {
       INSERT INTO cities (code, market_code, name_fr, name_en) VALUES
         ('BZV', 'CG', 'Brazzaville', 'Brazzaville'),
         ('PNR', 'CG', 'Pointe-Noire', 'Pointe-Noire'),
-        ('OYO', 'CG', 'Oyo', 'Oyo')
+        ('OYO', 'CG', 'Oyo', 'Oyo'),
+        ('DOL', 'CG', 'Dolisie', 'Dolisie')
       ON CONFLICT (code) DO NOTHING
     ''');
     await _seed.execute('''
@@ -688,15 +689,37 @@ final class PgFixture {
     return [for (final r in rows) r.toColumnMap()['seat_label'] as String];
   }
 
+  /// A second real company, so the tests that need two tenants have two.
+  ///
+  /// Trans Bony Voyages, which is who Océan du Nord's dispatcher finds on the
+  /// forecourt when a coach fails — the counterparty in `08-disruption.md` §5
+  /// and the other side of every cross-tenant check here.
+  static const secondOperatorId = '22222222-2222-2222-2222-222222222222';
+  static const secondOperatorCode = 'TBV';
+
+  Future<String> secondOperator() async {
+    await _seed.execute('''
+      INSERT INTO operators (id, code, legal_name, market_code, status)
+      VALUES ('$secondOperatorId', '$secondOperatorCode',
+              'Trans Bony Voyages', 'CG', 'active')
+      ON CONFLICT (id) DO NOTHING
+    ''');
+    return secondOperatorId;
+  }
+
+  /// Clears every agreement between two tests, so the one-live-per-pair index
+  /// does not make the second test fail for the first test's reasons.
+  Future<void> clearAgreements() async {
+    await _seed.execute('DELETE FROM protection_corridors');
+    await _seed.execute('DELETE FROM protection_movements');
+    await _seed.execute('DELETE FROM protection_agreements');
+  }
+
   /// A layout belonging to a DIFFERENT operator, so the ownership checks can
   /// be tested against something that genuinely exists.
   Future<String> foreignLayout() async {
-    const other = '22222222-2222-2222-2222-222222222222';
-    await _seed.execute('''
-      INSERT INTO operators (id, code, legal_name, market_code, status)
-      VALUES ('$other', 'TBV', 'Trans Bony Voyages', 'CG', 'active')
-      ON CONFLICT (id) DO NOTHING
-    ''');
+    const other = secondOperatorId;
+    await secondOperator();
     final rows = await _seed.execute('''
       INSERT INTO seat_layouts (operator_id, name, sections, capacity)
       VALUES ('$other', 'Their coach', '[]'::jsonb, 40)

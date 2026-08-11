@@ -149,7 +149,12 @@ DECLARE
     'operator_staff', 'platform_staff', 'kyb_documents',
     'ledger_entries', 'payment_events', 'audit_log',
     'refunds', 'refund_policies',
-    'vehicles', 'departure_patterns', 'redemptions'
+    'vehicles', 'departure_patterns', 'redemptions',
+    -- Commercial terms between two companies (0019), not a fact about a
+    -- coach. A disruption is public; what two operators agreed to bill each
+    -- other is not.
+    'payout_runs', 'protection_agreements', 'protection_corridors',
+    'protection_movements'
   ];
 BEGIN
   FOREACH t IN ARRAY forbidden LOOP
@@ -536,5 +541,140 @@ BEGIN
 
   RESET ROLE;
   RAISE NOTICE 'OK  one payout per operator per week, and a void reopens it';
+END
+$$;
+
+-- ── 14. An agreement belongs to two tenants, and to no third ────────────────
+--
+-- The only widening of tenant isolation in this schema (0019). Every other
+-- operator table answers to one `app_tenant_id()`; this one answers to two,
+-- because an agreement neither party can read is not an agreement. A widening
+-- is exactly the kind of thing that quietly grows, so the boundary is executed
+-- here: both parties see it, a third operator does not, and neither party can
+-- bind two companies they are not one of.
+DO $$
+DECLARE
+  ocean UUID := '11111111-1111-1111-1111-111111111111';
+  bony  UUID := '22222222-2222-2222-2222-222222222222';
+  agr   UUID := 'dddddddd-0000-0000-0000-000000000001';
+  third UUID := 'dddddddd-0000-0000-0000-0000000000ff';
+  seen  INT;
+  low   UUID := LEAST('11111111-1111-1111-1111-111111111111'::uuid,
+                      '22222222-2222-2222-2222-222222222222'::uuid);
+  high  UUID := GREATEST('11111111-1111-1111-1111-111111111111'::uuid,
+                         '22222222-2222-2222-2222-222222222222'::uuid);
+BEGIN
+  INSERT INTO operators (id, code, legal_name, market_code, status)
+  VALUES (third, 'THR', 'Third Party Transport', 'CG', 'active');
+
+  -- Océan du Nord proposes.
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', ocean::text, true);
+
+  INSERT INTO protection_agreements
+    (id, operator_a, operator_b, proposed_by, rebill_discount_bps,
+     monthly_cap_seats)
+  VALUES (agr, low, high, ocean, 1500, 40);
+
+  INSERT INTO protection_corridors (agreement_id, city_low, city_high)
+  VALUES (agr, 'BZV', 'PNR');
+
+  -- An operator cannot bind two companies they are not a party to. This is
+  -- the WITH CHECK, and without it the widening above would be a hole.
+  BEGIN
+    INSERT INTO protection_agreements (operator_a, operator_b, proposed_by)
+    VALUES (LEAST(bony, third), GREATEST(bony, third), bony);
+    RAISE EXCEPTION 'FAIL: an operator bound two other companies';
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN
+    NULL;
+  END;
+
+  -- Trans Bony, the counterparty, sees it. That is the point of the widening.
+  PERFORM set_config('app.tenant_id', bony::text, true);
+  SELECT count(*) INTO seen FROM protection_agreements WHERE id = agr;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: the counterparty cannot see the agreement';
+  END IF;
+
+  SELECT count(*) INTO seen FROM protection_corridors WHERE agreement_id = agr;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: the counterparty cannot see the corridors';
+  END IF;
+
+  -- A third operator sees nothing at all.
+  PERFORM set_config('app.tenant_id', third::text, true);
+  SELECT count(*) INTO seen FROM protection_agreements WHERE id = agr;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: a stranger read two companies terms';
+  END IF;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  an agreement is readable by both parties and by no third';
+END
+$$;
+
+-- ── 15. The terms are frozen once the other party has agreed ────────────────
+--
+-- 0019 decision 2. The discount is what one operator bills the other under,
+-- so it cannot move after acceptance — a column-level grant rather than a
+-- handler, which is what makes it hold against code written next year.
+DO $$
+DECLARE
+  ocean UUID := '11111111-1111-1111-1111-111111111111';
+  bony  UUID := '22222222-2222-2222-2222-222222222222';
+  agr   UUID := 'dddddddd-0000-0000-0000-000000000001';
+  live  INT;
+BEGIN
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', bony::text, true);
+
+  -- The counterparty accepts. State and the acceptance stamp are granted.
+  UPDATE protection_agreements
+     SET state = 'active', accepted_at = now()
+   WHERE id = agr;
+
+  BEGIN
+    UPDATE protection_agreements SET rebill_discount_bps = 0 WHERE id = agr;
+    RAISE EXCEPTION 'FAIL: the rebill rate was changed after acceptance';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  BEGIN
+    UPDATE protection_agreements SET monthly_cap_seats = 9999 WHERE id = agr;
+    RAISE EXCEPTION 'FAIL: the monthly ceiling was raised after acceptance';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  -- And an agreement is not something either party makes disappear.
+  BEGIN
+    DELETE FROM protection_agreements WHERE id = agr;
+    RAISE EXCEPTION 'FAIL: an agreement was deleted';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  -- Two operators have at most one live agreement: a second would be two
+  -- rates for the same seat with no way to say which was meant.
+  BEGIN
+    PERFORM set_config('app.tenant_id', ocean::text, true);
+    INSERT INTO protection_agreements (operator_a, operator_b, proposed_by)
+    VALUES (LEAST(ocean, bony), GREATEST(ocean, bony), ocean);
+    RAISE EXCEPTION 'FAIL: a second live agreement was written';
+  EXCEPTION WHEN unique_violation THEN
+    NULL;
+  END;
+
+  SELECT count(*) INTO live FROM protection_agreements
+   WHERE id = agr AND state = 'active' AND rebill_discount_bps = 1500;
+  IF live <> 1 THEN
+    RAISE EXCEPTION 'FAIL: the accepted terms are not the proposed ones';
+  END IF;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  accepted terms are frozen, and a pair has one agreement';
 END
 $$;

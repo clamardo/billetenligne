@@ -126,6 +126,10 @@ final class ConsoleShell extends StatelessWidget {
     // company was paid last week, and a tab they cannot use is a tab they
     // eventually ask about.
     if (w.can('finance.read')) ConsoleSection.finance,
+    // Reading needs only `booking.read`: a dispatcher has to know option ③
+    // exists before a breakdown, not after. Writing needs `protection.manage`,
+    // which the screen checks separately.
+    if (w.can('booking.read')) ConsoleSection.protection,
   ];
 
   static IconData _icon(ConsoleSection s) => switch (s) {
@@ -137,6 +141,7 @@ final class ConsoleShell extends StatelessWidget {
     ConsoleSection.policies => Icons.gavel,
     ConsoleSection.vitrine => Icons.storefront,
     ConsoleSection.finance => Icons.receipt_long,
+    ConsoleSection.protection => Icons.handshake,
   };
 
   static String _labelKey(ConsoleSection s) => switch (s) {
@@ -148,6 +153,7 @@ final class ConsoleShell extends StatelessWidget {
     ConsoleSection.policies => 'console.nav.policies',
     ConsoleSection.vitrine => 'console.nav.vitrine',
     ConsoleSection.finance => 'console.nav.finance',
+    ConsoleSection.protection => 'console.nav.protection',
   };
 
   /// Notices travel as `key|arg|arg`, so the *workspace* never holds prose.

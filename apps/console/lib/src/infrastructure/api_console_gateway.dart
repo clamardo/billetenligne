@@ -154,6 +154,21 @@ final class ApiConsoleGateway implements ConsoleGateway {
   Future<List<PayoutRunDto>> statements() => _client.statements();
 
   @override
+  Future<List<ProtectionAgreementDto>> protectionAgreements() =>
+      _client.protectionAgreements();
+
+  @override
+  Future<ProtectionAgreementDto> proposeAgreement(
+    ProposeAgreementRequest request,
+  ) => _client.proposeAgreement(request);
+
+  @override
+  Future<ProtectionAgreementDto> decideAgreement({
+    required String agreementId,
+    required AgreementDecisionRequest request,
+  }) => _client.decideAgreement(agreementId: agreementId, request: request);
+
+  @override
   Future<RebookingAppliedDto> rebookOnto({
     required String departureId,
     required RebookRequest request,

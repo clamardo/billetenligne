@@ -21,6 +21,7 @@ enum ConsoleSection {
   policies,
   vitrine,
   finance,
+  protection,
 }
 
 /// Everything the console has loaded, and what it is doing.
@@ -93,6 +94,19 @@ final class ConsoleWorkspace {
   /// enforces that with a grant rather than with a missing button.
   List<PayoutRunDto> statements = const [];
 
+  /// Standing protection agreements, in either role (`08-disruption.md` §5).
+  ///
+  /// Loaded for the whole console rather than only its own section, because
+  /// the dispatcher's disruption sheet has to know whether option ③ exists
+  /// at all — a rescue plan that omits an agreement the operator is paying
+  /// for is a plan that sends people home.
+  List<ProtectionAgreementDto> agreements = const [];
+
+  /// Agreements somebody else has proposed and we have not answered. The
+  /// number on the tab, because a proposal nobody notices is a proposal that
+  /// expires unanswered.
+  int get agreementsAwaitingUs => agreements.where((a) => a.awaitingUs).length;
+
   /// The operator's storefront. Null until the vitrine section is opened —
   /// nothing else on the console needs it, and loading it on every start
   /// would be a request per morning for a screen most people open twice.
@@ -148,6 +162,13 @@ final class ConsoleWorkspace {
         vitrine = await _gateway.vitrine();
       case ConsoleSection.finance:
         statements = await _gateway.statements();
+      case ConsoleSection.protection:
+        agreements = await _gateway.protectionAgreements();
+        // The corridors offered when proposing are built from the lines this
+        // operator actually runs. Loading them lazily would mean an empty
+        // list the first time the dialog opens, which reads as "we serve
+        // nowhere" rather than "not loaded yet".
+        routes = await _gateway.routes();
       case ConsoleSection.timetable:
         schedules = await _gateway.schedules();
         // The editor cannot offer a route or a coach it has not loaded, and
@@ -346,6 +367,51 @@ final class ConsoleWorkspace {
     _notice = applied.moved == 0
         ? 'rescue.appliedSameSeats|${applied.registration}'
         : 'rescue.applied|${applied.registration}|${applied.moved}';
+    await _loadSection();
+  });
+
+  /// Write the terms and send them to the other company (`08-disruption.md`
+  /// §5).
+  ///
+  /// The notice says *proposed*, never *agreed*. An operator who reads
+  /// "accord créé" and stops thinking about it is one who finds out at the
+  /// roadside that nobody ever accepted.
+  Future<void> proposeAgreement({
+    required String counterpartyCode,
+    required List<String> corridors,
+    bool reciprocal = true,
+    int rebillDiscountBps = 0,
+    int? monthlyCapSeats,
+    int? autoAcceptWhenSpareAbove,
+  }) => _run(() async {
+    if (corridors.isEmpty) {
+      _notice = 'protection.noCorridors';
+      return;
+    }
+    final proposed = await _gateway.proposeAgreement(
+      ProposeAgreementRequest(
+        counterpartyCode: counterpartyCode,
+        corridors: corridors,
+        reciprocal: reciprocal,
+        rebillDiscountBps: rebillDiscountBps,
+        monthlyCapSeats: monthlyCapSeats,
+        autoAcceptWhenSpareAbove: autoAcceptWhenSpareAbove,
+      ),
+    );
+    _notice = 'protection.proposed|${proposed.counterpartyName}';
+    await _loadSection();
+  });
+
+  Future<void> decideAgreement({
+    required String agreementId,
+    required String decision,
+    String? reason,
+  }) => _run(() async {
+    final decided = await _gateway.decideAgreement(
+      agreementId: agreementId,
+      request: AgreementDecisionRequest(decision: decision, reason: reason),
+    );
+    _notice = 'protection.$decision|${decided.counterpartyName}';
     await _loadSection();
   });
 

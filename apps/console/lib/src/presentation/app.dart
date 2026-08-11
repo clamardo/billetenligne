@@ -12,6 +12,7 @@ import 'screens/network_screen.dart';
 import 'screens/timetable_screen.dart';
 import 'screens/today_screen.dart';
 import 'screens/policies_screen.dart';
+import 'screens/protection_screen.dart';
 import 'screens/statements_screen.dart';
 import 'screens/vitrine_screen.dart';
 import 'widgets/console_shell.dart';
@@ -122,6 +123,7 @@ class _ConsoleState extends State<_Console> {
         ConsoleSection.policies => PoliciesScreen(workspace: _work),
         ConsoleSection.vitrine => VitrineScreen(workspace: _work),
         ConsoleSection.finance => StatementsScreen(workspace: _work),
+        ConsoleSection.protection => ProtectionScreen(workspace: _work),
       },
     );
   }

@@ -1060,6 +1060,65 @@ check "a well-formed wave gets past validation" "503" \
 check "GET is not a way to move passengers" "405" \
   "$(status -H "$OP_AUTH" "$BASE/console/v1/departures/$DEP/rebook")"
 
+# ── Agreeing to protect each other ──────────────────────────────────────────
+#
+# `08-disruption.md` §5. The commercial half of option ③: two operators write
+# the terms once, in an office, instead of negotiating a seat price at the
+# roadside in the rain.
+#
+# The fakes composition has no protection desk — an agreement is a commercial
+# arrangement between two real companies and there is nothing useful to fake —
+# so a well-formed proposal reaches a refusal rather than a row. What is
+# proved here is the surface: who may read, who may write, and that a
+# malformed corridor is a 400 rather than a 500 from a constructor.
+echo
+echo "── agreeing to protect each other"
+
+propose_as() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST \
+    "$BASE/console/v1/protection" -H "$1" \
+    -H 'Content-Type: application/json' -d "$2"
+}
+
+check "an anonymous caller sees no agreements" "401" \
+  "$(status "$BASE/console/v1/protection")"
+check "a traveller cannot read an operator's agreements" "403" \
+  "$(status -H "$AUTH" "$BASE/console/v1/protection")"
+# Reading needs only booking.read: a dispatcher has to know option ③ exists
+# before a breakdown, not after.
+check "the operator reads their own" "200" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/protection")"
+
+check "an anonymous caller cannot propose one" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/protection" -H 'Content-Type: application/json' \
+     -d '{"counterpartyCode":"TBV","corridors":["BZV~PNR"]}')"
+check "a traveller cannot propose one either" "403" \
+  "$(propose_as "$AUTH" '{"counterpartyCode":"TBV","corridors":["BZV~PNR"]}')"
+# A corridor that goes nowhere is caught at the edge, with the offending
+# value named, rather than throwing out of a constructor inside a transaction.
+check "a corridor that goes nowhere is refused by name" "400" \
+  "$(propose_as "$OP_AUTH" '{"counterpartyCode":"TBV","corridors":["BZV~BZV"]}')"
+check "and so is one that is not a pair" "400" \
+  "$(propose_as "$OP_AUTH" '{"counterpartyCode":"TBV","corridors":["BZV"]}')"
+corridor_error="$(curl -s -X POST "$BASE/console/v1/protection" -H "$OP_AUTH" \
+  -H 'Content-Type: application/json' \
+  -d '{"counterpartyCode":"TBV","corridors":["BZV~BZV"]}')"
+check "the refusal names the value, not the field alone" "yes" \
+  "$(grep -q 'BZV~BZV' <<<"$corridor_error" && echo yes || echo no)"
+# Well-formed, and refused by the world rather than by validation: a 409,
+# which is what tells a client to say something rather than fix the payload.
+check "a well-formed proposal gets past validation" "409" \
+  "$(propose_as "$OP_AUTH" \
+     '{"counterpartyCode":"TBV","corridors":["BZV~PNR"],"rebillDiscountBps":1500}')"
+check "GET is not a way to decide one" "405" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/protection/agr-1/decision")"
+check "a decision nobody defined is refused" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/protection/agr-1/decision" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d '{"decision":"ratify"}')"
+
+
 # ── The Dart client against this same server ────────────────────────────────
 #
 # curl proves the HTTP surface; this proves the seam the *app* actually uses —

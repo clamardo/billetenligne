@@ -203,8 +203,13 @@ final class _ScriptedConsole implements ConsoleGateway {
     return status == 'active' ? const [] : const ['dep-1', 'dep-2'];
   }
 
+  /// The lines this operator runs. The agreement dialog offers corridors
+  /// built from these rather than a free-text field, so nobody agrees to
+  /// protect a road neither company serves.
+  List<RouteDto> routeList = const [];
+
   @override
-  Future<List<RouteDto>> routes() async => const [];
+  Future<List<RouteDto>> routes() async => routeList;
 
   @override
   Future<RouteDto> saveRoute({
@@ -315,6 +320,50 @@ final class _ScriptedConsole implements ConsoleGateway {
 
   /// This operator's statements, as the server would answer.
   List<PayoutRunDto> statementList = const [];
+
+  /// The standing agreements, as the server would answer.
+  List<ProtectionAgreementDto> agreementList = const [];
+
+  @override
+  Future<List<ProtectionAgreementDto>> protectionAgreements() async {
+    saved.add('protection');
+    return agreementList;
+  }
+
+  @override
+  Future<ProtectionAgreementDto> proposeAgreement(
+    ProposeAgreementRequest request,
+  ) async {
+    saved.add(
+      'propose:${request.counterpartyCode}:${request.corridors.join(",")}'
+      ':${request.rebillDiscountBps}',
+    );
+    return _agreement(
+      id: 'agr-new',
+      state: 'proposed',
+      weProposed: true,
+      corridors: request.corridors,
+      discountBps: request.rebillDiscountBps,
+      cap: request.monthlyCapSeats,
+    );
+  }
+
+  @override
+  Future<ProtectionAgreementDto> decideAgreement({
+    required String agreementId,
+    required AgreementDecisionRequest request,
+  }) async {
+    saved.add('decide:$agreementId:${request.decision}');
+    return _agreement(
+      id: agreementId,
+      state: switch (request.decision) {
+        'accept' || 'resume' => 'active',
+        'suspend' => 'suspended',
+        _ => 'ended',
+      },
+      weProposed: false,
+    );
+  }
 
   @override
   Future<List<PayoutRunDto>> statements() async {
@@ -1115,6 +1164,159 @@ void main() {
       // a narrow no-break space in French, so the assertion uses the same
       // character rather than a plain one that would never match.
       expect(find.textContaining('54${Money.narrowNbsp}000'), findsOneWidget);
+    });
+  });
+
+  group('protection agreements', () {
+    _ScriptedConsole dispatcher() =>
+        _ScriptedConsole(capabilities: const ['booking.read']);
+
+    _ScriptedConsole owner() => _ScriptedConsole(
+      capabilities: const ['booking.read', 'protection.manage'],
+    );
+
+    testWidgets(
+      'a dispatcher sees the tab, because option ③ is theirs to use',
+      (tester) async {
+        final gateway = dispatcher()..agreementList = [_agreement()];
+        final workspace = await pump(tester, gateway);
+        workspace.openSection(ConsoleSection.protection);
+        await tester.pumpAndSettle();
+
+        expect(gateway.saved, contains('protection'));
+        expect(find.text('Trans Bony Voyages'), findsOneWidget);
+        // Reading is theirs; agreeing a rate with a competitor is not.
+        expect(find.text('Proposer un accord'), findsNothing);
+      },
+    );
+
+    testWidgets('the rebill is money on a real fare, not basis points', (
+      tester,
+    ) async {
+      final gateway = owner()..agreementList = [_agreement()];
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      // 9 000 less 15% is 7 650 — a number somebody can check against a
+      // ticket, which "1500 bps" is not.
+      expect(find.textContaining('7${Money.narrowNbsp}650'), findsOneWidget);
+      expect(find.textContaining('1500'), findsNothing);
+    });
+
+    testWidgets('the ceiling is shown before it bites', (tester) async {
+      final gateway = owner()..agreementList = [_agreement(used: 31, cap: 40)];
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      // On the card, not on the refusal: a dispatcher planning a rescue needs
+      // to know the agreement is nearly spent while there is time to find
+      // another one.
+      expect(find.text('31 sur 40 places ce mois'), findsOneWidget);
+    });
+
+    testWidgets('our own proposal says nothing is covered yet', (tester) async {
+      final gateway = owner()
+        ..agreementList = [_agreement(state: 'proposed', weProposed: true)];
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining("Rien n'est couvert tant qu'ils n'ont pas accepté"),
+        findsOneWidget,
+      );
+      // And there is nothing to accept — the party that wrote the terms is
+      // not the party that agrees to them.
+      expect(find.text('Accepter'), findsNothing);
+    });
+
+    testWidgets('theirs is offered with an accept and a decline', (
+      tester,
+    ) async {
+      final gateway = owner()
+        ..agreementList = [_agreement(state: 'proposed', weProposed: false)];
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      expect(find.text('En attente de votre réponse'), findsOneWidget);
+      expect(find.text('Refuser'), findsOneWidget);
+
+      await tester.tap(find.text('Accepter'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('decide:agr-1:accept'));
+      expect(
+        find.textContaining('Accord avec Trans Bony Voyages en vigueur'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a live one can be suspended without being torn up', (
+      tester,
+    ) async {
+      final gateway = owner()..agreementList = [_agreement()];
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Suspendre'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('decide:agr-1:suspend'));
+    });
+
+    testWidgets('proposing sends a percentage as basis points', (tester) async {
+      final gateway = owner()
+        ..routeList = [
+          const RouteDto(
+            id: 'r-1',
+            code: 'BZV-PNR',
+            originCity: 'BZV',
+            destinationCity: 'PNR',
+            durationMinutes: 450,
+            active: true,
+          ),
+        ];
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Proposer un accord'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).first, 'tbv');
+      await tester.tap(find.text('BZV ↔ PNR'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Envoyer la proposition'));
+      await tester.pumpAndSettle();
+
+      // Typed as "15" because that is how the term is spoken; stored as
+      // 1500 because floating-point percentages are how an operator ends up
+      // a franc short.
+      expect(gateway.saved, contains('propose:TBV:BZV~PNR:1500'));
+      expect(
+        find.textContaining('Proposition envoyée à Trans Bony Voyages'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an operator with no routes is told why they cannot pick one', (
+      tester,
+    ) async {
+      final workspace = await pump(tester, owner());
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Proposer un accord'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text("Créez d'abord une ligne : un accord couvre des trajets."),
+        findsOneWidget,
+      );
     });
   });
 
@@ -2236,3 +2438,28 @@ final class _ScriptedPicker implements FilePicker {
     return _file;
   }
 }
+
+/// One agreement, with the terms `08-disruption.md` §5 writes down.
+ProtectionAgreementDto _agreement({
+  String id = 'agr-1',
+  String state = 'active',
+  bool weProposed = true,
+  String counterpartyName = 'Trans Bony Voyages',
+  List<String> corridors = const ['BZV~PNR'],
+  int discountBps = 1500,
+  int? cap = 40,
+  int used = 0,
+}) => ProtectionAgreementDto(
+  id: id,
+  counterpartyId: 'op-bony',
+  counterpartyName: counterpartyName,
+  state: state,
+  corridors: corridors,
+  reciprocal: true,
+  rebillDiscountBps: discountBps,
+  weProposed: weProposed,
+  proposedAt: DateTime.utc(2026, 8, 1),
+  seatsUsedThisMonth: used,
+  monthlyCapSeats: cap,
+  acceptedAt: state == 'proposed' ? null : DateTime.utc(2026, 8, 2),
+);

@@ -596,6 +596,34 @@ final class BelApiClient {
     field: 'items',
   );
 
+  /// The standing protection agreements this operator is a party to, in
+  /// either role (`08-disruption.md` §5).
+  Future<List<ProtectionAgreementDto>> protectionAgreements() async =>
+      Wire.readList(
+        (await _get('/console/v1/protection'))['items'],
+        ProtectionAgreementDto.fromJson,
+        field: 'items',
+      );
+
+  Future<ProtectionAgreementDto> proposeAgreement(
+    ProposeAgreementRequest request,
+  ) async => ProtectionAgreementDto.fromJson(
+    await _postJson('/console/v1/protection', request.toJson()),
+  );
+
+  /// `accept` · `decline` · `suspend` · `resume` · `end`. One method for five
+  /// decisions, because the rule they share — the party that wrote the terms
+  /// is not the party that agrees to them — is checked in one place.
+  Future<ProtectionAgreementDto> decideAgreement({
+    required String agreementId,
+    required AgreementDecisionRequest request,
+  }) async => ProtectionAgreementDto.fromJson(
+    await _postJson(
+      '/console/v1/protection/$agreementId/decision',
+      request.toJson(),
+    ),
+  );
+
   /// The platform's payout queue: prepared and not yet paid, oldest first.
   Future<List<PayoutRunDto>> payoutQueue({String? reason}) async =>
       Wire.readList(

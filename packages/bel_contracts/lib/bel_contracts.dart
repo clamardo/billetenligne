@@ -31,6 +31,7 @@ export 'src/console/layout_draft.dart';
 export 'src/console/refund_dto.dart';
 export 'src/console/refund_policy_dto.dart';
 export 'src/disruption/disruption_dto.dart';
+export 'src/disruption/protection_dto.dart';
 export 'src/onboarding/application_dto.dart';
 export 'src/error/api_error.dart';
 export 'src/error/error_code.dart';
