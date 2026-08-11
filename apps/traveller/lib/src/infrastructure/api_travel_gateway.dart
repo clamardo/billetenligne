@@ -43,6 +43,19 @@ final class ApiTravelGateway implements TravelGateway {
   Future<List<BookingDto>> bookings() => _client.bookings();
 
   @override
+  Future<TravelChoicesDto> travelOptions(String bookingRef) =>
+      _client.travelOptions(bookingRef);
+
+  @override
+  Future<ChoiceAppliedDto> chooseTravel({
+    required String bookingRef,
+    required String optionId,
+  }) => _client.chooseTravel(
+    bookingRef: bookingRef,
+    request: TravelChoiceRequest(optionId: optionId),
+  );
+
+  @override
   Future<BookingDto> booking(String bookingId) async {
     final all = await _client.bookings();
     return all.firstWhere((b) => b.id == bookingId);

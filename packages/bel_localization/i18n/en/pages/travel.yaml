@@ -111,6 +111,43 @@ travel:
     disruptedNewTime: "Now departing at {time}"
     disruptedFree: "No fees: exchange or full refund."
     disruptedCounter: "Go to a {operator} counter, or call the agency."
+  # The passenger's choice screen (08-disruption.md §3.2). Three rules hold
+  # here: one option is already assigned — nobody is left with nothing while
+  # they think —, every row states the ARRIVAL time, and the refund is always
+  # there, last, never hidden.
+  choice:
+    open: "See your options"
+    title: "Your trip is disrupted"
+    loading: "Loading your options…"
+    trip: "{origin} → {destination} · {date} · {time}"
+    at: "Breakdown near {place}"
+    lead: "Choose — at no cost:"
+    assigned: "ASSIGNED"
+    keep: "Keep this"
+    pick: "Choose"
+    departsAt: "Departs {time}"
+    arrives: "Arrives {time}"
+    seat: "seat {seats}"
+    seats:
+      one: "{count} seat"
+      other: "{count} seats"
+    partial: "{covered} of {needed} seats"
+    full: "Full"
+    otherOperator: "Another company"
+    refundTitle: "Full refund"
+    refundBody: "{amount}, collected at the counter"
+    fallback: "With no answer before {time}, we keep you on the assigned seat."
+    closed: "The window for choosing has passed. Please see the company's counter."
+    keptTitle: "You keep your seat"
+    keptBody: "Nothing changes. Your ticket stays valid."
+    movedTitle: "You have been moved"
+    movedBody: "Departs {time} · {seats}"
+    movedTicket: "Your new ticket is ready. The old one no longer boards."
+    refundedTitle: "Refund recorded"
+    refundedBody: "{amount} will be handed to you at the company's counter."
+    claimCode: "Collection code"
+    claimHelp: "Write it down. It is also sent to you by SMS."
+    done: "Back to my tickets"
   reserved:
     title: "Reservation confirmed"
     payAtAgency: "Show this code at any {operator} agency to pay."

@@ -28,11 +28,18 @@ final class DisruptionStrip extends StatelessWidget {
   const DisruptionStrip({
     required this.disruption,
     required this.operatorName,
+    this.onChoices,
     super.key,
   });
 
   final DisruptionDto disruption;
   final String operatorName;
+
+  /// Opens the choice screen. Null when there is nothing to choose — a delay
+  /// the operator has not opened to self-service is information, not an
+  /// invitation, and a button that leads to an empty list is worse than no
+  /// button at all.
+  final VoidCallback? onChoices;
 
   @override
   Widget build(BuildContext context) {
@@ -85,6 +92,15 @@ final class DisruptionStrip extends StatelessWidget {
               style: kilo.text.bodySm.copyWith(
                 color: kilo.color.contentSecondary,
               ),
+            ),
+          ],
+          // Under the entitlement sentence, because "aucun frais" is what
+          // makes somebody willing to press it.
+          if (onChoices != null) ...[
+            SizedBox(height: kilo.space.s3),
+            KButton(
+              label: context.t('travel.choice.open'),
+              onPressed: onChoices,
             ),
           ],
         ],

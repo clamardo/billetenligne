@@ -88,7 +88,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **`config/markets.yaml` is loaded** | ✅ done | ADR-0006, and the gap this document named first. The file is now the authority for the currency, the service fee, the dialling table and the rails; `Market.congoBrazzaville` is the **fallback** for when there is no file. A missing file falls back — that is every unit test and every fresh clone — and a **malformed one kills the process before it is healthy**, because an instance that comes up green serving last release's rails is the failure worth refusing. Enabling Orange Money, or a carrier renumbering, is a file and a restart. A currency whose exponent we do not know is refused by name, never guessed. 19 API tests · 7 smoke checks, two of them a second server started against a different file |
 | **IRROPS — the protection agreement** | ✅ done | `08-disruption.md` §5, the commercial half of option ③. Which roads, at what discount off the rescuer's public fare, up to how many seats a month, one way or both — agreed once in an office instead of at the roadside. **One party writes the terms and the other accepts them**, and afterwards the discount, the ceiling and the roads are frozen by a column-level grant. The **only row in the schema that belongs to two tenants**: an agreement neither party can read is not an agreement, so the policy names exactly two operators and an executed guarantee proves it names no third. Naming a competitor goes through a SECURITY DEFINER function returning the two facts a traveller already reads off a search result, because a SELECT policy on `operators` is all-columns and a competitor's negotiated commission is exactly what a competitor must not read. The ceiling reads `31 / 40` on the card, not on the refusal. Settlement posts one payable against the other, **no commission and no cash**, so it nets into the next payout run. 23 domain · 18 Postgres · 11 smoke · 2 schema guarantees · 7 console tests |
 | **IRROPS — the protection movement** | ✅ done | `08-disruption.md` §2.2 option ③, §2.3. The agreement now moves people. The dispatcher picks a competitor's departure out of the **public search** — the same list any traveller sees — narrowed to companies an agreement covers, later, with room; the ask lands on their console with what §2.3 says they need to answer: who, how many, which coach, what they will be paid. **Accepting applies the movement in the same transaction**, because a request accepted now and applied later is a window in which the receiving operator sells the seats they just promised. New seats taken before old ones released, both departures locked in id order, `operator_id` and `departure_id` changing together, and **every ticket re-signed under the receiving operator's code** (ADR-0007). The rebill is the discount on the **rescuer's** fare, posted payable-against-payable with no commission and no cash. The **one operation that crosses a tenant boundary**: it escalates into one narrow transaction that re-checks the agreement is still active and the request still pending, and the two SECURITY DEFINER functions it needed hand over only what a traveller can already read off a search result. 18 Postgres · 10 smoke · 2 schema guarantees · 13 console tests |
-| IRROPS — the protection movement, and the passenger's own choice | ⬜ not started | `08-disruption.md` §2.2 options ③ and ⑤. The agreement exists; nothing moves under it yet — the request the receiving operator accepts, the seats held and the tickets reissued under *their* name, the movement row and its posting. And §3.2: letting the passengers choose between the plans themselves, which produces better coverage than any dispatcher plan because a released seat returns to the pool |
+| **IRROPS — the passenger's own choice** | ✅ done | `08-disruption.md` §3.2 option ⑤. The passengers pick between the plans themselves, and a released seat goes back into the pool the other affected passengers are drawing from — which is why this covers more people than any dispatcher plan. **A default is already assigned** and the screen says so, so nobody is left holding nothing while they decide. **Every travel row states the arrival time**, because that is the question being asked at a roadside. **The refund is last, always present**, issued as an **agency claim with a code** rather than a rail disbursement we cannot make. The deadline states its own fallback in the same sentence. **Another company's coach is never offered to a passenger** — protection is an operator-to-operator settlement, and a traveller cannot commit two companies to money neither agreed to — so the alternatives are the operator's own, later, with room, inside 36 hours. Nothing is cached: the window is re-checked and the departure locked before a seat moves, so a screen open for ten minutes refuses, re-reads and shows what is left **above** the options rather than instead of them. 18 domain · 20 Postgres · 1 worker · 9 smoke · 17 traveller-app tests |
 
 ## Phase 3 and beyond
 
@@ -100,9 +100,10 @@ operator able to sign themselves up, and the phone channel plumbed behind an
 announcement, **every engineering item in Phase 1 is built.** What remains
 there is commercial. Phase 2 is where the unbuilt work
 lived: the re-accommodation plan, payout runs and the `config/markets.yaml`
-loader are all built, as is the protection agreement option ③ rests on. What
-is left there is a telco's sandbox becoming production credentials, the
-protection movement itself, the passenger's own choice, and the statement PDF.
+loader are all built, as is the whole of option ③ — the protection agreement
+and the movement under it — and option ⑤, the passenger's own choice. What is
+left there is a telco's sandbox becoming production credentials, and the
+payout statement PDF.
 
 ---
 
@@ -144,13 +145,15 @@ These are true today and each one is a decision, not an oversight.
    under the 160-character gate. What is missing is a provisioned ACS sender
    number, so `COMMS__SMSFROM` is blank and the API answers 503 for that
    channel rather than accepting it and leaving somebody waiting (ADR-0024).
-6. **Operator onboarding still starts outside the product.** The back office
-   can now decide an application, but nothing *creates* one: the first row in
-   `operators` arrives by SQL, and the wizard of `03-operator-lifecycle.md`
-   §2.2 is not built. That is deliberate for the first ten operators — they
-   are onboarded in a room, and the queue is what makes the decision
-   auditable afterwards — and it stops being acceptable the moment an
-   eleventh applies without a phone call.
+6. **A passenger's refund is a claim at a counter, never money pushed back.**
+   The choice screen (§3.2) and the console's refund desk both end at an
+   agency claim with a code, because `source` disbursement down a mobile-money
+   rail is not built and stops at `approved`. That is honest rather than
+   convenient — a promise the counter has to refuse is worse than a counter
+   somebody can walk into — but it does mean a traveller in Pointe-Noire whose
+   coach failed collects at an agency rather than on their phone, and the
+   sentence on the screen has to keep saying so until the disbursement half
+   exists.
 7. **Back-office sign-in is an emailed code plus TOTP, not a password plus
    TOTP.** ADR-0013 specifies email + password + mandatory TOTP; the
    authenticator half now exists on both surfaces and the password half does
@@ -212,21 +215,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 375 tests
+         packages/bel_contracts packages/bel_crypto     # 393 tests
 dart test packages/bel_client                           # 32 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 196 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
-cd apps/traveller && flutter test        # 87 app tests
+cd apps/traveller && flutter test        # 104 app tests
 cd apps/console   && flutter test        # 83 console tests
 cd apps/admin     && flutter test        # 23 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 310 files
+dart run tool/check_layers.dart          # the onion rule, 317 files
 ./infra/migrations/check.sh              # 38 schema guarantees
-./tool/integration.sh                    # 228 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 227 checks, incl. the Dart client
+./tool/integration.sh                    # 248 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 236 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -235,8 +238,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**891 tests in total**, plus 227 smoke checks, 38 executed schema guarantees,
-228 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**926 tests in total**, plus 236 smoke checks, 38 executed schema guarantees,
+248 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -251,6 +254,79 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+The passenger's own choice (`08-disruption.md` §3.2 option ⑤) — the option
+most systems never build, and the last unbuilt piece of IRROPS.
+
+**Why it covers more people than a dispatcher plan.** A dispatcher moving
+forty-two people onto an eighteen-seat coach is solving an allocation problem
+with one lever. Letting the passengers choose adds a lever per passenger: the
+person who would rather have the 14:00 than the rescue coach releases a seat
+back into the pool the other forty-one are drawing from. Nobody has to be
+persuaded of anything for this to work — it is the arithmetic §3.2 describes,
+and it is why this screen exists rather than a better dispatcher tool.
+
+**A default is always already assigned, and the screen says which.** The
+temptation is to present a clean list of equal options and wait. That leaves
+somebody who closes the app mid-thought — or whose battery dies at a roadside
+— holding nothing at all. So the server pre-assigns, the screen renders that
+row first with `ATTRIBUÉ` and a button that says *Je garde* rather than
+*Choisir*, and the deadline states the fallback in the same sentence it states
+the time. Choice here is an upgrade on a safe state, never a prerequisite for
+one.
+
+**Every travel row states the arrival time.** Departure times are what a
+timetable holds and what every booking screen shows, and they are the wrong
+answer to the question actually being asked on a roadside at 04:00. "Arrivée
+21:30" is the thing somebody decides against. Showing "Départ 14:00" and
+letting them add eight hours in their head is the kind of small unhelpfulness
+that reads as indifference.
+
+**The refund is an agency claim, not a rail disbursement.** It would have been
+easy to write "remboursé sur Airtel Money" on this screen. We cannot push money
+back down a rail today — `source` refunds stop at `approved` and that is
+written down in the refunds section above — and a promise the counter has to
+refuse is worse than a counter somebody can walk into. So the refund issues a
+claim with a code, the code is on the receipt and in the SMS, and the sentence
+says where to collect it.
+
+**Another company's coach is deliberately not offered to a passenger.**
+Protection (§5) is an operator-to-operator settlement under an agreement two
+companies signed, with a rebill and a monthly ceiling. A traveller tapping a
+competitor's departure would be committing two companies to money neither of
+them agreed to, on nobody's authority. So the alternatives on this screen are
+the operator's own — later than the disrupted departure, with room, inside a
+36-hour horizon — and the protection route stays where it belongs, on a
+dispatcher's console with an agreement behind it.
+
+**Nothing on this screen is cached, and the lock decides, not the screen.**
+The seat counts are the entire content: an option list held for ten minutes
+offers a coach that filled nine minutes ago. So the options are read at the
+moment the screen opens, and on the way back in the window is re-checked and
+the departure locked *before* the seat is taken. A stale tap does not move
+somebody onto a full coach and does not throw them onto an error screen
+either — it refuses, re-reads the options and renders the refusal **above**
+them. That last part is the design decision worth naming: nearly every refusal
+here is the world having changed rather than the passenger having erred, and
+their next move is to look at what is left.
+
+**Two bugs the tests found before anybody else could.** A screen that had been
+open across a state change was returning `choice.unknown_option` for a
+perfectly real departure, because the option id was being matched against a
+list rebuilt from current availability rather than handed to the lock; the
+window gate now runs first and any id that looks like one goes to the mover,
+which is the only thing that can honestly answer. And the alternatives came
+back empty on a shared route, because a `LIMIT 8` over every suite's
+departures filled up before reaching the ones that mattered — status, free
+seats and the horizon are now filtered in SQL rather than after it.
+
+**What it cost:** 18 domain tests, 20 Postgres tests, 1 worker test, 9 smoke
+checks, 17 traveller-app tests, two new public routes, and 5 error keys in
+both languages so a refusal at a roadside is a sentence rather than a code.
+
+---
+
+## What the protection-movement push changed, and what it cost
 
 The protection **movement** (`08-disruption.md` §2.2 option ③, §2.3). The
 agreement went in last time and nothing had moved under it; now a passenger

@@ -54,6 +54,39 @@ final class ViewingTicket extends TicketsStep {
       seatIndex < tickets.length ? tickets[seatIndex] : null;
 }
 
+/// The choice screen for one disrupted booking (`08-disruption.md` §3.2).
+final class ChoosingTravel extends TicketsStep {
+  const ChoosingTravel({
+    required this.booking,
+    required this.choices,
+    this.busy = false,
+    this.failure,
+  });
+
+  final BookingDto booking;
+  final TravelChoicesDto choices;
+
+  /// The last refusal, rendered above the options rather than instead of
+  /// them. Nearly every refusal here is the world having changed — the coach
+  /// filled, the party no longer fits — and the passenger's next move is to
+  /// look at what is left, not to read an apology on an empty screen.
+  final ApiFailure? failure;
+
+  /// True while a choice is being taken. The screen stays on the options and
+  /// disables them rather than blanking: a passenger who taps twice on a bad
+  /// connection must not be looking at a spinner wondering which tap counted.
+  final bool busy;
+}
+
+/// What happened after they tapped. A screen of its own rather than a banner,
+/// because a refund carries a code somebody has to write down.
+final class TravelChosen extends TicketsStep {
+  const TravelChosen({required this.booking, required this.applied});
+
+  final BookingDto booking;
+  final ChoiceAppliedDto applied;
+}
+
 final class TicketsFailed extends TicketsStep {
   const TicketsFailed(this.failure);
   final ApiFailure failure;
@@ -105,13 +138,17 @@ final class TicketsFlow {
   /// at. The list stays on screen while this runs.
   Future<void> refresh() => _fetch();
 
-  Future<void> _fetch() async {
+  /// [silent] reloads the list without moving the passenger off whatever
+  /// they are looking at — used after a choice is taken, so the list behind
+  /// the receipt is already right when they go back to it.
+  Future<void> _fetch({bool silent = false}) async {
     try {
       _cached = await _gateway.bookings();
-      _emit(_ready());
+      if (!silent) _emit(_ready());
     } on ApiFailure catch (failure) {
       // A ticket already loaded is worth more than the error that stopped us
       // reloading it: the traveller is standing at the door either way.
+      if (silent) return;
       if (_cached.isNotEmpty) {
         _emit(_ready(stale: true));
       } else {
@@ -173,6 +210,68 @@ final class TicketsFlow {
       ),
     );
   }
+
+  /// Opens the choice screen for a disrupted booking.
+  ///
+  /// Fetched at the moment of opening and never held: the seat counts on the
+  /// alternatives are the entire point of the screen, and a cached one offers
+  /// a coach that filled ten minutes ago.
+  Future<void> openChoices(BookingDto booking) async {
+    try {
+      final choices = await _gateway.travelOptions(booking.ref);
+      _emit(ChoosingTravel(booking: booking, choices: choices));
+    } on ApiFailure catch (failure) {
+      _emit(TicketsFailed(failure));
+    }
+  }
+
+  /// Takes one. The movement happens server-side inside this call, so what
+  /// comes back is what is now true rather than what was asked for.
+  Future<void> choose(String optionId) async {
+    final current = _step;
+    if (current is! ChoosingTravel || current.busy) return;
+
+    _emit(
+      ChoosingTravel(
+        booking: current.booking,
+        choices: current.choices,
+        busy: true,
+      ),
+    );
+
+    try {
+      final applied = await _gateway.chooseTravel(
+        bookingRef: current.booking.ref,
+        optionId: optionId,
+      );
+      // The list behind is now wrong — a moved booking is on another coach
+      // and a refunded one has no ticket — so it is reloaded before the
+      // passenger can get back to it.
+      await _fetch(silent: true);
+      _emit(TravelChosen(booking: current.booking, applied: applied));
+    } on ApiFailure catch (failure) {
+      // Re-read rather than report and stop: nearly every refusal here is the
+      // world having changed — the coach filled, the deadline passed — and
+      // the passenger's next move is to look at the options again.
+      try {
+        final refreshed = await _gateway.travelOptions(current.booking.ref);
+        _emit(
+          ChoosingTravel(
+            booking: current.booking,
+            choices: refreshed,
+            failure: failure,
+          ),
+        );
+      } on ApiFailure {
+        // The options cannot be re-read either. Now it is a failure screen,
+        // because there is nothing left to show.
+        _emit(TicketsFailed(failure));
+      }
+    }
+  }
+
+  /// Back to the list from the choice screen or its receipt.
+  void closeChoices() => _emit(_ready());
 
   /// Back to the list, from a ticket. Re-derives it so a booking paid for in
   /// another tab of somebody's life is where it should be.

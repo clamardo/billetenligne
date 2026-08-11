@@ -132,6 +132,46 @@ final class _ScriptedGateway implements TravelGateway {
     return bookingsResult ?? [reserveResult ??= _demoBooking(const [])];
   }
 
+  // ── The passenger's own choice ────────────────────────────────────────────
+
+  /// What the choice screen will find, and what the tap returns. Both
+  /// settable: the interesting states here — a coach that filled, a window
+  /// that closed — are ones no sequence of calls on this fake can reach.
+  TravelChoicesDto? choicesResult;
+  ChoiceAppliedDto? chooseResult;
+  ApiFailure? choicesFailure;
+  ApiFailure? chooseFailure;
+
+  final choicesAsked = <String>[];
+  final chosen = <String>[];
+
+  @override
+  Future<TravelChoicesDto> travelOptions(String bookingRef) async {
+    choicesAsked.add(bookingRef);
+    if (choicesFailure != null) throw choicesFailure!;
+    return choicesResult ??
+        TravelChoicesDto(
+          bookingRef: bookingRef,
+          options: const [],
+          deadline: DateTime.utc(2026, 8, 9, 9),
+          seatsNeeded: 1,
+          originCity: 'Brazzaville',
+          destinationCity: 'Pointe-Noire',
+          open: true,
+        );
+  }
+
+  @override
+  Future<ChoiceAppliedDto> chooseTravel({
+    required String bookingRef,
+    required String optionId,
+  }) async {
+    chosen.add(optionId);
+    if (chooseFailure != null) throw chooseFailure!;
+    return chooseResult ??
+        ChoiceAppliedDto(bookingRef: bookingRef, kind: 'keep');
+  }
+
   @override
   Future<
     ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})

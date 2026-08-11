@@ -20,6 +20,15 @@ errors:
   server:
     internal: "Something went wrong on our side. Try again."
     unavailable: "Service temporarily unavailable. Try again in a moment."
+  # The choice screen's refusals (08-disruption.md §3.2). Each says what
+  # changed in the world rather than what the server rejected: at 04:00 the
+  # useful sentence is "that coach just filled", not "conflict".
+  choice:
+    nothing_disrupted: "This trip is no longer disrupted. Your ticket stands as it is."
+    window_closed: "The window for choosing has passed. Please see the company's counter."
+    unknown_option: "That option no longer exists. Look at the ones that remain."
+    no_longer_available: "That coach just filled. Please choose another option."
+    party_does_not_fit: "There are not enough seats left for {seats} travellers on that coach."
   refund:
     outside_window: "This ticket is no longer refundable under the terms it was sold with."
     fare_not_refundable: "The \"{fareCode}\" fare is not refundable."

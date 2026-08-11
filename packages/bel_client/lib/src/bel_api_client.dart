@@ -223,6 +223,29 @@ final class BelApiClient {
     return Wire.readList(body['items'], BookingDto.fromJson, field: 'items');
   }
 
+  /// What this passenger may do about a disrupted journey
+  /// (`08-disruption.md` §3.2).
+  ///
+  /// Never cached: the seat counts on the alternatives go stale in seconds,
+  /// and a screen offering a coach that filled is the one failure this
+  /// endpoint exists to avoid.
+  Future<TravelChoicesDto> travelOptions(String bookingRef) async =>
+      TravelChoicesDto.fromJson(
+        await _get('/public/v1/bookings/$bookingRef/options'),
+      );
+
+  /// Take one. A move happens in this call — seats taken, ticket re-signed —
+  /// so there is no second step to forget.
+  Future<ChoiceAppliedDto> chooseTravel({
+    required String bookingRef,
+    required TravelChoiceRequest request,
+  }) async => ChoiceAppliedDto.fromJson(
+    await _postJson(
+      '/public/v1/bookings/$bookingRef/choice',
+      request.toJson(),
+    ),
+  );
+
   /// How this booking can be paid, and where the money goes.
   ///
   /// Server-driven: a rail appears only if this deployment can reach it AND

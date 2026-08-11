@@ -55,6 +55,23 @@ abstract interface class TravelGateway {
   /// follow-up call per ticket is a list that fails exactly there.
   Future<List<BookingDto>> bookings();
 
+  // ── When the coach does not go ────────────────────────────────────────────
+
+  /// What this passenger may do about a disrupted journey
+  /// (`08-disruption.md` §3.2).
+  ///
+  /// Fetched when the screen opens and never held: the seat counts on the
+  /// alternatives are the point, and a stale one offers a coach that filled.
+  Future<TravelChoicesDto> travelOptions(String bookingRef);
+
+  /// Take one. The movement happens inside this call — seats taken before the
+  /// old ones are released, ticket re-signed — so there is nothing left to do
+  /// afterwards and nothing to forget.
+  Future<ChoiceAppliedDto> chooseTravel({
+    required String bookingRef,
+    required String optionId,
+  });
+
   // ── Paying ────────────────────────────────────────────────────────────────
 
   /// How this booking can be paid, and where the money goes.

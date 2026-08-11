@@ -272,7 +272,128 @@ final class DemoTravelGateway implements TravelGateway {
     // rotating code and all — without anybody having to walk the funnel and
     // pay first. The states nobody sees in development are the ones that ship
     // broken.
-    return [if (_booking != null) _booking!, _pastTrip];
+    return [if (_booking != null) _booking!, _disruptedTrip, _pastTrip];
+  }
+
+  /// A trip that is being disrupted right now, so the choice screen
+  /// (`08-disruption.md` §3.2) is reachable in demo mode without a dispatcher
+  /// and a broken coach. The states nobody sees in development are the ones
+  /// that ship broken, and this one is a screen somebody reads at 04:00.
+  static const disruptedRef = 'BEL-7QK4M2';
+
+  BookingDto? _disrupted;
+  String _choice = 'keep';
+
+  BookingDto get _disruptedTrip {
+    final leaves = DateTime.now().toUtc().add(const Duration(hours: 5));
+    return _disrupted ??= _paid(
+      BookingDto(
+        id: 'bk-demo-disrupted',
+        ref: disruptedRef,
+        state: 'confirmed',
+        departureId: 'dep-demo-rescue',
+        operatorName: 'Ocean du Nord',
+        originCity: 'Brazzaville',
+        destinationCity: 'Pointe-Noire',
+        departsAt: leaves,
+        arrivesAt: leaves.add(const Duration(hours: 7, minutes: 30)),
+        passengers: const [
+          PassengerDto(fullName: 'Aline Massamba', seatLabel: '14A'),
+        ],
+        fare: const Money.xaf(9000),
+        serviceFee: const Money.xaf(300),
+        total: const Money.xaf(9300),
+        createdAt: leaves.subtract(const Duration(days: 3)),
+        involuntaryChange: true,
+        disruption: DisruptionDto(
+          id: 'dsr-demo',
+          kind: DisruptionKind.breakdownEnRoute,
+          cause: DisruptionCause.mechanical,
+          declaredAt: DateTime.now().toUtc(),
+          marksInvoluntary: true,
+          location: 'Dolisie',
+          note: 'Panne moteur. Un car de secours part a 11h30.',
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<TravelChoicesDto> travelOptions(String bookingRef) async {
+    await Future<void>.delayed(latency);
+    final trip = _disruptedTrip;
+    final later = trip.departsAt.add(const Duration(hours: 3));
+
+    return TravelChoicesDto(
+      bookingRef: trip.ref,
+      // The order §3.2 asks for: the safe state first, the alternatives, then
+      // the refund — last and never hidden.
+      options: [
+        TravelChoiceDto(
+          id: 'keep',
+          kind: 'keep',
+          assigned: _choice == 'keep',
+          departureId: trip.departureId,
+          operatorName: trip.operatorName,
+          departsAt: trip.departsAt,
+          arrivesAt: trip.arrivesAt,
+          seatLabels: const ['14A'],
+        ),
+        TravelChoiceDto(
+          id: 'dep-demo-later',
+          kind: 'move',
+          assigned: _choice == 'dep-demo-later',
+          departureId: 'dep-demo-later',
+          operatorName: trip.operatorName,
+          departsAt: later,
+          arrivesAt: later.add(const Duration(hours: 7, minutes: 30)),
+          seatsAvailable: 18,
+        ),
+        TravelChoiceDto(
+          id: 'refund',
+          kind: 'refund',
+          assigned: false,
+          amount: trip.total,
+        ),
+      ],
+      deadline: trip.departsAt.subtract(const Duration(hours: 1)),
+      seatsNeeded: 1,
+      originCity: trip.originCity,
+      destinationCity: trip.destinationCity,
+      open: true,
+      disruptionKind: 'breakdownEnRoute',
+      reasonKey: 'disruption.kind.breakdownEnRoute',
+      note: trip.disruption?.note,
+    );
+  }
+
+  @override
+  Future<ChoiceAppliedDto> chooseTravel({
+    required String bookingRef,
+    required String optionId,
+  }) async {
+    await Future<void>.delayed(latency);
+    _choice = optionId;
+
+    if (optionId == 'refund') {
+      return ChoiceAppliedDto(
+        bookingRef: bookingRef,
+        kind: 'refund',
+        refunded: const Money.xaf(9300),
+        claimCode: 'K7M2QRTV',
+      );
+    }
+
+    final trip = _disruptedTrip;
+    return ChoiceAppliedDto(
+      bookingRef: bookingRef,
+      kind: optionId == 'keep' ? 'keep' : 'move',
+      departureId: optionId == 'keep' ? trip.departureId : optionId,
+      departsAt: optionId == 'keep'
+          ? trip.departsAt
+          : trip.departsAt.add(const Duration(hours: 3)),
+      seatLabels: const ['14A'],
+    );
   }
 
   static BookingDto get _pastTrip {

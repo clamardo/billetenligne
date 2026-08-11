@@ -20,6 +20,15 @@ errors:
   server:
     internal: "Une erreur est survenue de notre côté. Réessayez."
     unavailable: "Service momentanément indisponible. Réessayez dans quelques instants."
+  # Les refus de l'écran de choix (08-disruption.md §3.2). Chacun dit ce qui a
+  # changé dans le monde, pas ce que le serveur a rejeté : à 4 h du matin, la
+  # phrase utile est « ce car vient de se remplir », pas « conflit ».
+  choice:
+    nothing_disrupted: "Ce voyage n'est plus perturbé. Votre billet reste valable tel quel."
+    window_closed: "Le délai de choix est passé. Présentez-vous au guichet de la compagnie."
+    unknown_option: "Cette option n'existe plus. Regardez celles qui restent."
+    no_longer_available: "Ce car vient de se remplir. Choisissez une autre option."
+    party_does_not_fit: "Il ne reste pas assez de places pour {seats} voyageurs sur ce car."
   refund:
     outside_window: "Ce billet n'est plus remboursable selon les conditions de vente."
     fare_not_refundable: "Le tarif « {fareCode} » n'est pas remboursable."

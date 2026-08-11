@@ -21,6 +21,7 @@ final class TicketsScreen extends StatelessWidget {
     required this.upcoming,
     required this.past,
     required this.onOpen,
+    required this.onChoices,
     required this.onBack,
     required this.onRefresh,
     this.stale = false,
@@ -31,6 +32,11 @@ final class TicketsScreen extends StatelessWidget {
   final List<BookingDto> upcoming;
   final List<BookingDto> past;
   final void Function(BookingDto booking) onOpen;
+
+  /// Opens the choice screen for a disrupted booking, straight from the list.
+  /// One tap rather than two: during a breakdown this list is what somebody
+  /// opens, and the ticket underneath is not what they came for.
+  final void Function(BookingDto booking) onChoices;
   final VoidCallback onBack;
   final Future<void> Function() onRefresh;
 
@@ -94,7 +100,11 @@ final class TicketsScreen extends StatelessWidget {
                     if (upcoming.isNotEmpty) ...[
                       _SectionHeading(context.t('travel.tickets.upcoming')),
                       for (final booking in upcoming)
-                        _BookingCard(booking: booking, onOpen: onOpen),
+                        _BookingCard(
+                          booking: booking,
+                          onOpen: onOpen,
+                          onChoices: onChoices,
+                        ),
                     ],
 
                     if (past.isNotEmpty) ...[
@@ -104,6 +114,7 @@ final class TicketsScreen extends StatelessWidget {
                         _BookingCard(
                           booking: booking,
                           onOpen: onOpen,
+                          onChoices: onChoices,
                           past: true,
                         ),
                     ],
@@ -136,11 +147,13 @@ class _BookingCard extends StatelessWidget {
   const _BookingCard({
     required this.booking,
     required this.onOpen,
+    required this.onChoices,
     this.past = false,
   });
 
   final BookingDto booking;
   final void Function(BookingDto booking) onOpen;
+  final void Function(BookingDto booking) onChoices;
   final bool past;
 
   @override
@@ -228,11 +241,25 @@ class _BookingCard extends StatelessWidget {
               ),
             ],
 
+            // Above "voir le billet", and only while the coach is still
+            // ahead. A disrupted trip that has already left is history, and
+            // there is nothing left to choose.
+            if (booking.disruption?.marksInvoluntary == true && !past) ...[
+              SizedBox(height: kilo.space.s3),
+              KButton(
+                label: context.t('travel.choice.open'),
+                onPressed: () => onChoices(booking),
+              ),
+            ],
+
             if (hasTicket && !past) ...[
               SizedBox(height: kilo.space.s3),
               KButton(
                 label: context.t('travel.tickets.show'),
                 icon: Icons.qr_code_2,
+                tone: booking.disruption?.marksInvoluntary == true
+                    ? KButtonTone.secondary
+                    : KButtonTone.primary,
                 onPressed: () => onOpen(booking),
               ),
             ],

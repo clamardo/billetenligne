@@ -22,6 +22,7 @@ import 'screens/reserved_screen.dart';
 import 'screens/seat_map_screen.dart';
 import 'screens/ticket_screen.dart';
 import 'screens/tickets_screen.dart';
+import 'screens/travel_choice_screen.dart';
 import 'screens/sign_in_screen.dart';
 import 'widgets/failure_view.dart';
 
@@ -364,6 +365,7 @@ class _FunnelState extends State<_Funnel> {
         past: past,
         stale: stale,
         onOpen: widget.tickets.open,
+        onChoices: widget.tickets.openChoices,
         onRefresh: widget.tickets.refresh,
         onBack: _closeTickets,
         onSearch: _closeTickets,
@@ -379,8 +381,28 @@ class _FunnelState extends State<_Funnel> {
           seatIndex: seatIndex,
           onSeat: widget.tickets.showSeat,
           onClose: widget.tickets.closeTicket,
+          // Only where there is something to choose. A delay declared as the
+          // operator's fault opens the entitlement; anything else is a
+          // notice, and a button leading to one option is a dead end.
+          onChoices: booking.disruption?.marksInvoluntary == true
+              ? () => widget.tickets.openChoices(booking)
+              : null,
         ),
       },
+
+      ChoosingTravel(:final choices, :final busy, :final failure) =>
+        TravelChoiceScreen(
+          choices: choices,
+          busy: busy,
+          failure: failure,
+          onChoose: widget.tickets.choose,
+          onClose: widget.tickets.closeChoices,
+        ),
+
+      TravelChosen(:final applied) => TravelChosenScreen(
+        applied: applied,
+        onDone: widget.tickets.closeChoices,
+      ),
 
       TicketsFailed(:final failure) => Scaffold(
         appBar: AppBar(leading: BackButton(onPressed: _closeTickets)),

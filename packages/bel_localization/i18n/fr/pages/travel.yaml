@@ -111,6 +111,44 @@ travel:
     disruptedNewTime: "Nouveau départ prévu à {time}"
     disruptedFree: "Aucun frais : échange ou remboursement intégral."
     disruptedCounter: "Présentez-vous au guichet {operator} ou appelez l'agence."
+  # L'écran de choix du passager (08-disruption.md §3.2). Trois règles y sont
+  # tenues : une option est déjà attribuée — personne n'est laissé sans place
+  # pendant qu'il réfléchit —, chaque ligne dit l'heure d'ARRIVÉE, et le
+  # remboursement est toujours là, en dernier, jamais caché.
+  choice:
+    open: "Voir vos options"
+    title: "Votre voyage est perturbé"
+    loading: "Chargement de vos options…"
+    trip: "{origin} → {destination} · {date} · {time}"
+    at: "Panne près de {place}"
+    lead: "Choisissez — sans frais :"
+    assigned: "ATTRIBUÉ"
+    keep: "Je garde"
+    pick: "Choisir"
+    departsAt: "Départ de {time}"
+    arrives: "Arrivée {time}"
+    seat: "siège {seats}"
+    seats:
+      one: "{count} place"
+      other: "{count} places"
+    partial: "{covered} places sur {needed}"
+    full: "Complet"
+    otherOperator: "Autre compagnie"
+    refundTitle: "Remboursement intégral"
+    refundBody: "{amount}, à retirer au guichet"
+    # L'ambiguïté à 4 h du matin coûte plus cher qu'une règle qui déplaît.
+    fallback: "Sans réponse avant {time}, nous vous gardons sur la place attribuée."
+    closed: "Le délai de choix est passé. Présentez-vous au guichet de la compagnie."
+    keptTitle: "Vous gardez votre place"
+    keptBody: "Rien ne change. Votre billet reste valable."
+    movedTitle: "Vous êtes replacé"
+    movedBody: "Départ à {time} · {seats}"
+    movedTicket: "Votre nouveau billet est prêt. L'ancien ne permet plus d'embarquer."
+    refundedTitle: "Remboursement enregistré"
+    refundedBody: "{amount} vous seront remis au guichet de la compagnie."
+    claimCode: "Code de retrait"
+    claimHelp: "Notez-le. Il vous est aussi envoyé par SMS."
+    done: "Retour à mes billets"
   reserved:
     title: "Réservation confirmée"
     payAtAgency: "Présentez ce code dans une agence {operator} pour payer."

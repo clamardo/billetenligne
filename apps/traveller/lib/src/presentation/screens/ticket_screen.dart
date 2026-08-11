@@ -34,6 +34,7 @@ final class TicketScreen extends StatefulWidget {
     required this.seatIndex,
     required this.onClose,
     this.onSeat,
+    this.onChoices,
     this.clock = const SystemClock(),
     super.key,
   });
@@ -46,6 +47,9 @@ final class TicketScreen extends StatefulWidget {
   /// Moves between the tickets of one booking. A family of four is one
   /// booking and four QRs, scanned in turn.
   final void Function(int index)? onSeat;
+
+  /// Opens the choice screen for this booking's disruption.
+  final VoidCallback? onChoices;
 
   /// Injected so the rotating code can be tested at the moment it rolls over.
   /// The countdown bug this project has already hit twice — in the hold and
@@ -108,6 +112,7 @@ class _TicketScreenState extends State<TicketScreen> {
               DisruptionStrip(
                 disruption: booking.disruption!,
                 operatorName: booking.operatorName,
+                onChoices: widget.onChoices,
               ),
               SizedBox(height: kilo.space.s4),
             ],
