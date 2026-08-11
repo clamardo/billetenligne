@@ -278,14 +278,16 @@ final class ConsoleWorkspace {
   Future<void> saveRefundPolicy({
     required String name,
     required RefundPolicy policy,
+    ChangePolicy change = ChangePolicy.standard,
   }) => _run(() async {
-    if (name.trim().isEmpty || !policy.isWellFormed) {
+    if (name.trim().isEmpty || !policy.isWellFormed || !change.isWellFormed) {
       _notice = 'policy.invalid';
       return;
     }
     final saved = await _gateway.saveRefundPolicy(
       name: name.trim(),
       policy: policy,
+      change: change,
     );
     _notice = saved.version > 1
         ? 'policy.savedVersion|${saved.name}|${saved.version}'

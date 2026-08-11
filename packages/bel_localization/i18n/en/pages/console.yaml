@@ -351,7 +351,7 @@ console:
     previewTicket: "At the top of the ticket"
   policies:
     title: "Refund terms"
-    intro: "What a traveller gets back when they cancel, and when. Your rules, not ours."
+    intro: "What a traveller gets back when they cancel, and what changing departure costs. Your rules, not ours."
     none: "No terms written. Tickets sold today cannot be refunded self-service."
     noDefault: "No terms are applied to new sales."
     defaultIs: "Applied to new sales: {name} v{version}."
@@ -384,8 +384,17 @@ console:
     processingHours: "Processing window (hours)"
     refundServiceFee: "Refund the service fee too"
     refundServiceFeeHelp: "Our fee, not your revenue. Kept by default."
+    # The same version's second set of numbers: what moving costs
+    # (01-feature-spec.md §8.1, ADR-0012 D-08). Three questions, in the order
+    # the traveller meets them.
+    change: "Changing departure"
+    changeHelp: "What moving to another departure costs. The traveller reads these amounts on every row, before choosing."
+    changeFree: "Free more than (hours before departure)"
+    changeFee: "Fee after that (% of the fare)"
+    changeCutoff: "No change within (hours)"
+    changeInvoluntary: "A disruption on your side stays free whatever the hour. That is not configurable."
     preview: "What the traveller will read"
-    cannotSave: "Give it a name, and bands from earliest to latest."
+    cannotSave: "Give it a name, bands from earliest to latest, and a change cutoff inside the free window."
   onboarding:
     title: "Register your company"
     intro: "Six steps, saved on every field. You can close this page and pick it up later."

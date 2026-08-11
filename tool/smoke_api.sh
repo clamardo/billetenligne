@@ -734,6 +734,27 @@ check "an unknown refund destination is refused" "400" \
 # a way of never paying.
 check "a processing window of a year is refused" "400" \
   "$(policy_post '{"name":"x","tiers":[],"processingHours":9000}')"
+# The same version's other half: what a change costs (§8.1, ADR-0012 D-08).
+# An absent block is the platform's defaults rather than a refusal, because a
+# console that predates these three questions still writes policies.
+check "a policy with no change block gets past validation" "503" \
+  "$(policy_post '{"name":"Muette","tiers":[]}')"
+check "well-formed change terms get past validation" "503" \
+  "$(policy_post '{"name":"Reportable","tiers":[],"change":{"freeBeforeHours":48,"feeBps":1500,"cutoffHours":6}}')"
+check "a change fee of more than 100% is refused" "400" \
+  "$(policy_post '{"name":"x","tiers":[],"change":{"feeBps":10001}}')"
+check "a negative free window is refused" "400" \
+  "$(policy_post '{"name":"x","tiers":[],"change":{"freeBeforeHours":-1}}')"
+# The refusal that no single field could have caught: a cutoff later than the
+# free window charges a fee inside a window the same policy already refused.
+check "a cutoff past the free window is refused" "400" \
+  "$(policy_post '{"name":"x","tiers":[],"change":{"freeBeforeHours":2,"cutoffHours":48}}')"
+check "the change refusal names its own field" "yes" \
+  "$(curl -s -X POST "$BASE/console/v1/policies" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"x","tiers":[],"change":{"feeBps":"dix"}}' \
+     | grep -q 'change.feeBps' && echo yes || echo no)"
+
 check "the refusal names the offending tier" "yes" \
   "$(curl -s -X POST "$BASE/console/v1/policies" -H "$OP_AUTH" \
      -H 'Content-Type: application/json' \

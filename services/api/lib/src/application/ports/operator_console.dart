@@ -440,6 +440,7 @@ final class RefundPolicySummary {
     required this.policy,
     required this.isDefault,
     required this.effectiveFrom,
+    this.change = ChangePolicy.standard,
     this.bookingCount = 0,
   });
 
@@ -447,6 +448,11 @@ final class RefundPolicySummary {
   final int version;
   final String name;
   final RefundPolicy policy;
+
+  /// What moving to another departure costs under this version. Stored on the
+  /// same row and stamped by the same `(id, version)` pair as the refund
+  /// terms, so a booking's change terms are the ones it was sold under.
+  final ChangePolicy change;
 
   /// Whether new sales are stamped with this version right now. At most one
   /// version of one policy is true here.

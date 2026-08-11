@@ -352,7 +352,7 @@ console:
     previewTicket: "En haut du billet"
   policies:
     title: "Conditions de remboursement"
-    intro: "Ce que reçoit un voyageur qui annule, et quand. Vos règles, pas les nôtres."
+    intro: "Ce que reçoit un voyageur qui annule, et ce que coûte un changement de départ. Vos règles, pas les nôtres."
     none: "Aucune condition écrite. Les billets vendus aujourd'hui ne peuvent pas être remboursés en libre-service."
     noDefault: "Aucune condition n'est appliquée aux nouvelles ventes."
     defaultIs: "Appliquée aux nouvelles ventes : {name} v{version}."
@@ -385,8 +385,17 @@ console:
     processingHours: "Délai de traitement (heures)"
     refundServiceFee: "Rembourser aussi les frais de service"
     refundServiceFeeHelp: "Nos frais, pas votre recette. Par défaut ils sont retenus."
+    # Le second jeu de nombres de la même version : ce que coûte un report
+    # (01-feature-spec.md §8.1, ADR-0012 D-08). Trois questions, dans l'ordre
+    # où le voyageur les rencontre.
+    change: "Changer de départ"
+    changeHelp: "Ce que coûte un report sur un autre départ. Le voyageur lit ces montants sur chaque ligne, avant de choisir."
+    changeFree: "Gratuit à plus de (heures avant le départ)"
+    changeFee: "Frais ensuite (% du billet)"
+    changeCutoff: "Plus de changement à moins de (heures)"
+    changeInvoluntary: "Un incident de votre côté reste gratuit, quelle que soit l'heure. Ce n'est pas configurable."
     preview: "Ce que lira le voyageur"
-    cannotSave: "Donnez un nom et des paliers du plus tôt au plus tard."
+    cannotSave: "Donnez un nom, des paliers du plus tôt au plus tard, et une limite de changement avant la fin de la gratuité."
   onboarding:
     title: "Inscrire votre entreprise"
     intro: "Six étapes, enregistrées à chaque champ. Vous pouvez fermer cette page et reprendre plus tard."

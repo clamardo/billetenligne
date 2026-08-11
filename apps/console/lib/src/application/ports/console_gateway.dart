@@ -40,6 +40,7 @@ abstract interface class ConsoleGateway {
   Future<RefundPolicyDto> saveRefundPolicy({
     required String name,
     required RefundPolicy policy,
+    ChangePolicy change,
   });
 
   /// Null when the default was cleared — a legitimate state, not a failure.

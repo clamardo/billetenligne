@@ -55,7 +55,8 @@ final class ApiConsoleGateway implements ConsoleGateway {
   Future<RefundPolicyDto> saveRefundPolicy({
     required String name,
     required RefundPolicy policy,
-  }) => _client.saveRefundPolicy(name: name, policy: policy);
+    ChangePolicy change = ChangePolicy.standard,
+  }) => _client.saveRefundPolicy(name: name, policy: policy, change: change);
 
   @override
   Future<RefundPolicyDto?> setDefaultRefundPolicy({

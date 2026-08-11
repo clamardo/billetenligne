@@ -928,6 +928,55 @@ void main() {
       expect(done.claimCode, isNull);
     });
   });
+
+  group('the terms an operator writes', () {
+    test('the change terms ride on the policy, and survive the round trip', () {
+      final dto = RefundPolicyDto.fromDomain(
+        RefundPolicy.standard(),
+        name: 'Maison',
+        isDefault: true,
+        change: const ChangePolicy(
+          freeBefore: Duration(hours: 48),
+          feeBps: 1500,
+          cutoff: Duration(hours: 6),
+        ),
+      );
+
+      final back = RefundPolicyDto.fromJson(
+        jsonDecode(jsonEncode(dto.toJson())) as Map<String, Object?>,
+      );
+
+      expect(back.change.freeBeforeHours, 48);
+      expect(back.change.feeBps, 1500);
+      expect(back.change.cutoffHours, 6);
+      // Rendered by the domain on both ends, never sent as prose.
+      expect(back.changeToDomain().describe().first, 'policy.change.free|48');
+    });
+
+    // A server that predates 0025 answers without the block. The right
+    // assumption is D-08's numbers, because that is what every policy stored
+    // before the columns existed has in fact been behaving as.
+    test('an absent change block is the platform default, not nothing', () {
+      final json = {
+        'id': 'p-1',
+        'version': 3,
+        'name': 'Maison',
+        'tiers': <Object?>[],
+        'destination': 'agencyCash',
+        'processingHours': 72,
+        'refundServiceFee': false,
+        'nonRefundableFares': <Object?>[],
+        'isDefault': true,
+      };
+
+      final dto = RefundPolicyDto.fromJson(json);
+
+      expect(dto.change.freeBeforeHours, 24);
+      expect(dto.change.feeBps, 1000);
+      expect(dto.change.cutoffHours, 2);
+      expect(dto.changeToDomain().isWellFormed, isTrue);
+    });
+  });
 }
 
 /// Reads the string constants declared on [ErrorCode] straight from source,

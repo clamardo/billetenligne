@@ -506,6 +506,7 @@ final class BelApiClient {
   Future<RefundPolicyDto> saveRefundPolicy({
     required String name,
     required RefundPolicy policy,
+    ChangePolicy change = ChangePolicy.standard,
   }) async => RefundPolicyDto.fromJson(
     await _postJson('/console/v1/policies', {
       'name': name,
@@ -516,6 +517,7 @@ final class BelApiClient {
       'processingHours': policy.processingWindow.inHours,
       'refundServiceFee': policy.refundServiceFee,
       'nonRefundableFares': policy.nonRefundableFareCodes.toList()..sort(),
+      'change': ChangePolicyDto.fromDomain(change).toJson(),
     }),
   );
 

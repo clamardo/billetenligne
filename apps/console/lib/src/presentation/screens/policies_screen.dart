@@ -6,7 +6,8 @@ import 'package:flutter/material.dart';
 import '../../application/console_workspace.dart';
 import '../l10n.dart';
 
-/// Refund terms: what a traveller gets back when they cancel, and when.
+/// Terms: what a traveller gets back when they cancel, and what it costs them
+/// to move to another departure.
 ///
 /// **The operator answers questions; we write the sentences.** ADR-0015 rule
 /// 3, and it is not a style preference — a free-text field beside a tier
@@ -18,7 +19,9 @@ import '../l10n.dart';
 /// sold under, forever. The screen says so beside the button rather than in a
 /// dialog afterwards, and every version stays in the list — because the
 /// person answering a question about a March booking needs to read March's
-/// terms, not today's.
+/// terms, not today's. **The change terms ride on the same version**, which is
+/// why they are answered in this wizard rather than on a screen of their own:
+/// one save, one version, one set of sentences a booking is judged by.
 final class PoliciesScreen extends StatelessWidget {
   const PoliciesScreen({required this.workspace, super.key});
 
@@ -126,13 +129,14 @@ final class PoliciesScreen extends StatelessWidget {
 
   Future<void> _write(BuildContext context) async {
     final written = await Navigator.of(context)
-        .push<({String name, RefundPolicy policy})>(
+        .push<({String name, RefundPolicy policy, ChangePolicy change})>(
           MaterialPageRoute(builder: (_) => const PolicyWizard()),
         );
     if (written == null) return;
     await workspace.saveRefundPolicy(
       name: written.name,
       policy: written.policy,
+      change: written.change,
     );
   }
 }
@@ -176,7 +180,10 @@ class _PolicyCard extends StatelessWidget {
           // The sentences, not the numbers. Rendered by the domain from the
           // stored terms, which is what makes the console preview and the
           // traveller's screen the same text.
-          for (final line in policy.toDomain().describe())
+          for (final line in [
+            ...policy.toDomain().describe(),
+            ...policy.changeToDomain().describe(),
+          ])
             Padding(
               padding: EdgeInsets.only(bottom: kilo.space.s1),
               child: Text(
@@ -220,6 +227,9 @@ final class PolicyWizard extends StatefulWidget {
 class _PolicyWizardState extends State<PolicyWizard> {
   final _name = TextEditingController();
   final _processingHours = TextEditingController(text: '72');
+  final _changeFree = TextEditingController(text: '24');
+  final _changeFee = TextEditingController(text: '10');
+  final _changeCutoff = TextEditingController(text: '2');
   var _destination = RefundDestination.source;
   var _refundServiceFee = false;
   final _tiers = <_TierEditor>[];
@@ -236,6 +246,9 @@ class _PolicyWizardState extends State<PolicyWizard> {
   void dispose() {
     _name.dispose();
     _processingHours.dispose();
+    _changeFree.dispose();
+    _changeFee.dispose();
+    _changeCutoff.dispose();
     for (final t in _tiers) {
       t.dispose();
     }
@@ -268,6 +281,17 @@ class _PolicyWizardState extends State<PolicyWizard> {
     refundServiceFee: _refundServiceFee,
   );
 
+  /// The change terms as typed, defaulting field by field to D-08 rather than
+  /// as a block: an operator who clears one box has answered two questions,
+  /// not none, and a wizard that reverts all three would lose the two.
+  ChangePolicy get _change => ChangePolicy(
+    freeBefore: Duration(hours: int.tryParse(_changeFree.text.trim()) ?? 24),
+    // Percent in, basis points out — the same conversion the bands make, in
+    // the same direction, for the same reason.
+    feeBps: (int.tryParse(_changeFee.text.trim()) ?? 10) * 100,
+    cutoff: Duration(hours: int.tryParse(_changeCutoff.text.trim()) ?? 2),
+  );
+
   /// True when every band the operator typed is readable **and** the policy
   /// as a whole is one the server will store. The second half is the one that
   /// matters: bands in the wrong order are accepted by every field and wrong
@@ -276,7 +300,18 @@ class _PolicyWizardState extends State<PolicyWizard> {
       _name.text.trim().isNotEmpty &&
       _tiers.every((t) => t.isBlank || t.toDomain() != null) &&
       _tiers.where((t) => !t.isBlank).length == _policy.tiers.length &&
-      _policy.isWellFormed;
+      _policy.isWellFormed &&
+      _changeIsTyped &&
+      _change.isWellFormed;
+
+  /// Every change box holds a number. Blank is not zero here: an empty
+  /// cutoff would silently save as "no cutoff at all", which is the one
+  /// answer nobody would give on purpose.
+  bool get _changeIsTyped => [
+    _changeFree,
+    _changeFee,
+    _changeCutoff,
+  ].every((c) => int.tryParse(c.text.trim()) != null);
 
   @override
   Widget build(BuildContext context) {
@@ -308,9 +343,11 @@ class _PolicyWizardState extends State<PolicyWizard> {
                   fullWidth: false,
                   icon: Icons.check,
                   onPressed: _canSave
-                      ? () => Navigator.of(
-                          context,
-                        ).pop((name: _name.text.trim(), policy: _policy))
+                      ? () => Navigator.of(context).pop((
+                          name: _name.text.trim(),
+                          policy: _policy,
+                          change: _change,
+                        ))
                       : null,
                   disabledHint: context.t('console.policies.cannotSave'),
                 ),
@@ -459,6 +496,58 @@ class _PolicyWizardState extends State<PolicyWizard> {
           subtitle: Text(context.t('console.policies.refundServiceFeeHelp')),
           onChanged: (v) => setState(() => _refundServiceFee = v),
         ),
+        SizedBox(height: kilo.space.s5),
+
+        // The same version's other half. Asked here rather than on a screen
+        // of its own because a booking carries one `(id, version)` stamp: two
+        // screens would mean two saves and two versions for one decision.
+        Text(context.t('console.policies.change'), style: kilo.text.h3),
+        Text(
+          context.t('console.policies.changeHelp'),
+          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
+        ),
+        SizedBox(height: kilo.space.s2),
+
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: KField(
+                label: context.t('console.policies.changeFree'),
+                controller: _changeFree,
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            SizedBox(width: kilo.space.s3),
+            Expanded(
+              child: KField(
+                label: context.t('console.policies.changeFee'),
+                controller: _changeFee,
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            SizedBox(width: kilo.space.s3),
+            Expanded(
+              child: KField(
+                label: context.t('console.policies.changeCutoff'),
+                controller: _changeCutoff,
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: kilo.space.s2),
+
+        // Said in the questions rather than only in the preview, because it
+        // is the answer to "and if the coach breaks down?" — which is the
+        // first thing an operator asks when they read a cutoff.
+        Text(
+          context.t('console.policies.changeInvoluntary'),
+          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
+        ),
       ],
     );
   }
@@ -478,7 +567,10 @@ class _PolicyWizardState extends State<PolicyWizard> {
               // Every line comes from the domain. The operator cannot write
               // prose here, and that is the point: the sentences a traveller
               // reads are generated from the numbers the server executes.
-              for (final line in _policy.describe())
+              for (final line in [
+                ..._policy.describe(),
+                if (_change.isWellFormed) ..._change.describe(),
+              ])
                 Padding(
                   padding: EdgeInsets.only(bottom: kilo.space.s2),
                   child: Text(

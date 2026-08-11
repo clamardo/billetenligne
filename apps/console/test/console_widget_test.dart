@@ -147,6 +147,9 @@ final class _ScriptedConsole implements ConsoleGateway {
   /// the encoding is proven separately in `bel_contracts`.
   RefundPolicy? written;
 
+  /// And the change terms beside them, for the same reason.
+  ChangePolicy? writtenChange;
+
   @override
   Future<({List<RefundPolicyDto> items, bool hasDefault})>
   refundPolicies() async => (items: policyList, hasDefault: hasDefault);
@@ -155,10 +158,17 @@ final class _ScriptedConsole implements ConsoleGateway {
   Future<RefundPolicyDto> saveRefundPolicy({
     required String name,
     required RefundPolicy policy,
+    ChangePolicy change = ChangePolicy.standard,
   }) async {
     written = policy;
+    writtenChange = change;
     saved.add('policy:$name:${policy.tiers.length}');
-    return RefundPolicyDto.fromDomain(policy, name: name, isDefault: false);
+    return RefundPolicyDto.fromDomain(
+      policy,
+      name: name,
+      isDefault: false,
+      change: change,
+    );
   }
 
   @override
@@ -2335,6 +2345,105 @@ void main() {
       expect(find.textContaining('Remboursement effectué sous'), findsNothing);
       expect(
         find.textContaining("Remboursé en espèces, à l'agence"),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the change terms are answered in the same wizard', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'policy.manage'],
+      );
+      await openPolicies(tester, gateway);
+
+      await tester.tap(find.text('Écrire des conditions'));
+      await tester.pumpAndSettle();
+      await tester.enterText(fieldNamed('Nom de ces conditions'), 'Maison');
+
+      // Below the fold once the preset's two bands are drawn.
+      await tester.ensureVisible(find.text('Changer de départ'));
+      await tester.pumpAndSettle();
+
+      // D-08's numbers are what the wizard opens on, so an operator who
+      // answers nothing still writes the terms the platform applies anyway.
+      expect(
+        find.textContaining('Changement gratuit jusqu\'à 24 h'),
+        findsOneWidget,
+      );
+
+      await tester.enterText(
+        fieldNamed('Gratuit à plus de (heures avant le départ)'),
+        '48',
+      );
+      await tester.enterText(fieldNamed('Frais ensuite (% du billet)'), '15');
+      await tester.enterText(
+        fieldNamed('Plus de changement à moins de (heures)'),
+        '6',
+      );
+      await tester.pumpAndSettle();
+
+      // The preview is the traveller's sentence, generated from the answer.
+      expect(
+        find.textContaining('Entre 6 h et 48 h avant le départ : 15 %'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.widgetWithText(KButton, 'Enregistrer'));
+      await tester.pumpAndSettle();
+
+      // One save, one version: the refund bands and the change terms are
+      // stamped onto a booking by the same (id, version) pair.
+      expect(gateway.writtenChange!.freeBefore, const Duration(hours: 48));
+      expect(gateway.writtenChange!.feeBps, 1500);
+      expect(gateway.writtenChange!.cutoff, const Duration(hours: 6));
+      expect(gateway.written!.tiers, hasLength(2));
+    });
+
+    testWidgets('a cutoff past the free window cannot be saved', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'policy.manage'],
+      );
+      await openPolicies(tester, gateway);
+
+      await tester.tap(find.text('Écrire des conditions'));
+      await tester.pumpAndSettle();
+      await tester.enterText(fieldNamed('Nom de ces conditions'), 'Maison');
+      await tester.ensureVisible(find.text('Changer de départ'));
+      await tester.pumpAndSettle();
+
+      // Both fields are individually reasonable. Together they charge a fee
+      // between 48 h and 24 h before departure, inside a window the same
+      // policy has already refused — and no single field could have caught it.
+      await tester.enterText(
+        fieldNamed('Plus de changement à moins de (heures)'),
+        '48',
+      );
+      await tester.pumpAndSettle();
+
+      final save = tester.widget<KButton>(
+        find.widgetWithText(KButton, 'Enregistrer'),
+      );
+      expect(save.onPressed, isNull);
+      expect(gateway.writtenChange, isNull);
+    });
+
+    testWidgets('a stored policy reads its change terms too', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'policy.manage'],
+      )..policyList = [stored('Standard', isDefault: true)];
+      await openPolicies(tester, gateway);
+
+      // The operator answering "and if they want another coach?" reads it on
+      // the same card as the refund bands, because it is the same version.
+      expect(
+        find.textContaining('Moins de 2 h avant le départ : changement'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('la compagnie modifie ou annule'),
         findsOneWidget,
       );
     });

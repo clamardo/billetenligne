@@ -64,10 +64,14 @@ Future<Response> onRequest(RequestContext context) async {
       final parsed = _policyFrom(body);
       if (parsed.policy == null) return _badRequest(trace, parsed.field!);
 
+      final change = _changeFrom(body);
+      if (change.policy == null) return _badRequest(trace, change.field!);
+
       final saved = await console.saveRefundPolicy(
         operatorId: scope.operatorId,
         name: name.trim(),
         policy: parsed.policy!,
+        change: change.policy!,
         actorUserId: context.read<Principal>().userId,
       );
 
@@ -87,6 +91,7 @@ Map<String, Object?> _json(RefundPolicySummary summary) =>
       summary.policy,
       name: summary.name,
       isDefault: summary.isDefault,
+      change: summary.change,
       bookingCount: summary.bookingCount,
     ).toJson();
 
@@ -169,6 +174,47 @@ Map<String, Object?> _json(RefundPolicySummary summary) =>
   // list written shortest-first answers every request with its most generous
   // band — and nobody notices until the month's refunds are counted.
   if (!policy.isWellFormed) return (policy: null, field: 'tiers');
+
+  return (policy: policy, field: null);
+}
+
+/// The change terms, or the field that made them impossible.
+///
+/// **An absent block is D-08's defaults, not a refusal.** A console that
+/// predates these three questions still writes policies, and the numbers it
+/// would have got are the ones the platform has been applying anyway.
+({ChangePolicy? policy, String? field}) _changeFrom(Map<String, Object?> body) {
+  final raw = body['change'];
+  if (raw == null) return (policy: ChangePolicy.standard, field: null);
+  if (raw is! Map) return (policy: null, field: 'change');
+  final block = raw.cast<String, Object?>();
+
+  final free = block['freeBeforeHours'] ?? 24;
+  // A month of free notice is not a term anybody wrote on purpose.
+  if (free is! int || free < 0 || free > 720) {
+    return (policy: null, field: 'change.freeBeforeHours');
+  }
+
+  final fee = block['feeBps'] ?? 1000;
+  if (fee is! int || fee < 0 || fee > 10000) {
+    return (policy: null, field: 'change.feeBps');
+  }
+
+  final cutoff = block['cutoffHours'] ?? 2;
+  if (cutoff is! int || cutoff < 0 || cutoff > 720) {
+    return (policy: null, field: 'change.cutoffHours');
+  }
+
+  final policy = ChangePolicy(
+    freeBefore: Duration(hours: free),
+    feeBps: fee,
+    cutoff: Duration(hours: cutoff),
+  );
+
+  // The check that is not about typing: a cutoff later than the free window
+  // is a policy that charges a fee inside a window it has already refused,
+  // and every individual field would have been accepted.
+  if (!policy.isWellFormed) return (policy: null, field: 'change.cutoffHours');
 
   return (policy: policy, field: null);
 }

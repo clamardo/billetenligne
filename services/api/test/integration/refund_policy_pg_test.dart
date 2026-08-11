@@ -276,4 +276,73 @@ void main() {
     final v1Row = listed.firstWhere((p) => p.id == policy.id && p.version == 1);
     expect(v1Row.bookingCount, greaterThanOrEqualTo(1));
   });
+
+  test('the change terms are stored and read back with the version', () async {
+    final saved = await console.saveRefundPolicy(
+      operatorId: operatorId,
+      name: 'Reportable',
+      policy: tiered([(24, 10000)]),
+      change: const ChangePolicy(
+        freeBefore: Duration(hours: 48),
+        feeBps: 1500,
+        cutoff: Duration(hours: 6),
+      ),
+      actorUserId: staffId,
+    );
+
+    expect(saved.change.freeBefore, const Duration(hours: 48));
+    expect(saved.change.feeBps, 1500);
+    expect(saved.change.cutoff, const Duration(hours: 6));
+
+    // And on the way back out of the list, which is the read the console
+    // actually makes — a RETURNING that worked and a SELECT that forgot the
+    // columns is exactly the drift this asserts against.
+    final listed = await console.refundPolicies(operatorId);
+    final row = listed.firstWhere((p) => p.name == 'Reportable');
+    expect(row.change.freeBefore, const Duration(hours: 48));
+    expect(row.change.feeBps, 1500);
+    expect(row.change.cutoff, const Duration(hours: 6));
+  });
+
+  test('a policy written without an answer carries D-08', () async {
+    final saved = await console.saveRefundPolicy(
+      operatorId: operatorId,
+      name: 'Silencieuse',
+      policy: tiered([(24, 10000)]),
+      actorUserId: staffId,
+    );
+
+    // The platform's own numbers, not nulls: an operator who never opened
+    // the question still sells under terms the traveller can read.
+    expect(saved.change.freeBefore, const Duration(hours: 24));
+    expect(saved.change.feeBps, 1000);
+    expect(saved.change.cutoff, const Duration(hours: 2));
+    expect(saved.change.isWellFormed, isTrue);
+  });
+
+  test(
+    'the database refuses change terms that contradict each other',
+    () async {
+      // A cutoff later than the free window charges a fee inside a window the
+      // same policy has already refused. Every column is individually fine.
+      await expectLater(
+        db.transaction(DbScope.tenant(operatorId), (tx) async {
+          await tx.execute(
+            Sql.named('''
+            INSERT INTO refund_policies
+              (id, version, operator_id, name, tiers, change_free_hours,
+               change_cutoff_hours, created_by)
+            VALUES (gen_random_uuid(), 1, @operator, 'Contradictoire',
+                    '[]'::jsonb, 2, 48, @actor)
+          '''),
+            parameters: {
+              'operator': TypedValue(Type.uuid, operatorId),
+              'actor': TypedValue(Type.uuid, staffId),
+            },
+          );
+        }),
+        throwsA(anything),
+      );
+    },
+  );
 }

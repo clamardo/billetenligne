@@ -1113,7 +1113,9 @@ final class PostgresOperatorConsole implements OperatorConsole {
           Sql.named('''
             SELECT p.id, p.version, p.name, p.tiers, p.destination,
                    p.processing_hours, p.refund_service_fee,
-                   p.non_refundable_fares, p.effective_from,
+                   p.non_refundable_fares,
+                   p.change_free_hours, p.change_fee_bps,
+                   p.change_cutoff_hours, p.effective_from,
                    (o.default_refund_policy_id = p.id
                      AND o.default_refund_policy_version = p.version)
                      AS is_default,
@@ -1279,6 +1281,14 @@ final class PostgresOperatorConsole implements OperatorConsole {
       effectiveFrom:
           row['effective_from'] as DateTime? ?? DateTime.now().toUtc(),
       bookingCount: row['booking_count'] as int? ?? 0,
+      // Defaulted column by column rather than as a whole: a row written
+      // before 0025 has NULLs here, and D-08's numbers are what it has in
+      // fact been behaving as all along.
+      change: ChangePolicy(
+        freeBefore: Duration(hours: row['change_free_hours'] as int? ?? 24),
+        feeBps: row['change_fee_bps'] as int? ?? 1000,
+        cutoff: Duration(hours: row['change_cutoff_hours'] as int? ?? 2),
+      ),
       policy: RefundPolicy(
         id: row['id'].toString(),
         version: row['version'] as int,

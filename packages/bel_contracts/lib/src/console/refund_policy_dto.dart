@@ -22,6 +22,7 @@ final class RefundPolicyDto {
     required this.refundServiceFee,
     required this.nonRefundableFares,
     required this.isDefault,
+    this.change = const ChangePolicyDto(),
     this.bookingCount = 0,
   });
 
@@ -33,6 +34,13 @@ final class RefundPolicyDto {
   final int processingHours;
   final bool refundServiceFee;
   final List<String> nonRefundableFares;
+
+  /// What it costs to move to another departure, under the same version
+  /// stamp. Defaulted rather than required: a server that predates the change
+  /// terms answers without them, and D-08's numbers are the right thing to
+  /// assume in that case — they are what every policy stored before this
+  /// field existed actually behaves as.
+  final ChangePolicyDto change;
 
   /// Whether new sales are stamped with this version. At most one version of
   /// one policy is true.
@@ -59,6 +67,10 @@ final class RefundPolicyDto {
     nonRefundableFareCodes: nonRefundableFares.toSet(),
   );
 
+  /// The change terms as the domain object, so this preview and the
+  /// traveller's list of departures are priced by the same code.
+  ChangePolicy changeToDomain() => change.toDomain();
+
   Map<String, Object?> toJson() => {
     'id': id,
     'version': version,
@@ -68,6 +80,7 @@ final class RefundPolicyDto {
     'processingHours': processingHours,
     'refundServiceFee': refundServiceFee,
     'nonRefundableFares': nonRefundableFares,
+    'change': change.toJson(),
     'isDefault': isDefault,
     'bookingCount': bookingCount,
   };
@@ -85,6 +98,9 @@ final class RefundPolicyDto {
     nonRefundableFares: [
       for (final f in (json['nonRefundableFares'] as List? ?? const [])) '$f',
     ],
+    change: ChangePolicyDto.fromJson(
+      (json['change'] as Map?)?.cast<String, Object?>() ?? const {},
+    ),
     isDefault: json['isDefault'] as bool? ?? false,
     bookingCount: json['bookingCount'] as int? ?? 0,
   );
@@ -93,6 +109,7 @@ final class RefundPolicyDto {
     RefundPolicy policy, {
     required String name,
     required bool isDefault,
+    ChangePolicy change = ChangePolicy.standard,
     int bookingCount = 0,
   }) => RefundPolicyDto(
     id: policy.id,
@@ -103,6 +120,7 @@ final class RefundPolicyDto {
     processingHours: policy.processingWindow.inHours,
     refundServiceFee: policy.refundServiceFee,
     nonRefundableFares: policy.nonRefundableFareCodes.toList()..sort(),
+    change: ChangePolicyDto.fromDomain(change),
     isDefault: isDefault,
     bookingCount: bookingCount,
   );
@@ -152,5 +170,51 @@ final class RefundTierDto {
     minLeadTimeMinutes: tier.minLeadTime.inMinutes,
     rateBps: tier.rateBps,
     flatFeeMinor: tier.flatFeeMinor,
+  );
+}
+
+/// What moving to another departure costs, on the wire.
+///
+/// Three numbers, and they travel in the units the operator answered in —
+/// hours for the two windows, basis points for the rate — because the console
+/// asks for hours and percent, and converting twice on the way down is how a
+/// 10% fee becomes a 1000% one.
+final class ChangePolicyDto {
+  const ChangePolicyDto({
+    this.freeBeforeHours = 24,
+    this.feeBps = 1000,
+    this.cutoffHours = 2,
+  });
+
+  final int freeBeforeHours;
+
+  /// Basis points, integer. 1000 = 10%, and no float ever touches a fare.
+  final int feeBps;
+
+  final int cutoffHours;
+
+  ChangePolicy toDomain() => ChangePolicy(
+    freeBefore: Duration(hours: freeBeforeHours),
+    feeBps: feeBps,
+    cutoff: Duration(hours: cutoffHours),
+  );
+
+  Map<String, Object?> toJson() => {
+    'freeBeforeHours': freeBeforeHours,
+    'feeBps': feeBps,
+    'cutoffHours': cutoffHours,
+  };
+
+  factory ChangePolicyDto.fromJson(Map<String, Object?> json) =>
+      ChangePolicyDto(
+        freeBeforeHours: json['freeBeforeHours'] as int? ?? 24,
+        feeBps: json['feeBps'] as int? ?? 1000,
+        cutoffHours: json['cutoffHours'] as int? ?? 2,
+      );
+
+  factory ChangePolicyDto.fromDomain(ChangePolicy policy) => ChangePolicyDto(
+    freeBeforeHours: policy.freeBefore.inHours,
+    feeBps: policy.feeBps,
+    cutoffHours: policy.cutoff.inHours,
   );
 }
