@@ -182,7 +182,7 @@ Each is reasonable, and each would dilute the one thing that has to be excellent
 | Disruption overwhelms support | Support tickets per disruption | IRROPS is operator self-service and P0 in Phase 2 | Built — declaration, rescue coach, rebooking wave, protection movement and the passenger's own choice |
 | **Nobody has used this on a real network** | — | Phase 3 manual smoke | Everything so far is an emulator on a fast connection |
 | **No operator can configure anything without us** | Time from "yes" to first departure on sale | The console app | **Closed.** An operator configures a fleet and publishes a timetable in a browser |
-| Console auth is single-factor | — | TOTP before refunds and payouts exist (slice 3) | Deliberate and dated. The endpoints ADR-0013 protects are not built |
+| Console auth is single-factor | — | TOTP before refunds and payouts exist (slice 3) | **Closed.** The endpoints ADR-0013 protects — refunds and payouts — are built, and TOTP went in ahead of them: mandatory on both back-office surfaces, shared by the console and the back office through `bel_backoffice`, with staff who hold no factor landing on the enrolment screen and nowhere else. What is still narrower than ADR-0013 is the *first* factor: an emailed code rather than a password |
 | **Sign-in email does not arrive** | Delivery rate per hour, from day one of the pilot | Phone as a second channel — which is why it is plumbed rather than someday (ADR-0024) | **New. Email is now on the critical path of becoming a customer, and it has no fallback yet** |
 
 The first two are commercial, and they are the ones that decide the outcome. Nothing in the engineering backlog above changes either of them.
