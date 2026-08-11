@@ -230,7 +230,11 @@ travel:
     # Dit avant la sélection, jamais après : un départ moins cher ne rend rien.
     cheaperKeepsFare: "Un départ moins cher ne modifie pas le prix payé."
     involuntary: "La compagnie a modifié votre départ : tout changement est gratuit."
+    # Le montant est sur le bouton, pas seulement au-dessus : on lit le
+    # chiffre sur ce qu'on appuie.
+    pay: "Payer {amount}"
     payAtAgency: "À régler en agence"
+    heldFor: "Places gardées {minutes} min, le temps du paiement."
     terms: "Conditions de changement"
     none: "Aucun autre départ de cette compagnie sur cette ligne dans les sept prochains jours."
     confirm: "Prendre ce départ"

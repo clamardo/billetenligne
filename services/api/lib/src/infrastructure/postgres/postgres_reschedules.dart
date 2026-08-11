@@ -29,6 +29,12 @@ final class PostgresReschedules implements RescheduleDesk {
   /// 36 hours is the span of the disruption itself.
   final Duration _horizon;
 
+  /// How long a change order holds its seats. Longer than the ten-minute
+  /// payment window (ADR-0005 rule 5), for the same reason a booking's hold
+  /// is: a seat released while somebody is entering their PIN is the one
+  /// outcome neither end can undo.
+  static const _paymentWindow = Duration(minutes: 15);
+
   @override
   Future<ChangeOptions?> options({
     required String bookingRef,
@@ -367,6 +373,650 @@ final class PostgresReschedules implements RescheduleDesk {
       }
     }
 
+    await _relocate(
+      tx,
+      bookingId: bookingId,
+      fromDepartureId: fromDepartureId,
+      toDepartureId: toDepartureId,
+      taking: taking,
+      operatorId: row['operator_id']! as String,
+      userId: userId,
+    );
+
+    return (
+      applied: ChangeApplied(
+        bookingRef: ref,
+        departureId: toDepartureId,
+        departsAt: to['departs_at']! as DateTime,
+        seatLabels: taking,
+      ),
+      refusal: null,
+    );
+  });
+
+  @override
+  Future<({ChangeOrder? order, ChangeRefusal? refusal})?> reserveChange({
+    required String bookingRef,
+    required String userId,
+    required String toDepartureId,
+    required DateTime now,
+  }) async {
+    // As themselves first, exactly as `change` does: a stranger's reference
+    // and one that was never issued must answer identically.
+    final seen = await _db.transaction(DbScope.traveller(userId), (tx) async {
+      final row = await _booking(tx, bookingRef);
+      return row == null
+          ? null
+          : (id: row['id'].toString(), ref: row['ref'] as String);
+    });
+    if (seen == null) return null;
+
+    return _reserve(
+      bookingId: seen.id,
+      ref: seen.ref,
+      userId: userId,
+      toDepartureId: toDepartureId,
+      now: now,
+    );
+  }
+
+  @override
+  Future<ChangeOrder?> orderById({
+    required String changeId,
+    required String userId,
+  }) => _db.transaction(DbScope.traveller(userId), (tx) async {
+    // Read as them, so the row policy decides what is visible rather than a
+    // WHERE clause somebody could forget to write.
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT c.id::text AS id, c.booking_id::text AS booking_id, b.ref,
+               c.to_departure_id::text AS to_departure_id, c.seat_labels,
+               c.fee_minor, c.difference_minor, c.owed_minor,
+               c.currency::text AS currency, c.state::text AS state,
+               c.expires_at, d.departs_at
+          FROM booking_changes c
+          JOIN bookings b ON b.id = c.booking_id
+          JOIN departures d ON d.id = c.to_departure_id
+         WHERE c.id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, changeId)},
+    );
+    return rows.isEmpty ? null : _orderFrom(rows.first.toColumnMap());
+  });
+
+  @override
+  Future<ChangeApplied?> applyPaidChange({
+    required String changeId,
+    required String intentId,
+    required LedgerTransaction posting,
+  }) => _db.transaction(const DbScope.worker(), (tx) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT c.id::text AS id, c.booking_id::text AS booking_id,
+               c.operator_id::text AS operator_id,
+               c.to_departure_id::text AS to_departure_id,
+               c.seat_labels, c.state::text AS state,
+               c.created_by::text AS created_by,
+               b.ref, b.departure_id::text AS departure_id,
+               d.departs_at
+          FROM booking_changes c
+          JOIN bookings b ON b.id = c.booking_id
+          JOIN departures d ON d.id = c.to_departure_id
+         WHERE c.id = @id
+           FOR UPDATE OF c
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, changeId)},
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first.toColumnMap();
+
+    final taking = [
+      for (final label in (row['seat_labels'] as List? ?? const [])) '$label',
+    ];
+    final applied = ChangeApplied(
+      bookingRef: row['ref'] as String,
+      departureId: row['to_departure_id']! as String,
+      departsAt: row['departs_at']! as DateTime,
+      seatLabels: taking,
+    );
+
+    // Idempotent, and it has to be: a duplicate callback and a poll landing
+    // together must move one booking once. An order already applied answers
+    // with what it did rather than doing it twice.
+    if (row['state'] == 'applied') return applied;
+    if (row['state'] != 'awaiting_payment') return null;
+
+    final bookingId = row['booking_id']! as String;
+    final fromDepartureId = row['departure_id']! as String;
+    final toDepartureId = row['to_departure_id']! as String;
+
+    // The seats this order has been holding, turned into sold ones. Scoped to
+    // the hold rather than to "whatever is free": between the order and the
+    // capture the coach may have filled around them, and the only seats this
+    // booking is entitled to are the ones it paid to keep.
+    final claimed = await tx.execute(
+      Sql.named('''
+        UPDATE seats
+           SET state = 'sold', booking_id = @booking,
+               hold_id = NULL, held_until = NULL
+         WHERE departure_id = @departure
+           AND seat_label = ANY(@labels)
+           AND state = 'held'
+           AND hold_id = (SELECT hold_id FROM booking_changes WHERE id = @id)
+        RETURNING seat_label
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, toDepartureId),
+        'labels': TypedValue(Type.textArray, taking),
+        'booking': TypedValue(Type.uuid, bookingId),
+        'id': TypedValue(Type.uuid, changeId),
+      },
+    );
+
+    // The hold lapsed and the sweeper put the seats back before the money
+    // arrived. Nothing moves, the order closes, and the capture stands as an
+    // intent somebody has to refund — which is the honest outcome, and the
+    // reason the window is deliberately longer than the payment's.
+    if (claimed.length < taking.length) {
+      await tx.execute(
+        Sql.named(
+          "UPDATE booking_changes SET state = 'expired' WHERE id = @id",
+        ),
+        parameters: {'id': TypedValue(Type.uuid, changeId)},
+        ignoreRows: true,
+      );
+      return null;
+    }
+
+    await _relocate(
+      tx,
+      bookingId: bookingId,
+      fromDepartureId: fromDepartureId,
+      toDepartureId: toDepartureId,
+      taking: taking,
+      operatorId: row['operator_id']! as String,
+      userId: row['created_by']! as String,
+      changeId: changeId,
+    );
+
+    await tx.execute(
+      Sql.named('''
+        UPDATE holds SET state = 'consumed'
+         WHERE id = (SELECT hold_id FROM booking_changes WHERE id = @id)
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, changeId)},
+      ignoreRows: true,
+    );
+
+    await tx.execute(
+      Sql.named('''
+        UPDATE booking_changes
+           SET state = 'applied', applied_at = now()
+         WHERE id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, changeId)},
+      ignoreRows: true,
+    );
+
+    // The difference, in the ledger, in the same transaction as the move. A
+    // capture without the move is money nobody can explain; a move without
+    // the capture is a journey nobody paid for.
+    await _post(
+      tx,
+      posting,
+      bookingId: bookingId,
+      operatorId: row['operator_id']! as String,
+      intentId: intentId,
+    );
+
+    return applied;
+  });
+
+  /// The escalated half of the paid path: take the seats, write the promise,
+  /// and move nothing.
+  Future<({ChangeOrder? order, ChangeRefusal? refusal})?> _reserve({
+    required String bookingId,
+    required String ref,
+    required String userId,
+    required String toDepartureId,
+    required DateTime now,
+  }) => _db.transaction(DbScope.platform(userId), (tx) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT b.purchaser_user_id::text AS purchaser, b.state::text AS state,
+               b.involuntary_change, b.fare_minor, b.currency,
+               b.operator_id::text AS operator_id,
+               b.departure_id::text AS departure_id,
+               d.departs_at, d.route_id::text AS route_id,
+               (SELECT count(*) FROM booking_seats s WHERE s.booking_id = b.id)
+                 AS seat_count,
+               p.change_free_hours, p.change_fee_bps, p.change_cutoff_hours
+          FROM bookings b
+          JOIN departures d ON d.id = b.departure_id
+          LEFT JOIN refund_policies p
+                 ON p.id = b.refund_policy_id
+                AND p.version = b.refund_policy_version
+         WHERE b.id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first.toColumnMap();
+
+    if (row['purchaser'] != userId) return null;
+    if (row['state'] != 'confirmed') {
+      return (order: null, refusal: const ChangeAfterDeparture());
+    }
+
+    final fromDepartureId = row['departure_id']! as String;
+    if (fromDepartureId == toDepartureId) {
+      return (order: null, refusal: const ChangeToTheSameDeparture());
+    }
+
+    final ids = [fromDepartureId, toDepartureId]..sort();
+    await tx.execute(
+      Sql.named(
+        'SELECT id FROM departures WHERE id = ANY(@ids) ORDER BY id FOR UPDATE',
+      ),
+      parameters: {'ids': TypedValue(Type.uuidArray, ids)},
+      ignoreRows: true,
+    );
+
+    final target = await tx.execute(
+      Sql.named('''
+        SELECT d.departs_at, d.fare_minor, d.status::text AS status,
+               d.route_id::text AS route_id,
+               d.operator_id::text AS operator_id
+          FROM departures d WHERE d.id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, toDepartureId)},
+    );
+    if (target.isEmpty) return (order: null, refusal: const ChangeOffRoute());
+    final to = target.first.toColumnMap();
+
+    if (to['operator_id'] != row['operator_id'] ||
+        to['route_id'] != row['route_id'] ||
+        to['status'] != 'scheduled') {
+      return (order: null, refusal: const ChangeOffRoute());
+    }
+
+    final currency = Currency.byCode((row['currency'] as String).trim())!;
+    final paidFare = Money(row['fare_minor'] as int, currency);
+    final seatsNeeded = (row['seat_count'] as int?) ?? 1;
+
+    final quoted = quoteChange(
+      paidFare: paidFare,
+      newFare: Money(to['fare_minor'] as int, currency),
+      departsAt: row['departs_at']! as DateTime,
+      targetDepartsAt: to['departs_at']! as DateTime,
+      now: now,
+      policy: _policyFrom(row),
+      involuntary: row['involuntary_change'] as bool? ?? false,
+    );
+    if (quoted.valueOrNull == null) {
+      return (order: null, refusal: quoted.failureOrNull);
+    }
+    final quote = quoted.valueOrNull!;
+
+    // An order that is already waiting. If nobody has answered a prompt for
+    // it, the traveller has simply changed their mind and the old promise is
+    // released; if a payment is in flight against it, releasing those seats
+    // could strand money that is about to land, so this one refuses.
+    final open = await tx.execute(
+      Sql.named('''
+        SELECT c.id::text AS id,
+               EXISTS (SELECT 1 FROM payment_intents i
+                        WHERE i.change_id = c.id
+                          AND i.state IN ('created','pending','authorized',
+                                          'indeterminate'))
+                 AS in_flight
+          FROM booking_changes c
+         WHERE c.booking_id = @booking AND c.state = 'awaiting_payment'
+           FOR UPDATE OF c
+      '''),
+      parameters: {'booking': TypedValue(Type.uuid, bookingId)},
+    );
+    if (open.isNotEmpty) {
+      final existing = open.first.toColumnMap();
+      if (existing['in_flight'] as bool? ?? false) {
+        return (order: null, refusal: const ChangePaymentInFlight());
+      }
+      await _releaseOrder(tx, existing['id']! as String);
+    }
+
+    // Priced under the lock. A difference that evaporated between the list
+    // and the tap is applied here and now: refusing somebody because the
+    // price fell would be an insult with a 409 attached.
+    if (quote.owed.minor == 0) {
+      final moved = await _takeFreeSeats(
+        tx,
+        toDepartureId: toDepartureId,
+        seatsNeeded: seatsNeeded,
+        bookingId: bookingId,
+      );
+      final taken = moved.taking;
+      if (taken == null) {
+        return (
+          order: null,
+          refusal: ChangeDoesNotFit(seatsNeeded, moved.available),
+        );
+      }
+
+      await _relocate(
+        tx,
+        bookingId: bookingId,
+        fromDepartureId: fromDepartureId,
+        toDepartureId: toDepartureId,
+        taking: taken,
+        operatorId: row['operator_id']! as String,
+        userId: userId,
+      );
+
+      final free = ChangeApplied(
+        bookingRef: ref,
+        departureId: toDepartureId,
+        departsAt: to['departs_at']! as DateTime,
+        seatLabels: taken,
+      );
+      return (
+        order: ChangeOrder(
+          // No row is written for a change that owed nothing: there was
+          // never a promise to keep, only a movement that happened.
+          id: '',
+          bookingId: bookingId,
+          bookingRef: ref,
+          toDepartureId: toDepartureId,
+          departsAt: to['departs_at']! as DateTime,
+          seatLabels: taken,
+          fee: Money(0, currency),
+          fareDifference: Money(0, currency),
+          owed: Money(0, currency),
+          expiresAt: now,
+          state: 'applied',
+          applied: free,
+        ),
+        refusal: null,
+      );
+    }
+
+    // The seats, held rather than sold. An ordinary hold row, so the sweeper
+    // that already puts lapsed holds back on sale puts these back too and
+    // this table only has to notice afterwards.
+    final free = await tx.execute(
+      Sql.named('''
+        SELECT seat_label FROM seats
+         WHERE departure_id = @id
+           AND (state = 'available' OR (state = 'held' AND held_until < now()))
+         ORDER BY seat_label
+           FOR UPDATE
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, toDepartureId)},
+    );
+    if (free.length < seatsNeeded) {
+      return (order: null, refusal: ChangeDoesNotFit(seatsNeeded, free.length));
+    }
+
+    final taking = [
+      for (var i = 0; i < seatsNeeded; i++)
+        free[i].toColumnMap()['seat_label'] as String,
+    ];
+
+    // Measured by the **database** clock, not this process's. The sweeper
+    // that will release these seats compares against `now()`, and a window
+    // computed from a machine that is a minute out is a window that is a
+    // minute wrong in whichever direction hurts.
+    final hold = await tx.execute(
+      Sql.named('''
+        INSERT INTO holds
+          (operator_id, departure_id, user_id, seat_labels, expires_at,
+           idempotency_key, channel)
+        VALUES (@operator, @departure, @user, @labels,
+                now() + make_interval(secs => @window), @key, 'app')
+        RETURNING id::text AS id, expires_at
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, row['operator_id']! as String),
+        'departure': TypedValue(Type.uuid, toDepartureId),
+        'user': TypedValue(Type.uuid, userId),
+        'labels': TypedValue(Type.textArray, taking),
+        'window': TypedValue(Type.double, _paymentWindow.inSeconds.toDouble()),
+        'key': TypedValue(
+          Type.text,
+          'change:$bookingId:$toDepartureId:${now.microsecondsSinceEpoch}',
+        ),
+      },
+    );
+    final held = hold.first.toColumnMap();
+    final holdId = held['id']! as String;
+    final expiresAt = held['expires_at']! as DateTime;
+
+    for (final label in taking) {
+      final claimed = await tx.execute(
+        Sql.named('''
+          UPDATE seats
+             SET state = 'held', hold_id = @hold, held_until = @until,
+                 booking_id = NULL
+           WHERE departure_id = @departure AND seat_label = @label
+             AND (state = 'available'
+                  OR (state = 'held' AND held_until < now()))
+          RETURNING seat_label
+        '''),
+        parameters: {
+          'departure': TypedValue(Type.uuid, toDepartureId),
+          'label': TypedValue(Type.text, label),
+          'hold': TypedValue(Type.uuid, holdId),
+          'until': TypedValue(Type.timestampTz, expiresAt),
+        },
+      );
+      if (claimed.isEmpty) {
+        return (
+          order: null,
+          refusal: ChangeDoesNotFit(seatsNeeded, taking.length - 1),
+        );
+      }
+    }
+
+    final order = await tx.execute(
+      Sql.named('''
+        INSERT INTO booking_changes
+          (booking_id, operator_id, from_departure_id, to_departure_id,
+           seat_labels, hold_id, fee_minor, difference_minor, owed_minor,
+           currency, created_by, expires_at)
+        VALUES (@booking, @operator, @from, @to, @labels, @hold, @fee,
+                @difference, @owed, @currency, @user, @expires)
+        RETURNING id::text AS id
+      '''),
+      parameters: {
+        'booking': TypedValue(Type.uuid, bookingId),
+        'operator': TypedValue(Type.uuid, row['operator_id']! as String),
+        'from': TypedValue(Type.uuid, fromDepartureId),
+        'to': TypedValue(Type.uuid, toDepartureId),
+        'labels': TypedValue(Type.textArray, taking),
+        'hold': TypedValue(Type.uuid, holdId),
+        'fee': TypedValue(Type.bigInteger, quote.fee.minor),
+        'difference': TypedValue(Type.bigInteger, quote.fareDifference.minor),
+        'owed': TypedValue(Type.bigInteger, quote.owed.minor),
+        'currency': TypedValue(Type.text, currency.code),
+        'user': TypedValue(Type.uuid, userId),
+        'expires': TypedValue(Type.timestampTz, expiresAt),
+      },
+    );
+
+    return (
+      order: ChangeOrder(
+        id: order.first.toColumnMap()['id']! as String,
+        bookingId: bookingId,
+        bookingRef: ref,
+        toDepartureId: toDepartureId,
+        departsAt: to['departs_at']! as DateTime,
+        seatLabels: taking,
+        fee: quote.fee,
+        fareDifference: quote.fareDifference,
+        owed: quote.owed,
+        expiresAt: expiresAt,
+        state: 'awaiting_payment',
+      ),
+      refusal: null,
+    );
+  });
+
+  /// Writes one balanced movement, grouped under a single `txn_id`.
+  ///
+  /// The deferred constraint trigger checks the sum at COMMIT — after this
+  /// returns and beyond the reach of any handler here — so what happens in
+  /// Dart is the courtesy and what happens at COMMIT is the guarantee.
+  Future<void> _post(
+    TxSession tx,
+    LedgerTransaction posting, {
+    required String bookingId,
+    required String operatorId,
+    String? intentId,
+  }) async {
+    final txnId = await tx.execute('SELECT gen_random_uuid() AS id');
+    final txn = txnId.first.toColumnMap()['id'];
+
+    for (final entry in posting.entries) {
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO ledger_entries
+            (txn_id, account, direction, amount_minor, currency,
+             operator_id, booking_id, intent_id, memo)
+          VALUES (@txn, @account, @direction::ledger_direction, @amount,
+                  @currency, @operator, @booking, @intent, @memo)
+        '''),
+        parameters: {
+          'txn': TypedValue(Type.uuid, txn.toString()),
+          'account': TypedValue(Type.text, entry.account),
+          'direction': TypedValue(Type.text, entry.direction.name),
+          'amount': TypedValue(Type.bigInteger, entry.amount.minor),
+          'currency': TypedValue(Type.text, entry.amount.currency.code),
+          'operator': TypedValue(Type.uuid, entry.operatorId ?? operatorId),
+          'booking': TypedValue(Type.uuid, bookingId),
+          'intent': TypedValue(Type.uuid, intentId),
+          'memo': TypedValue(Type.text, entry.memo),
+        },
+        ignoreRows: true,
+      );
+    }
+  }
+
+  /// Claims free seats and sells them to a booking in one step: the free
+  /// path's half of the movement.
+  Future<({List<String>? taking, int available})> _takeFreeSeats(
+    TxSession tx, {
+    required String toDepartureId,
+    required int seatsNeeded,
+    required String bookingId,
+  }) async {
+    final free = await tx.execute(
+      Sql.named('''
+        SELECT seat_label FROM seats
+         WHERE departure_id = @id
+           AND (state = 'available' OR (state = 'held' AND held_until < now()))
+         ORDER BY seat_label
+           FOR UPDATE
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, toDepartureId)},
+    );
+    if (free.length < seatsNeeded) {
+      return (taking: null, available: free.length);
+    }
+
+    final taking = [
+      for (var i = 0; i < seatsNeeded; i++)
+        free[i].toColumnMap()['seat_label'] as String,
+    ];
+
+    for (final label in taking) {
+      final claimed = await tx.execute(
+        Sql.named('''
+          UPDATE seats
+             SET state = 'sold', booking_id = @booking,
+                 hold_id = NULL, held_until = NULL
+           WHERE departure_id = @departure AND seat_label = @label
+             AND (state = 'available'
+                  OR (state = 'held' AND held_until < now()))
+          RETURNING seat_label
+        '''),
+        parameters: {
+          'departure': TypedValue(Type.uuid, toDepartureId),
+          'label': TypedValue(Type.text, label),
+          'booking': TypedValue(Type.uuid, bookingId),
+        },
+      );
+      if (claimed.isEmpty) {
+        return (taking: null, available: taking.length - 1);
+      }
+    }
+
+    return (taking: taking, available: free.length);
+  }
+
+  /// Cancels a waiting order and puts its seats back on sale.
+  Future<void> _releaseOrder(TxSession tx, String changeId) async {
+    await tx.execute(
+      Sql.named('''
+        UPDATE seats
+           SET state = 'available', hold_id = NULL, held_until = NULL
+         WHERE state = 'held'
+           AND hold_id = (SELECT hold_id FROM booking_changes WHERE id = @id)
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, changeId)},
+      ignoreRows: true,
+    );
+    await tx.execute(
+      Sql.named('''
+        UPDATE holds SET state = 'released'
+         WHERE id = (SELECT hold_id FROM booking_changes WHERE id = @id)
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, changeId)},
+      ignoreRows: true,
+    );
+    await tx.execute(
+      Sql.named(
+        "UPDATE booking_changes SET state = 'cancelled' WHERE id = @id",
+      ),
+      parameters: {'id': TypedValue(Type.uuid, changeId)},
+      ignoreRows: true,
+    );
+  }
+
+  static ChangeOrder _orderFrom(Map<String, Object?> row) {
+    final currency = Currency.byCode((row['currency'] as String).trim())!;
+    return ChangeOrder(
+      id: row['id']! as String,
+      bookingId: row['booking_id']! as String,
+      bookingRef: row['ref'] as String,
+      toDepartureId: row['to_departure_id']! as String,
+      departsAt: row['departs_at']! as DateTime,
+      seatLabels: [
+        for (final label in (row['seat_labels'] as List? ?? const [])) '$label',
+      ],
+      fee: Money(row['fee_minor'] as int, currency),
+      fareDifference: Money(row['difference_minor'] as int, currency),
+      owed: Money(row['owed_minor'] as int, currency),
+      expiresAt: row['expires_at']! as DateTime,
+      state: row['state']! as String,
+    );
+  }
+
+  /// Moves a booking onto seats that have already been taken for it.
+  ///
+  /// Everything after the seats, and shared by the two ways of getting them:
+  /// the free change, which claims them in the same breath, and the paid one,
+  /// which claimed them a payment window earlier and is only now allowed to
+  /// use them. The order inside is the same in both cases — the passengers
+  /// are written onto the new seats before the old ones go back on sale.
+  Future<void> _relocate(
+    TxSession tx, {
+    required String bookingId,
+    required String fromDepartureId,
+    required String toDepartureId,
+    required List<String> taking,
+    required String operatorId,
+    required String userId,
+    String? changeId,
+  }) async {
     final seated = await tx.execute(
       Sql.named('''
         SELECT seat_label, passenger_name, passenger_phone,
@@ -397,9 +1047,10 @@ final class PostgresReschedules implements RescheduleDesk {
           'name': TypedValue(Type.text, passenger['passenger_name']),
           'phone': TypedValue(Type.text, passenger['passenger_phone']),
           'idNumber': TypedValue(Type.text, passenger['passenger_id_number']),
-          // What they paid, unchanged. Nothing is owed — the quote above
-          // refused otherwise — so a cheaper coach does not rewrite the fare
-          // downwards either, which is the sentence the row already carried.
+          // What they paid for the journey, unchanged. A difference is
+          // collected as its own payment against its own order; folding it
+          // into the seat's fare would rewrite what the booking was sold for
+          // and quietly move every refund quote with it.
           'fare': TypedValue(Type.bigInteger, passenger['fare_minor']),
         },
         ignoreRows: true,
@@ -431,7 +1082,7 @@ final class PostgresReschedules implements RescheduleDesk {
 
     // The QR carries the seat and the departure (ADR-0007), so a ticket left
     // alone would admit somebody to a seat the manifest has given away.
-    await _reissue(tx, bookingId, toDepartureId, row['operator_id']! as String);
+    await _reissue(tx, bookingId, toDepartureId, operatorId);
 
     // The same event the dispatcher's wave queues: from the passenger's side
     // it is the same fact — you are on the 14:00 now, here is the seat.
@@ -463,25 +1114,16 @@ final class PostgresReschedules implements RescheduleDesk {
       parameters: {
         'actor': TypedValue(Type.uuid, userId),
         'booking': TypedValue(Type.text, bookingId),
-        'operator': TypedValue(Type.uuid, row['operator_id']! as String),
+        'operator': TypedValue(Type.uuid, operatorId),
         'after': TypedValue(Type.jsonb, {
           'toDepartureId': toDepartureId,
           'seats': taking,
+          if (changeId != null) 'changeId': changeId,
         }),
       },
       ignoreRows: true,
     );
-
-    return (
-      applied: ChangeApplied(
-        bookingRef: ref,
-        departureId: toDepartureId,
-        departsAt: to['departs_at']! as DateTime,
-        seatLabels: taking,
-      ),
-      refusal: null,
-    );
-  });
+  }
 
   Future<void> _reissue(
     TxSession tx,

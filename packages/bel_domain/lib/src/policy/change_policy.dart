@@ -141,6 +141,17 @@ final class ChangeMustBePaid extends ChangeRefusal {
   };
 }
 
+/// A prompt for the difference is already on somebody's handset.
+///
+/// Refused rather than replaced. The seats a waiting order holds cannot be
+/// let go while money may be about to land on them — a capture arriving after
+/// the release would pay for a seat somebody else is sitting in.
+final class ChangePaymentInFlight extends ChangeRefusal {
+  const ChangePaymentInFlight();
+  @override
+  String get code => 'change.payment_in_flight';
+}
+
 /// What moving to one particular departure costs.
 final class ChangeQuote {
   const ChangeQuote({

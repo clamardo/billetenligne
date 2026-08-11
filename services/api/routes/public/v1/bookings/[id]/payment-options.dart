@@ -44,6 +44,21 @@ Future<Response> onRequest(RequestContext context, String id) async {
     return _error(HttpStatus.notFound, Problem.notFound(traceId: trace), trace);
   }
 
+  // Paying the difference on a change rather than the journey itself. The
+  // rails are the same — same operator, same accounts — and only the amount
+  // differs, so this is a parameter rather than a second endpoint that would
+  // have to be kept in step with this one forever.
+  final changeId = context.request.uri.queryParameters['change'];
+  final order = changeId == null
+      ? null
+      : await services.reschedules.orderById(
+          changeId: changeId,
+          userId: principal.userId,
+        );
+  if (changeId != null && (order == null || !order.isAwaitingPayment)) {
+    return _error(HttpStatus.notFound, Problem.notFound(traceId: trace), trace);
+  }
+
   final accounts = await services.payForBooking.railsFor(booking.operatorId);
   final account = await services.directory.byAuthUid(principal.authUid);
 
@@ -102,7 +117,7 @@ Future<Response> onRequest(RequestContext context, String id) async {
       // Their own number, so the app can prefill it and mark the "paying from
       // somebody else's wallet" toggle honestly.
       if (account?.phone != null) 'accountMsisdn': account!.phone,
-      'amount': Wire.money(booking.total),
+      'amount': Wire.money(order?.owed ?? booking.total),
     },
     headers: {
       BelHeaders.traceId: trace,

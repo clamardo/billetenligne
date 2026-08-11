@@ -37,6 +37,7 @@ final class PaymentIntentRecord {
     this.expiresAt,
     this.failureCode,
     this.railTransactionId,
+    this.changeId,
   });
 
   final String id;
@@ -51,6 +52,16 @@ final class PaymentIntentRecord {
   final DateTime? expiresAt;
   final PaymentFailureCode? failureCode;
   final String? railTransactionId;
+
+  /// The change order this intent pays for, when it pays for one.
+  ///
+  /// The discriminator at settlement: an intent that names a change moves a
+  /// booking to another departure, one that does not confirms the booking it
+  /// names. Both carry a booking id, because a payment that cannot say which
+  /// journey it belongs to is a payment nobody can reconcile.
+  final String? changeId;
+
+  bool get isForAChange => changeId != null;
 }
 
 abstract interface class PaymentStore {
@@ -69,6 +80,25 @@ abstract interface class PaymentStore {
   /// beyond "choose again".
   Future<PaymentIntentRecord?> open({
     required String bookingId,
+    required String userId,
+    required String railId,
+    required String payerMsisdn,
+    required bool payerIsAccountHolder,
+    required String idempotencyKey,
+    required Duration window,
+  });
+
+  /// Opens an intent against a change order that is waiting to be paid.
+  ///
+  /// The amount is the order's, read inside the transaction — the client
+  /// never names what it owes, here least of all: the difference was quoted
+  /// against terms it cannot see the inputs of.
+  ///
+  /// Returns null when the order is not the caller's, is not still awaiting
+  /// payment, has lapsed, or the operator has no verified account on that
+  /// rail. One answer, for the same reason as [open].
+  Future<PaymentIntentRecord?> openForChange({
+    required String changeId,
     required String userId,
     required String railId,
     required String payerMsisdn,

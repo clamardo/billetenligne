@@ -1094,3 +1094,112 @@ BEGIN
   RAISE NOTICE 'OK  a traveller reads the terms and can never rewrite them';
 END
 $$;
+
+-- ── 20. A traveller reads their own change order and writes none ────────────
+--
+-- A change order holds seats on a departure and states what is owed for them.
+-- Both of those are the platform role's business: the seats come out of an
+-- inventory somebody else is also selling, and the amount is computed from
+-- terms the traveller cannot see the inputs of. So the public grant is SELECT
+-- and nothing else — and the row it can select is its own.
+DO $$
+DECLARE
+  ocean   UUID := '11111111-1111-1111-1111-111111111111';
+  buyer   UUID := 'aaaaaaaa-1111-0000-0000-00000000f002';
+  other   UUID := 'aaaaaaaa-1111-0000-0000-00000000f003';
+  dep_a   UUID := 'ffffffff-3333-0000-0000-00000000f001';
+  dep_b   UUID := 'ffffffff-3333-0000-0000-00000000f002';
+  bk      UUID := 'ffffffff-3333-0000-0000-00000000f003';
+  chg     UUID := 'ffffffff-3333-0000-0000-00000000f004';
+  seen    INT;
+BEGIN
+  RESET ROLE;
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  INSERT INTO user_accounts (id, email, language) VALUES
+    (buyer, 'change-buyer@example.cg', 'fr'),
+    (other, 'change-stranger@example.cg', 'fr')
+  ON CONFLICT DO NOTHING;
+
+  INSERT INTO departures
+    (id, operator_id, route_id, seat_layout_id, departs_at, arrives_at,
+     capacity, fare_minor, currency)
+  SELECT d.id, ocean, r.id, l.id,
+         now() + d.offset_hours, now() + d.offset_hours + INTERVAL '6 hours',
+         49, 12000, 'XAF'
+    FROM routes r, seat_layouts l,
+         (VALUES (dep_a, INTERVAL '30 hours'), (dep_b, INTERVAL '54 hours'))
+           AS d(id, offset_hours)
+   WHERE r.operator_id = ocean AND l.operator_id = ocean
+   LIMIT 2;
+
+  INSERT INTO bookings
+    (id, ref, operator_id, departure_id, purchaser_user_id, state,
+     fare_minor, service_fee_minor, total_minor, currency, payment_method,
+     paid_at)
+  VALUES (bk, 'BELC01', ocean, dep_a, buyer, 'confirmed',
+          12000, 300, 12300, 'XAF', 'mobile_money', now());
+
+  -- Written by the platform role, which is the only one that may: the read
+  -- surface below is the whole of what a traveller gets.
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'on', true);
+
+  INSERT INTO booking_changes
+    (id, booking_id, operator_id, from_departure_id, to_departure_id,
+     seat_labels, fee_minor, difference_minor, owed_minor, currency,
+     created_by, expires_at)
+  VALUES (chg, bk, ocean, dep_a, dep_b, ARRAY['1A'], 1200, 3000, 4200, 'XAF',
+          buyer, now() + INTERVAL '15 minutes');
+
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.user_id', buyer::text, true);
+
+  SELECT count(*) INTO seen FROM booking_changes WHERE id = chg;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: a traveller cannot read their own change order';
+  END IF;
+
+  -- Somebody else's is not theirs to read, and the answer is an empty row
+  -- rather than a refusal: a stranger's order and one that never existed are
+  -- deliberately the same.
+  PERFORM set_config('app.user_id', other::text, true);
+  SELECT count(*) INTO seen FROM booking_changes WHERE id = chg;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: a stranger read somebody else''s change order';
+  END IF;
+
+  PERFORM set_config('app.user_id', buyer::text, true);
+
+  -- Writing is refused in every direction. An order a client could write is
+  -- an order a client could price.
+  BEGIN
+    INSERT INTO booking_changes
+      (booking_id, operator_id, from_departure_id, to_departure_id,
+       seat_labels, owed_minor, currency, created_by, expires_at)
+    VALUES (bk, ocean, dep_a, dep_b, ARRAY['2A'], 1, 'XAF', buyer,
+            now() + INTERVAL '15 minutes');
+    RAISE EXCEPTION 'FAIL: a traveller wrote their own change order';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  BEGIN
+    UPDATE booking_changes SET owed_minor = 1 WHERE id = chg;
+    RAISE EXCEPTION 'FAIL: a traveller repriced their own change';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  BEGIN
+    DELETE FROM booking_changes WHERE id = chg;
+    RAISE EXCEPTION 'FAIL: a traveller deleted a change order';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  a traveller reads their own change order and writes none';
+END
+$$;

@@ -90,6 +90,55 @@ final class MemoryPaymentStore implements PaymentStore {
     return intent;
   }
 
+  /// Change orders this fake knows how to be paid for, by id.
+  ///
+  /// Empty by default, and deliberately: the fakes composition has no
+  /// reschedule desk, so a change order cannot exist in it. A test that wants
+  /// the paid-change path registers one here; the real thing is proven
+  /// against Postgres, where the order and the seats it holds are rows.
+  final Map<String, ({String bookingId, String operatorId, Money owed})>
+  changeOrders = {};
+
+  @override
+  Future<PaymentIntentRecord?> openForChange({
+    required String changeId,
+    required String userId,
+    required String railId,
+    required String payerMsisdn,
+    required bool payerIsAccountHolder,
+    required String idempotencyKey,
+    required Duration window,
+  }) async {
+    final existingId = _byKey[idempotencyKey];
+    if (existingId != null) return _byId[existingId];
+
+    final order = changeOrders[changeId];
+    if (order == null) return null;
+
+    final account = accounts
+        .where((a) => a.railId == railId && a.verified)
+        .firstOrNull;
+    if (account == null) return null;
+
+    final intent = PaymentIntentRecord(
+      id: 'pi-mem-${++_next}',
+      bookingId: order.bookingId,
+      operatorId: order.operatorId,
+      railId: railId,
+      amount: order.owed,
+      state: PaymentState.created,
+      payerMsisdn: payerMsisdn,
+      collectionMsisdn: account.msisdn,
+      createdAt: _clock.now(),
+      expiresAt: _clock.now().add(window),
+      changeId: changeId,
+    );
+
+    _byId[intent.id] = intent;
+    _byKey[idempotencyKey] = intent.id;
+    return intent;
+  }
+
   @override
   Future<PaymentIntentRecord?> byId({
     required String intentId,
@@ -143,6 +192,7 @@ final class MemoryPaymentStore implements PaymentStore {
       expiresAt: current.expiresAt,
       failureCode: failureCode ?? current.failureCode,
       railTransactionId: railTransactionId ?? current.railTransactionId,
+      changeId: current.changeId,
     );
 
     _byId[intentId] = updated;

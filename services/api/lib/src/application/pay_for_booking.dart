@@ -5,6 +5,7 @@ import 'ports/booking_store.dart';
 import 'ports/operator_directory.dart';
 import 'ports/payment_gateway.dart';
 import 'ports/payment_store.dart';
+import 'ports/reschedule_desk.dart';
 
 sealed class PaymentFailure extends DomainFailure {
   const PaymentFailure();
@@ -73,17 +74,23 @@ final class PayForBooking {
     required BookingStore bookings,
     required OperatorDirectory operators,
     required Map<String, PaymentGateway> gateways,
+    RescheduleDesk reschedules = const NoReschedules(),
     this.market = Market.current,
     this.window = const Duration(minutes: 10),
   }) : _payments = payments,
        _bookings = bookings,
        _operators = operators,
-       _gateways = gateways;
+       _gateways = gateways,
+       _reschedules = reschedules;
 
   final PaymentStore _payments;
   final BookingStore _bookings;
   final OperatorDirectory _operators;
   final Map<String, PaymentGateway> _gateways;
+
+  /// Where a captured change order goes. A null object by default, so a
+  /// composition with no database behind it still pays for bookings.
+  final RescheduleDesk _reschedules;
   final Market market;
 
   /// Ten minutes. **Strictly shorter than the seat hold's fifteen** (ADR-0005
@@ -102,6 +109,13 @@ final class PayForBooking {
     required String payerMsisdn,
     required String? accountMsisdn,
     required String idempotencyKey,
+
+    /// Set when this pays the difference on a change rather than the journey
+    /// itself. Everything after the rail check is identical — the same
+    /// prompt, the same window, the same recording — because from the rail's
+    /// side it is the same transaction, and from ours the difference lives in
+    /// one branch at settlement rather than in a second funnel to maintain.
+    String? changeId,
   }) async {
     final gateway = _gateways[railId];
     if (gateway == null) return Err(RailNotAvailable(railId));
@@ -129,19 +143,31 @@ final class PayForBooking {
       return const Err(RailRefused(PaymentFailureCode.wrongOperatorForMsisdn));
     }
 
-    final intent = await _payments.open(
-      bookingId: bookingId,
-      userId: userId,
-      railId: railId,
-      payerMsisdn: payer.e164,
-      // Recorded, never enforced. It is the difference between "paid from
-      // their own wallet" and "a relative paid", which matters in a dispute
-      // and matters not at all to whether the payment may proceed.
-      payerIsAccountHolder:
-          accountMsisdn != null && accountMsisdn == payer.e164,
-      idempotencyKey: idempotencyKey,
-      window: window,
-    );
+    // Recorded, never enforced. It is the difference between "paid from
+    // their own wallet" and "a relative paid", which matters in a dispute and
+    // matters not at all to whether the payment may proceed.
+    final payerIsAccountHolder =
+        accountMsisdn != null && accountMsisdn == payer.e164;
+
+    final intent = changeId == null
+        ? await _payments.open(
+            bookingId: bookingId,
+            userId: userId,
+            railId: railId,
+            payerMsisdn: payer.e164,
+            payerIsAccountHolder: payerIsAccountHolder,
+            idempotencyKey: idempotencyKey,
+            window: window,
+          )
+        : await _payments.openForChange(
+            changeId: changeId,
+            userId: userId,
+            railId: railId,
+            payerMsisdn: payer.e164,
+            payerIsAccountHolder: payerIsAccountHolder,
+            idempotencyKey: idempotencyKey,
+            window: window,
+          );
 
     if (intent == null) return const Err(BookingNotPayable());
 
@@ -215,7 +241,7 @@ final class PayForBooking {
     // callback and a poll arriving together produce one confirmation, one set
     // of ledger rows and one ticket.
     if (recorded.state == PaymentState.captured) {
-      await _settle(recorded);
+      await _settleCapture(recorded);
     }
 
     return recorded;
@@ -267,8 +293,45 @@ final class PayForBooking {
     );
 
     if (recorded == null) return null;
-    if (recorded.state == PaymentState.captured) await _settle(recorded);
+    if (recorded.state == PaymentState.captured) await _settleCapture(recorded);
     return recorded;
+  }
+
+  /// Which of two things a captured intent means.
+  ///
+  /// The discriminator is on the row rather than in a flag the caller passes:
+  /// a poll, a callback and an admin's resolution all arrive here with
+  /// nothing but an intent id, and each of them has to reach the same answer.
+  Future<void> _settleCapture(PaymentIntentRecord intent) =>
+      intent.isForAChange ? _settleChange(intent) : _settle(intent);
+
+  /// A paid change: the difference has landed, so the booking moves.
+  ///
+  /// The ledger movement is computed here, beside the one that settles a
+  /// booking, and for the same reason — commission is netted at source, at
+  /// this operator's own rate, and money maths does not belong in an adapter.
+  /// The difference carries no service fee: ours was charged once, on the
+  /// sale, and charging it again for moving somebody along the same road
+  /// would be a fee for our own convenience.
+  Future<void> _settleChange(PaymentIntentRecord intent) async {
+    final term =
+        await _operators.commissionFor(intent.operatorId) ??
+        CommissionTerm.none;
+
+    final posting = Postings.railCapture(
+      operatorId: intent.operatorId,
+      rail: intent.railId,
+      fare: intent.amount,
+      serviceFee: Money(0, intent.amount.currency),
+      commission: term.on(intent.amount),
+    );
+    if (posting case Err()) return;
+
+    await _reschedules.applyPaidChange(
+      changeId: intent.changeId!,
+      intentId: intent.id,
+      posting: posting.valueOrNull!,
+    );
   }
 
   Future<void> _settle(PaymentIntentRecord intent) async {

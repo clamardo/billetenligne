@@ -20,7 +20,7 @@ final class PostgresPaymentStore implements PaymentStore {
   static const _columns = '''
     id, booking_id, operator_id, rail_id, msisdn, collection_msisdn,
     amount_minor, currency::text AS currency, state::text AS state,
-    failure_code, rail_transaction_id, created_at, expires_at
+    failure_code, rail_transaction_id, created_at, expires_at, change_id
   ''';
 
   @override
@@ -124,6 +124,86 @@ final class PostgresPaymentStore implements PaymentStore {
         'currency': TypedValue(Type.text, (c['currency'] as String).trim()),
         'key': TypedValue(Type.text, idempotencyKey),
         'window': TypedValue(Type.double, window.inSeconds.toDouble()),
+      },
+    );
+
+    return _record(inserted.first.toColumnMap());
+  });
+
+  @override
+  Future<PaymentIntentRecord?> openForChange({
+    required String changeId,
+    required String userId,
+    required String railId,
+    required String payerMsisdn,
+    required bool payerIsAccountHolder,
+    required String idempotencyKey,
+    required Duration window,
+  }) => _db.transaction(DbScope.traveller(userId), (tx) async {
+    final existing = await tx.execute(
+      Sql.named(
+        'SELECT $_columns FROM payment_intents WHERE idempotency_key = @key',
+      ),
+      parameters: {'key': TypedValue(Type.text, idempotencyKey)},
+    );
+    if (existing.isNotEmpty) return _record(existing.first.toColumnMap());
+
+    // The order, its booking, and the operator's collection account, in one
+    // query for the same reason [open] does it: all three have to be true
+    // together, and checking them apart leaves a window between each pair.
+    //
+    // `expires_at > now()` is the one that is not obvious. An order whose
+    // seats have already gone back on sale must not take a PIN — the money
+    // would arrive for a seat somebody else is sitting in.
+    final context = await tx.execute(
+      Sql.named('''
+        SELECT c.booking_id, c.operator_id, c.owed_minor,
+               c.currency::text AS currency, a.msisdn AS collection_msisdn
+          FROM booking_changes c
+          JOIN bookings b ON b.id = c.booking_id
+          JOIN operator_payment_accounts a
+            ON a.operator_id = c.operator_id
+           AND a.rail_id = @rail
+           AND a.active
+           AND a.verified_at IS NOT NULL
+         WHERE c.id = @change
+           AND b.purchaser_user_id = app_user_id()
+           AND c.state = 'awaiting_payment'
+           AND c.expires_at > now()
+      '''),
+      parameters: {
+        'change': TypedValue(Type.uuid, changeId),
+        'rail': TypedValue(Type.text, railId),
+      },
+    );
+
+    if (context.isEmpty) return null;
+
+    final c = context.first.toColumnMap();
+
+    final inserted = await tx.execute(
+      Sql.named('''
+        INSERT INTO payment_intents
+          (booking_id, operator_id, rail_id, msisdn, collection_msisdn,
+           payer_is_account_holder, amount_minor, currency, idempotency_key,
+           expires_at, change_id)
+        VALUES (@booking, @operator, @rail, @payer, @collection, @holder,
+                @amount, @currency, @key,
+                now() + make_interval(secs => @window), @change)
+        RETURNING $_columns
+      '''),
+      parameters: {
+        'booking': TypedValue(Type.uuid, c['booking_id'].toString()),
+        'operator': TypedValue(Type.uuid, c['operator_id'].toString()),
+        'rail': TypedValue(Type.text, railId),
+        'payer': TypedValue(Type.text, payerMsisdn),
+        'collection': TypedValue(Type.text, c['collection_msisdn'] as String),
+        'holder': TypedValue(Type.boolean, payerIsAccountHolder),
+        'amount': TypedValue(Type.bigInteger, c['owed_minor'] as int),
+        'currency': TypedValue(Type.text, (c['currency'] as String).trim()),
+        'key': TypedValue(Type.text, idempotencyKey),
+        'window': TypedValue(Type.double, window.inSeconds.toDouble()),
+        'change': TypedValue(Type.uuid, changeId),
       },
     );
 
@@ -271,6 +351,7 @@ final class PostgresPaymentStore implements PaymentStore {
         collectionMsisdn: r['collection_msisdn'] as String? ?? '',
         createdAt: r['created_at'] as DateTime,
         expiresAt: r['expires_at'] as DateTime?,
+        changeId: r['change_id']?.toString(),
         failureCode: r['failure_code'] == null
             ? null
             : PaymentFailureCode.values.firstWhere(

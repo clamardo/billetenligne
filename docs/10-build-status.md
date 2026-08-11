@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-11 · after commit *The operator answers three more questions*
+**Updated:** 2026-08-11 · after commit *An order, and then a movement*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -97,18 +97,19 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Trip sharing and the follower page** | ✅ done | ADR-0014. The traveller mints a link and sends it into whatever conversation they were already having; whoever opens it sees the coach. **The page is HTML the API serves, not the Flutter app** (ADR-0004) — six kilobytes, self-contained, rendered before it fetches, then polling once a minute — because the follower is on a borrowed handset with 2G and will open it once. **The link follows a coach, never a person**: no seat, no reference, no fare, no name, no number crosses, and that is a property of the SECURITY DEFINER function's OUT columns rather than of a handler, checked by a guarantee that scans the signature itself. A **disruption reaches the follower**, which is the point — the moment the person at the station most needs to know is the one the passenger is least able to explain. Progress is honest about **which tier it came from**: with no conductor GPS and no checkpoint taps yet the bar is dashed and says *estimation d'après l'horaire*. The token is 160 bits **stored only as a SHA-256 hash**, dies six hours after arrival, and is revoked in one tap with the opens count beside it. Revoked, expired and never-issued answer identically, because a page that distinguishes them is an enumeration oracle. Opening the sheet mints nothing, and **platform staff cannot create one**. 14 domain · 13 Postgres · 13 smoke · 1 schema guarantee · 11 traveller-app tests |
 | **Cancel, by the traveller** | ✅ done | `01-feature-spec.md` §8.2. **An unpaid reservation is *released*, never "refunded"** — the commonest cancellation there is, and a claim code for nought francs reads as a bug to whoever is handed it. A paid booking quotes what comes back **beside what is kept**, under **the terms it was sold under** (ADR-0015 rule 1, by the join to `(policy_id, version)`), computed by the same `quoteRefund` the server executes (ADR-0004). **Cash paid at a counter comes back at a counter** whatever the policy's destination says, because a journey paid in notes never had a source; a wallet policy writes the debt as `approved` and the screen commits to a **window**, never to an arrival, since the disbursement float is not built. **Terms that give nothing back warn rather than refuse** — somebody who cannot travel would rather free the seat than no-show — and the warning is a sentence, not `0 FCFA` beside a button. The seat is **on sale again in the same transaction**, which is the whole reason to build this instead of answering the phone. A **payment in flight refuses the cancellation**, because releasing seats a second before a capture lands is what neither end can undo. `refund_policies` became readable by the public role — the first widening of that boundary — with every write still refused and a guarantee asserting both halves. 17 domain · 6 contract · 14 Postgres · 2 worker · 8 smoke · 1 schema guarantee · 20 traveller-app tests |
 | **Reschedule, by the traveller** | ✅ done | `01-feature-spec.md` §8.1 and ADR-0012 D-08. **Every row is priced before selection** — fee and fare difference on each line, which is what §8.1's mock asks for and what stops somebody tapping five times to compare four departures. D-08's three numbers are data now, stored on the same row as the refund terms and stamped onto the booking by the same `(id, version)` pair, so ADR-0015 rule 1 covers changes without a second versioning scheme. **New seats taken before a single old one is released**, both departures locked in id order, **ticket re-signed in the same transaction** (ADR-0007). **A cheaper departure gives nothing back**, said above the list rather than after the tap. **A row that cannot be taken is shown with its reason**, because a departure missing from a list is one somebody telephones about. **A change that owes money is refused to the franc** and settled at a counter — collecting it in-app needs a payment intent bound to a held-but-unapplied change, which is its own slice. An operator-caused change is free inside every cutoff (ADR-0016). The three numbers are answered in the refund-terms wizard, on the same save and the same version. 21 domain · 6 contract · 17 Postgres · 7 smoke · 18 traveller-app tests |
+| **Paying the difference in the app** | ✅ done | `01-feature-spec.md` §8.1, the boundary the reschedule slice named. A change that owes money becomes a **change order**: it holds the seats, states what is owed to the franc, and **moves nothing**. The booking moves on the capture and nowhere else — a change applied on `pending` is the free journey an optimistically issued ticket would be (ADR-0005). The order rides on an ordinary `holds` row, so the sweeper that puts lapsed holds back on sale already handles the expiry and a second pass only records it. One live order per booking (partial unique index); changing their mind releases the first, **a prompt in flight refuses the second**. The payment funnel is the existing one, with a change id on the intent deciding at settlement whether a capture confirms a booking or moves one. **The client names which debt, never how much.** A capture landing after the seats went back on sale moves nobody and leaves an intent a human can refund. 12 Postgres · 3 worker · 5 traveller-app · 3 contract · 7 smoke tests, one migration, one schema guarantee |
 
-Three items of it are built, out of order and deliberately. The follower page is
+Four items of it are built, out of order and deliberately. The follower page is
 what makes a disruption reach the person who would otherwise phone the agency,
 and that machinery shipped in Phase 2. Self-service cancellation is the other
 half of the refund path the counter already had, and every piece it needed —
 policies as data, the ledger, the claim code, the outbox — was already there;
 leaving it out would have meant a system that can refund a booking only when
-somebody walks into an office. §8 is now built on both sides — cancel and reschedule — with one boundary
-named rather than implied: a change that owes money is quoted to the franc and
-settled at a counter, because collecting it in-app needs a payment intent bound
-to a held-but-unapplied change. Everything else in Phase 3 — the stores,
-offline tickets on device, card via PSP, analytics — is not started. `09-roadmap.md` has the remaining
+somebody walks into an office. §8 is now built on both sides and both ways of paying: cancel, reschedule, and
+the difference collected in the app. What is left of it is small and named — a
+traveller cannot cancel a change order themselves, they wait the quarter of an
+hour out. Everything else in Phase 3 — the stores, offline tickets on device,
+card via PSP, analytics — is not started. `09-roadmap.md` has the remaining
 Phase 1 work in **dependency order**. With both consoles rendered, the vitrine complete, TOTP in front of
 both back offices, object storage built, the section builder shipped and
 refunds executing end to end, the sales horizon extending itself and an
@@ -248,21 +249,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 459 tests
+         packages/bel_contracts packages/bel_crypto     # 463 tests
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 214 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
-cd apps/traveller && flutter test        # 153 app tests
+cd apps/traveller && flutter test        # 158 app tests
 cd apps/console   && flutter test        # 89 console tests
 cd apps/admin     && flutter test        # 23 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 345 files
-./infra/migrations/check.sh              # 40 schema guarantees
-./tool/integration.sh                    # 301 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 276 checks, incl. the Dart client
+dart run tool/check_layers.dart          # the onion rule, 346 files
+./infra/migrations/check.sh              # 31 schema guarantees
+./tool/integration.sh                    # 316 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 283 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -271,13 +272,17 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,069 tests in total**, plus 276 smoke checks, 40 executed schema guarantees,
-301 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,078 tests in total**, plus 283 smoke checks, 31 executed schema guarantees,
+316 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
 
-That total read **1,091** in the previous revision of this document, and the
+The schema-guarantee figure read **40** until this revision and was wrong: the
+suite prints one `OK` per executed guarantee and there are 31, of which one is
+new here. Nothing was removed; the number had simply never been re-counted.
+
+That total read **1,091** in an earlier revision of this document, and the
 number was wrong rather than the suite. `dart test services/api` had been
 counted with `services/api/build` present, so a stale copy of every package's
 tests was counted again as if it were the API's own — the exact trap the
@@ -287,6 +292,64 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+**Paying the difference in the app** (`01-feature-spec.md` §8.1) — the
+boundary the reschedule push named, closed.
+
+**A change order is a promise that expires, not a change.** It holds the seats
+on the target departure, writes down what was quoted, and moves nothing. The
+booking moves when the capture lands and nowhere else, because a change
+applied on `pending` is exactly the free journey an optimistically issued
+ticket would be (ADR-0005), one departure further along. The whole slice is
+that one sentence enforced in four places: the order table, the intent's
+change id, the settlement branch, and a capture path that re-checks the seats
+it was promised.
+
+**It rides on an ordinary hold**, and that is the cheapest decision in it. The
+sweeper that already puts lapsed holds back on sale puts these back too, so
+the expiry story needed no new machinery — only a second pass that records
+that the promise attached to those seats has lapsed. That pass deliberately
+**leaves an order alone while a prompt is in flight**: the money may yet land,
+and an order expired underneath a live prompt is a state nobody can see. The
+capture path closes it instead, and leaves an intent a human can find.
+
+**One live order per booking**, by partial unique index. A traveller tapping
+two departures while the first prompt is still on their handset would
+otherwise hold two sets of seats and owe two amounts, and only one of the two
+could ever be applied. Tapping a different departure before paying releases
+the first order outright — they have simply changed their mind — but **a
+prompt already in flight refuses the second**, because releasing those seats
+could strand money that is about to arrive on them.
+
+**The client names which debt, never how much.** The amount is read from the
+order's row inside the transaction that opens the intent, and the row policy
+that lets a traveller open one at all checks three things about the order:
+theirs, still awaiting payment, not yet lapsed. That is a separate policy
+rather than a loosened one — the existing rule insists a booking be
+`pending_payment` before it can be paid for, and rightly, since without it
+somebody could pay for a confirmed booking twice.
+
+**A capture that arrives after the seats went back on sale moves nobody.** It
+closes the order and leaves a captured intent for somebody to refund. That is
+the honest outcome rather than the tidy one, and it is why the hold outlives
+the payment window by five minutes rather than expiring with it.
+
+One thing the screen does not say: nothing anywhere claims the traveller has
+changed departure until the server says so. The order step exists in the app
+purely to hand over to the payment funnel, and backing out of the PIN prompt
+returns to the priced list with the seats still held for the rest of the
+window — people come straight back.
+
+What it cost: 12 tests against real Postgres, 3 in the worker's suite, 5
+traveller-app tests, 3 contract round-trips, 7 smoke checks, one migration and
+one executed schema guarantee. What it did not build: a way for the traveller
+to cancel an order before it lapses — the seats are theirs for a quarter of an
+hour either way, and the button would mostly be pressed by people who are
+about to press it again.
+
+---
+
+## What the console-terms push changed, and what it cost
 
 **The operator writes the change terms too** — the gap the reschedule push
 named, closed on the screen that was already the right place for it.

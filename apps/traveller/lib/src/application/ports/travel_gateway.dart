@@ -105,6 +105,16 @@ abstract interface class TravelGateway {
     required String departureId,
   });
 
+  /// Holds a change that owes money, and says exactly what.
+  ///
+  /// Nothing moves. The seats are held for the length of the payment window
+  /// and the booking stays where it is until the difference is captured — so
+  /// a screen must never say "changed" on the strength of this answer.
+  Future<ChangeOrderDto> orderChange({
+    required String bookingRef,
+    required String departureId,
+  });
+
   // ── Paying ────────────────────────────────────────────────────────────────
 
   /// How this booking can be paid, and where the money goes.
@@ -116,7 +126,7 @@ abstract interface class TravelGateway {
   Future<
     ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
   >
-  paymentOptions(String bookingId);
+  paymentOptions(String bookingId, {String? changeId});
 
   /// Pushes a PIN prompt to a handset. Answers `pending`, never `paid`.
   Future<PaymentIntentDto> startPayment({
@@ -124,6 +134,7 @@ abstract interface class TravelGateway {
     required String railId,
     required String payerMsisdn,
     required String idempotencyKey,
+    String? changeId,
   });
 
   Future<PaymentIntentDto> paymentStatus(String intentId);

@@ -162,6 +162,18 @@ final class ChangingDeparture extends TicketsStep {
   final ApiFailure? failure;
 }
 
+/// A change that is waiting for the difference to be paid.
+///
+/// The seats are held and the booking has not moved. The app hands this to
+/// the payment flow, which runs the ordinary funnel — the amount, the rail,
+/// the PIN — and the booking moves when the money lands, server-side.
+final class ChangeAwaitingPayment extends TicketsStep {
+  const ChangeAwaitingPayment({required this.booking, required this.order});
+
+  final BookingDto booking;
+  final ChangeOrderDto order;
+}
+
 /// The receipt: which departure, which seats, and that the ticket is new.
 final class DepartureChanged extends TicketsStep {
   const DepartureChanged({required this.booking, required this.applied});
@@ -471,6 +483,76 @@ final class TicketsFlow {
     }
   }
 
+  /// Takes one that owes money: holds the seats, then hands over to paying.
+  ///
+  /// Two answers come back and both are normal. An order **awaiting payment**
+  /// is the usual one — the seats are held for a quarter of an hour and the
+  /// booking has not moved. An order already **applied** means the difference
+  /// had evaporated by the time the server took the lock, and the change was
+  /// simply made; the traveller sees the receipt and is never told about a
+  /// price they did not pay.
+  Future<void> orderChange(String departureId) async {
+    final current = _step;
+    if (current is! ChangingDeparture || current.busy) return;
+    if (current.options == null) return;
+
+    _emit(
+      ChangingDeparture(
+        booking: current.booking,
+        options: current.options,
+        busy: true,
+      ),
+    );
+
+    try {
+      final order = await _gateway.orderChange(
+        bookingRef: current.booking.ref,
+        departureId: departureId,
+      );
+
+      if (order.applied case final applied?) {
+        await _fetch(silent: true);
+        _emit(DepartureChanged(booking: current.booking, applied: applied));
+        return;
+      }
+
+      _emit(ChangeAwaitingPayment(booking: current.booking, order: order));
+    } on ApiFailure catch (failure) {
+      await _refuseChange(current.booking, failure);
+    }
+  }
+
+  /// The difference landed and the server moved the booking. Called by the
+  /// app when the payment flow settles, because the movement is the server's
+  /// and the app only has to catch up with it.
+  Future<void> changePaid(ChangeOrderDto order) async {
+    final current = _step;
+    if (current is! ChangeAwaitingPayment) return;
+
+    await _fetch(silent: true);
+    _emit(
+      DepartureChanged(
+        booking: current.booking,
+        applied: ChangeAppliedDto(
+          bookingRef: order.bookingRef,
+          departureId: order.departureId,
+          departsAt: order.departsAt,
+          seatLabels: order.seatLabels,
+        ),
+      ),
+    );
+  }
+
+  /// Back to the priced list after a payment that did not happen. The order
+  /// is left to lapse on its own rather than cancelled from here: the seats
+  /// are theirs for the length of the window, and a traveller who backs out
+  /// of a PIN prompt often comes straight back.
+  Future<void> abandonChange() async {
+    final current = _step;
+    if (current is! ChangeAwaitingPayment) return;
+    await openChange(current.booking);
+  }
+
   /// Takes one. The movement happens server-side inside this call.
   Future<void> changeDeparture(String departureId) async {
     final current = _step;
@@ -495,18 +577,26 @@ final class TicketsFlow {
       await _fetch(silent: true);
       _emit(DepartureChanged(booking: current.booking, applied: applied));
     } on ApiFailure catch (failure) {
-      try {
-        final refreshed = await _gateway.changeOptions(current.booking.ref);
-        _emit(
-          ChangingDeparture(
-            booking: current.booking,
-            options: refreshed,
-            failure: failure,
-          ),
-        );
-      } on ApiFailure {
-        _emit(TicketsFailed(failure));
-      }
+      await _refuseChange(current.booking, failure);
+    }
+  }
+
+  /// A refusal, with the list re-read underneath it. Nearly every refusal
+  /// here is the world having moved — the coach filled, the window closed —
+  /// so the next thing the traveller needs is what is left, not an apology on
+  /// its own.
+  Future<void> _refuseChange(BookingDto booking, ApiFailure failure) async {
+    try {
+      final refreshed = await _gateway.changeOptions(booking.ref);
+      _emit(
+        ChangingDeparture(
+          booking: booking,
+          options: refreshed,
+          failure: failure,
+        ),
+      );
+    } on ApiFailure {
+      _emit(TicketsFailed(failure));
     }
   }
 

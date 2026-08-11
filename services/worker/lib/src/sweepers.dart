@@ -126,6 +126,44 @@ final class Sweepers {
         return SweepResult(name: 'bookings.expired', affected: expired.length);
       });
 
+  /// Closes change orders whose seats have gone back on sale.
+  ///
+  /// Runs **after** `expireHolds`, and depends on it: the hold is what
+  /// actually released the seats, and this pass only records that the promise
+  /// attached to them has lapsed. Written the other way round it would mark
+  /// orders expired while their seats were still held, which is a departure
+  /// that looks full to everybody and is owed to nobody.
+  ///
+  /// An order with a payment still in flight is left alone. The money may yet
+  /// land; the capture path finds the seats gone, closes the order itself and
+  /// leaves an intent somebody has to refund — which is a state a human can
+  /// see and fix, unlike an order quietly expired underneath a live prompt.
+  Future<SweepResult> expireChangeOrders({int limit = 500}) =>
+      _db.transaction(const DbScope.worker(), (tx) async {
+        final lapsed = await tx.execute(
+          Sql.named('''
+            UPDATE booking_changes SET state = 'expired'
+             WHERE id IN (
+                     SELECT c.id FROM booking_changes c
+                      WHERE c.state = 'awaiting_payment'
+                        AND c.expires_at <= now()
+                        AND NOT EXISTS (
+                              SELECT 1 FROM payment_intents i
+                               WHERE i.change_id = c.id
+                                 AND i.state IN ('created','pending',
+                                                 'authorized','indeterminate'))
+                      ORDER BY c.expires_at
+                      LIMIT @limit
+                      FOR UPDATE SKIP LOCKED
+                   )
+            RETURNING id
+          '''),
+          parameters: {'limit': TypedValue(Type.integer, limit)},
+        );
+
+        return SweepResult(name: 'changes.expired', affected: lapsed.length);
+      });
+
   /// Deletes spent and stale sign-in codes.
   ///
   /// The only sweeper here that deletes rather than marks, and the reason is

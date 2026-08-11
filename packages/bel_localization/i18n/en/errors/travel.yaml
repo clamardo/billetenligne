@@ -45,7 +45,8 @@ errors:
     off_route: "That departure is not on the same route, or not with the same operator."
     same_departure: "That is the departure you already have."
     does_not_fit: "Only {available} seats are left on that coach, and there are {needed} of you."
-    must_be_paid: "This change costs extra. Settle it at one of the operator's agencies and they will make the change."
+    must_be_paid: "This change costs extra. Pay it to confirm the new departure."
+    payment_in_flight: "A payment for a change is already under way. Wait for the answer before asking for another."
   refund:
     outside_window: "This ticket is no longer refundable under the terms it was sold with."
     fare_not_refundable: "The \"{fareCode}\" fare is not refundable."

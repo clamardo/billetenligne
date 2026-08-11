@@ -314,6 +314,21 @@ final class BelApiClient {
     }),
   );
 
+  /// Holds a change and says what it costs, without moving anything (§8.1).
+  ///
+  /// The seats on the target departure are taken for the length of the
+  /// payment window; the booking moves only when the difference is captured.
+  /// An order that comes back `applied` owed nothing at the lock — the price
+  /// fell between the list and the tap, and the change was simply made.
+  Future<ChangeOrderDto> orderChange({
+    required String bookingRef,
+    required String departureId,
+  }) async => ChangeOrderDto.fromJson(
+    await _postJson('/public/v1/bookings/$bookingRef/reschedule/order', {
+      'departureId': departureId,
+    }),
+  );
+
   /// How this booking can be paid, and where the money goes.
   ///
   /// Server-driven: a rail appears only if this deployment can reach it AND
@@ -322,8 +337,11 @@ final class BelApiClient {
   Future<
     ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
   >
-  paymentOptions(String bookingId) async {
-    final body = await _get('/public/v1/bookings/$bookingId/payment-options');
+  paymentOptions(String bookingId, {String? changeId}) async {
+    final body = await _get(
+      '/public/v1/bookings/$bookingId/payment-options'
+      '${changeId == null ? '' : '?change=$changeId'}',
+    );
     return (
       options: Wire.readList(
         body['items'],

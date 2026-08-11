@@ -125,8 +125,17 @@ class _FunnelState extends State<_Funnel> {
     _paymentSubscription = widget.payment.steps.listen((_) {
       if (mounted) setState(() {});
     });
-    _ticketsSubscription = widget.tickets.steps.listen((_) {
-      if (mounted) setState(() {});
+    _ticketsSubscription = widget.tickets.steps.listen((step) {
+      if (!mounted) return;
+      // A change that owes money hands straight over to the payment funnel:
+      // same rails, same prompt, same poll. The seam is here rather than in
+      // either flow, because neither of them knows about the other.
+      if (step is ChangeAwaitingPayment && !_paying) {
+        setState(() => _paying = true);
+        widget.payment.start(step.order.bookingId, changeId: step.order.id);
+        return;
+      }
+      setState(() {});
     });
     // The city list is the first thing the search screen needs and the app
     // holds no copy of it.
@@ -328,6 +337,17 @@ class _FunnelState extends State<_Funnel> {
         // search screen, which is the one thing somebody who has just paid is
         // not looking for.
         onDone: () {
+          // A paid difference lands back on the change receipt — new
+          // departure, new seats, new ticket — rather than on the ticket for
+          // a journey they have just moved off.
+          if (widget.tickets.step case final ChangeAwaitingPayment pending) {
+            setState(() {
+              _paying = false;
+              _viewingTickets = true;
+            });
+            widget.tickets.changePaid(pending.order);
+            return;
+          }
           setState(() {
             _paying = false;
             _viewingTickets = true;
@@ -447,8 +467,16 @@ class _FunnelState extends State<_Funnel> {
           busy: busy,
           failure: failure,
           onTake: widget.tickets.changeDeparture,
+          onPay: widget.tickets.orderChange,
           onClose: widget.tickets.closeChoices,
         ),
+
+      // Held, quoted, and waiting on a handset. The payment flow owns the
+      // screen from the moment this step arrives, so what is drawn here is
+      // only ever seen if somebody backs out of paying.
+      ChangeAwaitingPayment() => Scaffold(
+        body: KStateView(KLoading(context.t('payment.method.loading'))),
+      ),
 
       DepartureChanged(:final applied) => DepartureChangedScreen(
         applied: applied,
@@ -471,7 +499,16 @@ class _FunnelState extends State<_Funnel> {
 
   /// Leaves paying without losing the reservation. The payment code and its
   /// deadline are still on the screen underneath.
-  void _stopPaying() => setState(() => _paying = false);
+  void _stopPaying() {
+    setState(() => _paying = false);
+    // Backing out of paying for a change goes back to the priced list, not to
+    // a step waiting on money that is no longer coming. The order is left to
+    // lapse on its own: those seats are theirs for the length of the window,
+    // and people come straight back.
+    if (widget.tickets.step is ChangeAwaitingPayment) {
+      unawaited(widget.tickets.abandonChange());
+    }
+  }
 
   void _backToResults() {
     final query = _flow.lastQuery;

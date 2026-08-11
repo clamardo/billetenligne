@@ -996,6 +996,41 @@ check "there is no way to DELETE a departure" "405" \
   "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
      "$BASE/public/v1/bookings/BEL-ABC123/reschedule" -H "$AUTH")"
 
+# ── Paying the difference ───────────────────────────────────────────────────
+#
+# The change that owes money (§8.1). An order holds the seats and moves
+# nothing; the capture moves the booking. What a socket can prove is the
+# ordering above that: who may ask for one, that a stranger's reference is a
+# 404 on this verb as on every other, and that the payment endpoint takes a
+# change id without ever taking an amount.
+check "ordering a change is closed to anonymous" "401" \
+  "$(status -X POST "$BASE/public/v1/bookings/BEL-ABC123/reschedule/order")"
+check "a booking that is not theirs cannot be ordered against" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/bookings/BEL-ABC123/reschedule/order" -H "$AUTH" \
+     -H 'Content-Type: application/json' -d '{"departureId":"dep-1"}')"
+check "an order with no departure is a 400, naming the field" "departureId" \
+  "$(curl -s -X POST "$BASE/public/v1/bookings/BEL-ABC123/reschedule/order" \
+     -H "$AUTH" -H 'Content-Type: application/json' -d '{}' \
+     | grep -o 'departureId' | head -1)"
+check "a malformed reference is refused the same way" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/bookings/not-a-ref/reschedule/order" -H "$AUTH" \
+     -H 'Content-Type: application/json' -d '{"departureId":"dep-1"}')"
+check "there is no GET for an order" "405" \
+  "$(status -H "$AUTH" \
+     "$BASE/public/v1/bookings/BEL-ABC123/reschedule/order")"
+# The amount is never in the request. A client names *which* debt and the
+# server reads *how much* from the order's own row.
+check "a payment naming an unknown change is refused" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/payments" \
+     -H "$AUTH" -H 'Content-Type: application/json' \
+     -H "Idempotency-Key: smoke-change-$$" \
+     -d '{"bookingId":"11111111-1111-1111-1111-111111111111","railId":"cg.fake_money","payerMsisdn":"242061234567","changeId":"22222222-2222-2222-2222-222222222222"}')"
+check "payment options for an unknown change are a 404" "404" \
+  "$(status -H "$AUTH" \
+     "$BASE/public/v1/bookings/bk-1/payment-options?change=22222222-2222-2222-2222-222222222222")"
+
 # ── The statement as a document ─────────────────────────────────────────────
 #
 # `04-payments.md` §6.2 asks for the statement as a PDF, downloadable from the

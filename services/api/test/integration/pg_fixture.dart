@@ -746,6 +746,44 @@ final class PgFixture {
     return [for (final r in rows) r.toColumnMap()['seat_label'] as String];
   }
 
+  /// One change order's row, as the database holds it.
+  Future<Map<String, Object?>?> changeOrder(String changeId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT state::text AS state, owed_minor, fee_minor, difference_minor,
+               seat_labels, hold_id::text AS hold_id, applied_at
+          FROM booking_changes WHERE id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, changeId)},
+    );
+    return rows.isEmpty ? null : rows.first.toColumnMap();
+  }
+
+  /// Ages a change order and its hold into the past, so the sweeper and the
+  /// capture path can be asked what they do about one that has lapsed.
+  Future<void> lapseChangeOrder(String changeId) async {
+    await _seed.execute(
+      Sql.named('''
+        UPDATE holds
+           SET created_at = now() - INTERVAL '30 minutes',
+               expires_at = now() - INTERVAL '1 minute'
+         WHERE id = (SELECT hold_id FROM booking_changes WHERE id = @id)
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, changeId)},
+      ignoreRows: true,
+    );
+    await _seed.execute(
+      Sql.named('''
+        UPDATE booking_changes
+           SET created_at = now() - INTERVAL '30 minutes',
+               expires_at = now() - INTERVAL '1 minute'
+         WHERE id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, changeId)},
+      ignoreRows: true,
+    );
+  }
+
   /// What the manifest will print.
   Future<List<String>> bookingSeatLabels(String bookingId) async {
     final rows = await _seed.execute(

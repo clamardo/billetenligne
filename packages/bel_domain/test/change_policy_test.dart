@@ -170,7 +170,14 @@ void main() {
     });
   });
 
-  group('money that cannot be collected here', () {
+  group('money that is owed', () {
+    test('a prompt already on a handset refuses a second order', () {
+      // The seats a waiting order holds cannot be let go while money may be
+      // about to land on them: a capture arriving after the release would pay
+      // for a seat somebody else is sitting in.
+      expect(const ChangePaymentInFlight().code, 'change.payment_in_flight');
+    });
+
     test('the refusal carries the amount, so the screen can name it', () {
       const refusal = ChangeMustBePaid(2400, 'XAF');
 

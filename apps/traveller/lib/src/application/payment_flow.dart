@@ -138,6 +138,13 @@ final class PaymentFlow {
   Stream<PaymentStep> get steps => _steps.stream;
 
   String? _bookingId;
+
+  /// The change order being settled, when this attempt settles one.
+  ///
+  /// The funnel is otherwise identical — same rails, same prompt, same poll —
+  /// because from the rail's side it is the same transaction. What differs is
+  /// what the capture means, and that is the server's branch, not the app's.
+  String? _changeId;
   String? _attemptKey;
   Timer? _poll;
 
@@ -146,12 +153,20 @@ final class PaymentFlow {
     if (!_steps.isClosed) _steps.add(next);
   }
 
-  Future<void> start(String bookingId) async {
+  Future<void> start(String bookingId, {String? changeId}) async {
     _bookingId = bookingId;
+    _changeId = changeId;
+    // A fresh attempt, so a key from an earlier one cannot be replayed onto
+    // it — the server would answer with the first attempt's intent, which for
+    // a different amount entirely is the worst possible reply.
+    _attemptKey = null;
     _emit(const LoadingOptions());
 
     try {
-      final result = await _gateway.paymentOptions(bookingId);
+      final result = await _gateway.paymentOptions(
+        bookingId,
+        changeId: changeId,
+      );
       _emit(
         ChoosingMethod(
           options: result.options,
@@ -261,6 +276,7 @@ final class PaymentFlow {
         railId: current.option.railId,
         payerMsisdn: current.payerMsisdn,
         idempotencyKey: _attemptKey!,
+        changeId: _changeId,
       );
 
       _emit(

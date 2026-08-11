@@ -26,6 +26,7 @@ final class ChangeScreen extends StatelessWidget {
     required this.booking,
     required this.options,
     required this.onTake,
+    required this.onPay,
     required this.onClose,
     this.busy = false,
     this.failure,
@@ -38,6 +39,12 @@ final class ChangeScreen extends StatelessWidget {
   final ChangeOptionsDto? options;
 
   final void Function(String departureId) onTake;
+
+  /// A row that owes money. Holds the seats and hands over to the payment
+  /// funnel — which is why it is a different callback from [onTake] even
+  /// though the button beside them looks the same.
+  final void Function(String departureId) onPay;
+
   final VoidCallback onClose;
   final bool busy;
 
@@ -132,6 +139,7 @@ final class ChangeScreen extends StatelessWidget {
                         locale: locale,
                         busy: busy,
                         onTake: onTake,
+                        onPay: onPay,
                       ),
                   ],
 
@@ -166,12 +174,14 @@ final class _Row extends StatelessWidget {
     required this.locale,
     required this.busy,
     required this.onTake,
+    required this.onPay,
   });
 
   final ChangeOptionDto option;
   final String locale;
   final bool busy;
   final void Function(String departureId) onTake;
+  final void Function(String departureId) onPay;
 
   @override
   Widget build(BuildContext context) {
@@ -234,15 +244,31 @@ final class _Row extends StatelessWidget {
                 context.t('errors.${option.refusalCode}', option.refusalParams),
                 style: kilo.text.bodySm,
               )
-            else if (costsMoney)
-              // Refused here rather than silently taken: the difference has to
-              // be settled before somebody boards a coach they have not paid
-              // for, and an agency is where that happens today.
+            else if (costsMoney) ...[
+              // The difference is settled before anything moves — the seats
+              // are held while the prompt is on the handset, and the booking
+              // stays where it is until the money lands.
               Text(
-                context.t('travel.change.payAtAgency'),
-                style: kilo.text.bodySm,
-              )
-            else ...[
+                context.tPlural(
+                  'travel.change.seatsLeft',
+                  option.seatsAvailable,
+                ),
+                style: kilo.text.caption.copyWith(
+                  color: kilo.color.contentSecondary,
+                ),
+              ),
+              SizedBox(height: kilo.space.s2),
+              KButton(
+                // The amount is on the button, not just above it. Somebody
+                // about to be asked for a PIN should read the figure on the
+                // thing they are pressing.
+                label: context.t('travel.change.pay', {
+                  'amount': owed!.format(locale: locale),
+                }),
+                loading: busy,
+                onPressed: busy ? null : () => onPay(option.departureId),
+              ),
+            ] else ...[
               Text(
                 context.tPlural(
                   'travel.change.seatsLeft',

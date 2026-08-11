@@ -929,6 +929,87 @@ void main() {
     });
   });
 
+  group('a change waiting to be paid for', () {
+    test('the order survives the wire, applied half and all', () {
+      final dto = ChangeOrderDto(
+        id: 'chg-1',
+        bookingId: 'bk-1',
+        bookingRef: 'BEL-7QK4M2',
+        departureId: 'dep-2',
+        departsAt: DateTime.utc(2026, 8, 12, 14),
+        owed: Money(2400, Currency.xaf),
+        expiresAt: DateTime.utc(2026, 8, 11, 6, 15),
+        state: 'awaiting_payment',
+        fee: Money(900, Currency.xaf),
+        fareDifference: Money(1500, Currency.xaf),
+        seatLabels: const ['5A', '5B'],
+      );
+
+      final back = ChangeOrderDto.fromJson(
+        jsonDecode(jsonEncode(dto.toJson())) as Map<String, Object?>,
+      );
+
+      expect(back.owed, const Money.xaf(2400));
+      expect(back.fee, const Money.xaf(900));
+      expect(back.fareDifference, const Money.xaf(1500));
+      expect(back.seatLabels, ['5A', '5B']);
+      expect(back.isAwaitingPayment, isTrue);
+      expect(back.applied, isNull);
+    });
+
+    // The price fell between the list and the tap, so there was never a
+    // promise to keep — only a movement that happened.
+    test('an order that owed nothing carries what it did', () {
+      final dto = ChangeOrderDto(
+        id: '',
+        bookingId: 'bk-1',
+        bookingRef: 'BEL-7QK4M2',
+        departureId: 'dep-2',
+        departsAt: DateTime.utc(2026, 8, 12, 14),
+        owed: Money(0, Currency.xaf),
+        expiresAt: DateTime.utc(2026, 8, 11, 6),
+        state: 'applied',
+        applied: ChangeAppliedDto(
+          bookingRef: 'BEL-7QK4M2',
+          departureId: 'dep-2',
+          departsAt: DateTime.utc(2026, 8, 12, 14),
+          seatLabels: const ['5A'],
+        ),
+      );
+
+      final back = ChangeOrderDto.fromJson(
+        jsonDecode(jsonEncode(dto.toJson())) as Map<String, Object?>,
+      );
+
+      expect(back.isApplied, isTrue);
+      expect(back.applied!.seatLabels, ['5A']);
+    });
+
+    // A client names *which* debt and never *how much*: the amount comes from
+    // the order's own row inside the transaction that opens the intent.
+    test('a payment request can name a change, and carries no amount', () {
+      final request = const StartPaymentRequest(
+        bookingId: 'bk-1',
+        railId: 'cg.fake_money',
+        payerMsisdn: '242061234567',
+        changeId: 'chg-1',
+      );
+
+      final json = request.toJson();
+      expect(json['changeId'], 'chg-1');
+      expect(json.keys, isNot(contains('amount')));
+      expect(StartPaymentRequest.fromJson(json).changeId, 'chg-1');
+
+      // And an ordinary fare says nothing about changes at all.
+      final plain = const StartPaymentRequest(
+        bookingId: 'bk-1',
+        railId: 'cg.fake_money',
+        payerMsisdn: '242061234567',
+      ).toJson();
+      expect(plain.containsKey('changeId'), isFalse);
+    });
+  });
+
   group('the terms an operator writes', () {
     test('the change terms ride on the policy, and survive the round trip', () {
       final dto = RefundPolicyDto.fromDomain(

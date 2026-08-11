@@ -328,6 +328,155 @@ void main() {
     });
   });
 
+  group('lapsed change orders', () {
+    /// An order whose window has closed, holding [seat] on [departureId].
+    Future<String> aLapsedOrder(
+      String departureId,
+      String bookingId, {
+      bool inFlight = false,
+    }) async {
+      final hold = await seed.execute(
+        Sql.named('''
+          INSERT INTO holds (operator_id, departure_id, seat_labels,
+                             expires_at, created_at, idempotency_key)
+          VALUES (@operator, @departure, ARRAY['2A'],
+                  now() - INTERVAL '1 minute', now() - INTERVAL '20 minutes',
+                  @key)
+          RETURNING id
+        '''),
+        parameters: {
+          'operator': TypedValue(Type.uuid, operatorId),
+          'departure': TypedValue(Type.uuid, departureId),
+          'key': TypedValue(Type.text, unique('chg-hold')),
+        },
+      );
+
+      final rows = await seed.execute(
+        Sql.named('''
+          INSERT INTO booking_changes
+            (booking_id, operator_id, from_departure_id, to_departure_id,
+             seat_labels, hold_id, owed_minor, currency, expires_at,
+             created_at)
+          SELECT @booking, @operator, b.departure_id, @departure, ARRAY['2A'],
+                 @hold, 1500, 'XAF', now() - INTERVAL '1 minute',
+                 now() - INTERVAL '20 minutes'
+            FROM bookings b WHERE b.id = @booking
+          RETURNING id
+        '''),
+        parameters: {
+          'booking': TypedValue(Type.uuid, bookingId),
+          'operator': TypedValue(Type.uuid, operatorId),
+          'departure': TypedValue(Type.uuid, departureId),
+          'hold': TypedValue(Type.uuid, hold.first.toColumnMap()['id']),
+        },
+      );
+      final changeId = rows.first.toColumnMap()['id'] as String;
+
+      if (inFlight) {
+        await seed.execute(
+          Sql.named('''
+            INSERT INTO payment_intents
+              (booking_id, operator_id, rail_id, msisdn, amount_minor,
+               currency, state, idempotency_key, change_id)
+            VALUES (@booking, @operator, 'cg.fake_money', '242060000002',
+                    1500, 'XAF', 'pending', @key, @change)
+          '''),
+          parameters: {
+            'booking': TypedValue(Type.uuid, bookingId),
+            'operator': TypedValue(Type.uuid, operatorId),
+            'key': TypedValue(Type.text, unique('chg-intent')),
+            'change': TypedValue(Type.uuid, changeId),
+          },
+        );
+      }
+
+      return changeId;
+    }
+
+    Future<String> orderState(String changeId) async {
+      final rows = await seed.execute(
+        Sql.named(
+          'SELECT state::text AS s FROM booking_changes WHERE id = @id',
+        ),
+        parameters: {'id': TypedValue(Type.uuid, changeId)},
+      );
+      return rows.first.toColumnMap()['s'] as String;
+    }
+
+    test('are closed once their seats have gone back on sale', () async {
+      final departureId = await aDeparture();
+      final bookingId = await aConfirmedBookingOn(departureId);
+      final target = await aDeparture();
+      final changeId = await aLapsedOrder(target, bookingId);
+
+      final result = await sweepers.expireChangeOrders();
+
+      expect(result.affected, greaterThanOrEqualTo(1));
+      expect(await orderState(changeId), 'expired');
+    });
+
+    test('one with a prompt still in flight is left alone', () async {
+      final departureId = await aDeparture();
+      final bookingId = await aConfirmedBookingOn(departureId);
+      final target = await aDeparture();
+      final changeId = await aLapsedOrder(target, bookingId, inFlight: true);
+
+      await sweepers.expireChangeOrders();
+
+      // The money may yet land. Expiring it here would leave a live prompt
+      // pointing at an order nothing can apply, which is a state nobody can
+      // see; the capture path closes it instead, and leaves an intent a human
+      // can find and refund.
+      expect(await orderState(changeId), 'awaiting_payment');
+    });
+
+    test('a live order is left alone', () async {
+      final departureId = await aDeparture();
+      final bookingId = await aConfirmedBookingOn(departureId);
+      final target = await aDeparture();
+
+      final hold = await seed.execute(
+        Sql.named('''
+          INSERT INTO holds (operator_id, departure_id, seat_labels,
+                             expires_at, idempotency_key)
+          VALUES (@operator, @departure, ARRAY['2A'],
+                  now() + INTERVAL '10 minutes', @key)
+          RETURNING id
+        '''),
+        parameters: {
+          'operator': TypedValue(Type.uuid, operatorId),
+          'departure': TypedValue(Type.uuid, target),
+          'key': TypedValue(Type.text, unique('chg-live')),
+        },
+      );
+
+      final rows = await seed.execute(
+        Sql.named('''
+          INSERT INTO booking_changes
+            (booking_id, operator_id, from_departure_id, to_departure_id,
+             seat_labels, hold_id, owed_minor, currency, expires_at)
+          VALUES (@booking, @operator, @from, @departure, ARRAY['2A'], @hold,
+                  1500, 'XAF', now() + INTERVAL '10 minutes')
+          RETURNING id
+        '''),
+        parameters: {
+          'booking': TypedValue(Type.uuid, bookingId),
+          'operator': TypedValue(Type.uuid, operatorId),
+          'from': TypedValue(Type.uuid, departureId),
+          'departure': TypedValue(Type.uuid, target),
+          'hold': TypedValue(Type.uuid, hold.first.toColumnMap()['id']),
+        },
+      );
+
+      await sweepers.expireChangeOrders();
+
+      expect(
+        await orderState(rows.first.toColumnMap()['id'] as String),
+        'awaiting_payment',
+      );
+    });
+  });
+
   group('the outbox drain', () {
     // Per test, not once per suite. "Draining twice does not send twice"
     // counts rows the drain touched, and it must count *this* test's row —

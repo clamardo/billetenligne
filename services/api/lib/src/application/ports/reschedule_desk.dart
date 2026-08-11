@@ -93,6 +93,55 @@ final class ChangeApplied {
   final List<String> seatLabels;
 }
 
+/// A change that is waiting to be paid for.
+///
+/// The seats on the target departure are **already held** by this order — it
+/// is a promise with an expiry, not an intention. Applying it belongs to the
+/// capture and to nothing else: a change applied on `pending` is the free
+/// journey an optimistically issued ticket would be (ADR-0005), one departure
+/// further along.
+final class ChangeOrder {
+  const ChangeOrder({
+    required this.id,
+    required this.bookingId,
+    required this.bookingRef,
+    required this.toDepartureId,
+    required this.departsAt,
+    required this.seatLabels,
+    required this.fee,
+    required this.fareDifference,
+    required this.owed,
+    required this.expiresAt,
+    required this.state,
+    this.applied,
+  });
+
+  final String id;
+  final String bookingId;
+  final String bookingRef;
+  final String toDepartureId;
+  final DateTime departsAt;
+  final List<String> seatLabels;
+
+  /// Quoted, and then stored. Recomputing at capture would let a price move
+  /// between the tap and the PIN, which is the one window this whole object
+  /// exists to close.
+  final Money fee;
+  final Money fareDifference;
+  final Money owed;
+
+  final DateTime expiresAt;
+
+  /// `awaiting_payment`, `applied`, `expired` or `cancelled`.
+  final String state;
+
+  /// Set once the money has landed and the booking has moved.
+  final ChangeApplied? applied;
+
+  bool get isAwaitingPayment => state == 'awaiting_payment';
+  bool get isApplied => state == 'applied';
+}
+
 /// The traveller moving themselves to another departure (§8.1).
 ///
 /// Distinct from `PassengerChoices`, which is the same movement offered after
@@ -121,6 +170,39 @@ abstract interface class RescheduleDesk {
     required String toDepartureId,
     required DateTime now,
   });
+
+  /// Takes the seats and quotes the difference, without moving anything.
+  ///
+  /// The path for a change that owes money: the seats are held for the length
+  /// of the payment window, the amount is written down as it was quoted, and
+  /// the booking stays exactly where it is until the money lands. A change
+  /// that turns out to owe nothing at the lock is **applied here and now** and
+  /// returned already applied — refusing it because the price fell between the
+  /// list and the tap would be an insult with a 409 attached.
+  Future<({ChangeOrder? order, ChangeRefusal? refusal})?> reserveChange({
+    required String bookingRef,
+    required String userId,
+    required String toDepartureId,
+    required DateTime now,
+  });
+
+  /// One order, as its traveller sees it. Null when it is not theirs.
+  Future<ChangeOrder?> orderById({
+    required String changeId,
+    required String userId,
+  });
+
+  /// Applies a paid change. Called by the settlement path and nowhere else.
+  ///
+  /// [posting] is the ledger movement for the difference, computed above this
+  /// line by the same code that settles a booking — the money maths does not
+  /// belong in an adapter. Idempotent: an order that is no longer
+  /// `awaiting_payment` returns what it already did.
+  Future<ChangeApplied?> applyPaidChange({
+    required String changeId,
+    required String intentId,
+    required LedgerTransaction posting,
+  });
 }
 
 /// The null object, for a server with no database behind it.
@@ -140,5 +222,26 @@ final class NoReschedules implements RescheduleDesk {
     required String userId,
     required String toDepartureId,
     required DateTime now,
+  }) async => null;
+
+  @override
+  Future<({ChangeOrder? order, ChangeRefusal? refusal})?> reserveChange({
+    required String bookingRef,
+    required String userId,
+    required String toDepartureId,
+    required DateTime now,
+  }) async => null;
+
+  @override
+  Future<ChangeOrder?> orderById({
+    required String changeId,
+    required String userId,
+  }) async => null;
+
+  @override
+  Future<ChangeApplied?> applyPaidChange({
+    required String changeId,
+    required String intentId,
+    required LedgerTransaction posting,
   }) async => null;
 }

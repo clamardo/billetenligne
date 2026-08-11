@@ -292,6 +292,7 @@ final class Services {
     // not something to fetch per request.
     final bookings = PostgresBookingStore(db, issuer: _ticketIssuer);
     final paymentStore = PostgresPaymentStore(db);
+    final reschedules = PostgresReschedules(db, issuer: _ticketIssuer);
     final rails = _railsFrom(env, market);
 
     return Services._(
@@ -334,7 +335,7 @@ final class Services {
         shareBase: Uri.parse(env['BEL__SHAREBASEURL'] ?? 'https://blt.cg'),
       ),
       cancellations: PostgresSelfCancellation(db),
-      reschedules: PostgresReschedules(db, issuer: _ticketIssuer),
+      reschedules: reschedules,
       platform: PostgresPlatformConsole(db),
       storefronts: PostgresStorefronts(db),
       applications: PostgresOperatorApplications(db),
@@ -352,6 +353,11 @@ final class Services {
         // from their row when a fare settles — never from a constant here.
         operators: PostgresOperatorDirectory(db),
         gateways: rails,
+        // A captured intent that names a change order moves a booking rather
+        // than confirming one. The same desk the traveller reserved through,
+        // so the promise and the movement cannot come from two adapters that
+        // disagree.
+        reschedules: reschedules,
       ),
       railIds: rails.keys.toSet(),
       market: market,

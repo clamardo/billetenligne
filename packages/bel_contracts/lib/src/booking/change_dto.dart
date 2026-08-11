@@ -221,3 +221,90 @@ final class ChangeAppliedDto {
         seatLabels: (json['seatLabels'] as List?)?.cast<String>() ?? const [],
       );
 }
+
+/// A change waiting to be paid for.
+///
+/// The seats are already held by this order — it is a promise with an expiry,
+/// not an intention — and the booking has not moved. What the screen does
+/// with it is show the amount, the deadline, and a way to pay; what it must
+/// never do is tell somebody they have changed departure, because until the
+/// money lands they have not.
+final class ChangeOrderDto {
+  const ChangeOrderDto({
+    required this.id,
+    required this.bookingId,
+    required this.bookingRef,
+    required this.departureId,
+    required this.departsAt,
+    required this.owed,
+    required this.expiresAt,
+    required this.state,
+    this.fee,
+    this.fareDifference,
+    this.seatLabels = const [],
+    this.applied,
+  });
+
+  final String id;
+  final String bookingId;
+  final String bookingRef;
+  final String departureId;
+  final DateTime departsAt;
+
+  /// What is owed, exactly. Quoted once and stored, so the amount on the
+  /// screen and the amount on the prompt cannot differ.
+  final Money owed;
+
+  final DateTime expiresAt;
+
+  /// `awaiting_payment` or `applied`. The second happens when the difference
+  /// turned out to be nothing between the list and the tap — the change is
+  /// simply made, and [applied] carries what happened.
+  final String state;
+
+  final Money? fee;
+  final Money? fareDifference;
+  final List<String> seatLabels;
+  final ChangeAppliedDto? applied;
+
+  bool get isAwaitingPayment => state == 'awaiting_payment';
+  bool get isApplied => state == 'applied';
+
+  Map<String, Object?> toJson() => Wire.compact({
+    'id': id,
+    'bookingId': bookingId,
+    'bookingRef': bookingRef,
+    'departureId': departureId,
+    'departsAt': Wire.instant(departsAt),
+    'owed': Wire.money(owed),
+    'expiresAt': Wire.instant(expiresAt),
+    'state': state,
+    'fee': fee == null ? null : Wire.money(fee!),
+    'fareDifference': fareDifference == null
+        ? null
+        : Wire.money(fareDifference!),
+    'seatLabels': seatLabels,
+    'applied': applied?.toJson(),
+  });
+
+  factory ChangeOrderDto.fromJson(Map<String, Object?> json) => ChangeOrderDto(
+    id: Wire.requireString(json['id'], 'id'),
+    bookingId: Wire.requireString(json['bookingId'], 'bookingId'),
+    bookingRef: Wire.requireString(json['bookingRef'], 'bookingRef'),
+    departureId: Wire.requireString(json['departureId'], 'departureId'),
+    departsAt: Wire.readInstant(json['departsAt'], field: 'departsAt'),
+    owed: Wire.readMoney(json['owed'], field: 'owed'),
+    expiresAt: Wire.readInstant(json['expiresAt'], field: 'expiresAt'),
+    state: json['state'] as String? ?? 'awaiting_payment',
+    fee: json['fee'] == null ? null : Wire.readMoney(json['fee'], field: 'fee'),
+    fareDifference: json['fareDifference'] == null
+        ? null
+        : Wire.readMoney(json['fareDifference'], field: 'fareDifference'),
+    seatLabels: (json['seatLabels'] as List?)?.cast<String>() ?? const [],
+    applied: json['applied'] == null
+        ? null
+        : ChangeAppliedDto.fromJson(
+            (json['applied'] as Map).cast<String, Object?>(),
+          ),
+  );
+}

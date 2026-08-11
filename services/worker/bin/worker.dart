@@ -98,6 +98,10 @@ Future<int> main(List<String> args) async {
     // unresolved.
     'departures': horizon.extend,
     'holds': sweepers.expireHolds,
+    // After the holds, and the order matters: the hold is what puts the seats
+    // back on sale, and this pass only records that the promise attached to
+    // them has lapsed.
+    'changes': sweepers.expireChangeOrders,
     'reservations': sweepers.expireReservations,
     'challenges': sweepers.purgeChallenges,
   };

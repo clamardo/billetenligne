@@ -112,6 +112,12 @@ final class _ScriptedGateway implements TravelGateway {
   ApiFailure? startPaymentFailure;
 
   final startedPayments = <({String railId, String payerMsisdn, String key})>[];
+
+  /// Which change order each call named, in order — null for a plain fare.
+  /// Kept because "the difference was paid, not the journey" is a property of
+  /// the request rather than of anything visible on the screen afterwards.
+  final paidChanges = <String?>[];
+  final optionsFor = <String?>[];
   final statusScript = <String>[];
 
   @override
@@ -223,6 +229,31 @@ final class _ScriptedGateway implements TravelGateway {
     );
   }
 
+  ChangeOrderDto? orderResult;
+  ApiFailure? orderFailure;
+
+  @override
+  Future<ChangeOrderDto> orderChange({
+    required String bookingRef,
+    required String departureId,
+  }) async {
+    changeCalls.add('order:$departureId');
+    if (orderFailure != null) throw orderFailure!;
+    return orderResult ??= ChangeOrderDto(
+      id: 'chg-1',
+      bookingId: 'bk-1',
+      bookingRef: bookingRef,
+      departureId: departureId,
+      departsAt: DateTime.utc(2026, 8, 11, 14),
+      owed: Money(2400, Currency.xaf),
+      expiresAt: DateTime.utc(2026, 8, 11, 5, 15),
+      state: 'awaiting_payment',
+      fee: Money(900, Currency.xaf),
+      fareDifference: Money(1500, Currency.xaf),
+      seatLabels: const ['3C'],
+    );
+  }
+
   // ── Sharing a trip ────────────────────────────────────────────────────────
 
   /// The link, as the server would answer. Settable, because "already shared,
@@ -302,7 +333,8 @@ final class _ScriptedGateway implements TravelGateway {
   Future<
     ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
   >
-  paymentOptions(String bookingId) async {
+  paymentOptions(String bookingId, {String? changeId}) async {
+    optionsFor.add(changeId);
     if (optionsFailure != null) throw optionsFailure!;
     return (
       options: options,
@@ -317,12 +349,14 @@ final class _ScriptedGateway implements TravelGateway {
     required String railId,
     required String payerMsisdn,
     required String idempotencyKey,
+    String? changeId,
   }) async {
     startedPayments.add((
       railId: railId,
       payerMsisdn: payerMsisdn,
       key: idempotencyKey,
     ));
+    paidChanges.add(changeId);
     if (startPaymentFailure != null) throw startPaymentFailure!;
     return PaymentIntentDto(
       id: 'pi-1',

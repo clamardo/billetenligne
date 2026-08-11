@@ -73,6 +73,9 @@ Future<Response> onRequest(RequestContext context) async {
         // it. Recorded, never enforced.
         accountMsisdn: account?.phone,
         idempotencyKey: key,
+        // Names which debt, never how much: the amount comes from the order's
+        // own row inside the transaction that opens the intent.
+        changeId: request.changeId,
       );
 
       return switch (result) {

@@ -93,10 +93,17 @@ final class ApiTravelGateway implements TravelGateway {
       _client.changeDeparture(bookingRef: bookingRef, departureId: departureId);
 
   @override
+  Future<ChangeOrderDto> orderChange({
+    required String bookingRef,
+    required String departureId,
+  }) => _client.orderChange(bookingRef: bookingRef, departureId: departureId);
+
+  @override
   Future<
     ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
   >
-  paymentOptions(String bookingId) => _client.paymentOptions(bookingId);
+  paymentOptions(String bookingId, {String? changeId}) =>
+      _client.paymentOptions(bookingId, changeId: changeId);
 
   @override
   Future<PaymentIntentDto> startPayment({
@@ -104,11 +111,13 @@ final class ApiTravelGateway implements TravelGateway {
     required String railId,
     required String payerMsisdn,
     required String idempotencyKey,
+    String? changeId,
   }) => _client.startPayment(
     StartPaymentRequest(
       bookingId: bookingId,
       railId: railId,
       payerMsisdn: payerMsisdn,
+      changeId: changeId,
     ),
     idempotencyKey: idempotencyKey,
   );

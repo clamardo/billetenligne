@@ -424,7 +424,7 @@ final class DemoTravelGateway implements TravelGateway {
   Future<
     ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
   >
-  paymentOptions(String bookingId) async {
+  paymentOptions(String bookingId, {String? changeId}) async {
     await Future<void>.delayed(latency);
     final total = _booking?.total ?? const Money.xaf(12300);
     return (
@@ -458,6 +458,7 @@ final class DemoTravelGateway implements TravelGateway {
     required String railId,
     required String payerMsisdn,
     required String idempotencyKey,
+    String? changeId,
   }) async {
     await Future<void>.delayed(latency);
     _polls = 0;
@@ -633,6 +634,34 @@ final class DemoTravelGateway implements TravelGateway {
       departureId: departureId,
       departsAt: booking.departsAt.add(const Duration(hours: 8)),
       seatLabels: const ['3C'],
+    );
+  }
+
+  @override
+  Future<ChangeOrderDto> orderChange({
+    required String bookingRef,
+    required String departureId,
+  }) async {
+    final booking = _byRef(bookingRef);
+    // The demo's departures are all the same fare, so nothing is ever owed
+    // here and the order comes back already applied — which is a real answer
+    // the screen has to handle, and the one a fresh clone will see.
+    return ChangeOrderDto(
+      id: 'chg-demo',
+      bookingId: booking.id,
+      bookingRef: bookingRef,
+      departureId: departureId,
+      departsAt: booking.departsAt.add(const Duration(hours: 8)),
+      owed: Money(0, Currency.xaf),
+      expiresAt: booking.departsAt,
+      state: 'applied',
+      seatLabels: const ['3C'],
+      applied: ChangeAppliedDto(
+        bookingRef: bookingRef,
+        departureId: departureId,
+        departsAt: booking.departsAt.add(const Duration(hours: 8)),
+        seatLabels: const ['3C'],
+      ),
     );
   }
 

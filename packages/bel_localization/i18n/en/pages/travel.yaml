@@ -225,7 +225,11 @@ travel:
     # Said before selection, never after: a cheaper departure gives nothing back.
     cheaperKeepsFare: "A cheaper departure does not change the fare you paid."
     involuntary: "The operator changed your departure, so any change is free."
+    # The amount goes on the button, not only above it: people read the
+    # figure on the thing they press.
+    pay: "Pay {amount}"
     payAtAgency: "Payable at an agency"
+    heldFor: "Seats held for {minutes} min while you pay."
     terms: "Change terms"
     none: "No other departure from this operator on this route in the next seven days."
     confirm: "Take this departure"

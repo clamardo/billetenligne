@@ -1549,6 +1549,99 @@ void main() {
       expect(flow.step, isA<TicketsFailed>());
     });
 
+    test(
+      'a row that owes money holds the seats and waits for payment',
+      () async {
+        final booking = await loaded();
+        await flow.openChange(booking);
+
+        await flow.orderChange('dep-later');
+
+        // Held, quoted, and nothing moved. The step the app hands to the
+        // payment funnel — and the one thing it must not say is "changed".
+        final step = flow.step as ChangeAwaitingPayment;
+        expect(step.order.owed.minor, 2400);
+        expect(step.order.isAwaitingPayment, isTrue);
+        expect(gateway.changeCalls, ['options:BEL-live', 'order:dep-later']);
+      },
+    );
+
+    test('an order that owed nothing at the lock is simply applied', () async {
+      final booking = await loaded();
+      await flow.openChange(booking);
+
+      // The price fell between the list and the tap. Refusing somebody for
+      // that would be an insult with a 409 attached.
+      gateway.orderResult = ChangeOrderDto(
+        id: 'chg-free',
+        bookingId: booking.id,
+        bookingRef: booking.ref,
+        departureId: 'dep-later',
+        departsAt: now.add(const Duration(hours: 38)),
+        owed: Money(0, Currency.xaf),
+        expiresAt: now,
+        state: 'applied',
+        seatLabels: const ['3C'],
+        applied: ChangeAppliedDto(
+          bookingRef: booking.ref,
+          departureId: 'dep-later',
+          departsAt: now.add(const Duration(hours: 38)),
+          seatLabels: const ['3C'],
+        ),
+      );
+
+      await flow.orderChange('dep-later');
+
+      expect(flow.step, isA<DepartureChanged>());
+      expect((flow.step as DepartureChanged).applied.seatLabels, ['3C']);
+    });
+
+    test('a refused order keeps the priced list on screen', () async {
+      final booking = await loaded();
+      await flow.openChange(booking);
+
+      gateway.orderFailure = const ServerRefused(
+        409,
+        ApiError(code: 'change.payment_in_flight'),
+      );
+      await flow.orderChange('dep-later');
+
+      // The refusal is above the rows, not instead of them: what the
+      // traveller needs next is what is still available.
+      final step = flow.step as ChangingDeparture;
+      expect(step.failure!.messageKey, contains('change.payment_in_flight'));
+      expect(step.options!.options, isNotEmpty);
+    });
+
+    test('paying moves them, and the list behind is re-read', () async {
+      final booking = await loaded();
+      await flow.openChange(booking);
+      await flow.orderChange('dep-later');
+
+      final order = (flow.step as ChangeAwaitingPayment).order;
+      await flow.changePaid(order);
+
+      final step = flow.step as DepartureChanged;
+      expect(step.applied.departureId, 'dep-later');
+      expect(step.applied.seatLabels, ['3C']);
+      // The booking behind is on another coach now, so the list was re-read
+      // before the traveller can get back to it.
+      expect(gateway.bookingsCalls, greaterThan(1));
+    });
+
+    test('backing out of paying returns to the priced list', () async {
+      final booking = await loaded();
+      await flow.openChange(booking);
+      await flow.orderChange('dep-later');
+
+      await flow.abandonChange();
+
+      // The order is left to lapse on its own: those seats are theirs for the
+      // length of the window, and people come straight back.
+      expect(flow.step, isA<ChangingDeparture>());
+      expect(gateway.changeCalls.last, 'options:BEL-live');
+    });
+
     test('tapping before the rows arrive does nothing', () async {
       final booking = await loaded();
 
@@ -1565,6 +1658,7 @@ void main() {
       WidgetTester tester, {
       ChangeOptionsDto? options,
       List<String>? taps,
+      List<String>? payTaps,
     }) async {
       final catalog = await loadTestCatalog();
       tester.view.physicalSize = const Size(400, 2400);
@@ -1584,6 +1678,7 @@ void main() {
               ),
               options: options,
               onTake: (id) => taps?.add(id),
+              onPay: (id) => payTaps?.add(id),
               onClose: () {},
             ),
           ),
@@ -1649,19 +1744,28 @@ void main() {
       expect(taps, ['dep-later']);
     });
 
-    testWidgets('a dearer row is priced and sent to a counter', (tester) async {
+    testWidgets('a dearer row is priced, and the amount is on the button', (
+      tester,
+    ) async {
+      final payTaps = <String>[];
       await pump(
         tester,
+        payTaps: payTaps,
         options: screen(
           rows: [row(fare: 10500, fee: 0, difference: 1500, owed: 1500)],
         ),
       );
 
-      // §8.1's mock: the difference on the row, before selection.
-      expect(find.textContaining('1 500'), findsOneWidget);
-      expect(find.text('À régler en agence'), findsOneWidget);
-      // And no button, because the money has to move before the seat does.
+      // §8.1's mock: the difference on the row, before selection — and again
+      // on the button, because somebody about to be asked for a PIN should
+      // read the figure on the thing they are pressing.
+      expect(find.textContaining('1\u202f500'), findsNWidgets(2));
+      // Not the free path's button: this one holds seats and asks for money.
       expect(find.text('Prendre ce départ'), findsNothing);
+
+      await tester.tap(find.textContaining('Payer'));
+      await tester.pumpAndSettle();
+      expect(payTaps, ['dep-later']);
     });
 
     testWidgets('a fee is broken out from the difference', (tester) async {

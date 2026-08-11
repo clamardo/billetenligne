@@ -323,9 +323,19 @@ final class StartPaymentRequest {
     required this.bookingId,
     required this.railId,
     required this.payerMsisdn,
+    this.changeId,
   });
 
   final String bookingId;
+
+  /// The change order this pays for, when it pays for one.
+  ///
+  /// Set when the traveller is settling the difference on a move rather than
+  /// paying for the journey itself. The amount still comes from the server —
+  /// from the order's row, quoted once and stored — so a client naming a
+  /// change is naming *which* debt, never *how much*.
+  final String? changeId;
+
   final String railId;
 
   /// **Not necessarily the traveller's own number.** Somebody whose wallet is
@@ -334,16 +344,18 @@ final class StartPaymentRequest {
   /// requires it.
   final String payerMsisdn;
 
-  Map<String, Object?> toJson() => {
+  Map<String, Object?> toJson() => Wire.compact({
     'bookingId': bookingId,
     'railId': railId,
     'payerMsisdn': payerMsisdn,
-  };
+    'changeId': changeId,
+  });
 
   factory StartPaymentRequest.fromJson(Map<String, Object?> json) =>
       StartPaymentRequest(
         bookingId: Wire.requireString(json['bookingId'], 'bookingId'),
         railId: Wire.requireString(json['railId'], 'railId'),
         payerMsisdn: Wire.requireString(json['payerMsisdn'], 'payerMsisdn'),
+        changeId: json['changeId'] as String?,
       );
 }
