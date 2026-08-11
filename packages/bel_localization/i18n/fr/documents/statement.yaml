@@ -1,0 +1,37 @@
+# Le relevé de versement, en PDF (04-payments.md §6.2). Document commercial :
+# il est lu par un comptable, contesté au besoin, et gardé des années. Les
+# phrases y sont donc plus longues qu'ailleurs — un relevé qui abrège est un
+# relevé qu'il faut expliquer au téléphone.
+statement:
+  title: "Relevé de versement"
+  operator: "{operator}"
+  period: "Période du {from} au {to}"
+  reference: "Relevé n° {id}"
+  preparedAt: "Établi le {date}"
+  sections:
+    sales: "Ventes de la période"
+    deductions: "Déductions et reprises"
+  onlineSales: "Ventes en ligne"
+  cashSales: "Ventes guichet (espèces)"
+  tickets: "{count} billets"
+  commission: "Commission ({rate} en ligne)"
+  serviceFees: "Frais de service (part BilletEnLigne)"
+  refunds: "Remboursements émis"
+  tills: "Espèces déjà encaissées par la compagnie"
+  net: "Net à payer"
+  owed: "Solde dû à BilletEnLigne"
+  # La question numéro un des opérateurs, répondue sur le document lui-même
+  # plutôt qu'au téléphone.
+  cashNote: "Les ventes guichet ne donnent lieu à aucun versement : la compagnie détient déjà cet argent. Elles figurent ici pour le rapprochement, et seuls les frais de service correspondants sont retenus."
+  owedNote: "Sur cette période, les frais de service dus dépassent les ventes en ligne encaissées pour votre compte. Aucun virement n'est émis ; le solde est reporté sur le relevé suivant."
+  state:
+    draft: "Brouillon — en attente d'approbation"
+    approved: "Approuvé — versement à émettre"
+    paid: "Versé"
+    void: "Annulé"
+  payout: "Versement {state}"
+  destination: "Compte de versement {destination}"
+  paidOn: "Versé le {date}"
+  paidRef: "Référence {reference}"
+  issuedBy: "BilletEnLigne · document établi automatiquement"
+  page: "Page {page} sur {total}"

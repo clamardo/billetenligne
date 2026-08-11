@@ -860,6 +860,32 @@ check "there is no way to write one from the console" "405" \
      "$BASE/console/v1/statements" -H "$OP_AUTH" \
      -H 'Content-Type: application/json' -d '{}')"
 
+# ── The statement as a document ─────────────────────────────────────────────
+#
+# `04-payments.md` §6.2 asks for the statement as a PDF, downloadable from the
+# console and readable by the back office. What a socket proves that a unit
+# test cannot: that the route dart_frog mounted is the one the console builds,
+# and that an operator asking for a statement id gets past the capability
+# check into the store rather than into somebody else's document.
+run_id="00000000-0000-0000-0000-000000000001"
+
+check "the document is closed to anonymous" "401" \
+  "$(status "$BASE/console/v1/statements/$run_id/pdf")"
+check "a traveller has no statement to download" "403" \
+  "$(status -H "$AUTH" "$BASE/console/v1/statements/$run_id/pdf")"
+# Past the capability check and into the store, which needs a database. The
+# tenancy is the read's own scope, so another operator's id is a 404 by policy
+# rather than by a check in the handler.
+check "an operator gets past the capability check" "503" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/statements/$run_id/pdf")"
+check "a document cannot be written" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/statements/$run_id/pdf" -H "$OP_AUTH")"
+check "the back office reads the same document" "403" \
+  "$(status -H "$AUTH" "$BASE/admin/v1/payouts/$run_id/pdf")"
+check "an operator cannot read it through the back office" "403" \
+  "$(status -H "$OP_AUTH" "$BASE/admin/v1/payouts/$run_id/pdf")"
+
 # ── The second factor ───────────────────────────────────────────────────────
 #
 # The arithmetic is proved in the unit suite against RFC 6238's own vectors,

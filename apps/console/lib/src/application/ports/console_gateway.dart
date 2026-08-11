@@ -66,6 +66,12 @@ abstract interface class ConsoleGateway {
   /// read — there is no write on this port because there is no route.
   Future<List<PayoutRunDto>> statements();
 
+  /// One statement as the document an accountant files (`04-payments.md`
+  /// §6.2). Bytes and the name the *server* chose for them.
+  Future<({List<int> bytes, String filename, String mimeType})> statementPdf(
+    String runId,
+  );
+
   /// Standing protection agreements, in either role (`08-disruption.md` §5).
   Future<List<ProtectionAgreementDto>> protectionAgreements();
 

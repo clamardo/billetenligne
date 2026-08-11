@@ -634,6 +634,15 @@ final class Services {
   /// resolved because key generation is async and composition is not.
   static final TicketIssuer _ticketIssuer = _LazyTicketIssuer();
 
+  /// The shared catalog, for the one thing that renders prose server-side and
+  /// is not a message: the payout statement PDF.
+  ///
+  /// A document is not a screen — an operator's accountant files it, a bank
+  /// asks for it, and there is no client to hand a key to — so the sentences
+  /// on it are rendered here, from the same catalog the SMS templates use
+  /// (ADR-0008 / ADR-0019 rule 3).
+  static TranslationCatalog get translations => _catalog;
+
   /// Loaded once, from disk.
   ///
   /// `BEL_I18N_DIR` because the working directory differs between `dart_frog

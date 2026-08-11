@@ -240,10 +240,7 @@ final class BelApiClient {
     required String bookingRef,
     required TravelChoiceRequest request,
   }) async => ChoiceAppliedDto.fromJson(
-    await _postJson(
-      '/public/v1/bookings/$bookingRef/choice',
-      request.toJson(),
-    ),
+    await _postJson('/public/v1/bookings/$bookingRef/choice', request.toJson()),
   );
 
   /// How this booking can be paid, and where the money goes.
@@ -619,6 +616,21 @@ final class BelApiClient {
     field: 'items',
   );
 
+  /// One statement as the document an accountant files (`04-payments.md`
+  /// §6.2).
+  ///
+  /// Bytes, not JSON: this is the one call in the client that does not come
+  /// back as a DTO. The filename comes from the server rather than being
+  /// built here, because the server is what knows the operator's legal name
+  /// and the period — and a document whose name is composed on four clients
+  /// is four differently-named copies of one file.
+  Future<DownloadedFile> statementPdf(String runId) =>
+      _download('/console/v1/statements/$runId/pdf');
+
+  /// The same document, from the back office's queue.
+  Future<DownloadedFile> payoutPdf(String runId) =>
+      _download('/admin/v1/payouts/$runId/pdf');
+
   /// The standing protection agreements this operator is a party to, in
   /// either role (`08-disruption.md` §5).
   Future<List<ProtectionAgreementDto>> protectionAgreements() async =>
@@ -990,6 +1002,86 @@ final class BelApiClient {
     return result ?? const {};
   }
 
+  /// A binary read.
+  ///
+  /// Separate from [_send] because that one decodes JSON, and a PDF decoded
+  /// as JSON is an `UnreadableResponse` for a response that was perfectly
+  /// readable. A refusal still arrives as JSON — the API's error shape is the
+  /// same on every route — so the failure path parses and the success path
+  /// does not.
+  ///
+  /// Retried like any other GET: a download is idempotent by definition, and
+  /// the failure it actually meets is a dropped connection on 2G.
+  Future<DownloadedFile> _download(String path) async {
+    final uri = _base.replace(path: '${_base.path}$path');
+    final headers = <String, String>{
+      'Accept': 'application/pdf',
+      BelHeaders.language: language,
+      if (appVersion != null) BelHeaders.appVersion: appVersion!,
+      if (deviceId != null) BelHeaders.deviceId: deviceId!,
+    };
+
+    final bearer = await _token?.call();
+    if (bearer != null && bearer.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $bearer';
+    }
+
+    ApiFailure? lastFailure;
+
+    for (var attempt = 0; attempt <= retry.maxAttempts; attempt++) {
+      if (attempt > 0) await Future<void>.delayed(retry.delayFor(attempt));
+
+      try {
+        final response = await _http
+            .send(_request('GET', uri, headers, null, null))
+            .then(http.Response.fromStream)
+            .timeout(timeout);
+
+        if (response.statusCode >= 400) {
+          throw ServerRefused(
+            response.statusCode,
+            response.body.isEmpty
+                ? ApiError(code: _codeForStatus(response.statusCode))
+                : ApiError.fromJson(_decode(response.body)),
+          );
+        }
+
+        return DownloadedFile(
+          bytes: response.bodyBytes,
+          contentType:
+              response.headers['content-type'] ?? 'application/octet-stream',
+          filename: _filenameFrom(response.headers['content-disposition']),
+        );
+      } on ServerRefused catch (failure) {
+        if (!failure.retryable) rethrow;
+        lastFailure = failure;
+      } on TimeoutException {
+        lastFailure = RequestTimedOut(timeout);
+      } on UnreadableResponse {
+        rethrow;
+      } on Object catch (e) {
+        lastFailure = NetworkUnreachable(e.toString());
+      }
+    }
+
+    throw lastFailure ?? const NetworkUnreachable();
+  }
+
+  /// `attachment; filename="releve-ocean-du-nord-2026-08-01.pdf"`.
+  ///
+  /// Null when the header is absent or shaped in a way we do not recognise,
+  /// and the caller then names the file itself. Guessing at a header we
+  /// cannot parse would be how a download arrives called `attachment;`.
+  static String? _filenameFrom(String? disposition) {
+    if (disposition == null) return null;
+    final match = RegExp(
+      'filename="?([^";]+)"?',
+      caseSensitive: false,
+    ).firstMatch(disposition);
+    final name = match?.group(1)?.trim();
+    return name == null || name.isEmpty ? null : name;
+  }
+
   Future<Map<String, Object?>?> _send(
     String method,
     String path, {
@@ -1122,4 +1214,22 @@ final class BelApiClient {
   };
 
   void close() => _http.close();
+}
+
+/// A file the server sent, with the name it chose for it.
+final class DownloadedFile {
+  const DownloadedFile({
+    required this.bytes,
+    required this.contentType,
+    this.filename,
+  });
+
+  final List<int> bytes;
+  final String contentType;
+
+  /// From `Content-Disposition`, or null when the server did not say. The
+  /// server names it because the server knows the operator's legal name and
+  /// the period — a name composed on the client is a different name on every
+  /// surface.
+  final String? filename;
 }

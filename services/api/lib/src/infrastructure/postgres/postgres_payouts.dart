@@ -342,6 +342,27 @@ final class PostgresPayouts implements PayoutDesk {
         return [for (final row in rows) _hydrate(row.toColumnMap())];
       });
 
+  @override
+  Future<PayoutRun?> statement({
+    required String runId,
+    String? operatorId,
+    String? actorUserId,
+  }) {
+    // Not a label. `app_user_id()` casts the setting to uuid, so a platform
+    // scope carrying `'statement'` fails on its first query — one of the
+    // mistakes the integration suite has already caught once here.
+    if (operatorId == null && actorUserId == null) {
+      throw ArgumentError('a statement read needs a tenant or an actor');
+    }
+
+    return _db.transaction(
+      operatorId == null
+          ? DbScope.platform(actorUserId!)
+          : DbScope.tenant(operatorId),
+      (tx) => _read(tx, runId),
+    );
+  }
+
   /// Listed rather than `*`: `state` is an enum, and a `SELECT *` hands it
   /// over as raw bytes. Naming the columns is also what makes adding one to
   /// the table a decision rather than an accident.

@@ -4,6 +4,7 @@ import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_console/src/application/console_workspace.dart';
 import 'package:bel_console/src/application/ports/console_gateway.dart';
 import 'package:bel_console/src/application/ports/file_picker.dart';
+import 'package:bel_console/src/application/ports/file_saver.dart';
 import 'package:bel_console/src/application/ports/onboarding_gateway.dart';
 import 'package:bel_console/src/application/onboarding_workspace.dart';
 import 'package:bel_console/src/presentation/app.dart';
@@ -371,6 +372,23 @@ final class _ScriptedConsole implements ConsoleGateway {
     return statementList;
   }
 
+  /// What the download returns. Bytes and a name, the way the server sends
+  /// them — the client never composes the name of a commercial document.
+  var pdfBytes = const <int>[0x25, 0x50, 0x44, 0x46];
+  var pdfFilename = 'releve-ocean-du-nord-2026-08-01.pdf';
+
+  @override
+  Future<({List<int> bytes, String filename, String mimeType})> statementPdf(
+    String runId,
+  ) async {
+    saved.add('statementPdf:$runId');
+    return (
+      bytes: pdfBytes,
+      filename: pdfFilename,
+      mimeType: 'application/pdf',
+    );
+  }
+
   /// The live requests, as the server would answer.
   List<ProtectionRequestDto> requestList = const [];
 
@@ -581,6 +599,7 @@ void main() {
     WidgetTester tester,
     _ScriptedConsole gateway, {
     FilePicker? files,
+    FileSaver? downloads,
   }) async {
     // A realistic agency laptop rather than the 800x600 default. The console
     // is a desktop product and testing it at a phone's width would either
@@ -591,7 +610,11 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
 
-    final workspace = ConsoleWorkspace(gateway: gateway, files: files);
+    final workspace = ConsoleWorkspace(
+      gateway: gateway,
+      files: files,
+      downloads: downloads,
+    );
     await tester.pumpWidget(ConsoleApp(catalog: catalog, workspace: workspace));
     await tester.pumpAndSettle();
     return workspace;
@@ -1182,6 +1205,63 @@ void main() {
     _ScriptedConsole finance() =>
         _ScriptedConsole(capabilities: const ['booking.read', 'finance.read'])
           ..statementList = [statement()];
+
+    testWidgets('the statement can be taken away as a document', (
+      tester,
+    ) async {
+      final saver = _ScriptedSaver();
+      final gateway = finance();
+      await pump(tester, gateway, downloads: saver);
+      await tester.tap(find.text('Versements'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Télécharger le relevé (PDF)'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('statementPdf:pay-1'));
+      // The name is the server's. A commercial document named differently by
+      // each surface is a folder nobody can search.
+      expect(
+        saver.saved.single.filename,
+        'releve-ocean-du-nord-2026-08-01.pdf',
+      );
+      expect(saver.saved.single.mimeType, 'application/pdf');
+      expect(saver.saved.single.bytes.take(4), [0x25, 0x50, 0x44, 0x46]);
+    });
+
+    testWidgets('and the console says which file it handed over', (
+      tester,
+    ) async {
+      await pump(tester, finance(), downloads: _ScriptedSaver());
+      await tester.tap(find.text('Versements'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Télécharger le relevé (PDF)'));
+      await tester.pumpAndSettle();
+
+      // A download in a browser is silent and easy to miss, especially on a
+      // console where every other action changes the page.
+      expect(
+        find.textContaining('releve-ocean-du-nord-2026-08-01.pdf'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('nowhere to save means no button, not a broken one', (
+      tester,
+    ) async {
+      // Every build that is not the browser: a widget test, and one day a
+      // desktop shell. A control that cannot hand anybody a file is worse
+      // than no control.
+      await pump(tester, finance());
+      await tester.tap(find.text('Versements'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Télécharger le relevé (PDF)'), findsNothing);
+      // The figures are still all there — the screen is not degraded, only
+      // the one thing the platform cannot do is absent.
+      expect(find.textContaining('Ventes guichet'), findsOneWidget);
+    });
 
     testWidgets('a vendor is not offered the tab at all', (tester) async {
       await pump(
@@ -2750,6 +2830,20 @@ final class _ScriptedOnboarding implements OnboardingGateway {
 }
 
 /// A file dialog that has already decided.
+/// Where a downloaded file goes in a test. The browser's own anchor-and-blob
+/// is the one thing in the download path a widget test cannot run, which is
+/// exactly why it is behind a port.
+final class _ScriptedSaver implements FileSaver {
+  final saved = <({String filename, List<int> bytes, String mimeType})>[];
+
+  @override
+  Future<void> save({
+    required String filename,
+    required List<int> bytes,
+    required String mimeType,
+  }) async => saved.add((filename: filename, bytes: bytes, mimeType: mimeType));
+}
+
 final class _ScriptedPicker implements FilePicker {
   _ScriptedPicker(this._file);
 

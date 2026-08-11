@@ -91,6 +91,7 @@ console:
     tills: "Espèces en caisse (déduites)"
     paidOn: "Versé"
     paidWith: "{date} · référence {reference}"
+    download: "Télécharger le relevé (PDF)"
     state:
       draft: "Préparé"
       approved: "Approuvé"
@@ -421,6 +422,7 @@ console:
     application.started: "Dossier ouvert. Remplissez-le à votre rythme — tout est enregistré."
     application.saved: "Enregistré."
     application.submitted: "Dossier envoyé pour examen."
+    statement.downloaded: "Relevé téléchargé : {a1}"
     vitrine.saved: "Vitrine enregistrée. « {a1} » est ce que verront les voyageurs."
     vitrine.assetSaved: "Image enregistrée. Elle apparaît déjà sur votre vitrine."
     vitrine.assetRemoved: "Image retirée. Vos initiales reprennent la place."

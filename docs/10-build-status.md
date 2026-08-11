@@ -80,11 +80,11 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Production credentials | ⬜ not started | **Commercial, not engineering.** Both adapters run against sandbox hosts |
 | `indeterminate` reconciliation — API | ✅ done | The queue, joined to the booking, the operator and the traveller's number. Three exits: ask the rail again · captured · failed. 5 integration tests |
 | **`indeterminate` reconciliation — the screen** | ✅ done | In the back office. Longest-waiting first, everything needed to decide in the row, three exits — and captured/failed demand a sentence about *that* payment, which becomes the `payment_events` row |
-| Payout runs and operator statements | ⬜ not started | `payable:operator:<id>` is correct and derived; nothing pays it out |
+| **The statement as a document** | ✅ done | `04-payments.md` §6.2 asks for a PDF, and this is one — written by a hundred-line PDF writer rather than a layout engine, in the two standard fonts every reader has had since 1993, with the figures in Courier so a money column right-aligns by counting characters instead of by carrying a font-metrics table. Uncompressed: a statement is three kilobytes, and reading it with `strings` when somebody disputes what we sent is worth more than the bytes. **The commission rate is derived from these sales**, not read from the operator's row, because the row can be renegotiated and a document reprinting today's rate over last month's money is the kind of small dishonesty that ends a relationship. **Nothing is invented** — §6.2's mock shows change fees and dispute adjustments, neither is in the ledger, and a `0 FCFA` row for something we never compute is a more convincing lie than an absent one. The console downloads it through the authenticated client and hands it to the browser (a plain link sends no bearer token), and the back office serves **the same bytes from its own route**. Emailing it is **not** built: attachments are missing from the ACS adapter. 18 API unit · 4 Postgres · 4 client · 6 smoke · 3 console tests |
 | **IRROPS — declaring, and telling everybody** | ✅ done | The dispatcher declares one of six kinds and everything downstream is derived: the departure's new status, the exemption on every booking, one message per passenger. All of it in **one transaction** — bookings marked involuntary with no declaration behind them is a refund entitlement nobody can account for. A disruption is **public** (the follower of a shared trip link holds no account and is exactly the person who otherwise phones the agency), **not editable afterwards** by a column-level grant, and **one open per departure** by a partial unique index, so "what is happening to my coach?" has one answer. A short delay entitles nobody to anything — the threshold is an hour, it lives in the domain, and the console asks it rather than restating it. 16 domain · 6 contract · 12 Postgres · 5 worker · 7 smoke · 6 console · 2 traveller tests |
 | **IRROPS — the rescue coach** | ✅ done | Option ① of `08-disruption.md` §2.2: a different vehicle, the same journey. The seats are **remapped by the domain** — a passenger keeps their label only when the new coach has one of the same kind, because `1D` is a window on a 2+2 and the middle of the back block on a 2+3. Every ticket is **re-signed** in the same transaction as the new manifest, since the QR carries the seat (ADR-0007). A coach that cannot seat everybody is refused **with the number short**, so a dispatcher knows which coach to look for next. Holds with nothing behind them are released rather than slid onto a different seat under somebody who is looking at a seat map. The swap supersedes the breakdown that caused it. 9 domain · 2 contract · 6 Postgres · 5 smoke · 6 console tests |
 | **IRROPS — the rebooking wave** | ✅ done | Option ② of `08-disruption.md` §2.2: the passengers go on the operator's own next departure. **Every replacement seat is taken before a single old one is released** (§2.4) inside one transaction, so a paid passenger never exists without a seat. **Partial coverage is a success** — "18 / 42" is what a dispatcher acts on, and refusing anything short of everybody would mean the tool only works on the days it is not needed. A party moves whole or not at all, in the order people booked, which is the only rule that can be said out loud to whoever is left. No fare difference, ever, even onto a dearer departure (ADR-0016). 13 domain · 2 contract · 13 Postgres · 2 worker · 5 smoke · 3 console tests |
-| **Payout runs** | ✅ done | `04-payments.md` §6.2. Prepare · approve · release, and the gap between them is the control: **an operator cannot create, approve or edit their own payout**, by grant rather than by handler, and **the person who prepared a run cannot approve it**. The amount is the ledger's own balance (`payable:operator` less their tills) read again at release, never the sum of the statement's line items. Releasing debits the payable and credits every till plus the bank in one movement, which is what makes "cash sales never generate a payout" true in the books. A week of nothing but cash is negative — the operator owes us the fees — and is refused as a transfer. The back office works the queue — the whole statement is in the row, because the person approving is agreeing to a number — and the operator reads their own statements in the console, cash line included. 8 domain · 3 contract · 13 Postgres · 8 smoke · 2 schema guarantees · 5 back-office · 3 console tests |
+| **Payout runs** | ✅ done | `04-payments.md` §6.2. Prepare · approve · release, and the gap between them is the control: **an operator cannot create, approve or edit their own payout**, by grant rather than by handler, and **the person who prepared a run cannot approve it**. The amount is the ledger's own balance (`payable:operator` less their tills) read again at release, never the sum of the statement's line items. Releasing debits the payable and credits every till plus the bank in one movement, which is what makes "cash sales never generate a payout" true in the books. A week of nothing but cash is negative — the operator owes us the fees — and is refused as a transfer. The back office works the queue — the whole statement is in the row, because the person approving is agreeing to a number — and the operator reads their own statements in the console, cash line included — and now downloads each one as the document an accountant files. 8 domain · 3 contract · 13 Postgres · 8 smoke · 2 schema guarantees · 5 back-office · 3 console tests |
 | **`config/markets.yaml` is loaded** | ✅ done | ADR-0006, and the gap this document named first. The file is now the authority for the currency, the service fee, the dialling table and the rails; `Market.congoBrazzaville` is the **fallback** for when there is no file. A missing file falls back — that is every unit test and every fresh clone — and a **malformed one kills the process before it is healthy**, because an instance that comes up green serving last release's rails is the failure worth refusing. Enabling Orange Money, or a carrier renumbering, is a file and a restart. A currency whose exponent we do not know is refused by name, never guessed. 19 API tests · 7 smoke checks, two of them a second server started against a different file |
 | **IRROPS — the protection agreement** | ✅ done | `08-disruption.md` §5, the commercial half of option ③. Which roads, at what discount off the rescuer's public fare, up to how many seats a month, one way or both — agreed once in an office instead of at the roadside. **One party writes the terms and the other accepts them**, and afterwards the discount, the ceiling and the roads are frozen by a column-level grant. The **only row in the schema that belongs to two tenants**: an agreement neither party can read is not an agreement, so the policy names exactly two operators and an executed guarantee proves it names no third. Naming a competitor goes through a SECURITY DEFINER function returning the two facts a traveller already reads off a search result, because a SELECT policy on `operators` is all-columns and a competitor's negotiated commission is exactly what a competitor must not read. The ceiling reads `31 / 40` on the card, not on the refusal. Settlement posts one payable against the other, **no commission and no cash**, so it nets into the next payout run. 23 domain · 18 Postgres · 11 smoke · 2 schema guarantees · 7 console tests |
 | **IRROPS — the protection movement** | ✅ done | `08-disruption.md` §2.2 option ③, §2.3. The agreement now moves people. The dispatcher picks a competitor's departure out of the **public search** — the same list any traveller sees — narrowed to companies an agreement covers, later, with room; the ask lands on their console with what §2.3 says they need to answer: who, how many, which coach, what they will be paid. **Accepting applies the movement in the same transaction**, because a request accepted now and applied later is a window in which the receiving operator sells the seats they just promised. New seats taken before old ones released, both departures locked in id order, `operator_id` and `departure_id` changing together, and **every ticket re-signed under the receiving operator's code** (ADR-0007). The rebill is the discount on the **rescuer's** fare, posted payable-against-payable with no commission and no cash. The **one operation that crosses a tenant boundary**: it escalates into one narrow transaction that re-checks the agreement is still active and the request still pending, and the two SECURITY DEFINER functions it needed hand over only what a traveller can already read off a search result. 18 Postgres · 10 smoke · 2 schema guarantees · 13 console tests |
@@ -102,8 +102,9 @@ there is commercial. Phase 2 is where the unbuilt work
 lived: the re-accommodation plan, payout runs and the `config/markets.yaml`
 loader are all built, as is the whole of option ③ — the protection agreement
 and the movement under it — and option ⑤, the passenger's own choice. What is
-left there is a telco's sandbox becoming production credentials, and the
-payout statement PDF.
+left there is a telco's sandbox becoming production credentials, and an
+attachment on the ACS email adapter so a statement can be sent as well as
+downloaded.
 
 ---
 
@@ -205,6 +206,13 @@ These are true today and each one is a decision, not an oversight.
    is pure Dart — the API imports it — so it cannot declare Flutter assets,
    and Flutter refuses `..` in asset paths. `tool/sync_i18n.sh` copies it and
    `i18n_freshness_test` fails the build if a copy drifts.
+13. **A statement can be downloaded but not emailed.** `04-payments.md` §6.2
+   asks for both. The document exists and both surfaces serve it; what is
+   missing is an *attachment* on the ACS email adapter, which sends bodies
+   and nothing else today. Sending a link back to a login instead would be
+   worse than not sending: an operator who has to sign in to read what they
+   were paid will phone us instead, which is the call the statement exists to
+   prevent.
 
 ---
 
@@ -216,20 +224,20 @@ These are true today and each one is a decision, not an oversight.
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
          packages/bel_contracts packages/bel_crypto     # 393 tests
-dart test packages/bel_client                           # 32 tests
+dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
-dart test services/api -x integration -x storage        # 196 tests
+dart test services/api -x integration -x storage        # 214 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 104 app tests
-cd apps/console   && flutter test        # 83 console tests
+cd apps/console   && flutter test        # 86 console tests
 cd apps/admin     && flutter test        # 23 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 317 files
+dart run tool/check_layers.dart          # the onion rule, 324 files
 ./infra/migrations/check.sh              # 38 schema guarantees
-./tool/integration.sh                    # 248 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 236 checks, incl. the Dart client
+./tool/integration.sh                    # 252 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 242 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -238,8 +246,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**926 tests in total**, plus 236 smoke checks, 38 executed schema guarantees,
-248 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**951 tests in total**, plus 242 smoke checks, 38 executed schema guarantees,
+252 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -254,6 +262,99 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+The payout statement as a **document** (`04-payments.md` §6.2) — the last
+unbuilt item in Phase 2 that was ours rather than a telco's.
+
+**A screen is not a document.** The console has rendered these figures for
+several pushes. What it could not do is hand an operator something their
+accountant files, their bank asks for, and a dispute six months from now is
+settled by. That is the whole reason this exists: not a nicer view of the same
+numbers, but an artefact that outlives the session it was produced in.
+
+**A hundred lines of PDF, not a layout engine.** The Dart PDF packages are
+widget trees, flex, page breaks and font subsetting, and they carry a font
+embedder and a zlib dependency to do it. What §6.2 asks for is one page of
+left-aligned labels and right-aligned figures. Three decisions follow, each
+taken the conservative way: **standard fonts, never embedded** — Helvetica and
+Courier have been in every conforming reader since 1993, and embedding a
+TrueType face would add a few hundred kilobytes and a licensing question to a
+three-kilobyte file; **figures in Courier**, which is fixed-pitch at 600/1000
+em, so the money column right-aligns by counting characters rather than by
+carrying a metrics table, and a misaligned column of figures reads as
+carelessness about the figures themselves; and **no compression**, because
+being able to read the file with `strings` when somebody disputes what we sent
+is worth more than the bytes.
+
+**The encoding is where the bugs were, and the tests caught all three.** The
+content stream is written as WinAnsi bytes: `/Length` counted in UTF-8 while
+the file is written in Latin-1 overruns by one byte per accented character and
+renders as a **blank page** rather than as an error — there is now a test that
+walks every xref offset and asserts it lands exactly on `N 0 obj`. The narrow
+no-break space `Money.format` puts between thousands is U+202F, which WinAnsi
+does not have, and dropping it turns `3 429 600` into `3429600` on a page
+somebody is checking. And `Money.format` prefixes a deduction with U+2212,
+not a hyphen — which rendered as `?185 400 FCFA` on the first document that
+came out of this, a missing minus sign on a financial statement.
+
+**The commission rate is derived from these sales, not read from the
+operator's row.** The row can be renegotiated tomorrow; what this document has
+to say is what was taken from *these* fares. A statement that reprints today's
+rate over last month's money is the kind of small dishonesty that ends an
+operator relationship, and it would have been the easier thing to write.
+
+**Nothing is invented.** §6.2's mock has a change-fee line and a dispute
+adjustment line. Neither exists in the ledger. A `0 FCFA` row for something we
+never compute is a *more* convincing lie than an absent one, and a test asserts
+those two labels are not on the page.
+
+**The cash question is answered on the document itself.** §6.2 names it as the
+number-one operator question, and the answer is a sentence rather than a
+figure: counter sales appear in full, pay out nothing because the operator is
+already holding the money, and only the service fee on them is withheld. One
+line on the page, one phone call a week saved.
+
+**A download needs a bearer token, so it cannot be a link.** An `<a href>`
+sends no headers. The bytes come down through the same authenticated client as
+everything else and are handed to the browser through a blob URL that is
+revoked immediately — a console left open all week would otherwise pin every
+statement it had downloaded. That is behind a `FileSaver` port for the same
+reason the logo upload is behind a `FilePicker` one: the anchor is the single
+thing in the flow a widget test cannot run.
+
+**The server names the file, and both surfaces serve the same bytes.**
+`releve-ocean-du-nord-2026-08-01.pdf` — ASCII only, because an accented
+filename survives most of the way and then arrives mangled through one proxy
+or one mail client. And `/admin/v1/payouts/{id}/pdf` renders from the same
+function as the console's route, so a reviewer approving a number and the
+company being paid are never holding two different prints of one run.
+
+**Another operator's statement id is a 404 by policy, not by a check.** The
+read runs under the caller's tenancy; 0018 gives an operator SELECT on their
+own `payout_runs` and nothing else, so the row is not there to refuse. The
+platform read takes an actor id instead — and refuses to run without one,
+because `app_user_id()` casts the setting to uuid and a label like
+`'statement'` fails on the first query.
+
+**Found on the way:** the worker suite purged the outbox once per *suite*,
+which left "draining twice does not send twice" counting rows an earlier test
+in the same file had queued. It went red on the day this push added tests
+elsewhere — the exact failure mode that purge was added to prevent, one scope
+too wide. It is per test now.
+
+**What it did not build:** emailing the statement. §6.2 asks for downloadable
+*and* emailed; attachments are not implemented on the ACS email adapter, and a
+statement that arrives as a link back to a login is not the thing being asked
+for. Named here rather than implied by silence.
+
+**What it cost:** 18 API unit tests, 4 against real Postgres, 4 client tests,
+6 smoke checks, 3 console tests, two routes, one port method, and three
+encoding bugs that would each have shipped as a document somebody could not
+read.
+
+---
+
+## What the passenger's-own-choice push changed, and what it cost
 
 The passenger's own choice (`08-disruption.md` §3.2 option ⑤) — the option
 most systems never build, and the last unbuilt piece of IRROPS.

@@ -154,6 +154,20 @@ final class ApiConsoleGateway implements ConsoleGateway {
   Future<List<PayoutRunDto>> statements() => _client.statements();
 
   @override
+  Future<({List<int> bytes, String filename, String mimeType})> statementPdf(
+    String runId,
+  ) async {
+    final file = await _client.statementPdf(runId);
+    return (
+      bytes: file.bytes,
+      // The server names it. Only when it says nothing does the client
+      // invent one, and then it says plainly that it invented it.
+      filename: file.filename ?? 'releve-$runId.pdf',
+      mimeType: file.contentType,
+    );
+  }
+
+  @override
   Future<List<ProtectionAgreementDto>> protectionAgreements() =>
       _client.protectionAgreements();
 

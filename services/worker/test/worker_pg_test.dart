@@ -325,6 +325,13 @@ void main() {
   });
 
   group('the outbox drain', () {
+    // Per test, not once per suite. "Draining twice does not send twice"
+    // counts rows the drain touched, and it must count *this* test's row —
+    // an expiry the sweeper group queued a moment ago is somebody else's
+    // message, and a suite where one test's leftovers decide another test's
+    // arithmetic goes red on the day an unrelated test is added.
+    setUp(() => seed.execute('DELETE FROM outbox WHERE delivered_at IS NULL'));
+
     Future<int> queue(String bookingId) async {
       final rows = await seed.execute(
         Sql.named('''

@@ -31,6 +31,18 @@ final class _ScriptedClient extends http.BaseClient {
       return http.StreamedResponse(const Stream.empty(), 200);
     }
 
+    // A triple carries response headers — only the download tests need
+    // them, and every other case stays a readable pair.
+    if (next is (int, String, Map<String, String>)) {
+      final (status, body, headers) = next;
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(body)),
+        status,
+        headers: headers,
+        request: request,
+      );
+    }
+
     final (status, body) = next as (int, String);
     return http.StreamedResponse(
       Stream.value(utf8.encode(body)),
@@ -365,6 +377,79 @@ void main() {
       // millisecond. Distinct delays are the evidence that they will not.
       expect(delays.toSet(), hasLength(delays.length));
     });
+  });
+
+  group('downloading a document', () {
+    test(
+      'the bytes come back untouched and the server names the file',
+      () async {
+        final transport = _ScriptedClient([
+          (
+            200,
+            '%PDF-1.7\nhello',
+            {
+              'content-type': 'application/pdf',
+              'content-disposition':
+                  'attachment; filename="releve-ocean-du-nord-2026-08-01.pdf"',
+            },
+          ),
+        ]);
+
+        final file = await clientFor(transport).statementPdf('run-1');
+
+        // A PDF decoded as JSON would be an UnreadableResponse for a response
+        // that was perfectly readable — which is why this path does not decode.
+        expect(utf8.decode(file.bytes), startsWith('%PDF-1.7'));
+        expect(file.contentType, 'application/pdf');
+        expect(file.filename, 'releve-ocean-du-nord-2026-08-01.pdf');
+        expect(transport.requests.single.headers['Accept'], 'application/pdf');
+      },
+    );
+
+    test(
+      'a server that names nothing leaves the naming to the caller',
+      () async {
+        final transport = _ScriptedClient([
+          (200, '%PDF-1.7', {'content-type': 'application/pdf'}),
+        ]);
+
+        final file = await clientFor(transport).statementPdf('run-1');
+
+        // Null rather than a guess: a download called `attachment;` is how a
+        // half-parsed header shows up on somebody's desktop.
+        expect(file.filename, isNull);
+      },
+    );
+
+    test('a refusal is still JSON, and is still typed', () async {
+      final transport = _ScriptedClient([
+        (404, '{"error":{"code":"resource.not_found"}}'),
+      ]);
+
+      // Another operator's statement id. The route answers a typed 404 the
+      // same way every other route does, so the download path parses the
+      // failure even though it does not parse the success.
+      await expectLater(
+        clientFor(transport).statementPdf('somebody-elses'),
+        throwsA(isA<ServerRefused>().having((f) => f.status, 'status', 404)),
+      );
+    });
+
+    test(
+      'the back office reads the same document from its own route',
+      () async {
+        final transport = _ScriptedClient([
+          (200, '%PDF-1.7', {'content-type': 'application/pdf'}),
+        ]);
+
+        await clientFor(transport).payoutPdf('run-1');
+
+        expect(
+          transport.requests.single.url.path,
+          '/admin/v1/payouts/run-1/pdf',
+        );
+      },
+    );
   });
 
   group('idempotency keys', () {

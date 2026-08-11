@@ -6,6 +6,7 @@ import 'package:bel_domain/bel_domain.dart';
 
 import 'ports/console_gateway.dart';
 import 'ports/file_picker.dart';
+import 'ports/file_saver.dart';
 
 /// Which section of the console is open.
 ///
@@ -35,9 +36,13 @@ enum ConsoleSection {
 /// `package:flutter/foundation` and the layer check refuses Flutter in the
 /// application layer.
 final class ConsoleWorkspace {
-  ConsoleWorkspace({required ConsoleGateway gateway, FilePicker? files})
-    : _gateway = gateway,
-      _files = files;
+  ConsoleWorkspace({
+    required ConsoleGateway gateway,
+    FilePicker? files,
+    FileSaver? downloads,
+  }) : _gateway = gateway,
+       _files = files,
+       _downloads = downloads;
 
   final ConsoleGateway _gateway;
 
@@ -46,7 +51,12 @@ final class ConsoleWorkspace {
   /// control rather than offering one that cannot open anything.
   final FilePicker? _files;
 
+  /// Null outside the browser, like [_files]. The statements screen hides the
+  /// download rather than offering a button that cannot hand anybody a file.
+  final FileSaver? _downloads;
+
   bool get canUploadAssets => _files != null;
+  bool get canDownloadStatements => _downloads != null;
   final _changes = StreamController<void>.broadcast();
 
   Stream<void> get changes => _changes.stream;
@@ -658,6 +668,28 @@ final class ConsoleWorkspace {
     vitrine = saved;
     _notice = 'vitrine.saved|${saved.titleFor('fr')}';
   });
+
+  /// Downloads one statement as the document `04-payments.md` §6.2 calls for.
+  ///
+  /// The bytes come down through the authenticated client and are handed to
+  /// the browser here, because the route needs a bearer token and a plain
+  /// link sends no headers. The **server names the file** — the name is part
+  /// of a commercial document, and one composed on the client would differ
+  /// from the one the back office produces for the same run.
+  Future<void> downloadStatement(String runId) async {
+    final saver = _downloads;
+    if (saver == null) return;
+
+    await _run(() async {
+      final file = await _gateway.statementPdf(runId);
+      await saver.save(
+        filename: file.filename,
+        bytes: file.bytes,
+        mimeType: file.mimeType,
+      );
+      _notice = 'statement.downloaded|${file.filename}';
+    });
+  }
 
   /// Asks for a file and sends it.
   ///

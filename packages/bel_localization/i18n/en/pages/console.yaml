@@ -91,6 +91,7 @@ console:
     tills: "Cash in drawers (deducted)"
     paidOn: "Paid"
     paidWith: "{date} · reference {reference}"
+    download: "Download statement (PDF)"
     state:
       draft: "Prepared"
       approved: "Approved"
@@ -420,6 +421,7 @@ console:
     application.started: "Application opened. Fill it in at your own pace — everything is saved."
     application.saved: "Saved."
     application.submitted: "Application sent for review."
+    statement.downloaded: "Statement downloaded: {a1}"
     vitrine.saved: "Storefront saved. Travellers will see \"{a1}\"."
     vitrine.assetSaved: "Image saved. It is on your storefront already."
     vitrine.assetRemoved: "Image removed. Your initials take its place again."

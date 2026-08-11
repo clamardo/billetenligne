@@ -1,14 +1,18 @@
 @Tags(['integration'])
 library;
 
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:bel_api/src/adapters/ed25519_ticket_issuer.dart';
 import 'package:bel_api/src/application/ports/payout_desk.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_booking_store.dart';
+import 'package:bel_api/src/infrastructure/documents/statement_pdf.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_payouts.dart';
 import 'package:bel_domain/bel_domain.dart';
+import 'package:bel_localization/bel_localization.dart';
 import 'package:test/test.dart';
 
 import 'pg_fixture.dart';
@@ -22,6 +26,11 @@ import 'pg_fixture.dart';
 /// both prepare and approve, and that the same week cannot be paid twice.
 ///
 ///   ./tool/integration.sh
+/// The catalog the server ships, loaded the way the API loads it.
+final _catalog = CatalogLoader.fromDirectory(
+  Platform.environment['BEL_I18N_DIR'] ?? 'packages/bel_localization/i18n',
+);
+
 void main() {
   if (!PgFixture.isAvailable) {
     test('integration suite', () {}, skip: 'run via tool/integration.sh');
@@ -319,6 +328,73 @@ void main() {
           isFalse,
         );
       }
+    });
+  });
+
+  group('the statement as a document', () {
+    test('an operator reads their own run and it renders', () async {
+      final run = await prepared(window: 11);
+
+      final read = await payouts.statement(
+        runId: run.id,
+        operatorId: operatorId,
+      );
+
+      expect(read, isNotNull);
+      // The operator's own name comes off the join, not out of the request:
+      // a document that named whoever asked for it would be forgeable by
+      // anybody who can set a header.
+      expect(read!.operatorName, isNotEmpty);
+
+      final bytes = StatementPdf.render(
+        run: read,
+        catalog: _catalog,
+        operatorName: read.operatorName!,
+      );
+      final text = latin1.decode(bytes);
+
+      expect(text, startsWith('%PDF-1.7'));
+      expect(text, endsWith('%%EOF\n'));
+      expect(text, contains('Relevé de versement'));
+      // The figures on the page are the ones the ledger produced, not a
+      // fixture's — this is the only test in the suite that proves the two
+      // ends meet.
+      expect(text, contains(read.statement.net.format(locale: 'fr')));
+    });
+
+    test("another operator's run is not there at all", () async {
+      final run = await prepared(window: 12);
+      await fixture.secondOperator();
+
+      final read = await payouts.statement(
+        runId: run.id,
+        operatorId: PgFixture.secondOperatorId,
+      );
+
+      // Not a 403 from a handler that remembered to check: the row is
+      // invisible under the wrong tenancy, so there is nothing to refuse.
+      expect(read, isNull);
+    });
+
+    test('the platform reads anybody\'s, under an actor', () async {
+      final run = await prepared(window: 13);
+
+      final read = await payouts.statement(
+        runId: run.id,
+        actorUserId: approver,
+      );
+
+      expect(read?.id, run.id);
+    });
+
+    test('a platform read with no actor is refused before it runs', () async {
+      // `app_user_id()` casts the setting to uuid, so a platform scope
+      // carrying a label fails on its first query. Refusing here makes it an
+      // argument error at the call site rather than a 500 from Postgres.
+      expect(
+        () => payouts.statement(runId: PgFixture.secondOperatorId),
+        throwsArgumentError,
+      );
     });
   });
 }

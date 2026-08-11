@@ -324,4 +324,11 @@ final class UnavailablePayouts implements PayoutDesk {
   @override
   Future<List<PayoutRun>> statementsFor(String operatorId) async =>
       throw const ConsoleRequiresDatabase();
+
+  @override
+  Future<PayoutRun?> statement({
+    required String runId,
+    String? operatorId,
+    String? actorUserId,
+  }) async => throw const ConsoleRequiresDatabase();
 }

@@ -1,0 +1,35 @@
+# The payout statement, as a PDF (04-payments.md §6.2). A commercial document:
+# read by an accountant, disputed when it has to be, and kept for years. Its
+# sentences are longer than elsewhere on purpose — a statement that abbreviates
+# is a statement somebody has to be talked through on the phone.
+statement:
+  title: "Payout statement"
+  operator: "{operator}"
+  period: "Period {from} to {to}"
+  reference: "Statement no. {id}"
+  preparedAt: "Prepared {date}"
+  sections:
+    sales: "Sales in the period"
+    deductions: "Deductions and reversals"
+  onlineSales: "Online sales"
+  cashSales: "Counter sales (cash)"
+  tickets: "{count} tickets"
+  commission: "Commission ({rate} online)"
+  serviceFees: "Service fees (BilletEnLigne's share)"
+  refunds: "Refunds issued"
+  tills: "Cash already taken by the company"
+  net: "Net payable"
+  owed: "Balance owed to BilletEnLigne"
+  cashNote: "Counter sales generate no payout: the company already holds that money. They appear here for reconciliation, and only the matching service fees are withheld."
+  owedNote: "Over this period the service fees due exceed the online sales collected on your behalf. No transfer is issued; the balance carries to the next statement."
+  state:
+    draft: "Draft — awaiting approval"
+    approved: "Approved — payout to be issued"
+    paid: "Paid"
+    void: "Void"
+  payout: "Payout {state}"
+  destination: "Settlement account {destination}"
+  paidOn: "Paid on {date}"
+  paidRef: "Reference {reference}"
+  issuedBy: "BilletEnLigne · automatically generated document"
+  page: "Page {page} of {total}"

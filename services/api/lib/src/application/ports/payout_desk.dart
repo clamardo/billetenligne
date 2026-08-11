@@ -126,4 +126,18 @@ abstract interface class PayoutDesk {
 
   /// One operator's own statements, newest first. What the console shows.
   Future<List<PayoutRun>> statementsFor(String operatorId);
+
+  /// One run, for the document that gets filed.
+  ///
+  /// [operatorId] is the tenancy to read under: an operator asking for their
+  /// own statement, or null — with [actorUserId] — for the platform reading
+  /// anybody's. Passing the tenancy rather than trusting the id is what makes
+  /// "another operator's statement id" a 404 by policy instead of by a
+  /// handler remembering to check: the row is simply not visible under the
+  /// wrong tenant.
+  Future<PayoutRun?> statement({
+    required String runId,
+    String? operatorId,
+    String? actorUserId,
+  });
 }
