@@ -270,20 +270,57 @@ final class PgFixture {
 
   /// An agency counter. Cash is reconciled against the drawer that took it,
   /// so a till needs a station and a station needs a row.
-  Future<String> station(String cityCode, String name) async {
+  Future<String> station(
+    String cityCode,
+    String name, {
+    String? boardingNotes,
+    bool active = true,
+    String? onOperator,
+  }) async {
     final rows = await _seed.execute(
       Sql.named('''
-        INSERT INTO stations (operator_id, city_code, name)
-        VALUES (@operator, @city, @name)
+        INSERT INTO stations (operator_id, city_code, name, boarding_notes,
+                              active)
+        VALUES (@operator, @city, @name, @notes, @active)
+        ON CONFLICT (operator_id, city_code, name) DO UPDATE
+           SET boarding_notes = EXCLUDED.boarding_notes,
+               active = EXCLUDED.active
         RETURNING id
       '''),
       parameters: {
-        'operator': TypedValue(Type.uuid, operatorId),
+        'operator': TypedValue(Type.uuid, onOperator ?? operatorId),
         'city': TypedValue(Type.text, cityCode),
         'name': TypedValue(Type.text, name),
+        'notes': TypedValue(Type.text, boardingNotes),
+        'active': TypedValue(Type.boolean, active),
       },
     );
     return rows.first.toColumnMap()['id'] as String;
+  }
+
+  /// Says which yard a departure leaves from and arrives at, after the fact.
+  ///
+  /// Departures are created by a dozen helpers here and threading two more
+  /// optional ids through all of them would obscure every one of those call
+  /// sites for the sake of two tests.
+  Future<void> setStations(
+    String departureId, {
+    String? origin,
+    String? destination,
+  }) async {
+    await _seed.execute(
+      Sql.named('''
+        UPDATE departures
+           SET origin_station_id = @origin,
+               destination_station_id = @destination
+         WHERE id = @id
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'origin': TypedValue(Type.uuid, origin),
+        'destination': TypedValue(Type.uuid, destination),
+      },
+    );
   }
 
   Future<int> ledgerRowsFor(String bookingId) async {

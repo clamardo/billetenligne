@@ -171,6 +171,8 @@ BookingDto _toDto(BookingRecord record) => BookingDto(
   operatorName: record.trip.operatorName,
   originCity: record.trip.originCity,
   destinationCity: record.trip.destinationCity,
+  originStation: _station(record.trip.originStation),
+  destinationStation: _station(record.trip.destinationStation),
   departsAt: record.trip.departsAt,
   arrivesAt: record.trip.arrivesAt,
   passengers: [
@@ -217,6 +219,17 @@ BookingDto _toDto(BookingRecord record) => BookingDto(
 
 /// The open disruption, if the departure has one.
 ///
+/// The yard, when the operator has named one. The id is the station's, so a
+/// client that later wants directions has something to ask about; the city is
+/// left off because the booking already says which one.
+StationDto? _station(BoardingPoint? point) => point == null
+    ? null
+    : StationDto(
+        id: point.id,
+        name: point.name,
+        boardingNotes: point.boardingNotes,
+      );
+
 /// Sent on the booking even when [BookingDto.involuntaryChange] is already
 /// true, because they answer different questions: the flag says what this
 /// traveller is entitled to, and this says what is happening to their coach.

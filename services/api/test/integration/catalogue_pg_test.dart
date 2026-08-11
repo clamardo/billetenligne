@@ -121,6 +121,60 @@ void main() {
       await fixture.setOnTimeRate(92);
       expect(await rateOnTheRow(), 92);
     });
+
+    test('the yard travels with the row, and the directions with it', () async {
+      final departureId = await fixture.departure(
+        seatLabels: ['1A'],
+        fromNow: const Duration(hours: 11),
+      );
+
+      Future<DepartureRow> row() async => (await catalogue.search(
+        query(date: await fixture.localDateIn(const Duration(hours: 11))),
+      )).firstWhere((d) => d.id == departureId);
+
+      // No terminal named: null, not an invented "Gare routière". A row that
+      // guessed would send somebody to a gate nobody at that company knows.
+      expect((await row()).originStation, isNull);
+
+      final mikalou = await fixture.station(
+        'BZV',
+        'Gare de Mikalou',
+        boardingNotes: 'Entrée par la rue derrière la station Total',
+      );
+      final loandjili = await fixture.station('PNR', 'Gare de Loandjili');
+      await fixture.setStations(
+        departureId,
+        origin: mikalou,
+        destination: loandjili,
+      );
+
+      final named = await row();
+      expect(named.originStation?.name, 'Gare de Mikalou');
+      expect(
+        named.originStation?.boardingNotes,
+        'Entrée par la rue derrière la station Total',
+      );
+      expect(named.destinationStation?.name, 'Gare de Loandjili');
+    });
+
+    test('a rival cannot be named as the yard we leave from', () async {
+      final departureId = await fixture.departure(
+        seatLabels: ['1A'],
+        fromNow: const Duration(hours: 12),
+      );
+      final theirs = await fixture.station(
+        'BZV',
+        'Gare concurrente',
+        onOperator: await fixture.secondOperator(),
+      );
+
+      // The composite foreign key, not a WHERE clause somebody can forget:
+      // a mistyped id cannot put a rival's address on our ticket.
+      await expectLater(
+        fixture.setStations(departureId, origin: theirs),
+        throwsA(anything),
+      );
+    });
   });
 
   group('the local-day question', () {

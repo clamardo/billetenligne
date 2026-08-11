@@ -106,6 +106,7 @@ travel:
     voidedTitle: "Billet annulé"
     voidedBody: "Ce billet a été remboursé ou annulé. Il ne permet plus d'embarquer."
     boardBy: "Embarquement jusqu'à {time}"
+    arrivesAtStation: "Arrivée à {station}"
     # Pendant une perturbation, ce billet EST le canal d'information
     # (08-disruption.md §3.3). Ce que la compagnie a déclaré, où, et ce que
     # cela ouvre comme droit — avant tout le reste sur l'écran.

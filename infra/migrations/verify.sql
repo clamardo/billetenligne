@@ -265,3 +265,59 @@ BEGIN
   END;
 END
 $$;
+
+DO $$
+DECLARE
+  ours   UUID;
+  theirs UUID;
+BEGIN
+  -- ── 15. A coach cannot be said to leave from a rival's terminal ───────────
+  -- Two operators run BZV→PNR and each has a yard in Brazzaville. Nothing in
+  -- a handler should be the only thing standing between a departure and the
+  -- wrong company's address on somebody's ticket, so the constraint says it.
+  INSERT INTO stations (operator_id, city_code, name)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'BZV', 'Gare de Mikalou')
+  RETURNING id INTO ours;
+
+  INSERT INTO stations (operator_id, city_code, name)
+  VALUES ('22222222-2222-2222-2222-222222222222', 'BZV', 'Gare de Mikalou')
+  RETURNING id INTO theirs;
+
+  INSERT INTO seat_layouts (id, operator_id, name, sections, capacity)
+  VALUES ('bbbbbbbb-0000-0000-0000-000000000009',
+          '11111111-1111-1111-1111-111111111111', 'Coach 2+2 (gares)',
+          '[]'::jsonb, 4);
+
+  BEGIN
+    INSERT INTO departures (operator_id, route_id, seat_layout_id, departs_at,
+                            arrives_at, capacity, fare_minor, currency,
+                            origin_station_id)
+    VALUES ('11111111-1111-1111-1111-111111111111',
+            'aaaaaaaa-0000-0000-0000-000000000001',
+            'bbbbbbbb-0000-0000-0000-000000000009',
+            now() + INTERVAL '1 day', now() + INTERVAL '1 day 8 hours',
+            4, 12000, 'XAF', theirs);
+    RAISE EXCEPTION 'FAIL: a departure boards at another operator''s station';
+  EXCEPTION WHEN foreign_key_violation THEN
+    NULL; -- expected
+  END;
+
+  -- And the same operator's own yard is accepted, so the constraint is a
+  -- guard rather than a wall. Removed again immediately: the public boundary
+  -- checks that follow count what a traveller can see, and a departure left
+  -- behind by this block would be counted as one of theirs.
+  INSERT INTO departures (id, operator_id, route_id, seat_layout_id, departs_at,
+                          arrives_at, capacity, fare_minor, currency,
+                          origin_station_id)
+  VALUES ('dddddddd-0000-0000-0000-00000000000f',
+          '11111111-1111-1111-1111-111111111111',
+          'aaaaaaaa-0000-0000-0000-000000000001',
+          'bbbbbbbb-0000-0000-0000-000000000009',
+          now() + INTERVAL '1 day', now() + INTERVAL '1 day 8 hours',
+          4, 12000, 'XAF', ours);
+
+  DELETE FROM departures WHERE id = 'dddddddd-0000-0000-0000-00000000000f';
+
+  RAISE NOTICE 'OK  a departure can only board at its own operator''s station';
+END
+$$;

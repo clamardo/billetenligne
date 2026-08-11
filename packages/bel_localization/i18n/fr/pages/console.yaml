@@ -249,6 +249,22 @@ console:
     minutes: "Minutes"
     active: "Active"
     inactive: "Inactive"
+    # Les gares. Sur le même écran que les lignes, parce que c'est la même
+    # décision : une compagnie qui ouvre Dolisie doit dire de quel portail on
+    # part avant le premier billet.
+    stations: "Gares"
+    stationsHelp: "Le nom du lieu de départ, et comment le trouver. « Brazzaville » ne dit rien à quelqu'un avec une valise à cinq heures et demie du matin."
+    addStation: "Nouvelle gare"
+    noStations: "Aucune gare enregistrée. Les billets n'indiqueront que la ville."
+    city: "Ville"
+    stationName: "Nom de la gare"
+    stationNameHint: "Ex. : Gare de Mikalou"
+    boardingNotes: "Comment s'y rendre"
+    boardingNotesHint: "Ex. : entrée par la rue derrière la station Total, guichet 3"
+    open: "Ouverte"
+    closed: "Fermée"
+    close: "Fermer cette gare"
+    reopen: "Rouvrir cette gare"
   timetable:
     title: "Horaires"
     add: "Nouvel horaire"
@@ -448,6 +464,7 @@ console:
     vehicle.saved: "Car {a1} enregistré."
     vehicle.statusChanged: "Statut mis à jour."
     vehicle.statusAffects: "Statut mis à jour. {a1} départ(s) à venir n'ont plus de car."
+    station.saved: "Gare enregistrée : {a1}"
     route.saved: "Ligne {a1} enregistrée."
     schedule.saved: "Horaire enregistré. Publiez-le pour mettre les départs en vente."
     materialise.created: "{a1} départ(s) créé(s) et en vente."

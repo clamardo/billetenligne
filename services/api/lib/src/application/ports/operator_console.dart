@@ -70,6 +70,40 @@ final class RouteSummary {
   final bool active;
 }
 
+/// A place a coach actually leaves from.
+///
+/// Not a city — a yard, with a name people use and directions they need. In
+/// Brazzaville "la gare de Mikalou" and "le terminus de Kinsoundi" are forty
+/// minutes apart by taxi at six in the morning, and a ticket that says only
+/// "Brazzaville" is a ticket somebody misses their coach over.
+///
+/// [boardingNotes] is where the operator writes what a map cannot: *entrée
+/// par la rue derrière la station Total, guichet 3*. It is printed under the
+/// name on the ticket rather than kept in an agency's head.
+final class StationSummary {
+  const StationSummary({
+    required this.id,
+    required this.cityCode,
+    required this.name,
+    required this.active,
+    this.lat,
+    this.lng,
+    this.boardingNotes,
+  });
+
+  final String id;
+  final String cityCode;
+  final String name;
+
+  /// A closed terminal is deactivated, never deleted: departures sold last
+  /// month still have to say where their passengers were told to stand.
+  final bool active;
+
+  final double? lat;
+  final double? lng;
+  final String? boardingNotes;
+}
+
 final class PatternSummary {
   const PatternSummary({
     required this.id,
@@ -223,6 +257,24 @@ abstract interface class OperatorConsole {
     int? distanceKm,
   });
 
+  /// Every terminal this operator uses, closed ones included: the console
+  /// has to be able to reopen one, and a list that hides them makes that
+  /// impossible without a database.
+  Future<List<StationSummary>> stations(String operatorId);
+
+  /// Opens a terminal, renames one, or closes one. Null when the city is not
+  /// one this market knows.
+  Future<StationSummary?> saveStation({
+    required String operatorId,
+    required String cityCode,
+    required String name,
+    String? id,
+    double? lat,
+    double? lng,
+    String? boardingNotes,
+    bool active = true,
+  });
+
   // ── Timetable ─────────────────────────────────────────────────────────────
 
   Future<List<PatternSummary>> patterns(String operatorId);
@@ -237,6 +289,8 @@ abstract interface class OperatorConsole {
     String? id,
     String? vehicleId,
     DateTime? validUntil,
+    String? originStationId,
+    String? destinationStationId,
   });
 
   /// Turns a timetable into sellable departures, with their seat rows.

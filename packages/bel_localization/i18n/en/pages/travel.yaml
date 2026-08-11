@@ -106,6 +106,7 @@ travel:
     voidedTitle: "Ticket void"
     voidedBody: "This ticket was refunded or cancelled. It no longer boards."
     boardBy: "Board by {time}"
+    arrivesAtStation: "Arrives at {station}"
     # During a disruption this ticket IS the information channel
     # (08-disruption.md §3.3): what the operator declared, where, and what it
     # entitles the passenger to — above everything else on the screen.

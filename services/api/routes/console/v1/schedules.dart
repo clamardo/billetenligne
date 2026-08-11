@@ -135,6 +135,13 @@ Future<Response> _save(
     id: body['id'] as String?,
     vehicleId: body['vehicleId'] as String?,
     validUntil: until is String ? DateTime.tryParse(until) : null,
+    // Where the coach actually leaves from, if the operator has said. Optional
+    // because most companies run one yard per city and naming it every time
+    // would be a field that is always the same answer — and because the
+    // schedule of a company that has not entered its terminals yet must still
+    // be writable.
+    originStationId: body['originStationId'] as String?,
+    destinationStationId: body['destinationStationId'] as String?,
   );
 
   if (saved == null) return _badRequest(trace, 'routeId');

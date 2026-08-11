@@ -1,6 +1,7 @@
 import 'package:bel_domain/bel_domain.dart';
 
 import '../disruption/disruption_dto.dart';
+import '../catalog/station_dto.dart';
 import '../json/json_codec.dart';
 
 final class PassengerDto {
@@ -149,6 +150,8 @@ final class BookingDto {
     this.serviceFee,
     this.paymentCode,
     this.paymentDeadline,
+    this.originStation,
+    this.destinationStation,
   });
 
   final String id;
@@ -161,6 +164,12 @@ final class BookingDto {
   final String operatorName;
   final String originCity;
   final String destinationCity;
+
+  /// Which yard, when the operator has named one. This is the half of a
+  /// ticket a city name cannot carry: "Brazzaville" is not an instruction to
+  /// somebody with a suitcase at half past five in the morning.
+  final StationDto? originStation;
+  final StationDto? destinationStation;
   final DateTime departsAt;
   final DateTime arrivesAt;
   final List<PassengerDto> passengers;
@@ -230,6 +239,8 @@ final class BookingDto {
     'paymentDeadline': paymentDeadline == null
         ? null
         : Wire.instant(paymentDeadline!),
+    'originStation': originStation?.toJson(),
+    'destinationStation': destinationStation?.toJson(),
   });
 
   factory BookingDto.fromJson(Map<String, Object?> json) => BookingDto(
@@ -275,7 +286,12 @@ final class BookingDto {
       json['paymentDeadline'],
       field: 'paymentDeadline',
     ),
+    originStation: _station(json['originStation']),
+    destinationStation: _station(json['destinationStation']),
   );
+
+  static StationDto? _station(Object? raw) =>
+      raw is Map ? StationDto.fromJson(raw.cast<String, Object?>()) : null;
 }
 
 /// A ticket, as delivered to a device.

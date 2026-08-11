@@ -49,6 +49,15 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                    o.on_time_rate,
                    r.origin_city,
                    r.destination_city,
+                   -- Two joins to the same table, which is the honest shape:
+                   -- a departure leaves one yard and arrives at another, and
+                   -- in a two-terminal city they are the fact that decides
+                   -- where somebody stands at half past five.
+                   os.id AS origin_station_id, os.name AS origin_station_name,
+                   os.lat AS origin_lat, os.lng AS origin_lng,
+                   os.boarding_notes AS origin_notes,
+                   ds.id AS destination_station_id,
+                   ds.name AS destination_station_name,
                    d.departs_at,
                    d.arrives_at,
                    d.fare_minor,
@@ -68,6 +77,8 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
               -- mode and the amenities, both captured onto the departure by
               -- migration 0006; the rest of that table is the operator's
               -- business, and the public role has no grant on it at all.
+              LEFT JOIN stations os ON os.id = d.origin_station_id
+              LEFT JOIN stations ds ON ds.id = d.destination_station_id
               LEFT JOIN seats s ON s.departure_id = d.id
              WHERE r.origin_city      = @from
                AND r.destination_city = @to
@@ -82,7 +93,7 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                AND (@mode::text IS NULL OR d.mode = @mode::text)
              GROUP BY d.id, o.trading_name, o.legal_name, o.accent_hue,
                       o.logo_asset, o.on_time_rate, r.origin_city,
-                      r.destination_city
+                      r.destination_city, os.id, ds.id
              ORDER BY d.departs_at
              LIMIT 100
           '''),
@@ -123,8 +134,38 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
       // as a zero: an operator nobody has data about must not read as the
       // worst one on the screen.
       onTimeRate: r['on_time_rate'] as int?,
+      originStation: _station(
+        r['origin_station_id'],
+        r['origin_station_name'],
+        lat: r['origin_lat'] as double?,
+        lng: r['origin_lng'] as double?,
+        notes: r['origin_notes'] as String?,
+      ),
+      destinationStation: _station(
+        r['destination_station_id'],
+        r['destination_station_name'],
+      ),
     );
   }
+
+  /// Null rather than a placeholder when the operator has not said. A row
+  /// that invented "Gare routière" would send somebody to a gate nobody at
+  /// that company has heard of.
+  static StationRef? _station(
+    Object? id,
+    Object? name, {
+    double? lat,
+    double? lng,
+    String? notes,
+  }) => id == null || name == null
+      ? null
+      : StationRef(
+          id: id.toString(),
+          name: name as String,
+          lat: lat,
+          lng: lng,
+          boardingNotes: notes,
+        );
 
   @override
   Future<SeatMapDto?> seatMap(String departureId) =>

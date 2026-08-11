@@ -617,6 +617,37 @@ final class BelApiClient {
     }),
   );
 
+  /// The terminals this operator uses, closed ones included: reopening one
+  /// should not need a database.
+  Future<List<StationDto>> stations() async => Wire.readList(
+    (await _get('/console/v1/stations'))['items'],
+    StationDto.fromJson,
+    field: 'items',
+  );
+
+  /// Opens a yard, corrects one, or closes one. Coordinates travel as a pair
+  /// or not at all — a latitude with no longitude is a marker in the sea.
+  Future<StationDto> saveStation({
+    required String cityCode,
+    required String name,
+    String? id,
+    double? lat,
+    double? lng,
+    String? boardingNotes,
+    bool active = true,
+  }) async => StationDto.fromJson(
+    await _postJson('/console/v1/stations', {
+      'cityCode': cityCode,
+      'name': name,
+      'active': active,
+      if (id != null) 'id': id,
+      if (lat != null) 'lat': lat,
+      if (lng != null) 'lng': lng,
+      if (boardingNotes != null && boardingNotes.isNotEmpty)
+        'boardingNotes': boardingNotes,
+    }),
+  );
+
   Future<List<ScheduleDto>> schedules() async => Wire.readList(
     (await _get('/console/v1/schedules'))['items'],
     ScheduleDto.fromJson,
@@ -632,6 +663,8 @@ final class BelApiClient {
     String? id,
     String? vehicleId,
     DateTime? validUntil,
+    String? originStationId,
+    String? destinationStationId,
   }) async => ScheduleDto.fromJson(
     await _postJson('/console/v1/schedules', {
       'routeId': routeId,
@@ -642,6 +675,9 @@ final class BelApiClient {
       if (id != null) 'id': id,
       if (vehicleId != null) 'vehicleId': vehicleId,
       if (validUntil != null) 'validUntil': _isoDate(validUntil),
+      if (originStationId != null) 'originStationId': originStationId,
+      if (destinationStationId != null)
+        'destinationStationId': destinationStationId,
     }),
   );
 

@@ -386,6 +386,7 @@ void main() {
       bool soldOut = false,
       VoidCallback? onTap,
       String? reliabilityLabel,
+      String? boardingLabel,
     }) => host(
       SizedBox(
         width: 380,
@@ -399,6 +400,7 @@ void main() {
           soldOut: soldOut,
           soldOutLabel: 'Complet',
           reliabilityLabel: reliabilityLabel,
+          boardingLabel: boardingLabel,
           onTap: onTap,
         ),
       ),
@@ -437,6 +439,19 @@ void main() {
       // beside a new operator is a judgement we have no data for.
       await tester.pumpWidget(card());
       expect(find.textContaining("l'heure"), findsNothing);
+    });
+
+    testWidgets('the yard is named on its own line, or not at all', (
+      tester,
+    ) async {
+      await tester.pumpWidget(card(boardingLabel: 'Gare de Mikalou'));
+      expect(find.text('Gare de Mikalou'), findsOneWidget);
+
+      // Silent for the common case. A company with one terminal per city
+      // repeating its name on every row teaches somebody to stop reading the
+      // line that matters on the day one coach leaves from somewhere else.
+      await tester.pumpWidget(card());
+      expect(find.text('Gare de Mikalou'), findsNothing);
     });
   });
 

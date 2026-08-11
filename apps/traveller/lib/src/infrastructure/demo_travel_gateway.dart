@@ -65,6 +65,16 @@ final class DemoTravelGateway implements TravelGateway {
         operatorAccentHue: hue,
         amenities: const ['wifi', 'usb', 'ac'],
         onTimeRate: 88 - i * 3,
+        // Two of the four leave from the other side of town, so the demo
+        // shows the case the label exists for. A fixture where every coach
+        // leaves from the same yard would draw nothing and prove nothing.
+        originStation: StationDto(
+          id: 'demo-st-${i.isEven ? 1 : 2}',
+          name: i.isEven ? 'Gare de Mikalou' : 'Gare de Kinsoundi',
+          boardingNotes: i.isEven
+              ? 'Guichet 3, derrière la station Total'
+              : null,
+        ),
       );
 
       _seats[id] = [

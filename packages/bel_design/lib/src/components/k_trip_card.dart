@@ -30,6 +30,7 @@ final class KTripCard extends StatelessWidget {
     this.accentColor,
     this.amenities = const [],
     this.reliabilityLabel,
+    this.boardingLabel,
     super.key,
   });
 
@@ -60,6 +61,12 @@ final class KTripCard extends StatelessWidget {
   /// null draws **nothing**: a blank is honest, and a 0 % chip beside a new
   /// operator would be a judgement we have no data for.
   final String? reliabilityLabel;
+
+  /// Which yard this coach leaves from, when the operator runs more than one
+  /// in the city. Absent for the great majority of rows — a company with a
+  /// single terminal repeating its name on every result is noise — and
+  /// impossible to miss on the rows where it is the fact that matters.
+  final String? boardingLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -128,6 +135,32 @@ final class KTripCard extends StatelessWidget {
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
+                  // On its own line, with a pin, rather than as a third
+                  // clause of the operator row: somebody comparing two
+                  // coaches that leave from different yards is making a
+                  // journey decision, not reading a label.
+                  if (boardingLabel != null) ...[
+                    SizedBox(height: kilo.space.s1),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.place_outlined,
+                          size: 13,
+                          color: kilo.color.contentMuted,
+                        ),
+                        SizedBox(width: kilo.space.s1),
+                        Expanded(
+                          child: Text(
+                            boardingLabel!,
+                            style: kilo.text.bodySm.copyWith(
+                              color: kilo.color.contentSecondary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   SizedBox(height: kilo.space.s3),
                   Wrap(
                     spacing: kilo.space.s2,

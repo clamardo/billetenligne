@@ -69,6 +69,21 @@ final class UnavailableOperatorConsole implements OperatorConsole {
   }) async => _refuse();
 
   @override
+  Future<List<StationSummary>> stations(String operatorId) async => _refuse();
+
+  @override
+  Future<StationSummary?> saveStation({
+    required String operatorId,
+    required String cityCode,
+    required String name,
+    String? id,
+    double? lat,
+    double? lng,
+    String? boardingNotes,
+    bool active = true,
+  }) async => _refuse();
+
+  @override
   Future<List<PatternSummary>> patterns(String operatorId) async => _refuse();
 
   @override
@@ -82,6 +97,8 @@ final class UnavailableOperatorConsole implements OperatorConsole {
     String? id,
     String? vehicleId,
     DateTime? validUntil,
+    String? originStationId,
+    String? destinationStationId,
   }) async => _refuse();
 
   @override

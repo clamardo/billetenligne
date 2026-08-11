@@ -690,6 +690,37 @@ check "the refusal names the offending field" "yes" \
      -d '{"name":"x","sections":[{"rows":4,"abreast":"2+2"},{"rows":4,"abreast":"zz"}]}' \
      | grep -q 'sections\[1\].abreast' && echo yes || echo no)"
 
+# ── Stations: where a coach actually leaves from ────────────────────────────
+#
+# A yard is public information — a name and directions to a gate — but only an
+# operator may say what theirs are called. The fakes composition has no
+# console, so a well-formed station answers 503: past validation, dead at the
+# database, which is the assertion.
+station_post() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/console/v1/stations" \
+    -H "$OP_AUTH" -H 'Content-Type: application/json' -d "$1"
+}
+
+check "stations are closed to anonymous" "401" \
+  "$(status "$BASE/console/v1/stations")"
+check "a traveller has no stations to manage" "403" \
+  "$(status -H "$AUTH" "$BASE/console/v1/stations")"
+check "a nameless station is refused" "400" \
+  "$(station_post '{"cityCode":"BZV"}')"
+check "a station with no city is refused" "400" \
+  "$(station_post '{"name":"Gare de Mikalou"}')"
+# Half a coordinate is a marker in the Gulf of Guinea, and a map that puts a
+# bus station in the sea is worse than a map with no marker at all.
+check "half a coordinate is refused" "400" \
+  "$(station_post '{"cityCode":"BZV","name":"Mikalou","lat":-4.2}')"
+check "a latitude off the planet is refused" "400" \
+  "$(station_post '{"cityCode":"BZV","name":"Mikalou","lat":-95,"lng":15.2}')"
+check "a well-formed station gets past validation" "503" \
+  "$(station_post '{"cityCode":"BZV","name":"Gare de Mikalou","lat":-4.2,"lng":15.25,"boardingNotes":"Guichet 3"}')"
+check "there is no way to delete a station" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+     "$BASE/console/v1/stations" -H "$OP_AUTH")"
+
 # ── Refund policies refuse what would be unenforceable ──────────────────────
 #
 # ADR-0015 rule 1 is the rule most systems get wrong: a booking is judged by

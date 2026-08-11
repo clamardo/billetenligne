@@ -218,6 +218,7 @@ final class _ScriptedConsole implements ConsoleGateway {
   /// built from these rather than a free-text field, so nobody agrees to
   /// protect a road neither company serves.
   List<RouteDto> routeList = const [];
+  List<StationDto> stationList = const [];
 
   @override
   Future<List<RouteDto>> routes() async => routeList;
@@ -245,6 +246,29 @@ final class _ScriptedConsole implements ConsoleGateway {
     CityDto(code: 'BZV', name: 'Brazzaville'),
     CityDto(code: 'PNR', name: 'Pointe-Noire'),
   ];
+
+  @override
+  Future<List<StationDto>> stations() async => stationList;
+
+  @override
+  Future<StationDto> saveStation({
+    required String cityCode,
+    required String name,
+    String? id,
+    String? boardingNotes,
+    bool active = true,
+  }) async {
+    saved.add('station:$cityCode:$name:$active');
+    final station = StationDto(
+      id: id ?? 'st-new',
+      cityCode: cityCode,
+      name: name,
+      boardingNotes: boardingNotes,
+      active: active,
+    );
+    stationList = [...stationList.where((s) => s.id != station.id), station];
+    return station;
+  }
 
   @override
   Future<List<ScheduleDto>> schedules() async => const [];
@@ -1186,6 +1210,87 @@ void main() {
         find.widgetWithText(KButton, 'Reloger'),
       );
       expect(button.onPressed, isNull);
+    });
+  });
+
+  group('the yards', () {
+    _ScriptedConsole network() =>
+        _ScriptedConsole(capabilities: const ['booking.read', 'route.manage'])
+          ..stationList = const [
+            StationDto(
+              id: 'st-1',
+              cityCode: 'BZV',
+              name: 'Gare de Mikalou',
+              boardingNotes: 'Guichet 3, derrière la station Total',
+            ),
+            StationDto(
+              id: 'st-2',
+              cityCode: 'BZV',
+              name: 'Ancienne gare',
+              active: false,
+            ),
+          ];
+
+    testWidgets('the directions are on the row, not behind a tap', (
+      tester,
+    ) async {
+      await pump(tester, network());
+      await tester.tap(find.text('Lignes'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Gare de Mikalou'), findsOneWidget);
+      // The half of a station that a name cannot carry. Hiding it behind an
+      // edit dialog would mean nobody checks it is still true.
+      expect(find.text('Guichet 3, derrière la station Total'), findsOneWidget);
+    });
+
+    testWidgets('a closed yard is listed as closed, not removed', (
+      tester,
+    ) async {
+      await pump(tester, network());
+      await tester.tap(find.text('Lignes'));
+      await tester.pumpAndSettle();
+
+      // Still there, and still reopenable: deleting it would erase where last
+      // month's passengers were told to stand.
+      expect(find.text('Ancienne gare'), findsOneWidget);
+      expect(find.text('Fermée'), findsOneWidget);
+    });
+
+    testWidgets('closing one is a toggle, and it says what it did', (
+      tester,
+    ) async {
+      final gateway = network();
+      final workspace = await pump(tester, gateway);
+      await tester.tap(find.text('Lignes'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Fermer cette gare'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('station:BZV:Gare de Mikalou:false'));
+      expect(workspace.notice, 'station.saved|Gare de Mikalou');
+    });
+
+    testWidgets('opening one asks for the city, the name and the way in', (
+      tester,
+    ) async {
+      final gateway = network();
+      await pump(tester, gateway);
+      await tester.tap(find.text('Lignes'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Nouvelle gare'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Ex. : Gare de Mikalou'),
+        'Gare de Kinsoundi',
+      );
+      await tester.tap(find.text('Enregistrer'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('station:BZV:Gare de Kinsoundi:true'));
     });
   });
 

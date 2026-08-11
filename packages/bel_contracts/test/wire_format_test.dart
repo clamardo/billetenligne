@@ -1135,6 +1135,83 @@ void main() {
       expect(back.operatorId, 'op-1');
     });
   });
+
+  group('the yard', () {
+    test('a terminal survives the round trip, directions included', () {
+      const sent = StationDto(
+        id: 'st-1',
+        cityCode: 'BZV',
+        name: 'Gare de Mikalou',
+        lat: -4.2,
+        lng: 15.25,
+        boardingNotes: 'Entrée par la rue derrière la station Total',
+      );
+
+      final back = StationDto.fromJson(sent.toJson());
+
+      expect(back.name, 'Gare de Mikalou');
+      expect(back.cityCode, 'BZV');
+      expect(back.boardingNotes, sent.boardingNotes);
+      expect(back.hasCoordinates, isTrue);
+      expect(back.active, isTrue);
+    });
+
+    test('a ticket carries the yard without repeating the city', () {
+      final booking = BookingDto(
+        id: 'b-1',
+        ref: 'BEL-7QK4M2',
+        state: 'confirmed',
+        departureId: 'd-1',
+        operatorName: 'Océan du Nord',
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        departsAt: DateTime.utc(2026, 8, 20, 5),
+        arrivesAt: DateTime.utc(2026, 8, 20, 13),
+        passengers: const [],
+        total: const Money(12000, Currency.xaf),
+        createdAt: DateTime.utc(2026, 8, 19),
+        originStation: const StationDto(
+          id: 'st-1',
+          name: 'Gare de Mikalou',
+          boardingNotes: 'Guichet 3',
+        ),
+      );
+
+      final back = BookingDto.fromJson(booking.toJson());
+
+      expect(back.originStation?.name, 'Gare de Mikalou');
+      expect(back.originStation?.boardingNotes, 'Guichet 3');
+      // The journey already says Brazzaville. Repeating it under the yard's
+      // name is noise on a small screen, so it never leaves the server.
+      expect(back.originStation?.cityCode, isNull);
+      expect(back.destinationStation, isNull);
+    });
+
+    test('a search row with no terminal named says nothing at all', () {
+      final row = DepartureSummaryDto(
+        id: 'd-1',
+        operatorId: 'op-1',
+        operatorName: 'Océan du Nord',
+        mode: 'bus',
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        departsAt: DateTime.utc(2026, 8, 20, 5),
+        arrivesAt: DateTime.utc(2026, 8, 20, 13),
+        fare: const Money(12000, Currency.xaf),
+        serviceFee: const Money(500, Currency.xaf),
+        seatsAvailable: 12,
+        capacity: 52,
+        seatSelectionEnabled: true,
+      );
+
+      final json = row.toJson();
+
+      // Absent rather than null: `Wire.compact` keeps the payload small, and
+      // most rows in this market will never name a yard.
+      expect(json.containsKey('originStation'), isFalse);
+      expect(DepartureSummaryDto.fromJson(json).originStation, isNull);
+    });
+  });
 }
 
 /// Reads the string constants declared on [ErrorCode] straight from source,

@@ -162,6 +162,8 @@ final class TripSummary {
     required this.departsAt,
     required this.arrivesAt,
     required this.routeCode,
+    this.originStation,
+    this.destinationStation,
   });
 
   final String operatorName;
@@ -171,6 +173,35 @@ final class TripSummary {
   final DateTime departsAt;
   final DateTime arrivesAt;
   final String routeCode;
+
+  /// Which yard the coach leaves from and arrives at, when the operator has
+  /// said. This is the half of a ticket that a city name cannot carry: in
+  /// Brazzaville, Mikalou and Kinsoundi are forty minutes apart by taxi at
+  /// six in the morning.
+  final BoardingPoint? originStation;
+  final BoardingPoint? destinationStation;
+}
+
+// The coach's plate is deliberately absent. It lives on `vehicles`, which the
+// public role has no grant on at all — the same boundary the search catalogue
+// keeps — and copying it onto the departure would drift the first time a
+// dispatcher swaps a broken-down coach for a rescue one. An operator reads it
+// on the manifest, where the fleet is their own business.
+
+/// A terminal, as much of one as a ticket prints.
+final class BoardingPoint {
+  const BoardingPoint({
+    required this.id,
+    required this.name,
+    this.boardingNotes,
+  });
+
+  final String id;
+  final String name;
+
+  /// What a map cannot say: *entrée par la rue derrière la station Total,
+  /// guichet 3*.
+  final String? boardingNotes;
 }
 
 /// Turning inventory into money, and money into a ticket.

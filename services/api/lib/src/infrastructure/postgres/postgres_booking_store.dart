@@ -672,10 +672,17 @@ final class PostgresBookingStore implements BookingStore {
       Sql.named('''
         SELECT d.departs_at, d.arrives_at,
                r.code AS route_code, r.origin_city, r.destination_city,
-               o.code AS operator_code, o.legal_name AS operator_name
+               o.code AS operator_code, o.legal_name AS operator_name,
+               os.id AS origin_station_id, os.name AS origin_station,
+               os.boarding_notes AS origin_notes,
+               ds.id AS destination_station_id,
+               ds.name AS destination_station,
+               ds.boarding_notes AS destination_notes
           FROM departures d
           JOIN routes r ON r.id = d.route_id
           JOIN operators o ON o.id = d.operator_id
+          LEFT JOIN stations os ON os.id = d.origin_station_id
+          LEFT JOIN stations ds ON ds.id = d.destination_station_id
          WHERE d.id = @id
       '''),
       parameters: {'id': TypedValue(Type.uuid, departureId)},
@@ -690,8 +697,33 @@ final class PostgresBookingStore implements BookingStore {
       departsAt: row['departs_at'] as DateTime,
       arrivesAt: row['arrives_at'] as DateTime,
       routeCode: row['route_code'] as String,
+      originStation: _boardingPoint(
+        row['origin_station_id'],
+        row['origin_station'],
+        row['origin_notes'],
+      ),
+      destinationStation: _boardingPoint(
+        row['destination_station_id'],
+        row['destination_station'],
+        row['destination_notes'],
+      ),
     );
   }
+
+  /// Null when the operator has not named a terminal, rather than a
+  /// placeholder: a ticket that says "Gare routière" sends somebody to a gate
+  /// nobody at that company has heard of.
+  static BoardingPoint? _boardingPoint(
+    Object? id,
+    Object? name,
+    Object? notes,
+  ) => name == null
+      ? null
+      : BoardingPoint(
+          id: id.toString(),
+          name: name as String,
+          boardingNotes: notes as String?,
+        );
 
   /// A reference is generated here rather than by the database, because
   /// `BookingRef` owns the alphabet and the length and a `DEFAULT` expression

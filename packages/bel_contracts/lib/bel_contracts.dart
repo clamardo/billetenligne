@@ -24,6 +24,7 @@ export 'src/booking/cancellation_dto.dart';
 export 'src/booking/change_dto.dart';
 export 'src/catalog/city_dto.dart';
 export 'src/catalog/seat_map_dto.dart';
+export 'src/catalog/station_dto.dart';
 export 'src/catalog/trip_dto.dart';
 export 'src/catalog/vitrine_dto.dart';
 export 'src/common/headers.dart';

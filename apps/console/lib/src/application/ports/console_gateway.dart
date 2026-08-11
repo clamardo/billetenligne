@@ -141,6 +141,18 @@ abstract interface class ConsoleGateway {
 
   Future<List<CityDto>> cities();
 
+  /// The terminals this operator uses, closed ones included: reopening one
+  /// should not need a database.
+  Future<List<StationDto>> stations();
+
+  Future<StationDto> saveStation({
+    required String cityCode,
+    required String name,
+    String? id,
+    String? boardingNotes,
+    bool active,
+  });
+
   Future<List<ScheduleDto>> schedules();
 
   Future<ScheduleDto> saveSchedule({

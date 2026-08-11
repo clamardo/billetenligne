@@ -51,6 +51,8 @@ final class DepartureRow {
     this.onTimeRate,
     this.amenities = const [],
     this.trackingTier,
+    this.originStation,
+    this.destinationStation,
   });
 
   final String id;
@@ -73,6 +75,12 @@ final class DepartureRow {
   final String? operatorAccentHue;
   final String? operatorLogoAsset;
   final int? onTimeRate;
+
+  /// Which yard, when the operator has said. Null is common and honest — most
+  /// companies run one terminal per city, and a name invented for the row
+  /// would be a name nobody at the gate recognises.
+  final StationRef? originStation;
+  final StationRef? destinationStation;
   final List<String> amenities;
   final String? trackingTier;
 }
@@ -91,4 +99,25 @@ abstract interface class DepartureCatalogue {
   /// somebody holding a ticket for it needs to see what happened to their
   /// coach.
   Future<SeatMapDto?> seatMap(String departureId);
+}
+
+/// A terminal, as much of it as a results row and a ticket need.
+///
+/// Deliberately not the console's `StationSummary`: a traveller has no use
+/// for whether a yard is still open — they are only ever shown open ones —
+/// and every field here is printed.
+final class StationRef {
+  const StationRef({
+    required this.id,
+    required this.name,
+    this.lat,
+    this.lng,
+    this.boardingNotes,
+  });
+
+  final String id;
+  final String name;
+  final double? lat;
+  final double? lng;
+  final String? boardingNotes;
 }

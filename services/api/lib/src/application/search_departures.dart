@@ -111,5 +111,21 @@ final class SearchDepartures {
     onTimeRate: row.onTimeRate,
     amenities: row.amenities,
     trackingTier: row.trackingTier,
+    originStation: _station(row.originStation),
+    destinationStation: _station(row.destinationStation),
   );
+
+  /// The catalogue's own `StationRef`, on the wire. Two types rather than one
+  /// shared across the boundary, because the console's station carries an
+  /// `active` flag that means nothing to a traveller — they are only ever
+  /// shown open ones.
+  static StationDto? _station(StationRef? s) => s == null
+      ? null
+      : StationDto(
+          id: s.id,
+          name: s.name,
+          lat: s.lat,
+          lng: s.lng,
+          boardingNotes: s.boardingNotes,
+        );
 }

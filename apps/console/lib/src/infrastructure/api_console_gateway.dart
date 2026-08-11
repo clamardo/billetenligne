@@ -102,6 +102,24 @@ final class ApiConsoleGateway implements ConsoleGateway {
     durationMinutes: durationMinutes,
   );
 
+  @override
+  Future<List<StationDto>> stations() => _client.stations();
+
+  @override
+  Future<StationDto> saveStation({
+    required String cityCode,
+    required String name,
+    String? id,
+    String? boardingNotes,
+    bool active = true,
+  }) => _client.saveStation(
+    cityCode: cityCode,
+    name: name,
+    id: id,
+    boardingNotes: boardingNotes,
+    active: active,
+  );
+
   /// The same public endpoint the traveller app reads. An operator picks
   /// endpoints from the cities the platform serves, not from free text — a
   /// typed city code is a route nobody can search for.

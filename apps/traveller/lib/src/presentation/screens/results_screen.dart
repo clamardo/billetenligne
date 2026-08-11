@@ -88,6 +88,10 @@ final class ResultsScreen extends StatelessWidget {
                     : context.t('travel.results.onTime', {
                         'rate': '${d.onTimeRate}',
                       }),
+                // Only when it is a choice. A company with one yard per city
+                // would otherwise print the same line on every row, and a
+                // label that is always there is a label nobody reads.
+                boardingLabel: _boardingLabel(departures, d),
                 onTap: () => onSelect(d),
               );
             },
@@ -147,6 +151,28 @@ final class ResultsScreen extends StatelessWidget {
       if (accent.name == hue) return accent.color;
     }
     return null;
+  }
+
+  /// The yard's name, but only when this list actually offers a choice of
+  /// yards.
+  ///
+  /// One terminal per city is the normal case, and printing "Gare de Mikalou"
+  /// on all eleven rows teaches somebody to stop reading the line — which is
+  /// exactly the line that matters on the day one coach leaves from
+  /// Kinsoundi instead. Compared across the whole result set rather than
+  /// against the operator's own rows: a traveller choosing between two
+  /// companies is choosing between two addresses too.
+  static String? _boardingLabel(
+    List<DepartureSummaryDto> all,
+    DepartureSummaryDto d,
+  ) {
+    final name = d.originStation?.name;
+    if (name == null) return null;
+    final distinct = {
+      for (final other in all)
+        if (other.originStation != null) other.originStation!.name,
+    };
+    return distinct.length > 1 ? name : null;
   }
 
   static List<IconData> _amenityIcons(List<String> amenities) => [

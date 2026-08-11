@@ -248,6 +248,22 @@ console:
     minutes: "Minutes"
     active: "Active"
     inactive: "Inactive"
+    # The yards. On the same screen as the roads, because it is the same
+    # decision: a company opening Dolisie has to say which gate it leaves
+    # from before the first ticket is printed.
+    stations: "Stations"
+    stationsHelp: "What the departure point is called, and how to find it. \"Brazzaville\" tells somebody with a suitcase nothing at half past five in the morning."
+    addStation: "New station"
+    noStations: "No stations recorded. Tickets will name the city only."
+    city: "City"
+    stationName: "Station name"
+    stationNameHint: "e.g. Gare de Mikalou"
+    boardingNotes: "How to find it"
+    boardingNotesHint: "e.g. entrance on the street behind the Total garage, desk 3"
+    open: "Open"
+    closed: "Closed"
+    close: "Close this station"
+    reopen: "Reopen this station"
   timetable:
     title: "Timetables"
     add: "New timetable"
@@ -447,6 +463,7 @@ console:
     vehicle.saved: "Coach {a1} saved."
     vehicle.statusChanged: "Status updated."
     vehicle.statusAffects: "Status updated. {a1} future departure(s) now have no coach."
+    station.saved: "Station saved: {a1}"
     route.saved: "Route {a1} saved."
     schedule.saved: "Timetable saved. Publish it to put departures on sale."
     materialise.created: "{a1} departure(s) created and on sale."

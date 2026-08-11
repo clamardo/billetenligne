@@ -1,6 +1,7 @@
 import 'package:bel_domain/bel_domain.dart';
 
 import '../json/json_codec.dart';
+import 'station_dto.dart';
 
 /// One sellable departure, as a search result row.
 ///
@@ -26,6 +27,8 @@ final class DepartureSummaryDto {
     this.onTimeRate,
     this.amenities = const [],
     this.trackingTier,
+    this.originStation,
+    this.destinationStation,
   });
 
   final String id;
@@ -66,6 +69,13 @@ final class DepartureSummaryDto {
   /// `gps`, `checkpoint` or `schedule` (ADR-0014). Absent means no tracking.
   final String? trackingTier;
 
+  /// Which yard, when the operator has named one. Null is common and honest:
+  /// most companies run a single terminal per city, and inventing "Gare
+  /// routière" for the row would send somebody to a gate nobody at that
+  /// company has heard of.
+  final StationDto? originStation;
+  final StationDto? destinationStation;
+
   Duration get duration => arrivesAt.difference(departsAt);
   Money get total => fare + serviceFee;
   bool get isSoldOut => seatsAvailable <= 0;
@@ -89,6 +99,8 @@ final class DepartureSummaryDto {
     'onTimeRate': onTimeRate,
     'amenities': amenities.isEmpty ? null : amenities,
     'trackingTier': trackingTier,
+    'originStation': originStation?.toJson(),
+    'destinationStation': destinationStation?.toJson(),
   });
 
   factory DepartureSummaryDto.fromJson(Map<String, Object?> json) =>
@@ -117,7 +129,12 @@ final class DepartureSummaryDto {
         onTimeRate: json['onTimeRate'] as int?,
         amenities: (json['amenities'] as List?)?.cast<String>() ?? const [],
         trackingTier: json['trackingTier'] as String?,
+        originStation: _station(json['originStation']),
+        destinationStation: _station(json['destinationStation']),
       );
+
+  static StationDto? _station(Object? raw) =>
+      raw is Map ? StationDto.fromJson(raw.cast<String, Object?>()) : null;
 }
 
 /// Search request. Sent as query parameters; this type keeps the names in one

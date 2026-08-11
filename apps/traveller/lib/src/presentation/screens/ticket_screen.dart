@@ -158,6 +158,58 @@ class _TicketScreenState extends State<TicketScreen> {
               textAlign: TextAlign.center,
             ),
 
+            // Where to stand, above the QR rather than below it. This is the
+            // line somebody reads the night before and again in a taxi, and
+            // "Brazzaville" is not an instruction at half past five in the
+            // morning. The directions the operator wrote come with it,
+            // because a yard's name is only half of finding it.
+            if (booking.originStation != null) ...[
+              SizedBox(height: kilo.space.s3),
+              KCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.place_outlined,
+                          size: 16,
+                          color: kilo.color.contentSecondary,
+                        ),
+                        SizedBox(width: kilo.space.s2),
+                        Expanded(
+                          child: Text(
+                            booking.originStation!.name,
+                            style: kilo.text.h3,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (booking.originStation!.boardingNotes != null) ...[
+                      SizedBox(height: kilo.space.s1),
+                      Text(
+                        booking.originStation!.boardingNotes!,
+                        style: kilo.text.bodySm.copyWith(
+                          color: kilo.color.contentSecondary,
+                        ),
+                      ),
+                    ],
+                    if (booking.destinationStation != null) ...[
+                      SizedBox(height: kilo.space.s2),
+                      Text(
+                        context.t('travel.ticket.arrivesAtStation', {
+                          'station': booking.destinationStation!.name,
+                        }),
+                        style: kilo.text.bodySm.copyWith(
+                          color: kilo.color.contentSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+
             SizedBox(height: kilo.space.s4),
 
             _QrCard(payload: ticket.qrPayload, dimmed: ticket.isVoid),

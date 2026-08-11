@@ -250,21 +250,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 468 tests
+         packages/bel_contracts packages/bel_crypto     # 471 tests
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 214 tests
-cd packages/bel_design     && flutter test  # 66 component and contrast tests
+cd packages/bel_design     && flutter test  # 67 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
-cd apps/traveller && flutter test        # 158 app tests
-cd apps/console   && flutter test        # 89 console tests
+cd apps/traveller && flutter test        # 159 app tests
+cd apps/console   && flutter test        # 93 console tests
 cd apps/admin     && flutter test        # 28 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 350 files
-./infra/migrations/check.sh              # 31 schema guarantees
-./tool/integration.sh                    # 327 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 287 checks, incl. the Dart client
+dart run tool/check_layers.dart          # the onion rule, 352 files
+./infra/migrations/check.sh              # 33 schema guarantees
+./tool/integration.sh                    # 329 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 295 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -273,8 +273,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,089 tests in total**, plus 287 smoke checks, 31 executed schema guarantees,
-327 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,098 tests in total**, plus 295 smoke checks, 33 executed schema guarantees,
+329 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -293,6 +293,53 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+**Stations become real** — where a coach actually leaves from.
+
+The table has existed since the first migration and nothing had ever read it.
+A traveller saw "Brazzaville → Pointe-Noire" and learned nothing about which
+of an operator's yards to stand in — and in this market that is the fact an
+agency's telephone line repeats more than any other. It also blocks the next
+piece of work: a passenger who missed the 06:00 can often be put on the 09:30,
+and in a two-terminal city the 09:30 leaves from the other one. Being unable
+to say *which* makes that transfer untellable.
+
+**A station belongs to exactly one operator, and that was a bug fix.**
+`operator_id` was nullable, apparently for a shared *gare routière* — but the
+tenant policy reads `operator_id = app_tenant_id()`, which is NULL and
+therefore false for such a row. A shared yard was invisible to every company
+sharing it. One row per company is how the desks, the staff scoping and the
+tills already work.
+
+**A coach cannot be said to leave from a rival's terminal**, by composite
+foreign key onto `(id, operator_id)` rather than by a WHERE clause somebody
+forgets, with an executed guarantee that inserts a competitor's station id and
+expects the refusal.
+
+**The terminal is captured onto the departure**, exactly as the seat layout
+is. Renaming or closing a yard next month must not rewrite where a coach that
+is already sold was said to leave from — and for the same reason a closed yard
+is deactivated rather than deleted. The operator keeps reading it; the public
+policy stops offering it, narrowed rather than widened from what 0008 opened.
+
+**The row names the yard only when the list offers a choice of yards.** One
+terminal per city is the normal case, and printing the same line on eleven
+rows teaches somebody to stop reading the line that matters on the day one
+coach leaves from Kinsoundi instead. On the ticket it is unconditional and
+above the QR, with the operator's own directions under it: a yard's name is
+only half of finding it.
+
+What it cost: one migration, 2 executed schema guarantees, 2 integration
+tests, 3 contract tests, 4 console widget tests, 1 traveller test, 1 design
+test, 8 smoke checks. What it did not build: the **coach's registration on the
+traveller's ticket**. It lives on `vehicles`, which the public role has no
+grant on at all — the same boundary the search catalogue keeps — and copying
+it onto the departure would drift the first time a dispatcher swaps a
+broken-down coach for a rescue one. An operator reads it on the manifest.
+
+---
+
+## What the funnel push changed, and what it cost
 
 **The funnel** (`04-payments.md` §8) — where people leave, on a screen, at last.
 

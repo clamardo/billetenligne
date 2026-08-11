@@ -129,6 +129,17 @@ void main() {
       // server, and drawn only where there is a figure to draw.
       expect(find.textContaining("à l'heure"), findsWidgets);
     });
+
+    testWidgets('the yard is on the row when the yards differ', (tester) async {
+      await pumpApp(tester);
+      await searchBzvToPnr(tester);
+
+      // Two of the demo coaches leave from the other side of Brazzaville.
+      // That difference is a journey decision, so it is on the row rather
+      // than three taps away on a confirmation screen.
+      expect(find.textContaining('Gare de Mikalou'), findsWidgets);
+      expect(find.textContaining('Gare de Kinsoundi'), findsWidgets);
+    });
   });
 
   group('the whole funnel', () {

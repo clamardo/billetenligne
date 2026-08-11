@@ -202,6 +202,10 @@ final class ConsoleWorkspace {
       case ConsoleSection.network:
         routes = await _gateway.routes();
         cities = await _gateway.cities();
+        // The yards live on the same screen as the roads, because they are
+        // the same decision: a company that opens a line to Dolisie has to
+        // say which gate it leaves from before the first ticket is printed.
+        stations = await _gateway.stations();
       case ConsoleSection.policies:
         final loaded = await _gateway.refundPolicies();
         policies = loaded.items;
@@ -592,6 +596,28 @@ final class ConsoleWorkspace {
     _notice = affected.isEmpty
         ? 'vehicle.statusChanged'
         : 'vehicle.statusAffects|${affected.length}';
+    await _loadSection();
+  });
+
+  /// Every terminal, open and closed. The console shows both — a yard that
+  /// reopens for the dry season should not need a database.
+  List<StationDto> stations = const [];
+
+  Future<void> saveStation({
+    required String cityCode,
+    required String name,
+    String? id,
+    String? boardingNotes,
+    bool active = true,
+  }) => _run(() async {
+    await _gateway.saveStation(
+      cityCode: cityCode,
+      name: name,
+      id: id,
+      boardingNotes: boardingNotes,
+      active: active,
+    );
+    _notice = 'station.saved|$name';
     await _loadSection();
   });
 

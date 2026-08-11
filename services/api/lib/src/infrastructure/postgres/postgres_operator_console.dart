@@ -319,6 +319,79 @@ final class PostgresOperatorConsole implements OperatorConsole {
     );
   });
 
+  // ── Stations ──────────────────────────────────────────────────────────────
+
+  static const _stationColumns = '''
+    id, city_code, name, lat, lng, boarding_notes, active
+  ''';
+
+  static StationSummary _stationFrom(Map<String, dynamic> row) =>
+      StationSummary(
+        id: row['id'].toString(),
+        cityCode: row['city_code'] as String,
+        name: row['name'] as String,
+        active: row['active'] as bool,
+        lat: row['lat'] as double?,
+        lng: row['lng'] as double?,
+        boardingNotes: row['boarding_notes'] as String?,
+      );
+
+  @override
+  Future<List<StationSummary>> stations(String operatorId) =>
+      _db.transaction(DbScope.tenant(operatorId), (tx) async {
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT $_stationColumns FROM stations
+             WHERE operator_id = @operator
+             ORDER BY city_code, active DESC, name
+          '''),
+          parameters: {'operator': TypedValue(Type.uuid, operatorId)},
+        );
+        return [for (final row in rows) _stationFrom(row.toColumnMap())];
+      });
+
+  @override
+  Future<StationSummary?> saveStation({
+    required String operatorId,
+    required String cityCode,
+    required String name,
+    String? id,
+    double? lat,
+    double? lng,
+    String? boardingNotes,
+    bool active = true,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // Keyed on `(operator, city, name)` rather than on the id, so an agency
+    // that types the same yard in twice gets one row and its own edit —
+    // which is what the unique constraint would otherwise turn into a 500.
+    final rows = await tx.execute(
+      Sql.named('''
+        INSERT INTO stations
+          (id, operator_id, city_code, name, lat, lng, boarding_notes, active)
+        VALUES (COALESCE(@id, gen_random_uuid()), @operator, @city, @name,
+                @lat, @lng, @notes, @active)
+        ON CONFLICT (operator_id, city_code, name) DO UPDATE
+           SET lat = EXCLUDED.lat,
+               lng = EXCLUDED.lng,
+               boarding_notes = EXCLUDED.boarding_notes,
+               active = EXCLUDED.active
+        RETURNING $_stationColumns
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, id),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'city': TypedValue(Type.text, cityCode),
+        'name': TypedValue(Type.text, name),
+        'lat': TypedValue(Type.double, lat),
+        'lng': TypedValue(Type.double, lng),
+        'notes': TypedValue(Type.text, boardingNotes),
+        'active': TypedValue(Type.boolean, active),
+      },
+    );
+
+    return _stationFrom(rows.first.toColumnMap());
+  });
+
   // ── Timetable ─────────────────────────────────────────────────────────────
 
   @override
@@ -374,21 +447,27 @@ final class PostgresOperatorConsole implements OperatorConsole {
     String? id,
     String? vehicleId,
     DateTime? validUntil,
+    String? originStationId,
+    String? destinationStationId,
   }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
     final rows = await tx.execute(
       Sql.named('''
         INSERT INTO departure_patterns
           (id, operator_id, route_id, rrule, departure_time,
-           default_vehicle_id, fare_minor, currency, valid_from, valid_until)
+           default_vehicle_id, fare_minor, currency, valid_from, valid_until,
+           origin_station_id, destination_station_id)
         VALUES (COALESCE(@id, gen_random_uuid()), @operator, @route, @rrule,
-                @time::time, @vehicle, @fare, @currency, @from, @until)
+                @time::time, @vehicle, @fare, @currency, @from, @until,
+                @originStation, @destinationStation)
         ON CONFLICT (id) DO UPDATE
            SET rrule = EXCLUDED.rrule,
                departure_time = EXCLUDED.departure_time,
                default_vehicle_id = EXCLUDED.default_vehicle_id,
                fare_minor = EXCLUDED.fare_minor,
                valid_from = EXCLUDED.valid_from,
-               valid_until = EXCLUDED.valid_until
+               valid_until = EXCLUDED.valid_until,
+               origin_station_id = EXCLUDED.origin_station_id,
+               destination_station_id = EXCLUDED.destination_station_id
         RETURNING id, active
       '''),
       parameters: {
@@ -404,6 +483,10 @@ final class PostgresOperatorConsole implements OperatorConsole {
         'currency': TypedValue(Type.text, fare.currency.code),
         'from': TypedValue(Type.date, validFrom),
         'until': TypedValue(Type.date, validUntil),
+        // The composite foreign key refuses another operator's yard, so a
+        // mistyped id is a 500 rather than a ticket sent to a rival's gate.
+        'originStation': TypedValue(Type.uuid, originStationId),
+        'destinationStation': TypedValue(Type.uuid, destinationStationId),
       },
     );
 
@@ -447,6 +530,7 @@ final class PostgresOperatorConsole implements OperatorConsole {
                to_char(p.departure_time, 'HH24:MI') AS departure_time,
                p.fare_minor, p.currency::text AS currency, p.valid_from,
                p.valid_until, p.active, p.default_vehicle_id,
+               p.origin_station_id, p.destination_station_id,
                r.duration_minutes,
                v.seat_layout_id, v.status AS vehicle_status,
                v.amenities, v.mode,
@@ -553,10 +637,11 @@ final class PostgresOperatorConsole implements OperatorConsole {
           INSERT INTO departures
             (operator_id, route_id, pattern_id, vehicle_id, seat_layout_id,
              departs_at, arrives_at, capacity, fare_minor, currency,
-             mode, amenities)
+             mode, amenities, origin_station_id, destination_station_id)
           SELECT @operator, @route, @pattern, @vehicle, @layout,
                  ts, ts + make_interval(mins => @duration),
-                 @capacity, @fare, @currency, @mode, @amenities
+                 @capacity, @fare, @currency, @mode, @amenities,
+                 @originStation, @destinationStation
             FROM (SELECT ((@date::date + @time::time) AT TIME ZONE @tz) AS ts) t
            WHERE NOT EXISTS (
                    SELECT 1 FROM departures d
@@ -583,6 +668,18 @@ final class PostgresOperatorConsole implements OperatorConsole {
           'amenities': TypedValue(Type.textArray, [
             for (final a in (p['amenities'] as List?) ?? const []) '$a',
           ]),
+          // Copied onto the departure rather than read through the pattern
+          // whenever anybody asks, for the same reason the seat layout is:
+          // renaming or closing a terminal next month must not rewrite where
+          // a coach that is already sold was said to leave from.
+          'originStation': TypedValue(
+            Type.uuid,
+            p['origin_station_id']?.toString(),
+          ),
+          'destinationStation': TypedValue(
+            Type.uuid,
+            p['destination_station_id']?.toString(),
+          ),
         },
       );
 

@@ -1203,3 +1203,56 @@ BEGIN
   RAISE NOTICE 'OK  a traveller reads their own change order and writes none';
 END
 $$;
+
+-- ── 21. A closed terminal is not an address a stranger is sent to ───────────
+--
+-- The operator keeps reading it — last month's departures still have to say
+-- where their passengers were told to stand — but the public surface stops
+-- offering a yard nobody boards at any more.
+DO $$
+DECLARE
+  open_id   UUID;
+  closed_id UUID;
+  seen      INT;
+BEGIN
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+
+  INSERT INTO stations (operator_id, city_code, name, active)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'BZV', 'Gare de Kinsoundi', TRUE)
+  RETURNING id INTO open_id;
+
+  INSERT INTO stations (operator_id, city_code, name, active)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'BZV', 'Ancienne gare', FALSE)
+  RETURNING id INTO closed_id;
+
+  RESET ROLE;
+  -- Platform back off before the traveller looks. `app_is_platform()` is a
+  -- permissive OR in the tenant policy, so leaving it on would have this
+  -- block read as our own back office and pass for the wrong reason.
+  PERFORM set_config('app.platform', 'off', true);
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+
+  SELECT count(*) INTO seen FROM stations WHERE id = open_id;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: a traveller cannot read an open terminal';
+  END IF;
+
+  SELECT count(*) INTO seen FROM stations WHERE id = closed_id;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: a closed terminal is offered to a traveller';
+  END IF;
+
+  BEGIN
+    INSERT INTO stations (operator_id, city_code, name)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'BZV', 'Gare fantome');
+    RAISE EXCEPTION 'FAIL: a traveller invented a station';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  a traveller reads open terminals, not closed ones, and writes none';
+END
+$$;
