@@ -1,0 +1,30 @@
+# La page du suiveur (ADR-0014 §2) : une page web de 6 Ko, ouverte par
+# quelqu'un qui n'a pas l'application et n'en veut pas. Elle répond à une
+# seule question — « quand dois-je partir pour la gare ? » — et elle dit
+# toujours ce qu'elle sait vraiment.
+follow:
+  title: "Suivre le voyage"
+  headline: "{origin} → {destination}"
+  operator: "avec {operator}"
+  departure: "Départ prévu {time}"
+  revised: "Nouveau départ prévu {time}"
+  arrival: "Arrivée prévue {time}"
+  # Le niveau de confiance est écrit, jamais lissé. Un point net sur une carte
+  # à partir d'une estimation serait la seule malhonnêteté de ce produit.
+  tier:
+    gps: "Position il y a {minutes} min"
+    checkpoint: "Passé {place} à {time}"
+    schedule: "Estimation d'après l'horaire — aucune position n'a été signalée"
+  status:
+    scheduled: "À l'heure, d'après l'horaire"
+    boarding: "Embarquement"
+    departed: "En route"
+    arrived: "Arrivé"
+    cancelled: "Départ annulé"
+  disrupted: "{kind} signalé par {operator}"
+  disruptedNote: "Message de la compagnie : {note}"
+  gone: "Ce lien n'est plus valable"
+  goneBody: "Le voyageur l'a retiré, ou le voyage est terminé depuis plus de six heures. Demandez-lui un nouveau lien."
+  refreshed: "Actualisé à {time}"
+  privacy: "Cette page suit un car, pas une personne. Elle n'affiche ni le siège, ni le prix, ni le numéro du voyageur."
+  cta: "Réserver votre place sur BilletEnLigne"

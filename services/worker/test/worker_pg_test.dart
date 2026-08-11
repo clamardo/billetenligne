@@ -84,8 +84,12 @@ void main() {
   });
 
   var seq = 0;
+
+  /// Padded, and deliberately: a booking ref is cut to six characters below,
+  /// and a clock that happens to land on a low microsecond count produced a
+  /// shorter string and a fixture that failed perhaps one run in ten.
   String unique(String p) =>
-      '$p${++seq}${DateTime.now().microsecondsSinceEpoch % 10000}';
+      '$p${++seq}${(DateTime.now().microsecondsSinceEpoch % 10000).toString().padLeft(4, '0')}';
 
   Future<String> aDeparture() async {
     // Every helper call makes its own route, so the board can be filtered

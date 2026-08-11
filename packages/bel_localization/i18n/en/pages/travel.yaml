@@ -148,6 +148,28 @@ travel:
     claimCode: "Collection code"
     claimHelp: "Write it down. It is also sent to you by SMS."
     done: "Back to my tickets"
+  # Sharing a trip (ADR-0014 §2). The use case is specific and very common
+  # here: a relative travelling the 512 km of the RN1, and somebody at the far
+  # end deciding when to leave for the station. Today that costs phone credit
+  # and repeated calls.
+  share:
+    action: "Share my trip"
+    title: "Share my trip"
+    lead: "{origin} → {destination}, {date}. Send a link to somebody waiting for you."
+    whatTheySee: "What they will see"
+    seeRoute: "The route, the company and the times"
+    seeProgress: "How far along the coach is, with how sure we are"
+    seeDisruption: "A delay or a breakdown, as soon as the company reports it"
+    neverSee: "Never your seat, the price you paid, or your number. This page follows a coach, not a person."
+    create: "Create the link"
+    linkLabel: "Link to share"
+    linkHidden: "A link already exists — create a new one if you have lost it."
+    opens:
+      one: "{count} person has opened this link"
+      other: "{count} people have opened this link"
+    expires: "The link stops working on {date} at {time}"
+    revoke: "Withdraw the link"
+    revokeHint: "The link stops working immediately. You can always create another."
   reserved:
     title: "Reservation confirmed"
     payAtAgency: "Show this code at any {operator} agency to pay."

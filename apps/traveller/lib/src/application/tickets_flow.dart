@@ -87,6 +87,23 @@ final class TravelChosen extends TicketsStep {
   final ChoiceAppliedDto applied;
 }
 
+/// The share sheet for one booking (ADR-0014 §2).
+final class SharingTrip extends TicketsStep {
+  const SharingTrip({
+    required this.booking,
+    required this.share,
+    this.busy = false,
+  });
+
+  final BookingDto booking;
+
+  /// Null before anything has been shared. The sheet then offers to mint one
+  /// rather than showing an empty link field.
+  final TripShareDto? share;
+
+  final bool busy;
+}
+
 final class TicketsFailed extends TicketsStep {
   const TicketsFailed(this.failure);
   final ApiFailure failure;
@@ -267,6 +284,58 @@ final class TicketsFlow {
         // because there is nothing left to show.
         _emit(TicketsFailed(failure));
       }
+    }
+  }
+
+  /// Opens the share sheet, reading whatever link already exists.
+  ///
+  /// Read rather than minted: opening the sheet must not create a link, or a
+  /// traveller who taps "partager" to see what it does has quietly published
+  /// their journey.
+  Future<void> openSharing(BookingDto booking) async {
+    _emit(SharingTrip(booking: booking, share: null, busy: true));
+    try {
+      final share = await _gateway.tripShare(booking.ref);
+      _emit(SharingTrip(booking: booking, share: share));
+    } on ApiFailure catch (failure) {
+      _emit(TicketsFailed(failure));
+    }
+  }
+
+  /// Mints one, or hands back the one that exists. The server decides which.
+  Future<void> shareTrip() async {
+    final current = _step;
+    if (current is! SharingTrip || current.busy) return;
+
+    _emit(
+      SharingTrip(booking: current.booking, share: current.share, busy: true),
+    );
+
+    try {
+      final share = await _gateway.shareTrip(current.booking.ref);
+      _emit(SharingTrip(booking: current.booking, share: share));
+    } on ApiFailure catch (failure) {
+      _emit(SharingTrip(booking: current.booking, share: current.share));
+      _emit(TicketsFailed(failure));
+    }
+  }
+
+  /// Kills the link. The sheet stays open on purpose — somebody who has just
+  /// revoked wants to see that it is gone, not be returned to a list.
+  Future<void> revokeShare() async {
+    final current = _step;
+    if (current is! SharingTrip || current.busy) return;
+
+    _emit(
+      SharingTrip(booking: current.booking, share: current.share, busy: true),
+    );
+
+    try {
+      await _gateway.revokeTripShare(current.booking.ref);
+      _emit(SharingTrip(booking: current.booking, share: null));
+    } on ApiFailure catch (failure) {
+      _emit(SharingTrip(booking: current.booking, share: current.share));
+      _emit(TicketsFailed(failure));
     }
   }
 

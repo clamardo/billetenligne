@@ -132,6 +132,41 @@ final class _ScriptedGateway implements TravelGateway {
     return bookingsResult ?? [reserveResult ??= _demoBooking(const [])];
   }
 
+  // ── Sharing a trip ────────────────────────────────────────────────────────
+
+  /// The link, as the server would answer. Settable, because "already shared,
+  /// opened four times" is the state worth testing and not one the app can
+  /// reach on its own.
+  TripShareDto? shareResult;
+  ApiFailure? shareFailure;
+  final shareCalls = <String>[];
+
+  @override
+  Future<TripShareDto> shareTrip(String bookingRef) async {
+    shareCalls.add('share:$bookingRef');
+    if (shareFailure != null) throw shareFailure!;
+    return shareResult ??= TripShareDto(
+      url: 'https://blt.cg/t/scriptedtoken',
+      expiresAt: DateTime.utc(2026, 8, 9, 20),
+      opens: 0,
+      revoked: false,
+    );
+  }
+
+  @override
+  Future<TripShareDto?> tripShare(String bookingRef) async {
+    shareCalls.add('read:$bookingRef');
+    if (shareFailure != null) throw shareFailure!;
+    return shareResult;
+  }
+
+  @override
+  Future<void> revokeTripShare(String bookingRef) async {
+    shareCalls.add('revoke:$bookingRef');
+    if (shareFailure != null) throw shareFailure!;
+    shareResult = null;
+  }
+
   // ── The passenger's own choice ────────────────────────────────────────────
 
   /// What the choice screen will find, and what the tap returns. Both

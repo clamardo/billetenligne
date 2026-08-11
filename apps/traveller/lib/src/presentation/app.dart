@@ -22,6 +22,7 @@ import 'screens/reserved_screen.dart';
 import 'screens/seat_map_screen.dart';
 import 'screens/ticket_screen.dart';
 import 'screens/tickets_screen.dart';
+import 'screens/share_trip_screen.dart';
 import 'screens/travel_choice_screen.dart';
 import 'screens/sign_in_screen.dart';
 import 'widgets/failure_view.dart';
@@ -381,6 +382,7 @@ class _FunnelState extends State<_Funnel> {
           seatIndex: seatIndex,
           onSeat: widget.tickets.showSeat,
           onClose: widget.tickets.closeTicket,
+          onShare: () => widget.tickets.openSharing(booking),
           // Only where there is something to choose. A delay declared as the
           // operator's fault opens the entitlement; anything else is a
           // notice, and a button leading to one option is a dead end.
@@ -402,6 +404,15 @@ class _FunnelState extends State<_Funnel> {
       TravelChosen(:final applied) => TravelChosenScreen(
         applied: applied,
         onDone: widget.tickets.closeChoices,
+      ),
+
+      SharingTrip(:final booking, :final share, :final busy) => ShareTripScreen(
+        booking: booking,
+        share: share,
+        busy: busy,
+        onShare: widget.tickets.shareTrip,
+        onRevoke: widget.tickets.revokeShare,
+        onClose: widget.tickets.closeChoices,
       ),
 
       TicketsFailed(:final failure) => Scaffold(

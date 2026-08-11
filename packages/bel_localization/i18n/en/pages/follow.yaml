@@ -1,0 +1,28 @@
+# The follower page (ADR-0014 §2): a 6 KB web page opened by somebody who does
+# not have the app and does not want it. It answers one question — "when
+# should I leave for the station?" — and it always says what it actually
+# knows.
+follow:
+  title: "Follow the trip"
+  headline: "{origin} → {destination}"
+  operator: "with {operator}"
+  departure: "Scheduled departure {time}"
+  revised: "New departure expected {time}"
+  arrival: "Expected arrival {time}"
+  tier:
+    gps: "Position {minutes} min ago"
+    checkpoint: "Passed {place} at {time}"
+    schedule: "Estimated from the timetable — no position has been reported"
+  status:
+    scheduled: "On time, per the timetable"
+    boarding: "Boarding"
+    departed: "On the road"
+    arrived: "Arrived"
+    cancelled: "Departure cancelled"
+  disrupted: "{kind} reported by {operator}"
+  disruptedNote: "From the company: {note}"
+  gone: "This link no longer works"
+  goneBody: "The traveller withdrew it, or the trip ended more than six hours ago. Ask them for a new link."
+  refreshed: "Updated at {time}"
+  privacy: "This page follows a coach, not a person. It shows no seat, no price and no phone number."
+  cta: "Book your own seat on BilletEnLigne"

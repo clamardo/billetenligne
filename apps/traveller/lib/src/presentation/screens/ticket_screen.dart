@@ -35,6 +35,7 @@ final class TicketScreen extends StatefulWidget {
     required this.onClose,
     this.onSeat,
     this.onChoices,
+    this.onShare,
     this.clock = const SystemClock(),
     super.key,
   });
@@ -50,6 +51,10 @@ final class TicketScreen extends StatefulWidget {
 
   /// Opens the choice screen for this booking's disruption.
   final VoidCallback? onChoices;
+
+  /// Opens the share sheet (ADR-0014 §2). Null where there is nothing to
+  /// follow — a trip that has already run.
+  final VoidCallback? onShare;
 
   /// Injected so the rotating code can be tested at the moment it rolls over.
   /// The countdown bug this project has already hit twice — in the hold and
@@ -260,6 +265,19 @@ class _TicketScreenState extends State<TicketScreen> {
                 onPressed: widget.onSeat == null
                     ? null
                     : () => widget.onSeat!(widget.seatIndex + 1),
+              ),
+            ],
+
+            // Below the QR, because the ticket is what this screen is for.
+            // Above the offline note, because sharing is the thing somebody
+            // does next — usually while still standing at the coach door.
+            if (widget.onShare != null) ...[
+              SizedBox(height: kilo.space.s3),
+              KButton(
+                label: context.t('travel.share.action'),
+                tone: KButtonTone.ghost,
+                icon: Icons.share,
+                onPressed: widget.onShare,
               ),
             ],
 

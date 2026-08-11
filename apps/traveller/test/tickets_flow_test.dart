@@ -8,6 +8,7 @@ import 'package:bel_traveller/src/presentation/l10n.dart';
 import 'package:bel_traveller/src/application/tickets_flow.dart';
 import 'package:bel_traveller/src/presentation/screens/ticket_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/tickets_screen.dart';
+import 'package:bel_traveller/src/presentation/screens/share_trip_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/travel_choice_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -851,6 +852,214 @@ void main() {
 
       expect(find.text('Vous gardez votre place'), findsOneWidget);
       expect(find.textContaining('reste valable'), findsOneWidget);
+    });
+  });
+
+  group('sharing a trip', () {
+    Future<BookingDto> loaded() async {
+      gateway.bookingsResult = [
+        _booking(id: 'live', departsAt: now.add(const Duration(hours: 3))),
+      ];
+      await flow.load();
+      return (flow.step as TicketsReady).upcoming.single;
+    }
+
+    test('opening the sheet shares nothing', () async {
+      final booking = await loaded();
+
+      await flow.openSharing(booking);
+
+      // A traveller who taps "partager" to see what it does must not discover
+      // afterwards that they published their journey.
+      expect(gateway.shareCalls, ['read:BEL-live']);
+      expect((flow.step as SharingTrip).share, isNull);
+    });
+
+    test('a link already minted comes back with its count', () async {
+      final booking = await loaded();
+      gateway.shareResult = TripShareDto(
+        url: 'https://blt.cg/t/abc',
+        expiresAt: now.add(const Duration(hours: 14)),
+        opens: 3,
+        revoked: false,
+      );
+
+      await flow.openSharing(booking);
+
+      expect((flow.step as SharingTrip).share?.opens, 3);
+    });
+
+    test('creating one asks the server, which decides', () async {
+      final booking = await loaded();
+      await flow.openSharing(booking);
+
+      await flow.shareTrip();
+
+      expect(gateway.shareCalls, ['read:BEL-live', 'share:BEL-live']);
+      expect((flow.step as SharingTrip).share?.url, contains('blt.cg/t/'));
+    });
+
+    test('a second tap while the first is in flight does nothing', () async {
+      final booking = await loaded();
+      await flow.openSharing(booking);
+
+      final first = flow.shareTrip();
+      await flow.shareTrip();
+      await first;
+
+      // One link, not two. Two live links would mean one the traveller cannot
+      // see in order to revoke it.
+      expect(
+        gateway.shareCalls.where((c) => c.startsWith('share')),
+        hasLength(1),
+      );
+    });
+
+    test('revoking is immediate and the sheet stays open', () async {
+      final booking = await loaded();
+      await flow.openSharing(booking);
+      await flow.shareTrip();
+
+      await flow.revokeShare();
+
+      // Somebody who has just revoked wants to see that it is gone, not be
+      // returned to a list.
+      final step = flow.step as SharingTrip;
+      expect(step.share, isNull);
+      expect(gateway.shareCalls.last, 'revoke:BEL-live');
+    });
+
+    test('a refusal keeps the sheet and its link', () async {
+      final booking = await loaded();
+      await flow.openSharing(booking);
+      await flow.shareTrip();
+      final before = (flow.step as SharingTrip).share;
+
+      gateway.shareFailure = const NetworkUnreachable();
+      final seen = <TicketsStep>[];
+      final sub = flow.steps.listen(seen.add);
+      await flow.revokeShare();
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
+
+      // The link is still live on the server, so it must still be on the
+      // screen — a sheet that emptied on a failed revoke would tell somebody
+      // their journey is private when it is not.
+      expect(seen.whereType<SharingTrip>().last.share, before);
+      expect(seen.last, isA<TicketsFailed>());
+    });
+
+    test('closing goes back to the list', () async {
+      final booking = await loaded();
+      await flow.openSharing(booking);
+
+      flow.closeChoices();
+
+      expect(flow.step, isA<TicketsReady>());
+    });
+  });
+
+  group('the share sheet', () {
+    Future<void> pump(
+      WidgetTester tester, {
+      TripShareDto? share,
+      List<String>? taps,
+    }) async {
+      final catalog = await loadTestCatalog();
+      tester.view.physicalSize = const Size(400, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        Localized(
+          catalog: catalog,
+          child: MaterialApp(
+            theme: KiloTheme.materialTheme(),
+            home: ShareTripScreen(
+              booking: _booking(
+                id: 'live',
+                departsAt: now.add(const Duration(hours: 3)),
+              ),
+              share: share,
+              onShare: () => taps?.add('share'),
+              onRevoke: () => taps?.add('revoke'),
+              onClose: () {},
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('before sharing it says what the follower will see', (
+      tester,
+    ) async {
+      await pump(tester);
+
+      // The question somebody actually asks before sending a link to a group
+      // chat, answered before they send it rather than after.
+      expect(find.textContaining('Jamais votre siège'), findsOneWidget);
+      expect(
+        find.textContaining('suit un car, pas une personne'),
+        findsOneWidget,
+      );
+      expect(find.text('Créer le lien'), findsOneWidget);
+      // And no link, because opening the sheet created nothing.
+      expect(find.textContaining('blt.cg'), findsNothing);
+    });
+
+    testWidgets('a live link shows itself, its count and its end', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        share: TripShareDto(
+          url: 'https://blt.cg/t/abc',
+          expiresAt: DateTime.utc(2026, 8, 10, 18),
+          opens: 3,
+          revoked: false,
+        ),
+      );
+
+      expect(find.text('https://blt.cg/t/abc'), findsOneWidget);
+      // Tells somebody their message arrived — and tells somebody who sent it
+      // to the wrong group that it did too, while there is time to revoke.
+      expect(find.text('3 personnes ont ouvert ce lien'), findsOneWidget);
+      expect(find.textContaining('cesse de fonctionner'), findsOneWidget);
+    });
+
+    testWidgets('one person is one person, not "1 personnes"', (tester) async {
+      await pump(
+        tester,
+        share: TripShareDto(
+          url: 'https://blt.cg/t/abc',
+          expiresAt: DateTime.utc(2026, 8, 10, 18),
+          opens: 1,
+          revoked: false,
+        ),
+      );
+
+      expect(find.text('1 personne a ouvert ce lien'), findsOneWidget);
+    });
+
+    testWidgets('revoking is one tap and says what it does', (tester) async {
+      final taps = <String>[];
+      await pump(
+        tester,
+        taps: taps,
+        share: TripShareDto(
+          url: 'https://blt.cg/t/abc',
+          expiresAt: DateTime.utc(2026, 8, 10, 18),
+          opens: 0,
+          revoked: false,
+        ),
+      );
+
+      expect(find.textContaining('cesse immédiatement'), findsOneWidget);
+      await tester.tap(find.text('Retirer le lien'));
+      await tester.pump();
+
+      expect(taps, ['revoke']);
     });
   });
 }

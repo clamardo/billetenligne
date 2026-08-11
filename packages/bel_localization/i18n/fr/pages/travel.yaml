@@ -149,6 +149,30 @@ travel:
     claimCode: "Code de retrait"
     claimHelp: "Notez-le. Il vous est aussi envoyé par SMS."
     done: "Retour à mes billets"
+  # Partager son trajet (ADR-0014 §2). Le cas d'usage est précis et très
+  # courant ici : un proche qui fait les 512 km de la RN1, et quelqu'un à
+  # l'arrivée qui veut savoir quand partir pour la gare. Aujourd'hui cela se
+  # règle en crédit téléphonique et en appels répétés.
+  share:
+    action: "Partager mon trajet"
+    title: "Partager mon trajet"
+    lead: "{origin} → {destination}, {date}. Envoyez un lien à quelqu'un qui vous attend."
+    whatTheySee: "Ce que cette personne verra"
+    seeRoute: "La ligne, la compagnie et les horaires"
+    seeProgress: "L'avancement du car, avec le niveau de précision indiqué"
+    seeDisruption: "Un retard ou une panne, dès que la compagnie le signale"
+    # La question que se pose vraiment quelqu'un avant d'envoyer un lien dans
+    # un groupe.
+    neverSee: "Jamais votre siège, ni le prix payé, ni votre numéro. Cette page suit un car, pas une personne."
+    create: "Créer le lien"
+    linkLabel: "Lien à partager"
+    linkHidden: "Lien déjà créé — recréez-en un si vous l'avez perdu."
+    opens:
+      one: "{count} personne a ouvert ce lien"
+      other: "{count} personnes ont ouvert ce lien"
+    expires: "Le lien cesse de fonctionner le {date} à {time}"
+    revoke: "Retirer le lien"
+    revokeHint: "Le lien cesse immédiatement de fonctionner. Vous pourrez en créer un autre."
   reserved:
     title: "Réservation confirmée"
     payAtAgency: "Présentez ce code dans une agence {operator} pour payer."

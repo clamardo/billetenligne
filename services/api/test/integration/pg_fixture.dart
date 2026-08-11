@@ -1122,4 +1122,30 @@ final class PgFixture {
   );
 
   Future<void> close() => _seed.close();
+  /// How many share rows this booking has. Read under the seed connection,
+  /// because the point of some of these tests is that nobody else can.
+  Future<int> shareCount(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT count(*)::int AS n FROM trip_shares WHERE booking_id = @b'),
+      parameters: {'b': TypedValue(Type.uuid, bookingId)},
+    );
+    return rows.first.toColumnMap()['n']! as int;
+  }
+
+  /// What is actually stored. Never the token — that is the assertion.
+  Future<List<String>> shareTokenHashes(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT token_hash FROM trip_shares WHERE booking_id = @b'),
+      parameters: {'b': TypedValue(Type.uuid, bookingId)},
+    );
+    return [for (final r in rows) r.toColumnMap()['token_hash']! as String];
+  }
+
+  Future<DateTime> arrivesAt(String departureId) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT arrives_at FROM departures WHERE id = @d'),
+      parameters: {'d': TypedValue(Type.uuid, departureId)},
+    );
+    return (rows.first.toColumnMap()['arrives_at']! as DateTime).toUtc();
+  }
 }

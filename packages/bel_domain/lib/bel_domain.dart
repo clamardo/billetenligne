@@ -37,3 +37,4 @@ export 'src/disruption/protection.dart';
 export 'src/disruption/reaccommodation.dart';
 export 'src/disruption/self_service.dart';
 export 'src/disruption/seat_remap.dart';
+export 'src/trip/trip_share.dart';

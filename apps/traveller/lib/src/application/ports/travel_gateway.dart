@@ -72,6 +72,17 @@ abstract interface class TravelGateway {
     required String optionId,
   });
 
+  // ── Sharing a trip ────────────────────────────────────────────────────────
+
+  /// Mints the link, or hands back the one that already exists (ADR-0014 §2).
+  Future<TripShareDto> shareTrip(String bookingRef);
+
+  /// Their own view of it. Null when they have never shared this booking —
+  /// which is not an error and must not arrive on a screen as one.
+  Future<TripShareDto?> tripShare(String bookingRef);
+
+  Future<void> revokeTripShare(String bookingRef);
+
   // ── Paying ────────────────────────────────────────────────────────────────
 
   /// How this booking can be paid, and where the money goes.

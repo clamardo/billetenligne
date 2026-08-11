@@ -243,6 +243,34 @@ final class BelApiClient {
     await _postJson('/public/v1/bookings/$bookingRef/choice', request.toJson()),
   );
 
+  /// The shareable trip link (ADR-0014 §2).
+  ///
+  /// Idempotent without an idempotency key: the server hands back the link
+  /// that already exists rather than minting a second one, so a traveller who
+  /// taps twice on a bad connection ends up with one link rather than one they
+  /// can see and one they cannot.
+  Future<TripShareDto> shareTrip(String bookingRef) async =>
+      TripShareDto.fromJson(
+        await _postJson('/public/v1/bookings/$bookingRef/share', const {}),
+      );
+
+  /// Their own view of it: how many people opened it, when it dies. Null when
+  /// they have never shared this booking.
+  Future<TripShareDto?> tripShare(String bookingRef) async {
+    try {
+      return TripShareDto.fromJson(
+        await _get('/public/v1/bookings/$bookingRef/share'),
+      );
+    } on ServerRefused catch (failure) {
+      // "Never shared" is not an error and must not reach a screen as one.
+      if (failure.status == 404) return null;
+      rethrow;
+    }
+  }
+
+  Future<void> revokeTripShare(String bookingRef) =>
+      _send('DELETE', '/public/v1/bookings/$bookingRef/share', idempotent: true);
+
   /// How this booking can be paid, and where the money goes.
   ///
   /// Server-driven: a rail appears only if this deployment can reach it AND

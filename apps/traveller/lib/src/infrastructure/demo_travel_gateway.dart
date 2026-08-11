@@ -554,4 +554,22 @@ final class DemoTravelGateway implements TravelGateway {
       );
     }
   }
+  // ── Sharing a trip ────────────────────────────────────────────────────────
+
+  TripShareDto? _share;
+
+  @override
+  Future<TripShareDto> shareTrip(String bookingRef) async =>
+      _share ??= TripShareDto(
+        url: 'https://blt.cg/t/dEm0ShAr3T0k3n',
+        expiresAt: DateTime.now().add(const Duration(hours: 14)),
+        opens: 0,
+        revoked: false,
+      );
+
+  @override
+  Future<TripShareDto?> tripShare(String bookingRef) async => _share;
+
+  @override
+  Future<void> revokeTripShare(String bookingRef) async => _share = null;
 }

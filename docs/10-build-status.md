@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-10 · after commit *Logo upload, end to end*
+**Updated:** 2026-08-10 · after commit *A link that follows the coach, not the passenger*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -92,8 +92,16 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 ## Phase 3 and beyond
 
-Not started. `09-roadmap.md` has the remaining Phase 1 work in **dependency
-order**. With both consoles rendered, the vitrine complete, TOTP in front of
+| Slice | State | What is actually there |
+| --- | --- | --- |
+| **Trip sharing and the follower page** | ✅ done | ADR-0014. The traveller mints a link and sends it into whatever conversation they were already having; whoever opens it sees the coach. **The page is HTML the API serves, not the Flutter app** (ADR-0004) — six kilobytes, self-contained, rendered before it fetches, then polling once a minute — because the follower is on a borrowed handset with 2G and will open it once. **The link follows a coach, never a person**: no seat, no reference, no fare, no name, no number crosses, and that is a property of the SECURITY DEFINER function's OUT columns rather than of a handler, checked by a guarantee that scans the signature itself. A **disruption reaches the follower**, which is the point — the moment the person at the station most needs to know is the one the passenger is least able to explain. Progress is honest about **which tier it came from**: with no conductor GPS and no checkpoint taps yet the bar is dashed and says *estimation d'après l'horaire*. The token is 160 bits **stored only as a SHA-256 hash**, dies six hours after arrival, and is revoked in one tap with the opens count beside it. Revoked, expired and never-issued answer identically, because a page that distinguishes them is an enumeration oracle. Opening the sheet mints nothing, and **platform staff cannot create one**. 14 domain · 13 Postgres · 13 smoke · 1 schema guarantee · 11 traveller-app tests |
+
+One item of it is built, out of order and deliberately: the follower page is
+what makes a disruption reach the person who would otherwise phone the
+agency, and that machinery shipped in Phase 2. Everything else in Phase 3 —
+the stores, offline tickets on device, self-service change at volume, card
+via PSP, analytics — is not started. `09-roadmap.md` has the remaining
+Phase 1 work in **dependency order**. With both consoles rendered, the vitrine complete, TOTP in front of
 both back offices, object storage built, the section builder shipped and
 refunds executing end to end, the sales horizon extending itself and an
 operator able to sign themselves up, and the phone channel plumbed behind an
@@ -213,6 +221,15 @@ These are true today and each one is a decision, not an oversight.
    worse than not sending: an operator who has to sign in to read what they
    were paid will phone us instead, which is the call the statement exists to
    prevent.
+14. **A followed trip is estimated from the timetable, not observed.**
+   ADR-0014 §2 names three tiers of tracking; only the third exists. Conductor
+   GPS needs a driver-facing surface nobody has built, and checkpoint taps need
+   somebody with a handset at a station. So the follower page draws a **dashed**
+   bar and says *estimation d'après l'horaire* rather than a solid line
+   somebody would read as a position — a coach that left forty minutes late
+   shows as on schedule until a dispatcher declares the delay. The other two
+   tiers are written and tested in the domain, so the day either data source
+   appears the page improves without the model changing.
 
 ---
 
@@ -223,21 +240,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 393 tests
+         packages/bel_contracts packages/bel_crypto     # 407 tests
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 214 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
-cd apps/traveller && flutter test        # 104 app tests
+cd apps/traveller && flutter test        # 115 app tests
 cd apps/console   && flutter test        # 86 console tests
 cd apps/admin     && flutter test        # 23 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 324 files
-./infra/migrations/check.sh              # 38 schema guarantees
-./tool/integration.sh                    # 252 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 242 checks, incl. the Dart client
+dart run tool/check_layers.dart          # the onion rule, 333 files
+./infra/migrations/check.sh              # 39 schema guarantees
+./tool/integration.sh                    # 265 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 255 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -246,8 +263,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**951 tests in total**, plus 242 smoke checks, 38 executed schema guarantees,
-252 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**976 tests in total**, plus 255 smoke checks, 39 executed schema guarantees,
+265 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -262,6 +279,94 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+The **shareable trip link and the follower page** (ADR-0014) — the first
+Phase 3 item, built early because the machinery it depends on shipped in
+Phase 2 and because it is what turns a declared disruption into something the
+person waiting at the station actually learns.
+
+**The follower has no account, and that is the whole design.** Somebody
+standing at Pointe-Noire at midnight waiting on a brother's coach is the
+person who phones the agency, and no amount of app-side polish reaches them:
+they have not installed anything and they are not going to. So the traveller
+mints a link and drops it into whatever conversation they were already having.
+
+**The page is HTML the API serves, not the Flutter app.** ADR-0004 already
+said the follower page is not Flutter Web, and building it made the reason
+concrete: a 3 MB canvas download and a cold engine start, on a borrowed
+handset on 2G, to read one progress bar somebody will look at once. What
+ships instead is six kilobytes, self-contained, with **the route, the times
+and the operator's name in the first response** so it renders before it
+fetches anything — then it polls once a minute for movement. Words come from
+the same catalog as every other surface (ADR-0008), injected as JSON rather
+than interpolated into markup, and `?lang=en` is honoured because the person
+who receives the link is not necessarily the person who bought the ticket.
+
+**The link follows a coach, never a person.** No seat, no booking reference,
+no fare, no passenger name and no telephone number crosses to a follower —
+and that is a property of the `followed_trip` function's OUT columns rather
+than of the handler that calls it. A schema guarantee scans the signature
+itself for `seat|ref|fare|price|minor|phone|msisdn|name`, so widening the
+function later fails the check rather than quietly widening the leak. The
+privacy sentence is on the share sheet *before* anybody sends a link, because
+"what will they see?" is the question people ask before sending, not after.
+
+**Revoked, expired and never-issued answer identically.** A page that
+distinguishes them is an oracle: it tells somebody guessing tokens which
+guesses were once real. And the token itself is 160 bits of `Random.secure`,
+**stored only as a SHA-256 hash**, so a database dump is not a set of live
+links to strangers' journeys.
+
+**Three ways a link ends, and the traveller controls one of them.** It dies
+six hours after arrival on its own — nobody has to remember. It can be
+revoked in one tap. And the **opens count sits on the sheet beside it**, which
+does two jobs: it tells somebody their message arrived, and it tells somebody
+who sent it to the wrong group chat that it did too, while there is still time
+to revoke. That count is incremented inside the resolve function and only for
+live links, so a revoked token does not tick.
+
+**Opening the share sheet mints nothing.** A traveller who taps *partager* to
+see what it does must not discover afterwards that they published their
+journey. The sheet reads; a second, deliberate tap creates. A test asserts the
+gateway saw a read and no write.
+
+**Platform staff cannot create one.** The insert policy names the purchaser,
+so a support agent who can read every booking in the system still cannot
+publish a customer's trip. That was found rather than designed: the first
+version of the schema guarantee inserted as `bel_admin` and was refused, and
+the right response was to keep the refusal and rewrite the test.
+
+**Progress is honest about which tier it came from.** ADR-0014 §2 names three:
+conductor GPS, checkpoint taps, and the schedule. Only the third exists today
+— there is no driver app and no checkpoint hardware — so the bar is **dashed**
+and labelled *estimation d'après l'horaire*. A solid line drawn off a
+timetable is a position somebody would believe, and believing it is how a
+person leaves for the station an hour early. The other two tiers are written
+in the domain and tested, so the page changes when the data arrives rather
+than the model.
+
+**A disruption reaches the follower**, which is the point of building this
+alongside IRROPS rather than after it: the one moment the person at the
+station most needs to know is the moment the passenger is least able to
+explain, because they are on a roadside with a dead battery.
+
+**Found on the way:** a worker fixture built booking references as
+`unique('R').substring(0, 6)`, and `unique` appended `microsecondsSinceEpoch %
+10000` without padding — so roughly one run in ten the clock landed on a
+low value, the string came out five characters, and a test failed with a
+`RangeError` that looked nothing like its cause. Padded now.
+
+**What it did not build:** conductor GPS and checkpoint taps — tiers 1 and 2 —
+which need a driver-facing surface and hardware at stations respectively.
+Named in the gaps rather than implied by the dashed bar.
+
+**What it cost:** 14 domain tests, 13 against real Postgres, 13 smoke checks,
+one executed schema guarantee, 11 traveller-app tests, one migration, one
+SECURITY DEFINER function, three routes and a 6 KB HTML page.
+
+---
+
+## What the statement-document push changed, and what it cost
 
 The payout statement as a **document** (`04-payments.md` §6.2) — the last
 unbuilt item in Phase 2 that was ours rather than a telco's.

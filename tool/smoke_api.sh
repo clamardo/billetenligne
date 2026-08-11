@@ -860,6 +860,60 @@ check "there is no way to write one from the console" "405" \
      "$BASE/console/v1/statements" -H "$OP_AUTH" \
      -H 'Content-Type: application/json' -d '{}')"
 
+# ── Sharing a trip, and following one ───────────────────────────────────────
+#
+# ADR-0014 §2. The follower page is the only surface in this product opened by
+# somebody with no account, and the only one that is HTML rather than JSON —
+# so what a socket proves here is exactly the part no unit test can: that the
+# page is served at a short human-readable URL, that it is anonymous, and that
+# the JSON behind it refuses an unknown token without saying which tokens are
+# real.
+page="$(curl -s "$BASE/t/abcdefghijklmnop")"
+check "the follower page is served to a stranger" "200" \
+  "$(status "$BASE/t/abcdefghijklmnop")"
+check "it is HTML, not JSON" "yes" \
+  "$(curl -s -o /dev/null -w '%{content_type}' "$BASE/t/abc" \
+     | grep -q 'text/html' && echo yes || echo no)"
+# Rendered before it fetches: somebody on two bars sees a page, not a white
+# screen. So the words are in the response body, not fetched by the script.
+check "the words come down with the page" "yes" \
+  "$(grep -q 'suit un car, pas une personne' <<<"$page" && echo yes || echo no)"
+# Not a search for the word — the privacy line says "ni le siège" on purpose.
+# What must not be there is a field a seat, a fare or a reference could arrive
+# in, because the page renders whatever the endpoint hands it.
+check "and it carries no field a seat could arrive in" "yes" \
+  "$(grep -qE 'seatLabel|bookingRef|fareMinor|passenger' <<<"$page" \
+     && echo no || echo yes)"
+check "English renders from the same catalog" "yes" \
+  "$(curl -s "$BASE/t/abc?lang=en" | grep -q 'follows a coach, not a person' \
+     && echo yes || echo no)"
+# The page must not be frameable: a shared link is exactly the thing somebody
+# would wrap in an ad page.
+check "the page refuses to be framed" "DENY" \
+  "$(curl -s -D - -o /dev/null "$BASE/t/abc" \
+     | tr -d '\r' | awk -F': ' 'tolower($1)=="x-frame-options"{print $2}')"
+
+check "an unissued token resolves to nothing" "404" \
+  "$(status "$BASE/public/v1/trips/shared/nobody-ever-issued-this")"
+check "following needs no account" "404" \
+  "$(status -H 'Authorization: Bearer ' \
+     "$BASE/public/v1/trips/shared/nobody-ever-issued-this")"
+
+# The traveller's half. Sharing is authenticated and scoped to their own
+# booking; a stranger's reference is the same 404 as a nonexistent one.
+check "sharing is closed to anonymous" "401" \
+  "$(status -X POST "$BASE/public/v1/bookings/BEL-ABC123/share")"
+check "a booking that is not theirs cannot be shared" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/bookings/BEL-ABC123/share" -H "$AUTH")"
+check "nor read" "404" \
+  "$(status -H "$AUTH" "$BASE/public/v1/bookings/BEL-ABC123/share")"
+check "a malformed reference is refused the same way" "404" \
+  "$(status -H "$AUTH" "$BASE/public/v1/bookings/not-a-ref/share")"
+check "there is no way to PUT a share" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+     "$BASE/public/v1/bookings/BEL-ABC123/share" -H "$AUTH")"
+
 # ── The statement as a document ─────────────────────────────────────────────
 #
 # `04-payments.md` §6.2 asks for the statement as a PDF, downloadable from the

@@ -845,3 +845,157 @@ BEGIN
   RAISE NOTICE 'OK  the protection queue is scoped to its two parties';
 END
 $$;
+
+-- ── 18. A follower learns about a coach, never about a passenger ────────────
+--
+-- 0023. The one read in this system performed by somebody with no account at
+-- all: a relative in Pointe-Noire, holding a WhatsApp link, watching a coach
+-- cross the RN1 (ADR-0014 §2). It runs through a SECURITY DEFINER function
+-- because a SELECT policy on `trip_shares` would be all-columns and
+-- row-enumerable — `bel_public` could walk every share that exists.
+--
+-- Four things are checked, and each is a way this could leak:
+--
+--   * the function answers for a token it holds, and answers **nothing** for
+--     one it does not, so a link cannot be guessed into existence;
+--   * `bel_public` cannot read the table directly with a bare SELECT that
+--     returns somebody else's row — the policy is scoped to the purchaser;
+--   * the columns coming back carry no seat, no reference, no fare and no
+--     phone number, which is asserted against the function's own signature so
+--     that adding one is a decision rather than an accident;
+--   * the open counter moves for a live link and does **not** move for a
+--     revoked one, because a revoked link being polled by a page somebody
+--     left open must not keep inflating the number the traveller reads.
+DO $$
+DECLARE
+  ocean   UUID := '11111111-1111-1111-1111-111111111111';
+  dep     UUID := 'dddddddd-1111-0000-0000-00000000f001';
+  bk      UUID := 'bbbbbbbb-1111-0000-0000-00000000f001';
+  buyer   UUID := 'aaaaaaaa-1111-0000-0000-00000000f001';
+  live    TEXT := 'hash-of-a-live-token';
+  dead    TEXT := 'hash-of-a-revoked-token';
+  seen    INT;
+  tally   INT;
+  leaked  TEXT;
+BEGIN
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  INSERT INTO user_accounts (id, email, language)
+  VALUES (buyer, 'follower-check@example.cg', 'fr')
+  ON CONFLICT DO NOTHING;
+
+  INSERT INTO departures
+    (id, operator_id, route_id, seat_layout_id, departs_at, arrives_at,
+     capacity, fare_minor, currency)
+  SELECT dep, ocean, r.id, l.id,
+         now() - INTERVAL '2 hours', now() + INTERVAL '6 hours',
+         49, 12000, 'XAF'
+    FROM routes r, seat_layouts l
+   WHERE r.operator_id = ocean AND l.operator_id = ocean
+   LIMIT 1;
+
+  INSERT INTO bookings
+    (id, ref, operator_id, departure_id, purchaser_user_id, state,
+     fare_minor, service_fee_minor, total_minor, currency, payment_method,
+     paid_at)
+  VALUES (bk, 'BELF01', ocean, dep, buyer, 'confirmed',
+          12000, 300, 12300, 'XAF', 'mobile_money', now());
+
+  -- The traveller shares it, through the public surface they already hold a
+  -- session on. Platform staff cannot: there is no grant, because a support
+  -- agent handing out a link to a stranger's journey is not a power this
+  -- needs to have.
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.user_id', buyer::text, true);
+
+  INSERT INTO trip_shares
+    (booking_id, departure_id, operator_id, token_hash, expires_at, revoked_at)
+  VALUES (bk, dep, ocean, dead, now() + INTERVAL '12 hours', now());
+
+  INSERT INTO trip_shares
+    (booking_id, departure_id, operator_id, token_hash, expires_at)
+  VALUES (bk, dep, ocean, live, now() + INTERVAL '12 hours');
+
+  -- Somebody else's booking is not theirs to share.
+  BEGIN
+    PERFORM set_config('app.user_id',
+                       '99999999-9999-9999-9999-999999999999', true);
+    INSERT INTO trip_shares
+      (booking_id, departure_id, operator_id, token_hash, expires_at)
+    VALUES (bk, dep, ocean, 'hash-of-a-stolen-share',
+            now() + INTERVAL '12 hours');
+    RAISE EXCEPTION 'FAIL: a stranger shared somebody else''s trip';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  -- ── The follower: anonymous, no tenant, no user, no session at all.
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+  PERFORM set_config('app.user_id', '', true);
+
+  SELECT count(*) INTO seen FROM followed_trip(live);
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: a live link does not resolve for a follower';
+  END IF;
+
+  SELECT count(*) INTO seen FROM followed_trip('hash-of-a-token-nobody-issued');
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: an unissued token resolved to a trip';
+  END IF;
+
+  -- A bare SELECT sees nothing: the policy is scoped to the booking's
+  -- purchaser, and a follower is not one.
+  SELECT count(*) INTO seen FROM trip_shares;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: the public role can enumerate trip shares';
+  END IF;
+
+  -- Nothing about the passenger comes back. Asserted against the function's
+  -- signature rather than against one row, so a column added next year fails
+  -- here rather than shipping.
+  SELECT string_agg(p.parameter_name, ',') INTO leaked
+    FROM information_schema.parameters p
+    JOIN information_schema.routines r
+      ON r.specific_name = p.specific_name
+   WHERE r.routine_name = 'followed_trip'
+     AND p.parameter_mode = 'OUT'
+     AND p.parameter_name ~ 'seat|ref|fare|price|minor|phone|msisdn|name'
+     AND p.parameter_name NOT IN ('operator_name');
+  IF leaked IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL: the follower page exposes %', leaked;
+  END IF;
+
+  -- The tally moves, once per open, so "3 personnes ont ouvert ce lien" on
+  -- the traveller's screen means what it says.
+  PERFORM count(*) FROM followed_trip(live);
+
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  SELECT opens INTO tally FROM trip_shares WHERE token_hash = live;
+  IF tally <> 2 THEN
+    RAISE EXCEPTION 'FAIL: opens counted % times for two opens', tally;
+  END IF;
+
+  -- And not for a revoked one, however often it is polled.
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.public', 'on', true);
+  SELECT count(*) INTO seen FROM followed_trip(dead);
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  SELECT opens INTO tally FROM trip_shares WHERE token_hash = dead;
+  IF tally <> 0 THEN
+    RAISE EXCEPTION 'FAIL: a revoked link still counts opens';
+  END IF;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  a follower learns about a coach, never about a passenger';
+END
+$$;
