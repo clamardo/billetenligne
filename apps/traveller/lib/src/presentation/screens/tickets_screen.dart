@@ -23,6 +23,7 @@ final class TicketsScreen extends StatelessWidget {
     required this.onOpen,
     required this.onChoices,
     required this.onCancel,
+    required this.onChange,
     required this.onBack,
     required this.onRefresh,
     this.stale = false,
@@ -43,6 +44,9 @@ final class TicketsScreen extends StatelessWidget {
   /// ticket, because the commonest thing anybody cancels is a reservation
   /// that was never paid for — and that one has no ticket to open.
   final void Function(BookingDto booking) onCancel;
+
+  /// Opens the change screen (§8.1).
+  final void Function(BookingDto booking) onChange;
 
   final VoidCallback onBack;
   final Future<void> Function() onRefresh;
@@ -112,6 +116,7 @@ final class TicketsScreen extends StatelessWidget {
                           onOpen: onOpen,
                           onChoices: onChoices,
                           onCancel: onCancel,
+                          onChange: onChange,
                         ),
                     ],
 
@@ -124,6 +129,7 @@ final class TicketsScreen extends StatelessWidget {
                           onOpen: onOpen,
                           onChoices: onChoices,
                           onCancel: onCancel,
+                          onChange: onChange,
                           past: true,
                         ),
                     ],
@@ -158,6 +164,7 @@ class _BookingCard extends StatelessWidget {
     required this.onOpen,
     required this.onChoices,
     required this.onCancel,
+    required this.onChange,
     this.past = false,
   });
 
@@ -169,6 +176,7 @@ class _BookingCard extends StatelessWidget {
   /// ticket, because the commonest thing anybody cancels is a reservation
   /// that was never paid for — and that one has no ticket to open.
   final void Function(BookingDto booking) onCancel;
+  final void Function(BookingDto booking) onChange;
   final bool past;
 
   @override
@@ -279,11 +287,17 @@ class _BookingCard extends StatelessWidget {
               ),
             ],
 
-            // Last, and quiet. Cancelling is a real thing people do and
-            // hiding it behind a phone call is how a seat travels empty —
-            // but it is never the action this card is inviting.
+            // Last, and quiet. Changing and cancelling are real things people
+            // do, and hiding them behind a phone call is how a seat travels
+            // empty — but neither is the action this card is inviting.
             if (!past) ...[
               SizedBox(height: kilo.space.s2),
+              if (hasTicket)
+                KButton(
+                  label: context.t('travel.change.action'),
+                  tone: KButtonTone.ghost,
+                  onPressed: () => onChange(booking),
+                ),
               KButton(
                 label: context.t('travel.cancel.action'),
                 tone: KButtonTone.ghost,

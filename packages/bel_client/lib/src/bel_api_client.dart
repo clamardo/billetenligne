@@ -293,6 +293,27 @@ final class BelApiClient {
         ),
       );
 
+  /// Where else this booking could go, priced (§8.1).
+  ///
+  /// Never cached: the seat counts and the free window are the content of the
+  /// screen, and a list drawn from this morning's answer offers a coach that
+  /// filled at lunchtime.
+  Future<ChangeOptionsDto> changeOptions(String bookingRef) async =>
+      ChangeOptionsDto.fromJson(
+        await _get('/public/v1/bookings/$bookingRef/reschedule'),
+      );
+
+  /// Moves them. The seats are taken and the ticket re-signed inside this
+  /// call, so there is nothing left to do afterwards and nothing to forget.
+  Future<ChangeAppliedDto> changeDeparture({
+    required String bookingRef,
+    required String departureId,
+  }) async => ChangeAppliedDto.fromJson(
+    await _postJson('/public/v1/bookings/$bookingRef/reschedule', {
+      'departureId': departureId,
+    }),
+  );
+
   /// How this booking can be paid, and where the money goes.
   ///
   /// Server-driven: a rail appears only if this deployment can reach it AND

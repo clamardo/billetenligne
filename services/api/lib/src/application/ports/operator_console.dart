@@ -289,6 +289,7 @@ abstract interface class OperatorConsole {
     required String name,
     required RefundPolicy policy,
     required String actorUserId,
+    ChangePolicy change,
   });
 
   /// Points future sales at one version of one policy.

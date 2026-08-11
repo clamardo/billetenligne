@@ -205,6 +205,35 @@ travel:
     doneNothing: "The seat has been freed. Nothing is owed to you under the terms of sale."
     doneSms: "We are sending this to you by SMS as well."
     close: "Close"
+  # Changing departure (01-feature-spec.md §8.1). Every row carries its price
+  # before selection: somebody scanning a list is comparing prices, and a
+  # screen that prices only the row you tapped makes them tap five times.
+  change:
+    action: "Change my departure"
+    title: "Change departure"
+    lead: "{origin} → {destination}. You are on the {time} on {date}."
+    seats:
+      one: "{count} seat"
+      other: "{count} seats"
+    free: "Free"
+    plus: "+ {amount}"
+    feeLine: "including {amount} change fee"
+    seatsLeft:
+      one: "{count} seat left"
+      other: "{count} seats left"
+    arrives: "Arrives {time}"
+    # Said before selection, never after: a cheaper departure gives nothing back.
+    cheaperKeepsFare: "A cheaper departure does not change the fare you paid."
+    involuntary: "The operator changed your departure, so any change is free."
+    payAtAgency: "Payable at an agency"
+    terms: "Change terms"
+    none: "No other departure from this operator on this route in the next seven days."
+    confirm: "Take this departure"
+    doneTitle: "Departure changed"
+    doneBody: "You are on the {time} on {date}."
+    doneSeats: "New seats: {seats}"
+    doneTicket: "Your ticket has been reissued. The old one no longer works."
+    close: "See my ticket"
   reserved:
     title: "Reservation confirmed"
     payAtAgency: "Show this code at any {operator} agency to pay."

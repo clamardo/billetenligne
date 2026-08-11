@@ -75,6 +75,14 @@ policy:
       agencyCash: "Refunded in cash, at the agency, in person."
       creditNote: "Refunded as credit for a future trip."
       travellerChoice: "You choose how to be refunded."
+  # The terms for changing departure (ADR-0012 D-08). Same rule: the operator
+  # gives three numbers, we write the sentences.
+  change:
+    free: "Free changes up to {a1} h before departure."
+    fee: "Between {a1} h and {a2} h before departure: {a3} % of the fare paid."
+    noFee: "Between {a1} h and {a2} h before departure: changes are free."
+    cutoff: "Less than {a1} h before departure: no changes."
+    involuntaryFree: "If the operator changes or cancels your departure, changing is free, whatever the terms say."
 
 # A carrier's onboarding application (03-operator-lifecycle.md §2.2). The
 # domain returns FIELD NAMES — `rccmNumber`, `ownerPhone` — never sentences:

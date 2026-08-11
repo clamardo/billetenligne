@@ -20,6 +20,7 @@ export 'src/identity/totp.dart';
 export 'src/market/market.dart';
 export 'src/market/payment_rail.dart';
 export 'src/booking/cancellation.dart';
+export 'src/policy/change_policy.dart';
 export 'src/booking/booking_ref.dart';
 export 'src/booking/hold.dart';
 export 'src/payment/payment_intent.dart';

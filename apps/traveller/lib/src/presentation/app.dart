@@ -23,6 +23,7 @@ import 'screens/seat_map_screen.dart';
 import 'screens/ticket_screen.dart';
 import 'screens/tickets_screen.dart';
 import 'screens/cancel_screen.dart';
+import 'screens/change_screen.dart';
 import 'screens/share_trip_screen.dart';
 import 'screens/travel_choice_screen.dart';
 import 'screens/sign_in_screen.dart';
@@ -369,6 +370,7 @@ class _FunnelState extends State<_Funnel> {
         onOpen: widget.tickets.open,
         onChoices: widget.tickets.openChoices,
         onCancel: widget.tickets.openCancellation,
+        onChange: widget.tickets.openChange,
         onRefresh: widget.tickets.refresh,
         onBack: _closeTickets,
         onSearch: _closeTickets,
@@ -430,6 +432,26 @@ class _FunnelState extends State<_Funnel> {
       Cancelled(:final booking, :final done) => CancelledScreen(
         booking: booking,
         done: done,
+        onClose: widget.tickets.closeChoices,
+      ),
+
+      ChangingDeparture(
+        :final booking,
+        :final options,
+        :final busy,
+        :final failure,
+      ) =>
+        ChangeScreen(
+          booking: booking,
+          options: options,
+          busy: busy,
+          failure: failure,
+          onTake: widget.tickets.changeDeparture,
+          onClose: widget.tickets.closeChoices,
+        ),
+
+      DepartureChanged(:final applied) => DepartureChangedScreen(
+        applied: applied,
         onClose: widget.tickets.closeChoices,
       ),
 

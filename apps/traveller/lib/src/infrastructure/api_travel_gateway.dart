@@ -82,6 +82,17 @@ final class ApiTravelGateway implements TravelGateway {
       _client.cancelBooking(bookingRef);
 
   @override
+  Future<ChangeOptionsDto> changeOptions(String bookingRef) =>
+      _client.changeOptions(bookingRef);
+
+  @override
+  Future<ChangeAppliedDto> changeDeparture({
+    required String bookingRef,
+    required String departureId,
+  }) =>
+      _client.changeDeparture(bookingRef: bookingRef, departureId: departureId);
+
+  @override
   Future<
     ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
   >

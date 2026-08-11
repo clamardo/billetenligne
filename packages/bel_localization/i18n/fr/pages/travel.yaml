@@ -209,6 +209,36 @@ travel:
     doneNothing: "La place a été libérée. Aucun montant ne vous est dû selon les conditions de vente."
     doneSms: "Nous vous envoyons aussi ce message par SMS."
     close: "Fermer"
+  # Le changement de départ (01-feature-spec.md §8.1). Chaque ligne porte son
+  # prix avant la sélection : quelqu'un qui parcourt une liste compare des
+  # prix, et un écran qui ne chiffre que la ligne touchée oblige à toucher
+  # cinq fois.
+  change:
+    action: "Modifier mon départ"
+    title: "Changer de départ"
+    lead: "{origin} → {destination}. Vous avez le départ de {time}, le {date}."
+    seats:
+      one: "{count} place"
+      other: "{count} places"
+    free: "Gratuit"
+    plus: "+ {amount}"
+    feeLine: "dont {amount} de frais de changement"
+    seatsLeft:
+      one: "{count} place libre"
+      other: "{count} places libres"
+    arrives: "Arrivée {time}"
+    # Dit avant la sélection, jamais après : un départ moins cher ne rend rien.
+    cheaperKeepsFare: "Un départ moins cher ne modifie pas le prix payé."
+    involuntary: "La compagnie a modifié votre départ : tout changement est gratuit."
+    payAtAgency: "À régler en agence"
+    terms: "Conditions de changement"
+    none: "Aucun autre départ de cette compagnie sur cette ligne dans les sept prochains jours."
+    confirm: "Prendre ce départ"
+    doneTitle: "Départ modifié"
+    doneBody: "Vous êtes sur le départ de {time}, le {date}."
+    doneSeats: "Nouvelles places : {seats}"
+    doneTicket: "Votre billet a été réémis. L'ancien ne fonctionne plus."
+    close: "Voir mon billet"
   reserved:
     title: "Réservation confirmée"
     payAtAgency: "Présentez ce code dans une agence {operator} pour payer."

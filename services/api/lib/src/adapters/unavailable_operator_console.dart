@@ -114,6 +114,7 @@ final class UnavailableOperatorConsole implements OperatorConsole {
     required String name,
     required RefundPolicy policy,
     required String actorUserId,
+    ChangePolicy change = ChangePolicy.standard,
   }) async => _refuse();
 
   @override

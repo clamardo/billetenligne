@@ -689,6 +689,125 @@ void main() {
     });
   });
 
+  group('changing departure on the wire', () {
+    ChangeOptionDto row({
+      int fare = 9000,
+      int? fee,
+      int? difference,
+      int? owed,
+      String? refusalCode,
+      Map<String, Object?> refusalParams = const {},
+    }) => ChangeOptionDto(
+      departureId: 'dep-later',
+      departsAt: DateTime.utc(2026, 8, 11, 14),
+      arrivesAt: DateTime.utc(2026, 8, 11, 22),
+      fare: Money(fare, Currency.xaf),
+      seatsAvailable: 12,
+      fee: fee == null ? null : Money(fee, Currency.xaf),
+      fareDifference: difference == null
+          ? null
+          : Money(difference, Currency.xaf),
+      owed: owed == null ? null : Money(owed, Currency.xaf),
+      refusalCode: refusalCode,
+      refusalParams: refusalParams,
+    );
+
+    test('a priced row survives the round trip whole', () {
+      final back = ChangeOptionDto.fromJson(
+        row(fare: 10500, fee: 900, difference: 1500, owed: 2400).toJson(),
+      );
+
+      // §8.1 wants all three on the row before selection, and all three are
+      // separate numbers: a traveller reading "+2 400" wants to know how much
+      // of it is the operator's fee.
+      expect(back.fee, const Money.xaf(900));
+      expect(back.fareDifference, const Money.xaf(1500));
+      expect(back.owed, const Money.xaf(2400));
+      expect(back.isFree, isFalse);
+      expect(back.isTakeable, isTrue);
+    });
+
+    test('a free row keeps its zeroes rather than dropping them', () {
+      final back = ChangeOptionDto.fromJson(
+        row(fee: 0, difference: 0, owed: 0).toJson(),
+      );
+
+      // `Wire.compact` drops nulls, not zeroes. A zero that vanished would
+      // read as "not priced" and the row would render its fare instead.
+      expect(back.owed, const Money.xaf(0));
+      expect(back.isFree, isTrue);
+    });
+
+    test('a refused row carries its reason and its numbers', () {
+      final back = ChangeOptionDto.fromJson(
+        row(
+          refusalCode: 'change.does_not_fit',
+          refusalParams: const {'needed': 3, 'available': 2},
+        ).toJson(),
+      );
+
+      expect(back.isTakeable, isFalse);
+      expect(back.refusalParams['available'], 2);
+    });
+
+    test('the screen carries its terms and its party size', () {
+      final back = ChangeOptionsDto.fromJson(
+        ChangeOptionsDto(
+          bookingRef: 'BEL-7QK4M2',
+          originCity: 'BZV',
+          destinationCity: 'PNR',
+          seatsNeeded: 3,
+          currentDepartureId: 'dep-now',
+          currentDepartsAt: DateTime.utc(2026, 8, 11, 6),
+          paidFare: const Money.xaf(9000),
+          options: [row(fee: 0, difference: 0, owed: 0)],
+          policyLines: ChangePolicy.standard.describe(),
+        ).toJson(),
+      );
+
+      expect(back.seatsNeeded, 3);
+      expect(back.options, hasLength(1));
+      expect(back.policyLines, contains('policy.change.free|24'));
+      expect(back.isOpen, isTrue);
+    });
+
+    test('a closed window travels as one refusal, not as empty rows', () {
+      final back = ChangeOptionsDto.fromJson(
+        ChangeOptionsDto(
+          bookingRef: 'BEL-7QK4M2',
+          originCity: 'BZV',
+          destinationCity: 'PNR',
+          seatsNeeded: 1,
+          currentDepartureId: 'dep-now',
+          currentDepartsAt: DateTime.utc(2026, 8, 11, 6),
+          paidFare: const Money.xaf(9000),
+          options: const [],
+          refusalCode: 'change.too_late',
+          refusalParams: const {'hours': 2},
+        ).toJson(),
+      );
+
+      // The difference matters on screen: no rows plus no reason is a blank
+      // page somebody reads as a bug.
+      expect(back.isOpen, isFalse);
+      expect(back.refusalParams['hours'], 2);
+    });
+
+    test('the receipt names the new seats', () {
+      final back = ChangeAppliedDto.fromJson(
+        ChangeAppliedDto(
+          bookingRef: 'BEL-7QK4M2',
+          departureId: 'dep-later',
+          departsAt: DateTime.utc(2026, 8, 11, 14),
+          seatLabels: const ['3C', '3D'],
+        ).toJson(),
+      );
+
+      expect(back.seatLabels, ['3C', '3D']);
+      expect(back.departsAt, DateTime.utc(2026, 8, 11, 14));
+    });
+  });
+
   group('cancelling on the wire', () {
     CancellationOfferDto roundTrip(CancellationOfferDto offer) =>
         CancellationOfferDto.fromJson(offer.toJson());

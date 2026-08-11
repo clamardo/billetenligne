@@ -25,6 +25,7 @@ import 'application/ports/disruption_desk.dart';
 import 'application/ports/payout_desk.dart';
 import 'application/ports/protection_desk.dart';
 import 'application/ports/passenger_choices.dart';
+import 'application/ports/reschedule_desk.dart';
 import 'application/ports/self_cancellation.dart';
 import 'application/ports/trip_sharing.dart';
 import 'application/ports/operator_console.dart';
@@ -64,6 +65,7 @@ import 'infrastructure/postgres/postgres_disruptions.dart';
 import 'infrastructure/postgres/postgres_payouts.dart';
 import 'infrastructure/postgres/postgres_protection.dart';
 import 'infrastructure/postgres/postgres_passenger_choices.dart';
+import 'infrastructure/postgres/postgres_reschedules.dart';
 import 'infrastructure/postgres/postgres_self_cancellation.dart';
 import 'infrastructure/postgres/postgres_trip_sharing.dart';
 import 'infrastructure/postgres/postgres_operator_console.dart';
@@ -103,6 +105,7 @@ final class Services {
     required this.choices,
     required this.sharing,
     required this.cancellations,
+    required this.reschedules,
     required this.platform,
     required this.storefronts,
     required this.applications,
@@ -176,6 +179,9 @@ final class Services {
   /// console's refund because the actor is, and because the common case here
   /// — a reservation nobody paid for — moves no money at all.
   final SelfCancellation cancellations;
+
+  /// The traveller moving themselves to another departure (§8.1).
+  final RescheduleDesk reschedules;
 
   /// Our own back office. Refuses without a database for the same reason the
   /// operator console does — and more so: every read here is meant to cross
@@ -328,6 +334,7 @@ final class Services {
         shareBase: Uri.parse(env['BEL__SHAREBASEURL'] ?? 'https://blt.cg'),
       ),
       cancellations: PostgresSelfCancellation(db),
+      reschedules: PostgresReschedules(db, issuer: _ticketIssuer),
       platform: PostgresPlatformConsole(db),
       storefronts: PostgresStorefronts(db),
       applications: PostgresOperatorApplications(db),
@@ -462,6 +469,7 @@ final class Services {
       choices: const NoChoices(),
       sharing: const NoTripSharing(),
       cancellations: const NoSelfCancellation(),
+      reschedules: const NoReschedules(),
       platform: const UnavailablePlatformConsole(),
       storefronts: MemoryStorefronts.demo(),
       applications: MemoryOperatorApplications(clock: clock),

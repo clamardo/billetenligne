@@ -140,6 +140,36 @@ final class Cancelled extends TicketsStep {
   final CancellationDoneDto done;
 }
 
+/// The change-of-departure screen for one booking (§8.1).
+final class ChangingDeparture extends TicketsStep {
+  const ChangingDeparture({
+    required this.booking,
+    required this.options,
+    this.busy = false,
+    this.failure,
+  });
+
+  final BookingDto booking;
+
+  /// Null only while the first read is in flight.
+  final ChangeOptionsDto? options;
+
+  final bool busy;
+
+  /// The last refusal, above the rows rather than instead of them. Nearly
+  /// every refusal here is the world having changed — the coach filled, the
+  /// free window closed — and the next move is to look at what is left.
+  final ApiFailure? failure;
+}
+
+/// The receipt: which departure, which seats, and that the ticket is new.
+final class DepartureChanged extends TicketsStep {
+  const DepartureChanged({required this.booking, required this.applied});
+
+  final BookingDto booking;
+  final ChangeAppliedDto applied;
+}
+
 final class TicketsFailed extends TicketsStep {
   const TicketsFailed(this.failure);
   final ApiFailure failure;
@@ -417,6 +447,60 @@ final class TicketsFlow {
           Cancelling(
             booking: current.booking,
             offer: refreshed,
+            failure: failure,
+          ),
+        );
+      } on ApiFailure {
+        _emit(TicketsFailed(failure));
+      }
+    }
+  }
+
+  /// Opens the change screen, reading what each departure would cost.
+  ///
+  /// Read every time and never cached: the seat counts and the free window
+  /// are the content of this screen, and a list drawn from this morning's
+  /// answer offers a coach that filled at lunchtime and a price that expired.
+  Future<void> openChange(BookingDto booking) async {
+    _emit(ChangingDeparture(booking: booking, options: null, busy: true));
+    try {
+      final options = await _gateway.changeOptions(booking.ref);
+      _emit(ChangingDeparture(booking: booking, options: options));
+    } on ApiFailure catch (failure) {
+      _emit(TicketsFailed(failure));
+    }
+  }
+
+  /// Takes one. The movement happens server-side inside this call.
+  Future<void> changeDeparture(String departureId) async {
+    final current = _step;
+    if (current is! ChangingDeparture || current.busy) return;
+    if (current.options == null) return;
+
+    _emit(
+      ChangingDeparture(
+        booking: current.booking,
+        options: current.options,
+        busy: true,
+      ),
+    );
+
+    try {
+      final applied = await _gateway.changeDeparture(
+        bookingRef: current.booking.ref,
+        departureId: departureId,
+      );
+      // The list behind is now wrong — the booking is on another coach with
+      // other seats — so it is reloaded before the traveller gets back to it.
+      await _fetch(silent: true);
+      _emit(DepartureChanged(booking: current.booking, applied: applied));
+    } on ApiFailure catch (failure) {
+      try {
+        final refreshed = await _gateway.changeOptions(current.booking.ref);
+        _emit(
+          ChangingDeparture(
+            booking: current.booking,
+            options: refreshed,
             failure: failure,
           ),
         );

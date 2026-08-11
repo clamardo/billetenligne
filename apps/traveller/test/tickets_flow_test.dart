@@ -9,6 +9,7 @@ import 'package:bel_traveller/src/application/tickets_flow.dart';
 import 'package:bel_traveller/src/presentation/screens/ticket_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/tickets_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/cancel_screen.dart';
+import 'package:bel_traveller/src/presentation/screens/change_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/share_trip_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/travel_choice_screen.dart';
 import 'package:flutter/material.dart';
@@ -420,6 +421,7 @@ void main() {
               onOpen: (_) {},
               onChoices: (_) {},
               onCancel: (_) {},
+              onChange: (_) {},
               onBack: () {},
               onRefresh: () async {},
               onSearch: () {},
@@ -1454,6 +1456,363 @@ void main() {
         find.textContaining("Aucun montant ne vous est dû"),
         findsOneWidget,
       );
+    });
+  });
+
+  group('changing departure', () {
+    Future<BookingDto> loaded() async {
+      gateway.bookingsResult = [
+        _booking(id: 'live', departsAt: now.add(const Duration(hours: 30))),
+      ];
+      await flow.load();
+      return (flow.step as TicketsReady).upcoming.single;
+    }
+
+    test('opening the screen prices every row in one request', () async {
+      final booking = await loaded();
+
+      await flow.openChange(booking);
+
+      expect(gateway.changeCalls, ['options:BEL-live']);
+      final step = flow.step as ChangingDeparture;
+      expect(step.options!.options.single.owed, isNotNull);
+    });
+
+    test('the rows are re-read every time the screen opens', () async {
+      // Seat counts and the free window are the content of this screen. A
+      // list drawn from this morning's answer offers a coach that filled at
+      // lunchtime and a price that expired.
+      final booking = await loaded();
+
+      await flow.openChange(booking);
+      flow.closeChoices();
+      await flow.openChange(booking);
+
+      expect(gateway.changeCalls, ['options:BEL-live', 'options:BEL-live']);
+    });
+
+    test('taking one moves them and reloads the list behind', () async {
+      final booking = await loaded();
+      await flow.openChange(booking);
+      gateway.bookingsResult = [
+        _booking(id: 'live', departsAt: now.add(const Duration(hours: 38))),
+      ];
+
+      await flow.changeDeparture('dep-later');
+
+      expect(gateway.changeCalls.last, 'take:dep-later');
+      final step = flow.step as DepartureChanged;
+      expect(step.applied.seatLabels, ['3C']);
+    });
+
+    test('a second tap while the first is in flight does nothing', () async {
+      final booking = await loaded();
+      await flow.openChange(booking);
+
+      final first = flow.changeDeparture('dep-later');
+      await flow.changeDeparture('dep-later');
+      await first;
+
+      // Two movements of one booking between two coaches is a seat released
+      // twice and a manifest nobody can reconcile.
+      expect(
+        gateway.changeCalls.where((c) => c.startsWith('take')),
+        hasLength(1),
+      );
+    });
+
+    test('a refusal re-reads and stays on the rows', () async {
+      final booking = await loaded();
+      await flow.openChange(booking);
+      gateway.changeFailure = const ServerRefused(
+        409,
+        ApiError(code: 'change.does_not_fit'),
+      );
+
+      await flow.changeDeparture('dep-later');
+
+      // The coach filled while the screen was in somebody's pocket. What they
+      // need is the list again, not an apology on an empty page.
+      final step = flow.step as ChangingDeparture;
+      expect(step.failure, isNotNull);
+      expect(step.options, isNotNull);
+    });
+
+    test('a refusal that cannot be re-read becomes a failure screen', () async {
+      final booking = await loaded();
+      await flow.openChange(booking);
+      gateway.changeFailure = const NetworkUnreachable();
+      gateway.changeOptionsFailure = const NetworkUnreachable();
+
+      await flow.changeDeparture('dep-later');
+
+      expect(flow.step, isA<TicketsFailed>());
+    });
+
+    test('tapping before the rows arrive does nothing', () async {
+      final booking = await loaded();
+
+      final opening = flow.openChange(booking);
+      await flow.changeDeparture('dep-later');
+      await opening;
+
+      expect(gateway.changeCalls, ['options:BEL-live']);
+    });
+  });
+
+  group('the change screen', () {
+    Future<void> pump(
+      WidgetTester tester, {
+      ChangeOptionsDto? options,
+      List<String>? taps,
+    }) async {
+      final catalog = await loadTestCatalog();
+      tester.view.physicalSize = const Size(400, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        Localized(
+          catalog: catalog,
+          child: MaterialApp(
+            theme: KiloTheme.materialTheme(),
+            home: ChangeScreen(
+              booking: _booking(
+                id: 'live',
+                departsAt: now.add(const Duration(hours: 30)),
+              ),
+              options: options,
+              onTake: (id) => taps?.add(id),
+              onClose: () {},
+            ),
+          ),
+        ),
+      );
+    }
+
+    ChangeOptionsDto screen({
+      List<ChangeOptionDto> rows = const [],
+      bool involuntary = false,
+      String? refusalCode,
+      Map<String, Object?> refusalParams = const {},
+    }) => ChangeOptionsDto(
+      bookingRef: 'BEL-live',
+      originCity: 'Brazzaville',
+      destinationCity: 'Pointe-Noire',
+      seatsNeeded: 1,
+      currentDepartureId: 'dep-now',
+      currentDepartsAt: now.add(const Duration(hours: 30)),
+      paidFare: Money(9000, Currency.xaf),
+      options: rows,
+      policyLines: ChangePolicy.standard.describe(),
+      involuntary: involuntary,
+      refusalCode: refusalCode,
+      refusalParams: refusalParams,
+    );
+
+    ChangeOptionDto row({
+      String id = 'dep-later',
+      int fare = 9000,
+      int seats = 12,
+      int? fee,
+      int? difference,
+      int? owed,
+      String? refusalCode,
+      Map<String, Object?> refusalParams = const {},
+    }) => ChangeOptionDto(
+      departureId: id,
+      departsAt: now.add(const Duration(hours: 38)),
+      arrivesAt: now.add(const Duration(hours: 46)),
+      fare: Money(fare, Currency.xaf),
+      seatsAvailable: seats,
+      fee: fee == null ? null : Money(fee, Currency.xaf),
+      fareDifference: difference == null
+          ? null
+          : Money(difference, Currency.xaf),
+      owed: owed == null ? null : Money(owed, Currency.xaf),
+      refusalCode: refusalCode,
+      refusalParams: refusalParams,
+    );
+
+    testWidgets('a free row says free and offers the button', (tester) async {
+      final taps = <String>[];
+      await pump(
+        tester,
+        taps: taps,
+        options: screen(rows: [row(fee: 0, difference: 0, owed: 0)]),
+      );
+
+      expect(find.text('Gratuit'), findsOneWidget);
+      await tester.tap(find.text('Prendre ce départ'));
+      await tester.pump();
+      expect(taps, ['dep-later']);
+    });
+
+    testWidgets('a dearer row is priced and sent to a counter', (tester) async {
+      await pump(
+        tester,
+        options: screen(
+          rows: [row(fare: 10500, fee: 0, difference: 1500, owed: 1500)],
+        ),
+      );
+
+      // §8.1's mock: the difference on the row, before selection.
+      expect(find.textContaining('1 500'), findsOneWidget);
+      expect(find.text('À régler en agence'), findsOneWidget);
+      // And no button, because the money has to move before the seat does.
+      expect(find.text('Prendre ce départ'), findsNothing);
+    });
+
+    testWidgets('a fee is broken out from the difference', (tester) async {
+      await pump(
+        tester,
+        options: screen(
+          rows: [row(fare: 10500, fee: 900, difference: 1500, owed: 2400)],
+        ),
+      );
+
+      expect(find.textContaining('dont'), findsOneWidget);
+      expect(find.textContaining('900'), findsOneWidget);
+    });
+
+    testWidgets('every row states the arrival time', (tester) async {
+      await pump(
+        tester,
+        options: screen(rows: [row(fee: 0, difference: 0, owed: 0)]),
+      );
+
+      // The question actually being asked is when they get there.
+      expect(find.textContaining('Arrivée'), findsOneWidget);
+    });
+
+    testWidgets('a full coach is shown with its reason, not hidden', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        options: screen(
+          rows: [
+            row(
+              seats: 0,
+              refusalCode: 'change.does_not_fit',
+              refusalParams: const {'needed': 2, 'available': 0},
+            ),
+          ],
+        ),
+      );
+
+      // A departure missing from a list is a departure somebody telephones an
+      // agency to ask about.
+      expect(find.textContaining('Il ne reste que 0 places'), findsOneWidget);
+      expect(find.text('Prendre ce départ'), findsNothing);
+    });
+
+    testWidgets('the cheaper-fare rule is stated once, above the rows', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        options: screen(
+          rows: [
+            row(fee: 0, difference: 0, owed: 0),
+            row(id: 'b', fee: 0, difference: 0, owed: 0),
+          ],
+        ),
+      );
+
+      expect(
+        find.textContaining('ne modifie pas le prix payé'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a closed window renders the reason and no rows', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        options: screen(
+          refusalCode: 'change.too_late',
+          refusalParams: const {'hours': 2},
+        ),
+      );
+
+      expect(find.textContaining('moins de 2 h'), findsOneWidget);
+      expect(find.text('Prendre ce départ'), findsNothing);
+    });
+
+    testWidgets('an operator-caused change says every row is free', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        options: screen(
+          involuntary: true,
+          rows: [row(fee: 0, difference: 0, owed: 0)],
+        ),
+      );
+
+      expect(
+        find.textContaining('tout changement est gratuit'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('nothing to move to is a sentence, not an empty page', (
+      tester,
+    ) async {
+      await pump(tester, options: screen());
+
+      expect(find.textContaining('Aucun autre départ'), findsOneWidget);
+    });
+
+    testWidgets('the terms are rendered from the numbers', (tester) async {
+      await pump(
+        tester,
+        options: screen(rows: [row(fee: 0, difference: 0, owed: 0)]),
+      );
+
+      expect(find.text('Conditions de changement'), findsOneWidget);
+      expect(
+        find.textContaining("Changement gratuit jusqu'à 24 h"),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('the change receipt', () {
+    testWidgets('it names the new seats and says the ticket is new', (
+      tester,
+    ) async {
+      final catalog = await loadTestCatalog();
+      tester.view.physicalSize = const Size(400, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        Localized(
+          catalog: catalog,
+          child: MaterialApp(
+            theme: KiloTheme.materialTheme(),
+            home: DepartureChangedScreen(
+              applied: ChangeAppliedDto(
+                bookingRef: 'BEL-live',
+                departureId: 'dep-later',
+                departsAt: DateTime.utc(2026, 8, 11, 14),
+                seatLabels: const ['3C', '3D'],
+              ),
+              onClose: () {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('3C, 3D'), findsOneWidget);
+      // Somebody who screenshotted their QR yesterday has a picture that will
+      // not scan, and a coach door is the wrong place to find that out.
+      expect(find.textContaining('réémis'), findsOneWidget);
     });
   });
 }

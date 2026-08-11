@@ -948,6 +948,33 @@ check "the refusal is a code, not a sentence" "yes" \
   "$(curl -s "$BASE/public/v1/bookings/BEL-ABC123/cancellation" -H "$AUTH" \
      | grep -qE '"code"\s*:\s*"[a-z_.]+"' && echo yes || echo no)"
 
+# ── Changing departure ──────────────────────────────────────────────────────
+#
+# `01-feature-spec.md` §8.1. Same shape as cancelling and for the same reason:
+# one URL, two verbs, neither reachable without a session, and both answering
+# a stranger's reference exactly the way they answer one that never existed.
+check "the change screen is closed to anonymous" "401" \
+  "$(status "$BASE/public/v1/bookings/BEL-ABC123/reschedule")"
+check "and so is taking a departure" "401" \
+  "$(status -X POST "$BASE/public/v1/bookings/BEL-ABC123/reschedule")"
+check "a booking that is not theirs is not there" "404" \
+  "$(status -H "$AUTH" "$BASE/public/v1/bookings/BEL-ABC123/reschedule")"
+check "and moving it is the same answer" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/bookings/BEL-ABC123/reschedule" -H "$AUTH" \
+     -H 'Content-Type: application/json' -d '{"departureId":"dep-1"}')"
+# A missing target is the one refusal here that IS the client's fault, and it
+# is the only 400 on this route.
+check "a request with no departure is a 400, naming the field" "departureId" \
+  "$(curl -s -X POST "$BASE/public/v1/bookings/BEL-ABC123/reschedule" \
+     -H "$AUTH" -H 'Content-Type: application/json' -d '{}' \
+     | grep -o 'departureId' | head -1)"
+check "a malformed reference is refused the same way" "404" \
+  "$(status -H "$AUTH" "$BASE/public/v1/bookings/not-a-ref/reschedule")"
+check "there is no way to DELETE a departure" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+     "$BASE/public/v1/bookings/BEL-ABC123/reschedule" -H "$AUTH")"
+
 # ── The statement as a document ─────────────────────────────────────────────
 #
 # `04-payments.md` §6.2 asks for the statement as a PDF, downloadable from the

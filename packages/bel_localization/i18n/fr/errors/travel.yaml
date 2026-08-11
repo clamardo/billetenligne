@@ -37,6 +37,15 @@ errors:
     coach_has_left: "Ce car est déjà parti. Pour la suite, adressez-vous à la compagnie."
     payment_in_flight: "Un paiement est en cours sur cette réservation. Attendez qu'il aboutisse avant d'annuler."
     needs_the_agency: "Cette compagnie rembourse en avoir sur un prochain voyage. Passez à une agence pour l'obtenir."
+  # Les refus de changement de départ (01-feature-spec.md §8.1).
+  change:
+    too_late: "Il reste moins de {hours} h avant le départ : le changement n'est plus possible."
+    already_departed: "Ce départ a déjà eu lieu."
+    into_the_past: "Ce départ est déjà passé."
+    off_route: "Ce départ n'est pas sur la même ligne, ni avec la même compagnie."
+    same_departure: "C'est le départ que vous avez déjà."
+    does_not_fit: "Il ne reste que {available} places sur ce car, et vous êtes {needed}."
+    must_be_paid: "Ce changement coûte un supplément. Réglez-le à une agence de la compagnie, qui effectuera le changement."
   refund:
     outside_window: "Ce billet n'est plus remboursable selon les conditions de vente."
     fare_not_refundable: "Le tarif « {fareCode} » n'est pas remboursable."

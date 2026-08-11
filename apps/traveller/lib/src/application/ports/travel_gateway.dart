@@ -95,6 +95,16 @@ abstract interface class TravelGateway {
   /// Does it. The seat is on sale again before this returns.
   Future<CancellationDoneDto> cancelBooking(String bookingRef);
 
+  /// Where else this booking could go, priced on every row (§8.1).
+  Future<ChangeOptionsDto> changeOptions(String bookingRef);
+
+  /// Moves them. Seats taken, old ones released, ticket re-signed, in one
+  /// call.
+  Future<ChangeAppliedDto> changeDeparture({
+    required String bookingRef,
+    required String departureId,
+  });
+
   // ── Paying ────────────────────────────────────────────────────────────────
 
   /// How this booking can be paid, and where the money goes.

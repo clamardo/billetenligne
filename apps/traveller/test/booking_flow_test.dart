@@ -173,6 +173,56 @@ final class _ScriptedGateway implements TravelGateway {
     );
   }
 
+  // ── Changing departure ────────────────────────────────────────────────────
+
+  ChangeOptionsDto? changeResult;
+  ChangeAppliedDto? changeApplied;
+  ApiFailure? changeOptionsFailure;
+  ApiFailure? changeFailure;
+  final changeCalls = <String>[];
+
+  @override
+  Future<ChangeOptionsDto> changeOptions(String bookingRef) async {
+    changeCalls.add('options:$bookingRef');
+    if (changeOptionsFailure != null) throw changeOptionsFailure!;
+    return changeResult ??= ChangeOptionsDto(
+      bookingRef: bookingRef,
+      originCity: 'Brazzaville',
+      destinationCity: 'Pointe-Noire',
+      seatsNeeded: 1,
+      currentDepartureId: 'dep-now',
+      currentDepartsAt: DateTime.utc(2026, 8, 11, 6),
+      paidFare: Money(9000, Currency.xaf),
+      options: [
+        ChangeOptionDto(
+          departureId: 'dep-later',
+          departsAt: DateTime.utc(2026, 8, 11, 14),
+          arrivesAt: DateTime.utc(2026, 8, 11, 22),
+          fare: Money(9000, Currency.xaf),
+          seatsAvailable: 12,
+          fee: Money(0, Currency.xaf),
+          fareDifference: Money(0, Currency.xaf),
+          owed: Money(0, Currency.xaf),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<ChangeAppliedDto> changeDeparture({
+    required String bookingRef,
+    required String departureId,
+  }) async {
+    changeCalls.add('take:$departureId');
+    if (changeFailure != null) throw changeFailure!;
+    return changeApplied ??= ChangeAppliedDto(
+      bookingRef: bookingRef,
+      departureId: departureId,
+      departsAt: DateTime.utc(2026, 8, 11, 14),
+      seatLabels: const ['3C'],
+    );
+  }
+
   // ── Sharing a trip ────────────────────────────────────────────────────────
 
   /// The link, as the server would answer. Settable, because "already shared,

@@ -1138,6 +1138,10 @@ final class PostgresOperatorConsole implements OperatorConsole {
     required String name,
     required RefundPolicy policy,
     required String actorUserId,
+    // Stored on the same row and stamped onto a booking by the same
+    // `(id, version)` pair, so "the terms it was sold under" covers changes
+    // as well as refunds without a second versioning scheme to keep honest.
+    ChangePolicy change = ChangePolicy.standard,
   }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
     // A new version, never an edit — and here the database agrees: 0014
     // revoked UPDATE on this table, so an adapter that tried to edit would
@@ -1165,13 +1169,15 @@ final class PostgresOperatorConsole implements OperatorConsole {
         INSERT INTO refund_policies
           (id, version, operator_id, name, tiers, destination,
            processing_hours, refund_service_fee, non_refundable_fares,
+           change_free_hours, change_fee_bps, change_cutoff_hours,
            created_by)
         VALUES (COALESCE(@id, gen_random_uuid()), @version, @operator, @name,
                 @tiers::jsonb, @destination, @hours, @refundFee, @fares,
-                @actor)
+                @changeFree, @changeFee, @changeCutoff, @actor)
         RETURNING id, version, name, tiers, destination, processing_hours,
-                  refund_service_fee, non_refundable_fares, effective_from,
-                  FALSE AS is_default, 0 AS booking_count
+                  refund_service_fee, non_refundable_fares,
+                  change_free_hours, change_fee_bps, change_cutoff_hours,
+                  effective_from, FALSE AS is_default, 0 AS booking_count
       '''),
       parameters: {
         'id': TypedValue(Type.uuid, previous?['id']?.toString()),
@@ -1186,6 +1192,9 @@ final class PostgresOperatorConsole implements OperatorConsole {
           Type.textArray,
           policy.nonRefundableFareCodes.toList()..sort(),
         ),
+        'changeFree': TypedValue(Type.integer, change.freeBefore.inHours),
+        'changeFee': TypedValue(Type.integer, change.feeBps),
+        'changeCutoff': TypedValue(Type.integer, change.cutoff.inHours),
         'actor': TypedValue(Type.uuid, actorUserId),
       },
     );

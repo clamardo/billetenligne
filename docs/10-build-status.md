@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-10 · after commit *Annuler, without phoning anybody*
+**Updated:** 2026-08-11 · after commit *Every row carries its own price*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -96,17 +96,19 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | --- | --- | --- |
 | **Trip sharing and the follower page** | ✅ done | ADR-0014. The traveller mints a link and sends it into whatever conversation they were already having; whoever opens it sees the coach. **The page is HTML the API serves, not the Flutter app** (ADR-0004) — six kilobytes, self-contained, rendered before it fetches, then polling once a minute — because the follower is on a borrowed handset with 2G and will open it once. **The link follows a coach, never a person**: no seat, no reference, no fare, no name, no number crosses, and that is a property of the SECURITY DEFINER function's OUT columns rather than of a handler, checked by a guarantee that scans the signature itself. A **disruption reaches the follower**, which is the point — the moment the person at the station most needs to know is the one the passenger is least able to explain. Progress is honest about **which tier it came from**: with no conductor GPS and no checkpoint taps yet the bar is dashed and says *estimation d'après l'horaire*. The token is 160 bits **stored only as a SHA-256 hash**, dies six hours after arrival, and is revoked in one tap with the opens count beside it. Revoked, expired and never-issued answer identically, because a page that distinguishes them is an enumeration oracle. Opening the sheet mints nothing, and **platform staff cannot create one**. 14 domain · 13 Postgres · 13 smoke · 1 schema guarantee · 11 traveller-app tests |
 | **Cancel, by the traveller** | ✅ done | `01-feature-spec.md` §8.2. **An unpaid reservation is *released*, never "refunded"** — the commonest cancellation there is, and a claim code for nought francs reads as a bug to whoever is handed it. A paid booking quotes what comes back **beside what is kept**, under **the terms it was sold under** (ADR-0015 rule 1, by the join to `(policy_id, version)`), computed by the same `quoteRefund` the server executes (ADR-0004). **Cash paid at a counter comes back at a counter** whatever the policy's destination says, because a journey paid in notes never had a source; a wallet policy writes the debt as `approved` and the screen commits to a **window**, never to an arrival, since the disbursement float is not built. **Terms that give nothing back warn rather than refuse** — somebody who cannot travel would rather free the seat than no-show — and the warning is a sentence, not `0 FCFA` beside a button. The seat is **on sale again in the same transaction**, which is the whole reason to build this instead of answering the phone. A **payment in flight refuses the cancellation**, because releasing seats a second before a capture lands is what neither end can undo. `refund_policies` became readable by the public role — the first widening of that boundary — with every write still refused and a guarantee asserting both halves. 17 domain · 6 contract · 14 Postgres · 2 worker · 8 smoke · 1 schema guarantee · 20 traveller-app tests |
+| **Reschedule, by the traveller** | ✅ done | `01-feature-spec.md` §8.1 and ADR-0012 D-08. **Every row is priced before selection** — fee and fare difference on each line, which is what §8.1's mock asks for and what stops somebody tapping five times to compare four departures. D-08's three numbers are data now, stored on the same row as the refund terms and stamped onto the booking by the same `(id, version)` pair, so ADR-0015 rule 1 covers changes without a second versioning scheme. **New seats taken before a single old one is released**, both departures locked in id order, **ticket re-signed in the same transaction** (ADR-0007). **A cheaper departure gives nothing back**, said above the list rather than after the tap. **A row that cannot be taken is shown with its reason**, because a departure missing from a list is one somebody telephones about. **A change that owes money is refused to the franc** and settled at a counter — collecting it in-app needs a payment intent bound to a held-but-unapplied change, which is its own slice. An operator-caused change is free inside every cutoff (ADR-0016). Operators cannot yet edit these three numbers in the console: every policy stores D-08's defaults. 21 domain · 6 contract · 17 Postgres · 7 smoke · 18 traveller-app tests |
 
-Two items of it are built, out of order and deliberately. The follower page is
+Three items of it are built, out of order and deliberately. The follower page is
 what makes a disruption reach the person who would otherwise phone the agency,
 and that machinery shipped in Phase 2. Self-service cancellation is the other
 half of the refund path the counter already had, and every piece it needed —
 policies as data, the ledger, the claim code, the outbox — was already there;
 leaving it out would have meant a system that can refund a booking only when
-somebody walks into an office. What is left in §8 is **reschedule**, which is
-a different problem: it takes a seat before it releases one. Everything else in
-Phase 3 — the stores, offline tickets on device, card via PSP, analytics — is
-not started. `09-roadmap.md` has the remaining
+somebody walks into an office. §8 is now built on both sides — cancel and reschedule — with one boundary
+named rather than implied: a change that owes money is quoted to the franc and
+settled at a counter, because collecting it in-app needs a payment intent bound
+to a held-but-unapplied change. Everything else in Phase 3 — the stores,
+offline tickets on device, card via PSP, analytics — is not started. `09-roadmap.md` has the remaining
 Phase 1 work in **dependency order**. With both consoles rendered, the vitrine complete, TOTP in front of
 both back offices, object storage built, the section builder shipped and
 refunds executing end to end, the sales horizon extending itself and an
@@ -246,21 +248,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 430 tests
+         packages/bel_contracts packages/bel_crypto     # 457 tests
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 214 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
-cd apps/traveller && flutter test        # 135 app tests
+cd apps/traveller && flutter test        # 153 app tests
 cd apps/console   && flutter test        # 86 console tests
 cd apps/admin     && flutter test        # 23 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 339 files
+dart run tool/check_layers.dart          # the onion rule, 345 files
 ./infra/migrations/check.sh              # 40 schema guarantees
-./tool/integration.sh                    # 281 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 263 checks, incl. the Dart client
+./tool/integration.sh                    # 298 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 270 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -269,8 +271,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,019 tests in total**, plus 263 smoke checks, 40 executed schema guarantees,
-281 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,064 tests in total**, plus 270 smoke checks, 40 executed schema guarantees,
+298 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -285,6 +287,68 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+**Reschedule, by the traveller** (`01-feature-spec.md` §8.1, ADR-0012 D-08) —
+the other half of §8, and the half the spec is most emphatic about.
+
+**Every row carries its own price.** §8.1's mock shows a list of departures
+with a fee and a fare difference on each line, and that detail is the whole
+feature. Somebody choosing a new departure is comparing four of them; a screen
+that prices only the row you tapped makes them tap four times, on a connection
+that drops between two of them, and then decide from memory. So the server
+quotes every candidate in one query and the list arrives priced — *Gratuit* on
+the free ones, the fee broken out on the rest, and the reason spelled out on
+the ones that cannot be taken at all.
+
+**A row that cannot be taken is shown anyway, with its reason.** Dropping it
+would produce a shorter, cleaner list and a telephone call: a departure the
+traveller knows exists and cannot find on the screen is a departure they ring
+the agency about. *Complet*, *trop tard*, *déjà partie* on the row is longer
+and answers the question.
+
+**D-08's three numbers are data now**, and they live on `refund_policies`
+rather than in a table of their own: free with at least twenty-four hours'
+notice, ten percent of the fare inside that window, refused inside two hours.
+Putting them on the refund row was the point — they inherit the `(id, version)`
+stamp the booking already carries, so ADR-0015 rule 1, *judged by the terms it
+was sold under*, covers changes without a second versioning scheme to keep
+honest. The migration header says so, because the next person will wonder.
+
+**The new seats are taken before a single old one is released.** Both
+departures are locked in id order inside one transaction, the quote is
+recomputed against the locked rows rather than trusted from the GET, and the
+**ticket is re-signed in the same transaction** — the QR carries the seat and
+the departure (ADR-0007), so a rebooked passenger holding the old code is
+holding a code for a coach that left.
+
+Three boundaries are deliberate, and each of them is a refusal to promise
+something the rest of the system cannot do.
+
+**A cheaper departure gives nothing back**, and the screen says so above the
+list rather than after the tap. Refunding a downward difference means either a
+disbursement we cannot make or a counter claim worth less than the counter time
+it consumes.
+
+**A change that owes money is refused, to the franc.** Somebody cannot board a
+coach they have not paid for; collecting the difference here needs a payment
+intent bound to a held-but-unapplied change, which is a slice of its own; so
+the amount is stated exactly and settled at a counter, which is how these
+agencies already work.
+
+**An operator-caused change is free inside every cutoff there is** (ADR-0016),
+and that check runs *before* the window rather than after it — a passenger
+whose coach was cancelled at ninety minutes is not inside a two-hour cutoff of
+their own making.
+
+What it cost: 21 domain tests, 6 contract round-trips, 17 against real
+Postgres, 7 smoke checks, 18 traveller-app tests, one migration, one port, one
+route, one screen. What it did not build: collecting the difference in-app, and
+the console wizard questions for the three change numbers — every policy
+currently stores D-08's defaults because the console never passes them.
+
+---
+
+## What the cancellation push changed, and what it cost
 
 **Cancelling, by the traveller** (`01-feature-spec.md` §8.2) — the half of
 §8 that carries money, and the half most ticketing systems here make you

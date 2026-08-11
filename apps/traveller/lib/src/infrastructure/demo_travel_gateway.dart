@@ -573,6 +573,69 @@ final class DemoTravelGateway implements TravelGateway {
   @override
   Future<void> revokeTripShare(String bookingRef) async => _share = null;
 
+  @override
+  Future<ChangeOptionsDto> changeOptions(String bookingRef) async {
+    final booking = _byRef(bookingRef);
+    final fare = booking.fare ?? Money(900000, Currency.xaf);
+    // Three rows, and deliberately one of each kind: free, dearer, and full.
+    // The states nobody sees in development are the ones that ship broken.
+    return ChangeOptionsDto(
+      bookingRef: bookingRef,
+      originCity: booking.originCity,
+      destinationCity: booking.destinationCity,
+      seatsNeeded: booking.passengers.length,
+      currentDepartureId: booking.departureId,
+      currentDepartsAt: booking.departsAt,
+      paidFare: fare,
+      policyLines: ChangePolicy.standard.describe(),
+      options: [
+        ChangeOptionDto(
+          departureId: 'demo-change-1',
+          departsAt: booking.departsAt.add(const Duration(hours: 8)),
+          arrivesAt: booking.arrivesAt.add(const Duration(hours: 8)),
+          fare: fare,
+          seatsAvailable: 12,
+          fee: Money(0, fare.currency),
+          fareDifference: Money(0, fare.currency),
+          owed: Money(0, fare.currency),
+        ),
+        ChangeOptionDto(
+          departureId: 'demo-change-2',
+          departsAt: booking.departsAt.add(const Duration(days: 1)),
+          arrivesAt: booking.arrivesAt.add(const Duration(days: 1)),
+          fare: fare + Money(150000, fare.currency),
+          seatsAvailable: 4,
+          fee: Money(0, fare.currency),
+          fareDifference: Money(150000, fare.currency),
+          owed: Money(150000, fare.currency),
+        ),
+        ChangeOptionDto(
+          departureId: 'demo-change-3',
+          departsAt: booking.departsAt.add(const Duration(days: 2)),
+          arrivesAt: booking.arrivesAt.add(const Duration(days: 2)),
+          fare: fare,
+          seatsAvailable: 0,
+          refusalCode: 'change.does_not_fit',
+          refusalParams: const {'needed': 1, 'available': 0},
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<ChangeAppliedDto> changeDeparture({
+    required String bookingRef,
+    required String departureId,
+  }) async {
+    final booking = _byRef(bookingRef);
+    return ChangeAppliedDto(
+      bookingRef: bookingRef,
+      departureId: departureId,
+      departsAt: booking.departsAt.add(const Duration(hours: 8)),
+      seatLabels: const ['3C'],
+    );
+  }
+
   BookingDto _byRef(String ref) => [
     if (_booking != null) _booking!,
     _disruptedTrip,

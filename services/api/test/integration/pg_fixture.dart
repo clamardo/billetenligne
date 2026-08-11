@@ -364,6 +364,59 @@ final class PgFixture {
     return rows.isEmpty ? null : rows.first.toColumnMap()['state'] as String?;
   }
 
+  /// A seat's state on one named departure. Distinct from [seatState], which
+  /// follows the booking — and after a change the booking is on the other
+  /// coach, so following it would answer about the wrong seat entirely.
+  Future<String?> seatStateOn(String departureId, String label) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT state::text AS state FROM seats
+         WHERE seat_label = @label AND departure_id = @departure
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, departureId),
+        'label': TypedValue(Type.text, label),
+      },
+    );
+    return rows.isEmpty ? null : rows.first.toColumnMap()['state'] as String?;
+  }
+
+  /// The coach filled. A departure with zero seats is refused by the capacity
+  /// constraint — rightly — so "no room" is expressed the way it happens: the
+  /// seats are held, by somebody, until well past the moment being tested.
+  /// `sold` would need a booking behind every seat, which the constraint
+  /// insists on and which this is not trying to prove.
+  Future<void> fillDeparture(String departureId) async {
+    final hold = await _seed.execute(
+      Sql.named('''
+        INSERT INTO holds (departure_id, operator_id, seat_labels, expires_at,
+                           idempotency_key)
+        SELECT @id, @operator, array_agg(seat_label),
+               now() + INTERVAL '2 hours', 'fixture-fill-' || @id::text
+          FROM seats WHERE departure_id = @id
+        RETURNING id
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'operator': TypedValue(Type.uuid, operatorId),
+      },
+    );
+
+    await _seed.execute(
+      Sql.named('''
+        UPDATE seats
+           SET state = 'held', hold_id = @hold,
+               held_until = now() + INTERVAL '2 hours'
+         WHERE departure_id = @id
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'hold': TypedValue(Type.uuid, hold.first.toColumnMap()['id']),
+      },
+      ignoreRows: true,
+    );
+  }
+
   Future<int> voidedTickets(String bookingId) async {
     final rows = await _seed.execute(
       Sql.named(
@@ -810,6 +863,37 @@ final class PgFixture {
       parameters: {'id': TypedValue(Type.uuid, bookingId)},
     );
     return rows.isEmpty ? null : rows.first.toColumnMap();
+  }
+
+  /// A party on one booking. Three people who booked together move together
+  /// or not at all, and that rule needs a booking with three seats on it.
+  Future<BookingRecord> reserveParty({
+    required Database db,
+    required PostgresBookingStore bookings,
+    required String departureId,
+    required List<String> seatLabels,
+  }) async {
+    final userId = await traveller(
+      '${DateTime.now().microsecondsSinceEpoch % 1000000}',
+      name: 'Famille M.',
+    );
+
+    final held = await HoldSeats(inventory: PostgresSeatInventory(db))(
+      departureId: departureId,
+      seatLabels: seatLabels,
+      userId: userId,
+      idempotencyKey: 'fixture-${DateTime.now().microsecondsSinceEpoch}',
+    );
+
+    final reserved = await ReserveBooking(bookings: bookings)(
+      holdId: held.valueOrNull!.id,
+      userId: userId,
+      passengers: [
+        for (final label in seatLabels)
+          PassengerDto(fullName: 'Voyageur $label', seatLabel: label),
+      ],
+    );
+    return reserved.valueOrNull!;
   }
 
   /// A departure with [seatLabels] all available. Returns its id.

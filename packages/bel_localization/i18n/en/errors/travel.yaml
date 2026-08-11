@@ -37,6 +37,15 @@ errors:
     coach_has_left: "This coach has already left. Please speak to the operator about what happens now."
     payment_in_flight: "A payment is going through on this booking. Wait for it to finish before cancelling."
     needs_the_agency: "This operator refunds as credit towards a future journey. Visit an agency to arrange it."
+  # The refusals of a change of departure (01-feature-spec.md §8.1).
+  change:
+    too_late: "Less than {hours} h before departure: changes are no longer possible."
+    already_departed: "This departure has already left."
+    into_the_past: "That departure has already left."
+    off_route: "That departure is not on the same route, or not with the same operator."
+    same_departure: "That is the departure you already have."
+    does_not_fit: "Only {available} seats are left on that coach, and there are {needed} of you."
+    must_be_paid: "This change costs extra. Settle it at one of the operator's agencies and they will make the change."
   refund:
     outside_window: "This ticket is no longer refundable under the terms it was sold with."
     fare_not_refundable: "The \"{fareCode}\" fare is not refundable."
