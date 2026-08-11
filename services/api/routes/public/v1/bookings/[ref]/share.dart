@@ -148,9 +148,6 @@ Response _refused(ShareRefusal refusal, String trace) => Response.json(
 
 Response _unknown(String trace) => Response.json(
   statusCode: HttpStatus.notFound,
-  body: ApiError(
-    code: ErrorCode.bookingInvalidRef,
-    traceId: trace,
-  ).toJson(),
+  body: ApiError(code: ErrorCode.bookingInvalidRef, traceId: trace).toJson(),
   headers: {BelHeaders.traceId: trace},
 );

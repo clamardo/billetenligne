@@ -173,6 +173,42 @@ travel:
     expires: "Le lien cesse de fonctionner le {date} à {time}"
     revoke: "Retirer le lien"
     revokeHint: "Le lien cesse immédiatement de fonctionner. Vous pourrez en créer un autre."
+  # L'annulation faite par le voyageur (01-feature-spec.md §8.2). L'écran doit
+  # répondre à trois questions dans cet ordre : qu'est-ce que j'annule, qu'est-
+  # ce que je récupère, et où. Le mot « remboursement » n'apparaît jamais quand
+  # rien n'a été payé — une réservation impayée se libère, elle ne se
+  # rembourse pas.
+  cancel:
+    action: "Annuler ce voyage"
+    title: "Annuler ce voyage"
+    lead: "{origin} → {destination}, {date}"
+    seats:
+      one: "{count} place"
+      other: "{count} places"
+    releaseTitle: "Rien n'a été payé"
+    releaseBody: "Cette réservation n'a jamais été réglée. L'annuler libère la place et ne vous coûte rien."
+    releaseConfirm: "Annuler la réservation"
+    releaseDone: "Réservation annulée. La place est de nouveau en vente."
+    refundTitle: "Ce que vous récupérez"
+    paid: "Payé"
+    refundable: "Remboursé"
+    retained: "Retenu"
+    # Dit en toutes lettres plutôt qu'affiché « 0 FCFA » : un zéro à côté d'un
+    # bouton de confirmation n'est lu par personne.
+    nothingBack: "Les conditions de vente ne prévoient plus de remboursement à ce stade. Annuler libère la place mais ne vous rend rien."
+    atCounter: "Vous recevrez un code à présenter dans une agence {operator}."
+    toSource: "Le montant repart sur le moyen de paiement utilisé, sous {hours} heures. Nous vous préviendrons à l'arrivée."
+    terms: "Conditions de vente"
+    confirm: "Confirmer l'annulation"
+    keep: "Garder mon billet"
+    irreversible: "L'annulation est définitive. La place repart en vente immédiatement."
+    doneTitle: "Voyage annulé"
+    doneClaim: "Retirez {amount} dans une agence {operator} avec ce code"
+    doneClaimExpires: "Code valable jusqu'au {date}"
+    donePending: "{amount} vous seront remboursés sous {hours} heures sur le moyen de paiement utilisé."
+    doneNothing: "La place a été libérée. Aucun montant ne vous est dû selon les conditions de vente."
+    doneSms: "Nous vous envoyons aussi ce message par SMS."
+    close: "Fermer"
   reserved:
     title: "Réservation confirmée"
     payAtAgency: "Présentez ce code dans une agence {operator} pour payer."

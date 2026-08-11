@@ -914,6 +914,40 @@ check "there is no way to PUT a share" "405" \
   "$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
      "$BASE/public/v1/bookings/BEL-ABC123/share" -H "$AUTH")"
 
+# ── Cancelling, by the traveller ────────────────────────────────────────────
+#
+# `01-feature-spec.md` §8.2. What a socket proves here that a unit test cannot:
+# that the quote and the act live at one URL under two verbs, that neither is
+# reachable without a session, and — the part worth the bytes — that somebody
+# else's reference is answered exactly the way a reference that never existed
+# is. A cancellation endpoint that distinguished them would let anybody test
+# whether a booking reference is real, and references are six characters.
+check "quoting a cancellation is closed to anonymous" "401" \
+  "$(status "$BASE/public/v1/bookings/BEL-ABC123/cancellation")"
+check "and so is doing it" "401" \
+  "$(status -X POST "$BASE/public/v1/bookings/BEL-ABC123/cancellation")"
+check "a booking that is not theirs is not there" "404" \
+  "$(status -H "$AUTH" "$BASE/public/v1/bookings/BEL-ABC123/cancellation")"
+check "and cancelling it is the same answer" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/bookings/BEL-ABC123/cancellation" -H "$AUTH")"
+check "a malformed reference is refused the same way" "404" \
+  "$(status -H "$AUTH" "$BASE/public/v1/bookings/not-a-ref/cancellation")"
+# No PUT and no DELETE: cancelling is a POST that writes a receipt, not the
+# removal of a resource. A DELETE that half-worked would leave nothing to show
+# somebody the code they are owed.
+check "there is no way to DELETE a booking" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+     "$BASE/public/v1/bookings/BEL-ABC123/cancellation" -H "$AUTH")"
+check "nor to PUT one" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+     "$BASE/public/v1/bookings/BEL-ABC123/cancellation" -H "$AUTH")"
+# The refusal carries a code and no prose (ADR-0008): the sentence a traveller
+# reads is rendered by their own app in their own language.
+check "the refusal is a code, not a sentence" "yes" \
+  "$(curl -s "$BASE/public/v1/bookings/BEL-ABC123/cancellation" -H "$AUTH" \
+     | grep -qE '"code"\s*:\s*"[a-z_.]+"' && echo yes || echo no)"
+
 # ── The statement as a document ─────────────────────────────────────────────
 #
 # `04-payments.md` §6.2 asks for the statement as a PDF, downloadable from the

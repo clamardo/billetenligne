@@ -553,6 +553,82 @@ void main() {
       expect(body, contains('agence'));
     });
 
+    test('a cancellation the traveller made carries the code', () async {
+      final departureId = await aDeparture();
+      final bookingId = await aConfirmedBookingOn(departureId, seat: '3C');
+
+      await seed.execute(
+        Sql.named('''
+          INSERT INTO refunds
+            (booking_id, operator_id, amount_minor, currency, rate_bps,
+             destination, state, involuntary, claim_code, claim_expires_at,
+             requested_by, approved_by, reason)
+          VALUES (@booking, @operator, 8100, 'XAF', 9000, 'agencyCash',
+                  'claim_issued', FALSE, 'QRTVK7M2',
+                  now() + INTERVAL '90 days', @actor, @actor,
+                  'cancelled by the traveller')
+        '''),
+        parameters: {
+          'booking': TypedValue(Type.uuid, bookingId),
+          'operator': TypedValue(Type.uuid, operatorId),
+          'actor': TypedValue(Type.uuid, await aTraveller()),
+        },
+      );
+
+      await queue(
+        eventType: 'booking.cancelled',
+        bookingId: bookingId,
+        payload: {'bookingId': bookingId},
+        dedupeKey: 'booking.cancelled:$bookingId',
+      );
+
+      await recording.drain();
+
+      final body = sent.sent.last.body;
+      expect(body, contains('QRTVK7M2'));
+      expect(body, contains('8${Money.narrowNbsp}100'));
+      expect(body, contains('agence'));
+    });
+
+    test('a cancellation refunded to a wallet promises a window, not an '
+        'arrival', () async {
+      final departureId = await aDeparture();
+      final bookingId = await aConfirmedBookingOn(departureId, seat: '4D');
+
+      // No claim code: the money goes back down the rail it came from, which
+      // is a separately funded float that does not exist yet. The row says
+      // what is owed and the message must not say it has been sent.
+      await seed.execute(
+        Sql.named('''
+          INSERT INTO refunds
+            (booking_id, operator_id, amount_minor, currency, rate_bps,
+             destination, state, involuntary, requested_by, approved_by,
+             reason)
+          VALUES (@booking, @operator, 8100, 'XAF', 9000, 'source',
+                  'approved', FALSE, @actor, @actor,
+                  'cancelled by the traveller')
+        '''),
+        parameters: {
+          'booking': TypedValue(Type.uuid, bookingId),
+          'operator': TypedValue(Type.uuid, operatorId),
+          'actor': TypedValue(Type.uuid, await aTraveller()),
+        },
+      );
+
+      await queue(
+        eventType: 'booking.cancelled',
+        bookingId: bookingId,
+        payload: {'bookingId': bookingId},
+        dedupeKey: 'booking.cancelled:$bookingId',
+      );
+
+      await recording.drain();
+
+      final body = sent.sent.last.body;
+      expect(body, contains('72h'));
+      expect(body, isNot(contains('code')));
+    });
+
     test('a rescue coach tells the passenger their new seat', () async {
       final departureId = await aDeparture();
       final bookingId = await aConfirmedBookingOn(departureId, seat: '7C');

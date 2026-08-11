@@ -18,6 +18,14 @@ sms:
   # part par SMS parce qu'un code affiche une seule fois est un code perdu.
   refundClaim:
     body: "Remboursement de {amount} accepte. Retirez-le dans une agence {operator} avec le code {code}. Ref {reference}."
+  # L'annulation faite par le voyageur lui-meme (01-feature-spec.md §8.2).
+  # Deux versions, et la difference porte sur ce qu'il doit faire ensuite :
+  # l'une donne un code a presenter au guichet, l'autre annonce un delai.
+  # Aucune ne dit "envoye" tant que le versement n'est pas parti.
+  cancelledClaim:
+    body: "Annulation confirmee. Retirez {amount} dans une agence {operator} avec le code {code}. Ref {reference}."
+  cancelledPending:
+    body: "Annulation confirmee. {amount} vous seront rembourses sous {hours}h sur le moyen de paiement utilise. Ref {reference}."
   ticketClaim:
     body: "Votre billet {route} du {date} vous attend. Ouvrez BilletEnLigne et entrez le code {code}."
   departureReminder:

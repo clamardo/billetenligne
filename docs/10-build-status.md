@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-10 · after commit *A link that follows the coach, not the passenger*
+**Updated:** 2026-08-10 · after commit *Annuler, without phoning anybody*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -95,12 +95,18 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Slice | State | What is actually there |
 | --- | --- | --- |
 | **Trip sharing and the follower page** | ✅ done | ADR-0014. The traveller mints a link and sends it into whatever conversation they were already having; whoever opens it sees the coach. **The page is HTML the API serves, not the Flutter app** (ADR-0004) — six kilobytes, self-contained, rendered before it fetches, then polling once a minute — because the follower is on a borrowed handset with 2G and will open it once. **The link follows a coach, never a person**: no seat, no reference, no fare, no name, no number crosses, and that is a property of the SECURITY DEFINER function's OUT columns rather than of a handler, checked by a guarantee that scans the signature itself. A **disruption reaches the follower**, which is the point — the moment the person at the station most needs to know is the one the passenger is least able to explain. Progress is honest about **which tier it came from**: with no conductor GPS and no checkpoint taps yet the bar is dashed and says *estimation d'après l'horaire*. The token is 160 bits **stored only as a SHA-256 hash**, dies six hours after arrival, and is revoked in one tap with the opens count beside it. Revoked, expired and never-issued answer identically, because a page that distinguishes them is an enumeration oracle. Opening the sheet mints nothing, and **platform staff cannot create one**. 14 domain · 13 Postgres · 13 smoke · 1 schema guarantee · 11 traveller-app tests |
+| **Cancel, by the traveller** | ✅ done | `01-feature-spec.md` §8.2. **An unpaid reservation is *released*, never "refunded"** — the commonest cancellation there is, and a claim code for nought francs reads as a bug to whoever is handed it. A paid booking quotes what comes back **beside what is kept**, under **the terms it was sold under** (ADR-0015 rule 1, by the join to `(policy_id, version)`), computed by the same `quoteRefund` the server executes (ADR-0004). **Cash paid at a counter comes back at a counter** whatever the policy's destination says, because a journey paid in notes never had a source; a wallet policy writes the debt as `approved` and the screen commits to a **window**, never to an arrival, since the disbursement float is not built. **Terms that give nothing back warn rather than refuse** — somebody who cannot travel would rather free the seat than no-show — and the warning is a sentence, not `0 FCFA` beside a button. The seat is **on sale again in the same transaction**, which is the whole reason to build this instead of answering the phone. A **payment in flight refuses the cancellation**, because releasing seats a second before a capture lands is what neither end can undo. `refund_policies` became readable by the public role — the first widening of that boundary — with every write still refused and a guarantee asserting both halves. 17 domain · 6 contract · 14 Postgres · 2 worker · 8 smoke · 1 schema guarantee · 20 traveller-app tests |
 
-One item of it is built, out of order and deliberately: the follower page is
-what makes a disruption reach the person who would otherwise phone the
-agency, and that machinery shipped in Phase 2. Everything else in Phase 3 —
-the stores, offline tickets on device, self-service change at volume, card
-via PSP, analytics — is not started. `09-roadmap.md` has the remaining
+Two items of it are built, out of order and deliberately. The follower page is
+what makes a disruption reach the person who would otherwise phone the agency,
+and that machinery shipped in Phase 2. Self-service cancellation is the other
+half of the refund path the counter already had, and every piece it needed —
+policies as data, the ledger, the claim code, the outbox — was already there;
+leaving it out would have meant a system that can refund a booking only when
+somebody walks into an office. What is left in §8 is **reschedule**, which is
+a different problem: it takes a seat before it releases one. Everything else in
+Phase 3 — the stores, offline tickets on device, card via PSP, analytics — is
+not started. `09-roadmap.md` has the remaining
 Phase 1 work in **dependency order**. With both consoles rendered, the vitrine complete, TOTP in front of
 both back offices, object storage built, the section builder shipped and
 refunds executing end to end, the sales horizon extending itself and an
@@ -240,21 +246,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 407 tests
+         packages/bel_contracts packages/bel_crypto     # 430 tests
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 214 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
-cd apps/traveller && flutter test        # 115 app tests
+cd apps/traveller && flutter test        # 135 app tests
 cd apps/console   && flutter test        # 86 console tests
 cd apps/admin     && flutter test        # 23 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 333 files
-./infra/migrations/check.sh              # 39 schema guarantees
-./tool/integration.sh                    # 265 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 255 checks, incl. the Dart client
+dart run tool/check_layers.dart          # the onion rule, 339 files
+./infra/migrations/check.sh              # 40 schema guarantees
+./tool/integration.sh                    # 281 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 263 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -263,8 +269,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**976 tests in total**, plus 255 smoke checks, 39 executed schema guarantees,
-265 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,019 tests in total**, plus 263 smoke checks, 40 executed schema guarantees,
+281 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -279,6 +285,100 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+**Cancelling, by the traveller** (`01-feature-spec.md` §8.2) — the half of
+§8 that carries money, and the half most ticketing systems here make you
+telephone for.
+
+**The commonest cancellation in the system is a reservation nobody paid
+for.** A payment code issued, never used, and a seat held against a person
+who has changed their mind. That case owes nobody anything, and the whole
+screen turns on saying so: it is a **release**, the word *remboursement*
+never appears, and no claim code is issued. Modelling it as a refund of zero
+would have been fewer branches and a worse product — a code for nought francs
+reads as a bug to whoever is handed it, and the support call it generates
+costs more than the seat.
+
+**What is retained is shown beside what comes back.** A traveller who sees
+only the smaller figure assumes a mistake; a traveller who sees both is
+reading a policy they agreed to. Under **the terms the booking was sold
+under**, resolved by the join to `(refund_policy_id, refund_policy_version)`
+rather than by the operator's current default — the rule ADR-0015 calls its
+most important, and the one a test here re-checks by writing a more generous
+policy after the sale and asserting the quote does not move.
+
+**Cash paid at a counter comes back at a counter**, whatever the policy's
+destination field says. That field describes wallet and card journeys; a
+journey paid in notes never had a source, and "back to source" for it is a
+sentence nobody can honour. The domain decides it, so the screen and the
+server decide it identically.
+
+**A wallet refund says "sous 72 heures" and never says "envoyé".** The debt
+is written as `approved` and posted to the ledger; the disbursement float is
+a separately funded API that does not exist. §8.2 asks for a window rather
+than an instant, which turns out to be exactly what an unbuilt rail can
+honestly promise. The SMS is worded the same way, and a test asserts the word
+"sent" is not in it.
+
+**Terms that give nothing back warn rather than refuse.** The bands may all
+have elapsed. Hiding the button does not give somebody their money back, and
+a person who knows they cannot travel would rather free the seat than
+no-show — so the cancellation is still offered, and the sentence above it
+says *ne vous rend rien* in words rather than showing `0 FCFA` beside a
+confirm button, where it would be read by nobody. Nothing is written to
+`refunds` in that case either: a refund row of nought is a row somebody would
+later try to pay.
+
+**The seat is on sale again inside the same transaction.** This is the
+commercial argument for the whole slice: a seat released at 22:00 the night
+before is a seat somebody else buys at 05:30, and a cancellation that waits
+for an agency to open is a seat that travels empty.
+
+**A payment still in flight refuses the cancellation.** Somebody is typing a
+PIN on a handset we cannot observe. Releasing the seats a second before the
+capture lands is the one outcome neither end can undo, and it is the same
+instinct as the spec's thirty-second rule (§6.2) seen from the other side of
+the same window.
+
+**The two verbs answer identically about a stranger's booking.** The GET
+returns 404 and so does the POST — which it did not, at first: the POST
+answered 409 `nothing_to_cancel`, and a smoke check caught it. A booking
+reference is six characters, and an endpoint where "not yours" and "does not
+exist" differ is a way to test whether a reference is real.
+
+**`refund_policies` became readable by the public role.** The first widening
+of the sales boundary since 0005 drew it, so it got a migration of its own
+and an executed guarantee rather than a line in an existing one. The
+reasoning is that the terms are *published*: §4.1 prints them on the
+departure screen before anybody buys, §8.2 quotes them at cancellation, and
+an operator who did not want travellers reading them would have no way to
+sell under them. SELECT crosses operators deliberately — somebody comparing
+two companies holds a booking under neither. Every write stays refused, and
+the guarantee asserts both halves, because "we only granted SELECT" is a
+claim about a line of SQL and the check is a claim about the database.
+
+**No reason field.** The counter's refund demands one — a vendor moving
+somebody else's money has to answer "why did we give this person money?" six
+weeks later. A traveller cancelling their own owes nobody an explanation, and
+a mandatory free-text box would have collected the word "annulation" eleven
+thousand times.
+
+**Found on the way:** the money rows on the sheet overflowed by ten pixels on
+a 400 px viewport with a six-figure amount. The label yields now, never the
+figure — a wrapped "Payé" is cosmetic and an elided amount is a lie.
+
+**What it did not build:** reschedule (§8.1). It is a different problem — it
+takes a seat before it releases one, and it needs a change-fee policy that
+does not exist in the schema yet — and shipping half of it inside this slice
+would have meant a screen that could take money without a rule behind it.
+
+**What it cost:** 17 domain tests, 6 contract, 14 against real Postgres, 2 in
+the worker, 8 smoke checks, one executed schema guarantee, 20 traveller-app
+tests, one migration, one port, one route and one screen.
+
+---
+
+## What the trip-sharing push changed, and what it cost
 
 The **shareable trip link and the follower page** (ADR-0014) — the first
 Phase 3 item, built early because the machinery it depends on shipped in

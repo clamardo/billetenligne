@@ -8,6 +8,7 @@ import 'package:bel_traveller/src/presentation/l10n.dart';
 import 'package:bel_traveller/src/application/tickets_flow.dart';
 import 'package:bel_traveller/src/presentation/screens/ticket_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/tickets_screen.dart';
+import 'package:bel_traveller/src/presentation/screens/cancel_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/share_trip_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/travel_choice_screen.dart';
 import 'package:flutter/material.dart';
@@ -418,6 +419,7 @@ void main() {
               past: const [],
               onOpen: (_) {},
               onChoices: (_) {},
+              onCancel: (_) {},
               onBack: () {},
               onRefresh: () async {},
               onSearch: () {},
@@ -1060,6 +1062,398 @@ void main() {
       await tester.pump();
 
       expect(taps, ['revoke']);
+    });
+  });
+
+  group('cancelling a trip', () {
+    CancellationOfferDto offerFor({
+      String kind = 'claimAtCounter',
+      Money? refundable,
+      bool givesNothingBack = false,
+    }) => CancellationOfferDto(
+      bookingRef: 'BEL-live',
+      kind: kind,
+      departsAt: now.add(const Duration(hours: 3)),
+      originCity: 'Brazzaville',
+      destinationCity: 'Pointe-Noire',
+      seatCount: 2,
+      fare: Money(18000, Currency.xaf),
+      serviceFee: Money(600, Currency.xaf),
+      refundable: refundable ?? Money(16200, Currency.xaf),
+      retained: Money(2400, Currency.xaf),
+      rateBps: 9000,
+      givesNothingBack: givesNothingBack,
+      policyLines: const ['policy.line.tierFull|24'],
+    );
+
+    Future<BookingDto> loaded() async {
+      gateway.bookingsResult = [
+        _booking(id: 'live', departsAt: now.add(const Duration(hours: 3))),
+      ];
+      await flow.load();
+      return (flow.step as TicketsReady).upcoming.single;
+    }
+
+    test(
+      'opening the sheet asks what it would do, and cancels nothing',
+      () async {
+        final booking = await loaded();
+
+        await flow.openCancellation(booking);
+
+        expect(gateway.cancelCalls, ['offer:BEL-live']);
+        expect((flow.step as Cancelling).offer, isNotNull);
+      },
+    );
+
+    test('the sheet is re-read every time it opens', () async {
+      // The terms depend on how long is left before departure. A sheet drawn
+      // from this morning's answer offers a band that elapsed at lunchtime.
+      final booking = await loaded();
+
+      await flow.openCancellation(booking);
+      flow.closeChoices();
+      await flow.openCancellation(booking);
+
+      expect(gateway.cancelCalls, ['offer:BEL-live', 'offer:BEL-live']);
+    });
+
+    test('confirming cancels and reloads the list behind it', () async {
+      final booking = await loaded();
+      gateway.cancelOffer = offerFor();
+      gateway.cancelResult = CancellationDoneDto(
+        bookingRef: 'BEL-live',
+        kind: 'claimAtCounter',
+        refunded: Money(16200, Currency.xaf),
+        claimCode: 'K7M2QRTV',
+      );
+      await flow.openCancellation(booking);
+      gateway.bookingsResult = const [];
+
+      await flow.confirmCancellation();
+
+      expect(gateway.cancelCalls.last, 'cancel:BEL-live');
+      expect((flow.step as Cancelled).done.claimCode, 'K7M2QRTV');
+      // And going back does not show a booking that no longer exists.
+      flow.closeChoices();
+      expect((flow.step as TicketsReady).isEmpty, isTrue);
+    });
+
+    test('a second tap while the first is in flight does nothing', () async {
+      final booking = await loaded();
+      await flow.openCancellation(booking);
+
+      final first = flow.confirmCancellation();
+      await flow.confirmCancellation();
+      await first;
+
+      // Two cancellations of one booking is a refund somebody could be paid
+      // twice, and the server's conditional update is the second line of
+      // defence rather than the first.
+      expect(
+        gateway.cancelCalls.where((c) => c.startsWith('cancel')),
+        hasLength(1),
+      );
+    });
+
+    test('a refusal re-reads and stays on the sheet', () async {
+      final booking = await loaded();
+      gateway.cancelOffer = offerFor();
+      await flow.openCancellation(booking);
+      gateway.cancelFailure = const ServerRefused(
+        409,
+        ApiError(code: 'cancel.coach_has_left'),
+      );
+
+      await flow.confirmCancellation();
+
+      // The world moved. The honest next screen is the same sheet carrying
+      // what is now true, not an error page with a retry button on it.
+      final step = flow.step as Cancelling;
+      expect(step.failure, isNotNull);
+      expect(step.offer, isNotNull);
+    });
+
+    test('a refusal that cannot be re-read becomes a failure screen', () async {
+      final booking = await loaded();
+      await flow.openCancellation(booking);
+      gateway.cancelFailure = const NetworkUnreachable();
+      gateway.cancelOfferFailure = const NetworkUnreachable();
+
+      await flow.confirmCancellation();
+
+      expect(flow.step, isA<TicketsFailed>());
+    });
+
+    test('confirming before the offer arrives does nothing', () async {
+      final booking = await loaded();
+
+      final opening = flow.openCancellation(booking);
+      await flow.confirmCancellation();
+      await opening;
+
+      expect(gateway.cancelCalls, ['offer:BEL-live']);
+    });
+  });
+
+  group('the cancellation sheet', () {
+    Future<void> pump(
+      WidgetTester tester, {
+      CancellationOfferDto? offer,
+      ApiFailure? failure,
+      List<String>? taps,
+    }) async {
+      final catalog = await loadTestCatalog();
+      tester.view.physicalSize = const Size(400, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        Localized(
+          catalog: catalog,
+          child: MaterialApp(
+            theme: KiloTheme.materialTheme(),
+            home: CancelScreen(
+              booking: _booking(
+                id: 'live',
+                departsAt: now.add(const Duration(hours: 3)),
+              ),
+              offer: offer,
+              failure: failure,
+              onConfirm: () => taps?.add('confirm'),
+              onClose: () => taps?.add('close'),
+            ),
+          ),
+        ),
+      );
+    }
+
+    CancellationOfferDto offer({
+      String? kind = 'claimAtCounter',
+      Money? refundable,
+      Money? retained,
+      bool givesNothingBack = false,
+      int? processingHours,
+      String? refusalCode,
+      int seatCount = 2,
+    }) => CancellationOfferDto(
+      bookingRef: 'BEL-live',
+      kind: kind,
+      departsAt: now.add(const Duration(hours: 3)),
+      originCity: 'Brazzaville',
+      destinationCity: 'Pointe-Noire',
+      seatCount: seatCount,
+      fare: Money(18000, Currency.xaf),
+      serviceFee: Money(600, Currency.xaf),
+      refundable: refundable,
+      retained: retained,
+      givesNothingBack: givesNothingBack,
+      processingHours: processingHours,
+      refusalCode: refusalCode,
+      policyLines: const ['policy.line.tierFull|24'],
+    );
+
+    testWidgets('an unpaid reservation is released, never "refunded"', (
+      tester,
+    ) async {
+      await pump(tester, offer: offer(kind: 'release'));
+
+      // The commonest cancellation in the system. A refund of zero francs for
+      // it reads as a bug to the person being told it.
+      expect(find.text("Rien n'a été payé"), findsOneWidget);
+      expect(find.text('Annuler la réservation'), findsOneWidget);
+      expect(find.textContaining('Remboursé'), findsNothing);
+    });
+
+    testWidgets('a paid trip shows what comes back beside what is kept', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        offer: offer(
+          refundable: Money(16200, Currency.xaf),
+          retained: Money(2400, Currency.xaf),
+        ),
+      );
+
+      // A traveller who sees only the smaller number assumes a mistake.
+      expect(find.text('Remboursé'), findsOneWidget);
+      expect(find.text('Retenu'), findsOneWidget);
+      expect(find.textContaining('16\u202f200'), findsOneWidget);
+      expect(find.textContaining('2\u202f400'), findsOneWidget);
+    });
+
+    testWidgets('it says the party size, because two seats is two people', (
+      tester,
+    ) async {
+      await pump(tester, offer: offer(refundable: Money(1, Currency.xaf)));
+
+      expect(find.text('2 places'), findsOneWidget);
+    });
+
+    testWidgets('a counter refund names the counter', (tester) async {
+      await pump(tester, offer: offer(refundable: Money(16200, Currency.xaf)));
+
+      expect(
+        find.textContaining('code à présenter dans une agence'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a source refund states the window, not an instant', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        offer: offer(
+          kind: 'toSource',
+          refundable: Money(16200, Currency.xaf),
+          processingHours: 72,
+        ),
+      );
+
+      expect(find.textContaining('sous 72 heures'), findsOneWidget);
+    });
+
+    testWidgets('nothing back is said in words, and still offers the button', (
+      tester,
+    ) async {
+      final taps = <String>[];
+      await pump(
+        tester,
+        taps: taps,
+        offer: offer(
+          refundable: Money(0, Currency.xaf),
+          givesNothingBack: true,
+        ),
+      );
+
+      expect(find.textContaining('ne vous rend rien'), findsOneWidget);
+      // Somebody who knows they cannot travel would rather free the seat than
+      // no-show, and hiding the button does not get their money back.
+      await tester.tap(find.text("Confirmer l'annulation"));
+      await tester.pump();
+      expect(taps, ['confirm']);
+    });
+
+    testWidgets('a refusal renders the reason and no button', (tester) async {
+      await pump(
+        tester,
+        offer: offer(kind: null, refusalCode: 'cancel.coach_has_left'),
+      );
+
+      expect(find.textContaining('Ce car est déjà parti'), findsOneWidget);
+      expect(find.text("Confirmer l'annulation"), findsNothing);
+    });
+
+    testWidgets('the terms are the ones it was sold under', (tester) async {
+      await pump(tester, offer: offer(refundable: Money(16200, Currency.xaf)));
+
+      expect(find.text('Conditions de vente'), findsOneWidget);
+      expect(find.textContaining('24 h avant le départ'), findsWidgets);
+    });
+
+    testWidgets('keeping the ticket is always one tap away', (tester) async {
+      final taps = <String>[];
+      await pump(
+        tester,
+        taps: taps,
+        offer: offer(refundable: Money(16200, Currency.xaf)),
+      );
+
+      await tester.tap(find.text('Garder mon billet'));
+      await tester.pump();
+
+      expect(taps, ['close']);
+    });
+  });
+
+  group('the cancellation receipt', () {
+    Future<void> pump(WidgetTester tester, CancellationDoneDto done) async {
+      final catalog = await loadTestCatalog();
+      tester.view.physicalSize = const Size(400, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        Localized(
+          catalog: catalog,
+          child: MaterialApp(
+            theme: KiloTheme.materialTheme(),
+            home: CancelledScreen(
+              booking: _booking(
+                id: 'live',
+                departsAt: now.add(const Duration(hours: 3)),
+              ),
+              done: done,
+              onClose: () {},
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('a claim code is spaced for reading aloud', (tester) async {
+      await pump(
+        tester,
+        CancellationDoneDto(
+          bookingRef: 'BEL-live',
+          kind: 'claimAtCounter',
+          refunded: Money(16200, Currency.xaf),
+          claimCode: 'K7M2QRTV',
+        ),
+      );
+
+      expect(find.text('K 7 M 2 Q R T V'), findsOneWidget);
+      // And it goes out by SMS too, because a code shown once is a code
+      // somebody loses.
+      expect(find.textContaining('par SMS'), findsOneWidget);
+    });
+
+    testWidgets('a source refund promises a window and not an arrival', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        CancellationDoneDto(
+          bookingRef: 'BEL-live',
+          kind: 'toSource',
+          refunded: Money(16200, Currency.xaf),
+          processingHours: 72,
+        ),
+      );
+
+      expect(find.textContaining('sous 72 heures'), findsOneWidget);
+      expect(find.textContaining('envoyé'), findsNothing);
+    });
+
+    testWidgets('a release says the seat is back on sale', (tester) async {
+      await pump(
+        tester,
+        const CancellationDoneDto(bookingRef: 'BEL-live', kind: 'release'),
+      );
+
+      expect(find.textContaining('de nouveau en vente'), findsOneWidget);
+    });
+
+    testWidgets('nothing owed is said plainly rather than left blank', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        CancellationDoneDto(
+          bookingRef: 'BEL-live',
+          kind: 'claimAtCounter',
+          refunded: Money(0, Currency.xaf),
+        ),
+      );
+
+      expect(
+        find.textContaining("Aucun montant ne vous est dû"),
+        findsOneWidget,
+      );
     });
   });
 }

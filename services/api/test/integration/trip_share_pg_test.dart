@@ -139,9 +139,10 @@ void main() {
 
       // A database dump must not be a set of working links into people's
       // journeys — the same rule a sign-in code lives under.
-      expect(await fixture.shareTokenHashes(trip.bookingId), isNot(
-        contains(token),
-      ));
+      expect(
+        await fixture.shareTokenHashes(trip.bookingId),
+        isNot(contains(token)),
+      );
       expect(token.length, greaterThan(20));
     });
 
@@ -200,10 +201,7 @@ void main() {
       );
 
       final arrives = await fixture.arrivesAt(trip.depId);
-      expect(
-        share.valueOrNull!.expiresAt.difference(arrives).inHours,
-        6,
-      );
+      expect(share.valueOrNull!.expiresAt.difference(arrives).inHours, 6);
     });
   });
 
@@ -228,23 +226,26 @@ void main() {
       expect(followed.progress.isEstimate, isTrue);
     });
 
-    test('opening it is counted, so the traveller can see it arrived', () async {
-      final trip = await paidTrip();
-      final token = (await sharing.share(
-        bookingRef: trip.ref,
-        userId: trip.travellerId,
-        now: now,
-      )).valueOrNull!.token!;
+    test(
+      'opening it is counted, so the traveller can see it arrived',
+      () async {
+        final trip = await paidTrip();
+        final token = (await sharing.share(
+          bookingRef: trip.ref,
+          userId: trip.travellerId,
+          now: now,
+        )).valueOrNull!.token!;
 
-      await sharing.follow(token: token, now: now);
-      await sharing.follow(token: token, now: now);
+        await sharing.follow(token: token, now: now);
+        await sharing.follow(token: token, now: now);
 
-      final mine = await sharing.shareFor(
-        bookingRef: trip.ref,
-        userId: trip.travellerId,
-      );
-      expect(mine!.opens, 2);
-    });
+        final mine = await sharing.shareFor(
+          bookingRef: trip.ref,
+          userId: trip.travellerId,
+        );
+        expect(mine!.opens, 2);
+      },
+    );
 
     test('a token nobody issued resolves to nothing', () async {
       expect(

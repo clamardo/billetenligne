@@ -170,6 +170,41 @@ travel:
     expires: "The link stops working on {date} at {time}"
     revoke: "Withdraw the link"
     revokeHint: "The link stops working immediately. You can always create another."
+  # The traveller cancelling for themselves (01-feature-spec.md §8.2). Three
+  # questions in order: what am I cancelling, what do I get back, and where.
+  # The word "refund" never appears when nothing was paid — an unpaid
+  # reservation is released, not refunded.
+  cancel:
+    action: "Cancel this trip"
+    title: "Cancel this trip"
+    lead: "{origin} → {destination}, {date}"
+    seats:
+      one: "{count} seat"
+      other: "{count} seats"
+    releaseTitle: "Nothing was paid"
+    releaseBody: "This booking was never paid for. Cancelling frees the seat and costs you nothing."
+    releaseConfirm: "Cancel the booking"
+    releaseDone: "Booking cancelled. The seat is back on sale."
+    refundTitle: "What you get back"
+    paid: "Paid"
+    refundable: "Refunded"
+    retained: "Retained"
+    # Said in words rather than shown as "0 FCFA": a zero beside a confirm
+    # button is read by nobody.
+    nothingBack: "The terms this ticket was sold under no longer provide a refund at this point. Cancelling frees the seat but returns nothing."
+    atCounter: "You will get a code to show at any {operator} agency."
+    toSource: "The money goes back to the payment method you used, within {hours} hours. We will tell you when it arrives."
+    terms: "Terms of sale"
+    confirm: "Confirm cancellation"
+    keep: "Keep my ticket"
+    irreversible: "Cancelling cannot be undone. The seat goes back on sale immediately."
+    doneTitle: "Trip cancelled"
+    doneClaim: "Collect {amount} at any {operator} agency with this code"
+    doneClaimExpires: "Code valid until {date}"
+    donePending: "{amount} will be refunded within {hours} hours to the payment method you used."
+    doneNothing: "The seat has been freed. Nothing is owed to you under the terms of sale."
+    doneSms: "We are sending this to you by SMS as well."
+    close: "Close"
   reserved:
     title: "Reservation confirmed"
     payAtAgency: "Show this code at any {operator} agency to pay."

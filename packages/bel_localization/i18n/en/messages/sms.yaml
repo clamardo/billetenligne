@@ -18,6 +18,14 @@ sms:
   # The code goes by SMS because a code shown once is a code somebody loses.
   refundClaim:
     body: "Refund of {amount} approved. Collect it at any {operator} agency with code {code}. Ref {reference}."
+  # The traveller cancelling their own booking (01-feature-spec.md §8.2). Two
+  # versions, and what differs is what they have to do next: one carries a
+  # code for a counter, the other a window. Neither says "sent" until the
+  # disbursement has actually left.
+  cancelledClaim:
+    body: "Cancellation confirmed. Collect {amount} at any {operator} agency with code {code}. Ref {reference}."
+  cancelledPending:
+    body: "Cancellation confirmed. {amount} will be refunded within {hours}h to the payment method you used. Ref {reference}."
   ticketClaim:
     body: "Your ticket for {route} on {date} is waiting. Open BilletEnLigne and enter code {code}."
   departureReminder:

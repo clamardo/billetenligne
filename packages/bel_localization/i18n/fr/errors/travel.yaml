@@ -29,6 +29,14 @@ errors:
     unknown_option: "Cette option n'existe plus. Regardez celles qui restent."
     no_longer_available: "Ce car vient de se remplir. Choisissez une autre option."
     party_does_not_fit: "Il ne reste pas assez de places pour {seats} voyageurs sur ce car."
+  # Les refus de l'annulation en libre-service (01-feature-spec.md §8.2).
+  # Chacun dit ce qu'il faut faire ensuite : « le car est parti » envoie au
+  # guichet, « un paiement est en cours » demande d'attendre trente secondes.
+  cancel:
+    nothing_to_cancel: "Cette réservation est déjà annulée."
+    coach_has_left: "Ce car est déjà parti. Pour la suite, adressez-vous à la compagnie."
+    payment_in_flight: "Un paiement est en cours sur cette réservation. Attendez qu'il aboutisse avant d'annuler."
+    needs_the_agency: "Cette compagnie rembourse en avoir sur un prochain voyage. Passez à une agence pour l'obtenir."
   refund:
     outside_window: "Ce billet n'est plus remboursable selon les conditions de vente."
     fare_not_refundable: "Le tarif « {fareCode} » n'est pas remboursable."

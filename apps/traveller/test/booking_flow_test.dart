@@ -132,6 +132,47 @@ final class _ScriptedGateway implements TravelGateway {
     return bookingsResult ?? [reserveResult ??= _demoBooking(const [])];
   }
 
+  // ── Cancelling ────────────────────────────────────────────────────────────
+
+  /// What the server would answer. Settable, because "paid, 90% back, at a
+  /// counter" is the state worth testing and not one the app can reach on
+  /// its own.
+  CancellationOfferDto? cancelOffer;
+  CancellationDoneDto? cancelResult;
+
+  /// Two failures, not one. The interesting path is a refused cancellation
+  /// whose re-read succeeds — the sheet has to come back carrying what is now
+  /// true — and a fake that fails both at once cannot express it.
+  ApiFailure? cancelOfferFailure;
+  ApiFailure? cancelFailure;
+  final cancelCalls = <String>[];
+
+  @override
+  Future<CancellationOfferDto> cancellationOffer(String bookingRef) async {
+    cancelCalls.add('offer:$bookingRef');
+    if (cancelOfferFailure != null) throw cancelOfferFailure!;
+    return cancelOffer ??= CancellationOfferDto(
+      bookingRef: bookingRef,
+      kind: 'release',
+      departsAt: DateTime.utc(2026, 8, 11, 6),
+      originCity: 'Brazzaville',
+      destinationCity: 'Pointe-Noire',
+      seatCount: 1,
+      fare: Money(900000, Currency.xaf),
+      serviceFee: Money(30000, Currency.xaf),
+    );
+  }
+
+  @override
+  Future<CancellationDoneDto> cancelBooking(String bookingRef) async {
+    cancelCalls.add('cancel:$bookingRef');
+    if (cancelFailure != null) throw cancelFailure!;
+    return cancelResult ??= CancellationDoneDto(
+      bookingRef: bookingRef,
+      kind: 'release',
+    );
+  }
+
   // ── Sharing a trip ────────────────────────────────────────────────────────
 
   /// The link, as the server would answer. Settable, because "already shared,

@@ -572,4 +572,50 @@ final class DemoTravelGateway implements TravelGateway {
 
   @override
   Future<void> revokeTripShare(String bookingRef) async => _share = null;
+
+  BookingDto _byRef(String ref) => [
+    if (_booking != null) _booking!,
+    _disruptedTrip,
+    _pastTrip,
+  ].firstWhere((b) => b.ref == ref);
+
+  @override
+  Future<CancellationOfferDto> cancellationOffer(String bookingRef) async {
+    final booking = _byRef(bookingRef);
+    final paid = booking.state == 'confirmed';
+    final fare = booking.fare ?? Money(900000, Currency.xaf);
+    final serviceFee = booking.serviceFee ?? Money(30000, Currency.xaf);
+    return CancellationOfferDto(
+      bookingRef: bookingRef,
+      kind: paid ? 'claimAtCounter' : 'release',
+      departsAt: booking.departsAt,
+      originCity: booking.originCity,
+      destinationCity: booking.destinationCity,
+      seatCount: booking.passengers.length,
+      fare: fare,
+      serviceFee: serviceFee,
+      refundable: paid ? fare.percentBps(9000) : null,
+      retained: paid ? fare.percentBps(1000) + serviceFee : null,
+      rateBps: paid ? 9000 : null,
+      policyName: 'Souple',
+      policyLines: paid ? RefundPolicy.souple().describe() : const [],
+    );
+  }
+
+  @override
+  Future<CancellationDoneDto> cancelBooking(String bookingRef) async {
+    final booking = _byRef(bookingRef);
+    final paid = booking.state == 'confirmed';
+    final fare = booking.fare ?? Money(900000, Currency.xaf);
+    if (_booking?.ref == bookingRef) _booking = null;
+    return CancellationDoneDto(
+      bookingRef: bookingRef,
+      kind: paid ? 'claimAtCounter' : 'release',
+      refunded: paid ? fare.percentBps(9000) : null,
+      claimCode: paid ? 'K7M2QRTV' : null,
+      claimExpiresAt: paid
+          ? DateTime.now().add(const Duration(days: 90))
+          : null,
+    );
+  }
 }

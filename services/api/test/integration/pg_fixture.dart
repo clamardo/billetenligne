@@ -798,6 +798,20 @@ final class PgFixture {
     return reserved.valueOrNull!;
   }
 
+  /// The refund row a cancellation wrote, if it wrote one.
+  Future<Map<String, Object?>?> refundFor(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT amount_minor, currency, state::text AS state, destination,
+               claim_code, involuntary, reason
+          FROM refunds WHERE booking_id = @id
+         ORDER BY created_at DESC LIMIT 1
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return rows.isEmpty ? null : rows.first.toColumnMap();
+  }
+
   /// A departure with [seatLabels] all available. Returns its id.
   Future<String> departure({
     required List<String> seatLabels,
@@ -1122,11 +1136,14 @@ final class PgFixture {
   );
 
   Future<void> close() => _seed.close();
+
   /// How many share rows this booking has. Read under the seed connection,
   /// because the point of some of these tests is that nobody else can.
   Future<int> shareCount(String bookingId) async {
     final rows = await _seed.execute(
-      Sql.named('SELECT count(*)::int AS n FROM trip_shares WHERE booking_id = @b'),
+      Sql.named(
+        'SELECT count(*)::int AS n FROM trip_shares WHERE booking_id = @b',
+      ),
       parameters: {'b': TypedValue(Type.uuid, bookingId)},
     );
     return rows.first.toColumnMap()['n']! as int;

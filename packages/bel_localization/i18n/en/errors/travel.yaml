@@ -29,6 +29,14 @@ errors:
     unknown_option: "That option no longer exists. Look at the ones that remain."
     no_longer_available: "That coach just filled. Please choose another option."
     party_does_not_fit: "There are not enough seats left for {seats} travellers on that coach."
+  # The refusals of a self-service cancellation (01-feature-spec.md §8.2).
+  # Each says what to do next: "the coach has left" sends somebody to a
+  # counter, "a payment is in flight" asks them to wait thirty seconds.
+  cancel:
+    nothing_to_cancel: "This booking is already cancelled."
+    coach_has_left: "This coach has already left. Please speak to the operator about what happens now."
+    payment_in_flight: "A payment is going through on this booking. Wait for it to finish before cancelling."
+    needs_the_agency: "This operator refunds as credit towards a future journey. Visit an agency to arrange it."
   refund:
     outside_window: "This ticket is no longer refundable under the terms it was sold with."
     fare_not_refundable: "The \"{fareCode}\" fare is not refundable."

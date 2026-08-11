@@ -104,6 +104,42 @@ final class SharingTrip extends TicketsStep {
   final bool busy;
 }
 
+/// The cancellation sheet for one booking (`01-feature-spec.md` §8.2).
+final class Cancelling extends TicketsStep {
+  const Cancelling({
+    required this.booking,
+    required this.offer,
+    this.busy = false,
+    this.failure,
+  });
+
+  final BookingDto booking;
+
+  /// What cancelling will do, computed by the server. Null only while the
+  /// first read is in flight.
+  final CancellationOfferDto? offer;
+
+  /// True while the cancellation is being taken. The sheet stays on screen
+  /// and disables the button rather than blanking: somebody who taps twice on
+  /// a bad connection must not be looking at a spinner wondering whether they
+  /// have cancelled their journey once or twice.
+  final bool busy;
+
+  /// The last refusal, rendered above the button rather than instead of it.
+  /// A booking somebody was refused a cancellation on is still a booking they
+  /// are looking at.
+  final ApiFailure? failure;
+}
+
+/// The receipt. A screen of its own, because a claim code is something
+/// somebody has to write down.
+final class Cancelled extends TicketsStep {
+  const Cancelled({required this.booking, required this.done});
+
+  final BookingDto booking;
+  final CancellationDoneDto done;
+}
+
 final class TicketsFailed extends TicketsStep {
   const TicketsFailed(this.failure);
   final ApiFailure failure;
@@ -336,6 +372,57 @@ final class TicketsFlow {
     } on ApiFailure catch (failure) {
       _emit(SharingTrip(booking: current.booking, share: current.share));
       _emit(TicketsFailed(failure));
+    }
+  }
+
+  /// Opens the cancellation sheet, reading what cancelling would do.
+  ///
+  /// Read every time it opens and never cached: the terms depend on how long
+  /// is left before departure, and a sheet drawn from this morning's answer
+  /// would offer a refund band that elapsed at lunchtime.
+  Future<void> openCancellation(BookingDto booking) async {
+    _emit(Cancelling(booking: booking, offer: null, busy: true));
+    try {
+      final offer = await _gateway.cancellationOffer(booking.ref);
+      _emit(Cancelling(booking: booking, offer: offer));
+    } on ApiFailure catch (failure) {
+      _emit(TicketsFailed(failure));
+    }
+  }
+
+  /// Does it. The seat is on sale again before this returns.
+  Future<void> confirmCancellation() async {
+    final current = _step;
+    if (current is! Cancelling || current.busy || current.offer == null) return;
+
+    _emit(
+      Cancelling(booking: current.booking, offer: current.offer, busy: true),
+    );
+
+    try {
+      final done = await _gateway.cancelBooking(current.booking.ref);
+      // The list behind is now wrong — the booking is cancelled and its
+      // ticket is void — so it is reloaded before the traveller can get back
+      // to it.
+      await _fetch(silent: true);
+      _emit(Cancelled(booking: current.booking, done: done));
+    } on ApiFailure catch (failure) {
+      // Re-read rather than report and stop. Every refusal here is the world
+      // having moved — the coach left, a counter got there first, a payment
+      // landed — and the honest next screen is the same sheet with what is
+      // now true on it.
+      try {
+        final refreshed = await _gateway.cancellationOffer(current.booking.ref);
+        _emit(
+          Cancelling(
+            booking: current.booking,
+            offer: refreshed,
+            failure: failure,
+          ),
+        );
+      } on ApiFailure {
+        _emit(TicketsFailed(failure));
+      }
     }
   }
 

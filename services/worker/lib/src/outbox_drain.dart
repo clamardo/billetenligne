@@ -537,6 +537,73 @@ final class OutboxDrain {
           eventId: 'booking.refunded:$bookingId',
         );
 
+      // The traveller cancelled their own booking (§8.2). What the message
+      // has to carry is what they do next, and that differs: a claim ends at
+      // a counter with a code, a source refund ends with a wait. Sending the
+      // wrong one of the two is worse than sending nothing.
+      case 'booking.cancelled':
+        final bookingId = payload['bookingId'];
+        if (bookingId is! String) return null;
+
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT b.ref, u.phone_e164, u.email, u.language,
+                   o.trading_name, o.legal_name,
+                   f.amount_minor, f.currency, f.claim_code,
+                   COALESCE(p.processing_hours, 72) AS processing_hours
+              FROM refunds f
+              JOIN bookings b ON b.id = f.booking_id
+              JOIN operators o ON o.id = f.operator_id
+              LEFT JOIN user_accounts u ON u.id = b.purchaser_user_id
+              LEFT JOIN refund_policies p
+                     ON p.id = b.refund_policy_id
+                    AND p.version = b.refund_policy_version
+             WHERE f.booking_id = @booking
+             ORDER BY f.created_at DESC
+             LIMIT 1
+          '''),
+          parameters: {'booking': TypedValue(Type.uuid, bookingId)},
+        );
+
+        if (rows.isEmpty) return null;
+        final b = rows.first.toColumnMap();
+
+        final phone = b['phone_e164'] as String?;
+        final email = b['email'] as String?;
+        final to = phone ?? email;
+        if (to == null) return null;
+
+        final language = b['language'] as String? ?? 'fr';
+        final t = CatalogTranslator(_catalog, language);
+        final currency =
+            Currency.byCode(b['currency'] as String) ?? Currency.xaf;
+        final amount = Money(
+          b['amount_minor'] as int,
+          currency,
+        ).format(locale: language);
+        final claimCode = b['claim_code'] as String?;
+
+        final body = claimCode == null
+            ? t('sms.cancelledPending.body', {
+                'amount': amount,
+                'hours': '${b['processing_hours']}',
+                'reference': 'BEL-${b['ref']}',
+              })
+            : t('sms.cancelledClaim.body', {
+                'amount': amount,
+                'operator': b['trading_name'] ?? b['legal_name'] ?? '',
+                'code': claimCode,
+                'reference': 'BEL-${b['ref']}',
+              });
+
+        return OutboundMessage(
+          channel: phone != null ? SignInChannel.phone : SignInChannel.email,
+          to: to,
+          subject: phone != null ? null : body,
+          body: body,
+          eventId: 'booking.cancelled:$bookingId',
+        );
+
       default:
         // An event type nobody handles is marked delivered rather than
         // retried forever. It is a deploy-order artefact — a producer shipped

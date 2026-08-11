@@ -268,8 +268,30 @@ final class BelApiClient {
     }
   }
 
-  Future<void> revokeTripShare(String bookingRef) =>
-      _send('DELETE', '/public/v1/bookings/$bookingRef/share', idempotent: true);
+  Future<void> revokeTripShare(String bookingRef) => _send(
+    'DELETE',
+    '/public/v1/bookings/$bookingRef/share',
+    idempotent: true,
+  );
+
+  /// What cancelling this booking would do (§8.2).
+  ///
+  /// Read before the button is drawn, never after: the sentence the traveller
+  /// agrees to and the money that moves come from the same domain functions
+  /// on the server (ADR-0004).
+  Future<CancellationOfferDto> cancellationOffer(String bookingRef) async =>
+      CancellationOfferDto.fromJson(
+        await _get('/public/v1/bookings/$bookingRef/cancellation'),
+      );
+
+  /// Does it. The seat is on sale again before this returns.
+  Future<CancellationDoneDto> cancelBooking(String bookingRef) async =>
+      CancellationDoneDto.fromJson(
+        await _postJson(
+          '/public/v1/bookings/$bookingRef/cancellation',
+          const {},
+        ),
+      );
 
   /// How this booking can be paid, and where the money goes.
   ///

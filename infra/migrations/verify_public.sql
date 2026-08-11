@@ -148,7 +148,12 @@ DECLARE
   forbidden TEXT[] := ARRAY[
     'operator_staff', 'platform_staff', 'kyb_documents',
     'ledger_entries', 'payment_events', 'audit_log',
-    'refunds', 'refund_policies',
+    -- `refunds` stays: what somebody was paid back, and the claim code that
+    -- collects it, is not a term of sale. `refund_policies` left this list in
+    -- 0024 and is checked below instead — the terms are printed on the
+    -- departure screen before anybody buys, so a role that cannot read them
+    -- cannot render the screen the spec asks for.
+    'refunds',
     'vehicles', 'departure_patterns', 'redemptions',
     -- Commercial terms between two companies (0019), not a fact about a
     -- coach. A disruption is public; what two operators agreed to bill each
@@ -195,6 +200,22 @@ BEGIN
   IF has_table_privilege('bel_public', 'payment_intents', 'UPDATE')
   OR has_table_privilege('bel_public', 'payment_intents', 'DELETE') THEN
     RAISE EXCEPTION 'FAIL: the public role can move a payment forward itself';
+  END IF;
+
+  -- `refund_policies` left the list in 0024. The terms a booking is judged by
+  -- are published — §4.1 puts them on the departure screen before purchase
+  -- and §8.2 quotes them on the cancellation sheet — so SELECT is granted
+  -- across operators on purpose: somebody comparing two companies holds a
+  -- booking under neither. Every write stays refused, which is the half of
+  -- the claim that matters, because a traveller who could rewrite the terms
+  -- could rewrite what they are owed.
+  IF NOT has_table_privilege('bel_public', 'refund_policies', 'SELECT') THEN
+    RAISE EXCEPTION 'FAIL: a traveller cannot read the terms of their sale';
+  END IF;
+  IF has_table_privilege('bel_public', 'refund_policies', 'INSERT')
+  OR has_table_privilege('bel_public', 'refund_policies', 'UPDATE')
+  OR has_table_privilege('bel_public', 'refund_policies', 'DELETE') THEN
+    RAISE EXCEPTION 'FAIL: the public role can write refund policies';
   END IF;
 
   -- And the raw rail payloads stay out of reach entirely: MSISDNs, merchant
@@ -997,5 +1018,79 @@ BEGIN
 
   RESET ROLE;
   RAISE NOTICE 'OK  a follower learns about a coach, never about a passenger';
+END
+$$;
+
+-- ── 19. A traveller reads the terms and can never rewrite them ──────────────
+--
+-- 0024. The cancellation sheet quotes the policy the booking was sold under
+-- (§8.2), which means the public role now reads `refund_policies` — the first
+-- widening of that role since the sales boundary was drawn, and therefore
+-- worth an executed guarantee rather than a comment.
+--
+-- Three claims, in the order they would break:
+--
+--   * the terms are readable by `bel_public`, because a sheet that cannot
+--     quote them shows a number with no explanation beside it;
+--   * they are readable across operators, deliberately — somebody comparing
+--     two companies before buying holds a booking under neither;
+--   * and every write is refused. The table is append-only for the roles that
+--     can write it at all (0014); this asserts the public role is not one of
+--     them, which is a different statement and the one that matters here.
+DO $$
+DECLARE
+  ocean  UUID := '11111111-1111-1111-1111-111111111111';
+  other  UUID := '22222222-2222-2222-2222-222222222222';
+  pid    UUID := 'ffffffff-2222-0000-0000-00000000f001';
+  qid    UUID := 'ffffffff-2222-0000-0000-00000000f002';
+  seen   INT;
+BEGIN
+  RESET ROLE;
+  PERFORM set_config('app.platform', 'on', true);
+  SET LOCAL ROLE bel_admin;
+
+  INSERT INTO refund_policies
+    (id, version, operator_id, name, tiers, destination, processing_hours)
+  VALUES
+    (pid, 1, ocean, 'Souple',
+     '[{"minLeadTimeMinutes": 1440, "rateBps": 10000}]'::jsonb, 'agencyCash',
+     72),
+    (qid, 1, other, 'Stricte', '[]'::jsonb, 'source', 72);
+
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  SELECT count(*) INTO seen FROM refund_policies WHERE id IN (pid, qid);
+  IF seen <> 2 THEN
+    RAISE EXCEPTION
+      'FAIL: a traveller reads % of 2 published policies', seen;
+  END IF;
+
+  -- Writing is refused, in all three directions. Caught individually so a
+  -- future migration that grants one of them fails on the specific verb.
+  BEGIN
+    INSERT INTO refund_policies
+      (id, version, operator_id, name, tiers, destination, processing_hours)
+    VALUES (gen_random_uuid(), 1, ocean, 'Forgée', '[]'::jsonb, 'source', 72);
+    RAISE EXCEPTION 'FAIL: a traveller wrote a refund policy';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  BEGIN
+    UPDATE refund_policies SET name = 'Réécrite' WHERE id = pid;
+    RAISE EXCEPTION 'FAIL: a traveller rewrote the terms of a sale';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  BEGIN
+    DELETE FROM refund_policies WHERE id = pid;
+    RAISE EXCEPTION 'FAIL: a traveller deleted the terms of a sale';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  a traveller reads the terms and can never rewrite them';
 END
 $$;

@@ -688,6 +688,127 @@ void main() {
       expect(json.keys, ['fullName']);
     });
   });
+
+  group('cancelling on the wire', () {
+    CancellationOfferDto roundTrip(CancellationOfferDto offer) =>
+        CancellationOfferDto.fromJson(offer.toJson());
+
+    final base = CancellationOfferDto(
+      bookingRef: 'BEL-7QK4M2',
+      kind: 'claimAtCounter',
+      departsAt: DateTime.utc(2026, 8, 11, 6),
+      originCity: 'BZV',
+      destinationCity: 'PNR',
+      seatCount: 2,
+      fare: const Money.xaf(18000),
+      serviceFee: const Money.xaf(600),
+      refundable: const Money.xaf(16200),
+      retained: const Money.xaf(2400),
+      rateBps: 9000,
+      policyLines: const ['policy.line.tierFull|24'],
+    );
+
+    test('an offer survives the round trip whole', () {
+      final back = roundTrip(base);
+
+      expect(back.kind, 'claimAtCounter');
+      expect(back.refundable, const Money.xaf(16200));
+      expect(back.retained, const Money.xaf(2400));
+      expect(back.seatCount, 2);
+      expect(back.policyLines, ['policy.line.tierFull|24']);
+      expect(back.owesMoney, isTrue);
+      expect(back.isPossible, isTrue);
+    });
+
+    test('a release owes nothing, and says so rather than quoting zero', () {
+      final back = roundTrip(
+        CancellationOfferDto(
+          bookingRef: base.bookingRef,
+          kind: 'release',
+          departsAt: base.departsAt,
+          originCity: base.originCity,
+          destinationCity: base.destinationCity,
+          seatCount: 1,
+          fare: base.fare,
+          serviceFee: base.serviceFee,
+        ),
+      );
+
+      // The difference the screen turns on: no refundable field at all, not a
+      // refundable of nought.
+      expect(back.owesMoney, isFalse);
+      expect(back.refundable, isNull);
+    });
+
+    test('a refusal carries a code and no kind', () {
+      final back = roundTrip(
+        CancellationOfferDto(
+          bookingRef: base.bookingRef,
+          kind: null,
+          departsAt: base.departsAt,
+          originCity: base.originCity,
+          destinationCity: base.destinationCity,
+          seatCount: 1,
+          fare: base.fare,
+          serviceFee: base.serviceFee,
+          refusalCode: 'cancel.coach_has_left',
+        ),
+      );
+
+      expect(back.isPossible, isFalse);
+      expect(back.refusalCode, 'cancel.coach_has_left');
+    });
+
+    test('zero back is a real answer and survives as one', () {
+      final back = roundTrip(
+        CancellationOfferDto(
+          bookingRef: base.bookingRef,
+          kind: 'claimAtCounter',
+          departsAt: base.departsAt,
+          originCity: base.originCity,
+          destinationCity: base.destinationCity,
+          seatCount: 1,
+          fare: base.fare,
+          serviceFee: base.serviceFee,
+          refundable: const Money.xaf(0),
+          givesNothingBack: true,
+        ),
+      );
+
+      // `Wire.compact` drops nulls, not zeroes — a refundable of nought that
+      // vanished on the wire would render as "nothing was paid".
+      expect(back.refundable, const Money.xaf(0));
+      expect(back.givesNothingBack, isTrue);
+    });
+
+    test('the receipt carries the code and when it dies', () {
+      final done = CancellationDoneDto.fromJson(
+        CancellationDoneDto(
+          bookingRef: 'BEL-7QK4M2',
+          kind: 'claimAtCounter',
+          refunded: const Money.xaf(16200),
+          claimCode: 'K7M2QRTV',
+          claimExpiresAt: DateTime.utc(2026, 11, 9),
+        ).toJson(),
+      );
+
+      expect(done.claimCode, 'K7M2QRTV');
+      expect(done.claimExpiresAt, DateTime.utc(2026, 11, 9));
+      expect(done.refunded, const Money.xaf(16200));
+    });
+
+    test('a release receipt carries no money at all', () {
+      final done = CancellationDoneDto.fromJson(
+        const CancellationDoneDto(
+          bookingRef: 'BEL-7QK4M2',
+          kind: 'release',
+        ).toJson(),
+      );
+
+      expect(done.refunded, isNull);
+      expect(done.claimCode, isNull);
+    });
+  });
 }
 
 /// Reads the string constants declared on [ErrorCode] straight from source,

@@ -83,6 +83,18 @@ abstract interface class TravelGateway {
 
   Future<void> revokeTripShare(String bookingRef);
 
+  // ── Changing their mind ───────────────────────────────────────────────────
+
+  /// What cancelling this booking would do (§8.2).
+  ///
+  /// Always read before the button is drawn. The common case is a reservation
+  /// nobody paid for, where "refund" is the wrong word entirely, and only the
+  /// server knows which case this is.
+  Future<CancellationOfferDto> cancellationOffer(String bookingRef);
+
+  /// Does it. The seat is on sale again before this returns.
+  Future<CancellationDoneDto> cancelBooking(String bookingRef);
+
   // ── Paying ────────────────────────────────────────────────────────────────
 
   /// How this booking can be paid, and where the money goes.

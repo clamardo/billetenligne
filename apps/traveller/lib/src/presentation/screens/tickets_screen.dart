@@ -22,6 +22,7 @@ final class TicketsScreen extends StatelessWidget {
     required this.past,
     required this.onOpen,
     required this.onChoices,
+    required this.onCancel,
     required this.onBack,
     required this.onRefresh,
     this.stale = false,
@@ -37,6 +38,12 @@ final class TicketsScreen extends StatelessWidget {
   /// One tap rather than two: during a breakdown this list is what somebody
   /// opens, and the ticket underneath is not what they came for.
   final void Function(BookingDto booking) onChoices;
+
+  /// Opens the cancellation sheet (§8.2). On the list rather than only on the
+  /// ticket, because the commonest thing anybody cancels is a reservation
+  /// that was never paid for — and that one has no ticket to open.
+  final void Function(BookingDto booking) onCancel;
+
   final VoidCallback onBack;
   final Future<void> Function() onRefresh;
 
@@ -104,6 +111,7 @@ final class TicketsScreen extends StatelessWidget {
                           booking: booking,
                           onOpen: onOpen,
                           onChoices: onChoices,
+                          onCancel: onCancel,
                         ),
                     ],
 
@@ -115,6 +123,7 @@ final class TicketsScreen extends StatelessWidget {
                           booking: booking,
                           onOpen: onOpen,
                           onChoices: onChoices,
+                          onCancel: onCancel,
                           past: true,
                         ),
                     ],
@@ -148,12 +157,18 @@ class _BookingCard extends StatelessWidget {
     required this.booking,
     required this.onOpen,
     required this.onChoices,
+    required this.onCancel,
     this.past = false,
   });
 
   final BookingDto booking;
   final void Function(BookingDto booking) onOpen;
   final void Function(BookingDto booking) onChoices;
+
+  /// Opens the cancellation sheet (§8.2). On the list rather than only on the
+  /// ticket, because the commonest thing anybody cancels is a reservation
+  /// that was never paid for — and that one has no ticket to open.
+  final void Function(BookingDto booking) onCancel;
   final bool past;
 
   @override
@@ -261,6 +276,18 @@ class _BookingCard extends StatelessWidget {
                     ? KButtonTone.secondary
                     : KButtonTone.primary,
                 onPressed: () => onOpen(booking),
+              ),
+            ],
+
+            // Last, and quiet. Cancelling is a real thing people do and
+            // hiding it behind a phone call is how a seat travels empty —
+            // but it is never the action this card is inviting.
+            if (!past) ...[
+              SizedBox(height: kilo.space.s2),
+              KButton(
+                label: context.t('travel.cancel.action'),
+                tone: KButtonTone.ghost,
+                onPressed: () => onCancel(booking),
               ),
             ],
           ],

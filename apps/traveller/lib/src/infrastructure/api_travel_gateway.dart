@@ -74,6 +74,14 @@ final class ApiTravelGateway implements TravelGateway {
       _client.revokeTripShare(bookingRef);
 
   @override
+  Future<CancellationOfferDto> cancellationOffer(String bookingRef) =>
+      _client.cancellationOffer(bookingRef);
+
+  @override
+  Future<CancellationDoneDto> cancelBooking(String bookingRef) =>
+      _client.cancelBooking(bookingRef);
+
+  @override
   Future<
     ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
   >
