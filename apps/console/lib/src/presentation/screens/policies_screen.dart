@@ -129,14 +129,20 @@ final class PoliciesScreen extends StatelessWidget {
 
   Future<void> _write(BuildContext context) async {
     final written = await Navigator.of(context)
-        .push<({String name, RefundPolicy policy, ChangePolicy change})>(
-          MaterialPageRoute(builder: (_) => const PolicyWizard()),
-        );
+        .push<
+          ({
+            String name,
+            RefundPolicy policy,
+            ChangePolicy change,
+            MissedPolicy missed,
+          })
+        >(MaterialPageRoute(builder: (_) => const PolicyWizard()));
     if (written == null) return;
     await workspace.saveRefundPolicy(
       name: written.name,
       policy: written.policy,
       change: written.change,
+      missed: written.missed,
     );
   }
 }
@@ -230,6 +236,11 @@ class _PolicyWizardState extends State<PolicyWizard> {
   final _changeFree = TextEditingController(text: '24');
   final _changeFee = TextEditingController(text: '10');
   final _changeCutoff = TextEditingController(text: '2');
+
+  /// Zero and zero: not offered. The one default that must not be generous,
+  /// because it is a promise about somebody else's seats.
+  final _missedWindow = TextEditingController(text: '0');
+  final _missedFee = TextEditingController(text: '0');
   var _destination = RefundDestination.source;
   var _refundServiceFee = false;
   final _tiers = <_TierEditor>[];
@@ -249,6 +260,8 @@ class _PolicyWizardState extends State<PolicyWizard> {
     _changeFree.dispose();
     _changeFee.dispose();
     _changeCutoff.dispose();
+    _missedWindow.dispose();
+    _missedFee.dispose();
     for (final t in _tiers) {
       t.dispose();
     }
@@ -292,6 +305,13 @@ class _PolicyWizardState extends State<PolicyWizard> {
     cutoff: Duration(hours: int.tryParse(_changeCutoff.text.trim()) ?? 2),
   );
 
+  /// What happens to somebody who was late. Zero hours is "not offered", and
+  /// it is what the box holds until an operator decides otherwise.
+  MissedPolicy get _missed => MissedPolicy(
+    window: Duration(hours: int.tryParse(_missedWindow.text.trim()) ?? 0),
+    feeBps: (int.tryParse(_missedFee.text.trim()) ?? 0) * 100,
+  );
+
   /// True when every band the operator typed is readable **and** the policy
   /// as a whole is one the server will store. The second half is the one that
   /// matters: bands in the wrong order are accepted by every field and wrong
@@ -302,7 +322,9 @@ class _PolicyWizardState extends State<PolicyWizard> {
       _tiers.where((t) => !t.isBlank).length == _policy.tiers.length &&
       _policy.isWellFormed &&
       _changeIsTyped &&
-      _change.isWellFormed;
+      _change.isWellFormed &&
+      _missedIsTyped &&
+      _missed.isWellFormed;
 
   /// Every change box holds a number. Blank is not zero here: an empty
   /// cutoff would silently save as "no cutoff at all", which is the one
@@ -311,6 +333,14 @@ class _PolicyWizardState extends State<PolicyWizard> {
     _changeFree,
     _changeFee,
     _changeCutoff,
+  ].every((c) => int.tryParse(c.text.trim()) != null);
+
+  /// Same rule, same reason: a blank window would save as "not offered"
+  /// without anybody having decided that, and the operator would learn about
+  /// it from a passenger.
+  bool get _missedIsTyped => [
+    _missedWindow,
+    _missedFee,
   ].every((c) => int.tryParse(c.text.trim()) != null);
 
   @override
@@ -347,6 +377,7 @@ class _PolicyWizardState extends State<PolicyWizard> {
                           name: _name.text.trim(),
                           policy: _policy,
                           change: _change,
+                          missed: _missed,
                         ))
                       : null,
                   disabledHint: context.t('console.policies.cannotSave'),
@@ -548,6 +579,47 @@ class _PolicyWizardState extends State<PolicyWizard> {
           context.t('console.policies.changeInvoluntary'),
           style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
         ),
+
+        SizedBox(height: kilo.space.s4),
+
+        // The third question on the same save, because it is the same
+        // commercial decision seen from the counter: what happens to somebody
+        // who was late. Zero hours means the ticket is spent, which is what
+        // every policy written before this question was asked already does.
+        Text(context.t('console.policies.missed'), style: kilo.text.h3),
+        Text(
+          context.t('console.policies.missedHelp'),
+          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
+        ),
+        SizedBox(height: kilo.space.s2),
+
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: KField(
+                label: context.t('console.policies.missedWindow'),
+                controller: _missedWindow,
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            SizedBox(width: kilo.space.s3),
+            Expanded(
+              child: KField(
+                label: context.t('console.policies.missedFee'),
+                controller: _missedFee,
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: kilo.space.s2),
+        Text(
+          context.t('console.policies.missedCounter'),
+          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
+        ),
       ],
     );
   }
@@ -570,6 +642,11 @@ class _PolicyWizardState extends State<PolicyWizard> {
               for (final line in [
                 ..._policy.describe(),
                 if (_change.isWellFormed) ..._change.describe(),
+                // Including "not offered", which is a sentence rather than a
+                // silence: an operator has to see what they are promising a
+                // passenger who turns up at 06h05, and the absence of a line
+                // reads as an unanswered question rather than a decision.
+                if (_missed.isWellFormed) ..._missed.describe(),
               ])
                 Padding(
                   padding: EdgeInsets.only(bottom: kilo.space.s2),

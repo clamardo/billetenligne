@@ -41,6 +41,18 @@ abstract interface class ConsoleGateway {
     required String name,
     required RefundPolicy policy,
     ChangePolicy change,
+    MissedPolicy missed,
+  });
+
+  /// Later coaches for a passenger whose coach has gone, and the transfer
+  /// itself. A counter call: the decision belongs to whoever is standing
+  /// there, which is also why it is not in the traveller app.
+  Future<MissedOptionsDto> missedOptions(String bookingRef);
+
+  Future<MissedTransferDto> moveMissed({
+    required String bookingRef,
+    required String departureId,
+    String? stationId,
   });
 
   /// Null when the default was cleared — a legitimate state, not a failure.

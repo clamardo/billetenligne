@@ -865,6 +865,376 @@ final class PostgresReschedules implements RescheduleDesk {
   /// The deferred constraint trigger checks the sum at COMMIT — after this
   /// returns and beyond the reach of any handler here — so what happens in
   /// Dart is the courtesy and what happens at COMMIT is the guarantee.
+
+  // ── The passenger who was late ────────────────────────────────────────────
+
+  /// How far ahead a counter is offered coaches. Two days: a passenger who
+  /// missed the 06:00 is put on today's or tomorrow's, and a list running a
+  /// week out is a list an agent scrolls past.
+  static const _missedHorizon = Duration(days: 2);
+
+  /// The booking, its terms, and where it was supposed to leave from.
+  ///
+  /// Read under the tenant rather than as the traveller: this is a counter
+  /// screen, and the reference is being read off a printed ticket by the
+  /// person holding it. The policy join is the same `(id, version)` the sale
+  /// stamped, so a passenger is judged by the terms they bought under.
+  Future<Map<String, Object?>?> _missedBooking(
+    TxSession tx,
+    String ref,
+    String operatorId,
+  ) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT b.id, b.ref, b.state::text AS state, b.involuntary_change,
+               b.fare_minor, b.currency, b.departure_id::text AS departure_id,
+               b.operator_id::text AS operator_id,
+               d.departs_at, d.status::text AS departure_status,
+               r.origin_city, r.destination_city,
+               os.name AS from_station,
+               d.origin_station_id::text AS from_station_id,
+               (SELECT count(*) FROM booking_seats s WHERE s.booking_id = b.id)
+                 AS seat_count,
+               p.missed_window_hours, p.missed_fee_bps
+          FROM bookings b
+          JOIN departures d ON d.id = b.departure_id
+          JOIN routes r ON r.id = d.route_id
+          LEFT JOIN stations os ON os.id = d.origin_station_id
+          LEFT JOIN refund_policies p
+                 ON p.id = b.refund_policy_id
+                AND p.version = b.refund_policy_version
+         WHERE upper(b.ref) = upper(@ref)
+           AND b.operator_id = @operator
+      '''),
+      parameters: {
+        'ref': TypedValue(Type.text, ref.trim()),
+        'operator': TypedValue(Type.uuid, operatorId),
+      },
+    );
+    return rows.isEmpty ? null : rows.first.toColumnMap();
+  }
+
+  /// Zero and zero for a booking sold before the operator answered the
+  /// question — which is "not offered", and is the honest default: honouring
+  /// a missed ticket is a promise we must not make on a company's behalf.
+  static MissedPolicy _missedPolicyFrom(Map<String, Object?> row) =>
+      MissedPolicy(
+        window: Duration(hours: row['missed_window_hours'] as int? ?? 0),
+        feeBps: row['missed_fee_bps'] as int? ?? 0,
+      );
+
+  @override
+  Future<MissedOptions?> missedOptions({
+    required String bookingRef,
+    required String operatorId,
+    required DateTime now,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final row = await _missedBooking(tx, bookingRef, operatorId);
+    if (row == null) return null;
+
+    final currency = Currency.byCode((row['currency'] as String).trim())!;
+    final paidFare = Money(row['fare_minor'] as int, currency);
+    final departedAt = row['departs_at']! as DateTime;
+    final policy = _missedPolicyFrom(row);
+    final seatsNeeded = (row['seat_count'] as int?) ?? 1;
+    final involuntary = row['involuntary_change'] as bool? ?? false;
+    final fromStationId = row['from_station_id'] as String?;
+
+    MissedOptions shell({
+      List<MissedOption> options = const [],
+      ChangeRefusal? refusal,
+    }) => MissedOptions(
+      bookingRef: row['ref'] as String,
+      originCity: row['origin_city'] as String,
+      destinationCity: row['destination_city'] as String,
+      seatsNeeded: seatsNeeded,
+      departedAt: departedAt,
+      paidFare: paidFare,
+      policy: policy,
+      options: options,
+      fromStationName: row['from_station'] as String?,
+      involuntary: involuntary,
+      refusal: refusal,
+    );
+
+    // A ticket that was never paid for has nothing to carry forward, and a
+    // refunded one has already been settled in money. Both are the same
+    // sentence to an agent: this ticket is not a ticket.
+    if (row['state'] != 'confirmed') {
+      return shell(refusal: const ChangeAfterDeparture());
+    }
+
+    // The window, and whether any of this is offered at all, decided once
+    // before a single row is priced.
+    final gate = quoteMissed(
+      paidFare: paidFare,
+      newFare: paidFare,
+      departedAt: departedAt,
+      targetDepartsAt: now.add(const Duration(minutes: 1)),
+      now: now,
+      policy: policy,
+      involuntary: involuntary,
+    );
+    if (gate.valueOrNull == null) return shell(refusal: gate.failureOrNull);
+
+    // Every later coach this operator runs between the same two cities —
+    // **not** on the same route id. A company's two Brazzaville terminals are
+    // two routes in our table, and that is precisely the distinction a
+    // passenger does not care about and this feature exists to cross.
+    final candidates = await tx.execute(
+      Sql.named('''
+        SELECT d.id::text AS id, d.departs_at, d.arrives_at, d.fare_minor,
+               s.name AS station_name, s.boarding_notes,
+               d.origin_station_id::text AS station_id,
+               (SELECT count(*) FROM seats st
+                 WHERE st.departure_id = d.id
+                   AND (st.state = 'available'
+                        OR (st.state = 'held' AND st.held_until < now())))
+                 AS free
+          FROM departures d
+          JOIN routes r ON r.id = d.route_id
+          LEFT JOIN stations s ON s.id = d.origin_station_id
+         WHERE d.operator_id = @operator
+           AND r.origin_city = @from
+           AND r.destination_city = @to
+           AND d.id <> @current
+           AND d.status = 'scheduled'
+           AND d.departs_at > now()
+           AND d.departs_at < now() + make_interval(secs => @horizon)
+         ORDER BY d.departs_at
+         LIMIT 20
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'from': TypedValue(Type.text, row['origin_city']! as String),
+        'to': TypedValue(Type.text, row['destination_city']! as String),
+        'current': TypedValue(Type.uuid, row['departure_id']! as String),
+        'horizon': TypedValue(Type.double, _missedHorizon.inSeconds.toDouble()),
+      },
+    );
+
+    final options = <MissedOption>[];
+    for (final candidate in candidates) {
+      final c = candidate.toColumnMap();
+      final free = (c['free'] as int?) ?? 0;
+      final fare = Money(c['fare_minor'] as int, currency);
+
+      final quoted = quoteMissed(
+        paidFare: paidFare,
+        newFare: fare,
+        departedAt: departedAt,
+        targetDepartsAt: c['departs_at']! as DateTime,
+        now: now,
+        policy: policy,
+        involuntary: involuntary,
+      );
+
+      options.add(
+        MissedOption(
+          departureId: c['id']! as String,
+          departsAt: c['departs_at']! as DateTime,
+          arrivesAt: c['arrives_at']! as DateTime,
+          fare: fare,
+          seatsAvailable: free,
+          stationName: c['station_name'] as String?,
+          boardingNotes: c['boarding_notes'] as String?,
+          // Computed here so the agent's screen and the passenger's ticket
+          // cannot disagree about which "other gare" is meant. Two unnamed
+          // yards count as the same one: we know nothing that says otherwise,
+          // and warning about a difference we cannot see would be noise.
+          sameStation:
+              fromStationId == null ||
+              c['station_id'] == null ||
+              c['station_id'] == fromStationId,
+          quote: quoted.valueOrNull,
+          refusal:
+              quoted.failureOrNull ??
+              (free < seatsNeeded ? ChangeDoesNotFit(seatsNeeded, free) : null),
+        ),
+      );
+    }
+
+    return shell(options: options);
+  });
+
+  @override
+  Future<({MissedTransfer? moved, ChangeRefusal? refusal})?> moveMissed({
+    required String bookingRef,
+    required String operatorId,
+    required String toDepartureId,
+    required String actorUserId,
+    required DateTime now,
+    String? stationId,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final row = await _missedBooking(tx, bookingRef, operatorId);
+    if (row == null) return null;
+    if (row['state'] != 'confirmed') {
+      return (moved: null, refusal: const ChangeAfterDeparture());
+    }
+
+    final bookingId = row['id'].toString();
+    final fromDepartureId = row['departure_id']! as String;
+    if (fromDepartureId == toDepartureId) {
+      return (moved: null, refusal: const ChangeToTheSameDeparture());
+    }
+
+    // Both coaches locked in id order, exactly as a self-service change does:
+    // two agents at two counters moving two passengers onto the same last
+    // seat is the deadlock this ordering exists to prevent.
+    final ids = [fromDepartureId, toDepartureId]..sort();
+    await tx.execute(
+      Sql.named(
+        'SELECT id FROM departures WHERE id = ANY(@ids) ORDER BY id FOR UPDATE',
+      ),
+      parameters: {'ids': TypedValue(Type.uuidArray, ids)},
+    );
+
+    final target = await tx.execute(
+      Sql.named('''
+        SELECT d.departs_at, d.fare_minor, d.status::text AS status,
+               d.operator_id::text AS operator_id,
+               r.origin_city, r.destination_city,
+               s.name AS station_name, s.boarding_notes
+          FROM departures d
+          JOIN routes r ON r.id = d.route_id
+          LEFT JOIN stations s ON s.id = d.origin_station_id
+         WHERE d.id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, toDepartureId)},
+    );
+    if (target.isEmpty) return (moved: null, refusal: const ChangeOffRoute());
+    final to = target.first.toColumnMap();
+
+    // Another company, or another road. Both are a new purchase rather than a
+    // transfer, and the tenant scope alone would not say so — an operator can
+    // read its own departures on every route it runs.
+    if (to['operator_id'] != operatorId ||
+        to['origin_city'] != row['origin_city'] ||
+        to['destination_city'] != row['destination_city']) {
+      return (moved: null, refusal: const ChangeOffRoute());
+    }
+    if (to['status'] != 'scheduled') {
+      return (moved: null, refusal: const ChangeIntoThePast());
+    }
+
+    final currency = Currency.byCode((row['currency'] as String).trim())!;
+    final paidFare = Money(row['fare_minor'] as int, currency);
+    final involuntary = row['involuntary_change'] as bool? ?? false;
+
+    // Re-quoted under the lock. The row was priced before an agent read it
+    // out to somebody and took their money, which at a counter is a genuine
+    // two minutes.
+    final quoted = quoteMissed(
+      paidFare: paidFare,
+      newFare: Money(to['fare_minor'] as int, currency),
+      departedAt: row['departs_at']! as DateTime,
+      targetDepartsAt: to['departs_at']! as DateTime,
+      now: now,
+      policy: _missedPolicyFrom(row),
+      involuntary: involuntary,
+    );
+    if (quoted case Err(:final failure)) {
+      return (moved: null, refusal: failure);
+    }
+    final quote = quoted.valueOrNull!;
+
+    // Cash in a drawer has to say which drawer, and a station named on a free
+    // transfer is a drawer nobody counted. The database says the first half
+    // too; this says which field to fix.
+    if (quote.owed.minor > 0 && stationId == null) {
+      return (moved: null, refusal: const MissedNeedsATill());
+    }
+
+    final seatsNeeded = (row['seat_count'] as int?) ?? 1;
+    final moved = await _takeFreeSeats(
+      tx,
+      toDepartureId: toDepartureId,
+      seatsNeeded: seatsNeeded,
+      bookingId: bookingId,
+    );
+    final taking = moved.taking;
+    if (taking == null) {
+      return (
+        moved: null,
+        refusal: ChangeDoesNotFit(seatsNeeded, moved.available),
+      );
+    }
+
+    await _relocate(
+      tx,
+      bookingId: bookingId,
+      fromDepartureId: fromDepartureId,
+      toDepartureId: toDepartureId,
+      taking: taking,
+      operatorId: operatorId,
+      userId: actorUserId,
+    );
+
+    if (quote.owed.minor > 0) {
+      final posting = Postings.missedTransfer(
+        operatorId: operatorId,
+        stationId: stationId!,
+        paid: quote.owed,
+      );
+      // A posting that will not balance must never become half a movement.
+      // It cannot happen — two entries of one amount — and the check is here
+      // because "cannot happen" is what an unbalanced ledger is made of.
+      if (posting case Err()) {
+        throw StateError('missed transfer posting does not balance');
+      }
+      await _post(
+        tx,
+        posting.valueOrNull!,
+        bookingId: bookingId,
+        operatorId: operatorId,
+      );
+    }
+
+    // The record of the conversation, written whether or not money moved.
+    // This is the row somebody reads six weeks later when a passenger says
+    // they paid twice.
+    await tx.execute(
+      Sql.named('''
+        INSERT INTO missed_transfers
+          (booking_id, operator_id, from_departure_id, to_departure_id,
+           seat_labels, fee_minor, difference_minor, paid_minor, currency,
+           station_id, moved_by)
+        VALUES (@booking, @operator, @from, @to, @seats, @fee, @difference,
+                @paid, @currency, @station, @actor)
+      '''),
+      parameters: {
+        'booking': TypedValue(Type.uuid, bookingId),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'from': TypedValue(Type.uuid, fromDepartureId),
+        'to': TypedValue(Type.uuid, toDepartureId),
+        'seats': TypedValue(Type.textArray, taking),
+        'fee': TypedValue(Type.bigInteger, quote.fee.minor),
+        'difference': TypedValue(Type.bigInteger, quote.fareDifference.minor),
+        'paid': TypedValue(Type.bigInteger, quote.owed.minor),
+        'currency': TypedValue(Type.text, currency.code),
+        'station': TypedValue(
+          Type.uuid,
+          quote.owed.minor > 0 ? stationId : null,
+        ),
+        'actor': TypedValue(Type.uuid, actorUserId),
+      },
+      ignoreRows: true,
+    );
+
+    return (
+      moved: MissedTransfer(
+        bookingRef: row['ref'] as String,
+        departureId: toDepartureId,
+        departsAt: to['departs_at']! as DateTime,
+        seatLabels: taking,
+        paid: quote.owed,
+        stationName: to['station_name'] as String?,
+        boardingNotes: to['boarding_notes'] as String?,
+      ),
+      refusal: null,
+    );
+  });
+
   Future<void> _post(
     TxSession tx,
     LedgerTransaction posting, {

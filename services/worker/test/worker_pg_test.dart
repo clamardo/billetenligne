@@ -1057,7 +1057,13 @@ void main() {
     ''');
     expect(recent.first.toColumnMap()['n'], 0);
   });
-  group('the sales horizon', () {
+  // Three minutes, not the default thirty seconds. This pass materialises a
+  // rolling window over **every** active pattern in the database, and the
+  // integration database is shared with the API suite — so the work each
+  // test here does grows with the whole repository's fixtures, not with the
+  // one pattern the test wrote. The alternative is a test that goes red the
+  // day somebody adds a timetable fixture three packages away.
+  group('the sales horizon', timeout: const Timeout(Duration(minutes: 3)), () {
     /// A pattern running daily from [validFrom], with a coach on it.
     Future<String> aPattern({required DateTime validFrom}) async {
       final layout = await console.saveLayout(

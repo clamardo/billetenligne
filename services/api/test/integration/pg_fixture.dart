@@ -1176,6 +1176,65 @@ final class PgFixture {
     return departureId;
   }
 
+  /// Moves a departure into the past, after it has been sold.
+  ///
+  /// A seat cannot be held on a coach that has already left — the real path
+  /// refuses it, correctly — so a missed passenger is made the way one is
+  /// made in life: buy a ticket for a coach that has not gone, then let it go.
+  Future<void> departLongAgo(String departureId, Duration ago) async {
+    await _seed.execute(
+      Sql.named('''
+        UPDATE departures
+           SET departs_at = now() - make_interval(secs => @ago),
+               arrives_at = now() - make_interval(secs => @ago)
+                              + INTERVAL '8 hours',
+               status = 'departed'
+         WHERE id = @id
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'ago': TypedValue(Type.double, ago.inSeconds.toDouble()),
+      },
+    );
+  }
+
+  /// Push every departure on [routeId] back into the future.
+  ///
+  /// A suite that backdates coaches to test what happens *after* they left
+  /// leaves the operator with history nobody else asked for: the worker's
+  /// on-time figure is the share of an operator's **past** departures that
+  /// nobody had to explain, and it wipes and rewrites that history to do its
+  /// arithmetic — which it cannot do to a coach somebody has a ticket on.
+  /// Handing the road back the way it was found keeps the two suites out of
+  /// each other's way without either one knowing about the other.
+  Future<void> undepartRoad(String routeId) async {
+    await _seed.execute(
+      Sql.named("""
+        UPDATE departures
+           SET departs_at = now() + INTERVAL '90 days',
+               arrives_at = now() + INTERVAL '90 days' + INTERVAL '8 hours',
+               status = 'scheduled'
+         WHERE route_id = @route
+      """),
+      parameters: {'route': TypedValue(Type.uuid, routeId)},
+      ignoreRows: true,
+    );
+  }
+
+  /// The record of a counter transfer, or null when none was written.
+  Future<Map<String, dynamic>?> missedTransferFor(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT fee_minor, difference_minor, paid_minor, station_id,
+               to_departure_id, from_departure_id, seat_labels
+          FROM missed_transfers WHERE booking_id = @id
+         ORDER BY created_at DESC LIMIT 1
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return rows.isEmpty ? null : rows.first.toColumnMap();
+  }
+
   /// A departure belonging to the OTHER company, on their own route.
   ///
   /// Everything a protection request needs on the receiving side: a coach

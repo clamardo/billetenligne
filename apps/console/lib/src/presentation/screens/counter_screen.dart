@@ -43,6 +43,11 @@ class _CounterScreenState extends State<CounterScreen> {
   /// a vendor can never refund one booking against another's numbers.
   RefundOfferDto? _offer;
 
+  /// The coaches last read aloud. Cleared with the reference for the same
+  /// reason the refund quote is: one passenger's options must never be shown
+  /// against another passenger's ticket.
+  MissedOptionsDto? _missedOffer;
+
   ConsoleWorkspace get _work => widget.workspace;
 
   /// Which counter this till belongs to.
@@ -106,6 +111,16 @@ class _CounterScreenState extends State<CounterScreen> {
                 label: Text(context.t('console.counter.refund')),
                 icon: const Icon(Icons.undo),
               ),
+            // The passenger who was late. Its own mode rather than a corner
+            // of the refund one: they are opposite conversations, and an
+            // agent reaching for "rembourser" to put somebody on a later
+            // coach is an agent one tap from cancelling their ticket.
+            if (_work.can('booking.reschedule'))
+              ButtonSegment(
+                value: _CounterMode.missed,
+                label: Text(context.t('console.counter.missed')),
+                icon: const Icon(Icons.schedule),
+              ),
           ],
           selected: {_mode},
           onSelectionChanged: (s) => setState(() => _mode = s.first),
@@ -116,6 +131,7 @@ class _CounterScreenState extends State<CounterScreen> {
           _CounterMode.collect => _collect(context),
           _CounterMode.walkIn => _sell(context),
           _CounterMode.refund => _refund(context),
+          _CounterMode.missed => _missed(context),
         },
       ],
     );
@@ -256,6 +272,198 @@ class _CounterScreenState extends State<CounterScreen> {
     _name.clear();
     _phone.clear();
     await _showReceipt(sale);
+  }
+
+  // ── The passenger who was late ────────────────────────────────────────────
+
+  /// Somebody standing at a counter with a ticket for a coach that has gone.
+  ///
+  /// The whole screen is one sentence the agent has to be able to say out
+  /// loud: *votre car est parti, celui de 09h30 part de l'autre gare, ça vous
+  /// coûte 2 700 francs*. So the yard is on every row and the price is on
+  /// every row — an agent who has to tap a coach to learn what it costs is an
+  /// agent making somebody wait while they compare.
+  List<Widget> _missed(BuildContext context) {
+    final kilo = context.kilo;
+    final options = _missedOffer;
+
+    return [
+      Text(context.t('console.counter.missedIntro'), style: kilo.text.body),
+      SizedBox(height: kilo.space.s3),
+
+      KField(
+        label: context.t('console.counter.bookingRef'),
+        hint: 'BEL-K4M2QX',
+        controller: _ref,
+        enabled: !_work.busy,
+        onChanged: (_) => setState(() => _missedOffer = null),
+      ),
+      SizedBox(height: kilo.space.s3),
+      KButton(
+        label: context.t('console.counter.missedLook'),
+        tone: KButtonTone.secondary,
+        loading: _work.busy,
+        onPressed: _ref.text.trim().length < 6 ? null : _doMissedLook,
+      ),
+
+      if (options != null) ...[
+        SizedBox(height: kilo.space.s4),
+
+        // The company's own terms, in the company's own words, read aloud
+        // before anybody is told a price.
+        KCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final term in options.terms)
+                Padding(
+                  padding: EdgeInsets.only(bottom: kilo.space.s1),
+                  child: Text(
+                    context.tEncoded(term, prefix: ''),
+                    style: kilo.text.bodySm,
+                  ),
+                ),
+              if (options.involuntary)
+                Text(
+                  context.t('console.counter.missedInvoluntary'),
+                  style: kilo.text.bodySm.copyWith(color: kilo.color.success),
+                ),
+            ],
+          ),
+        ),
+        SizedBox(height: kilo.space.s3),
+
+        if (!options.isPossible)
+          KCard(
+            child: Text(
+              context.t('errors.${options.refusalCode}'),
+              style: kilo.text.body.copyWith(color: kilo.color.danger),
+            ),
+          )
+        else if (options.options.isEmpty)
+          KCard(
+            child: Text(
+              context.t('console.counter.missedNoCoach'),
+              style: kilo.text.body,
+            ),
+          )
+        else
+          for (final option in options.options)
+            Padding(
+              padding: EdgeInsets.only(bottom: kilo.space.s2),
+              child: KCard(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${_time(option.departsAt)} → '
+                            '${_time(option.arrivesAt)}',
+                            style: kilo.text.h3,
+                          ),
+                          if (option.stationName != null) ...[
+                            SizedBox(height: kilo.space.s1),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.place_outlined,
+                                  size: 14,
+                                  // The one row an agent must not misread.
+                                  // A coach from the other yard is a taxi
+                                  // ride somebody has to be told about.
+                                  color: option.sameStation
+                                      ? kilo.color.contentMuted
+                                      : kilo.color.warning,
+                                ),
+                                SizedBox(width: kilo.space.s1),
+                                Expanded(
+                                  child: Text(
+                                    option.sameStation
+                                        ? option.stationName!
+                                        : context.t(
+                                            'console.counter.missedOtherGare',
+                                            {'station': option.stationName!},
+                                          ),
+                                    style: kilo.text.bodySm.copyWith(
+                                      color: option.sameStation
+                                          ? kilo.color.contentSecondary
+                                          : kilo.color.warning,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (option.refusalCode != null) ...[
+                            SizedBox(height: kilo.space.s1),
+                            Text(
+                              context.t('errors.${option.refusalCode}'),
+                              style: kilo.text.bodySm.copyWith(
+                                color: kilo.color.contentSecondary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    SizedBox(width: kilo.space.s3),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        if (option.owed != null)
+                          Text(
+                            option.isFree
+                                ? context.t('console.counter.missedFree')
+                                : option.owed!.format(),
+                            style: kilo.text.amount,
+                          ),
+                        SizedBox(height: kilo.space.s2),
+                        KButton(
+                          label: context.t('console.counter.missedMove'),
+                          fullWidth: false,
+                          onPressed: option.isTakeable && !_work.busy
+                              ? () => _doMissedMove(option)
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+      ],
+    ];
+  }
+
+  /// Congo is UTC+1 and does not observe daylight saving, so the offset is a
+  /// constant rather than a lookup — the same simplification the dispatcher's
+  /// day makes, and the same line that has to be revisited for a second
+  /// market.
+  static String _time(DateTime instant) {
+    final local = instant.toUtc().add(const Duration(hours: 1));
+    return '${local.hour.toString().padLeft(2, '0')}h'
+        '${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _doMissedLook() async {
+    final options = await _work.missedOptions(_ref.text.trim());
+    if (!mounted) return;
+    setState(() => _missedOffer = options);
+  }
+
+  Future<void> _doMissedMove(MissedOptionDto option) async {
+    final moved = await _work.moveMissed(
+      bookingRef: _ref.text.trim(),
+      departureId: option.departureId,
+      // Only when money changes hands. A station named on a free transfer is
+      // a drawer nobody counted, and the server refuses it.
+      stationId: option.isFree ? null : _stationId,
+    );
+    if (!mounted || moved == null) return;
+    setState(() => _missedOffer = null);
   }
 
   // ── Refund a ticket, and pay a claim ──────────────────────────────────────
@@ -466,4 +674,4 @@ String _day(DateTime at) {
 }
 
 /// What the vendor is doing right now. Three acts, one drawer.
-enum _CounterMode { collect, walkIn, refund }
+enum _CounterMode { collect, walkIn, refund, missed }

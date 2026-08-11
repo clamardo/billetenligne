@@ -83,6 +83,13 @@ policy:
     noFee: "Entre {a1} h et {a2} h avant le départ : changement gratuit."
     cutoff: "Moins de {a1} h avant le départ : changement impossible."
     involuntaryFree: "Si la compagnie modifie ou annule votre départ, le changement est gratuit, quoi qu'il arrive."
+  # Le voyageur qui a raté son car. Deux chiffres, et « rien » est une
+  # réponse : honorer un billet raté est une promesse commerciale, pas un
+  # comportement de plateforme.
+  missed:
+    notOffered: "Un billet non utilisé au départ n'est pas reporté."
+    free: "Car raté : report gratuit sur un départ des {a1} h qui suivent."
+    fee: "Car raté : report possible dans les {a1} h, contre {a2} % du prix payé."
 
 # Le dossier d'inscription d'un transporteur (03-operator-lifecycle.md §2.2).
 # Le domaine renvoie des NOMS DE CHAMPS — `rccmNumber`, `ownerPhone` — jamais

@@ -200,6 +200,40 @@ abstract final class Postings {
     ]);
   }
 
+  /// Putting a missed passenger on a later coach, paid at the counter.
+  ///
+  /// ```
+  /// DR  cash:<operator>:<station>:till     2 700
+  ///     CR  payable:operator:<id>                  2 700
+  /// ```
+  ///
+  /// The same shape as [cashSale] and deliberately **not** the same call: the
+  /// memo is what somebody reads six weeks later when a passenger says they
+  /// were charged twice, and "cash sale" against a booking that already has
+  /// one is exactly the row that starts that argument.
+  ///
+  /// No service fee. We took ours when the seat was first sold, and taking a
+  /// second one because somebody overslept would be charging a platform fee
+  /// for a platform that did nothing — the fee here is the operator's, for
+  /// holding a seat open on a coach they could have sold.
+  static Result<LedgerTransaction, DomainFailure> missedTransfer({
+    required String operatorId,
+    required String stationId,
+    required Money paid,
+  }) => LedgerTransaction.balanced([
+    LedgerEntry.debit(
+      LedgerAccount.till(operatorId, stationId),
+      paid,
+      operatorId: operatorId,
+      memo: 'missed departure transfer',
+    ),
+    LedgerEntry.credit(
+      LedgerAccount.payableOperator(operatorId),
+      paid,
+      operatorId: operatorId,
+    ),
+  ]);
+
   /// Approving a refund: we stop owing the operator and start owing the
   /// traveller (`04-payments.md` §4.6).
   ///

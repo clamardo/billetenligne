@@ -1212,6 +1212,151 @@ void main() {
       expect(DepartureSummaryDto.fromJson(json).originStation, isNull);
     });
   });
+
+  group('the passenger who was late', () {
+    test('a priced row survives the round trip, yard and all', () {
+      final sent = MissedOptionDto(
+        departureId: 'd-9',
+        departsAt: DateTime.utc(2026, 8, 10, 8, 30),
+        arrivesAt: DateTime.utc(2026, 8, 10, 16),
+        fare: const Money(13500, Currency.xaf),
+        seatsAvailable: 4,
+        stationName: 'Gare de Kinsoundi',
+        boardingNotes: 'Guichet 2',
+        sameStation: false,
+        fee: const Money(3000, Currency.xaf),
+        fareDifference: const Money(1500, Currency.xaf),
+        owed: const Money(4500, Currency.xaf),
+      );
+
+      final back = MissedOptionDto.fromJson(sent.toJson());
+
+      expect(back.stationName, 'Gare de Kinsoundi');
+      // The one flag an agent must not misread: this coach leaves from the
+      // other side of the city.
+      expect(back.sameStation, isFalse);
+      expect(back.owed, const Money(4500, Currency.xaf));
+      expect(back.isTakeable, isTrue);
+      expect(back.isFree, isFalse);
+    });
+
+    test('the common case says nothing about the yard being the same', () {
+      final row = MissedOptionDto(
+        departureId: 'd-9',
+        departsAt: DateTime.utc(2026, 8, 10, 8, 30),
+        arrivesAt: DateTime.utc(2026, 8, 10, 16),
+        fare: const Money(12000, Currency.xaf),
+        seatsAvailable: 4,
+        owed: const Money(0, Currency.xaf),
+      );
+
+      final json = row.toJson();
+
+      // Absent, not `true`: one yard is the ordinary case, and a flag on
+      // every row of every screen is bytes on a 2G connection.
+      expect(json.containsKey('sameStation'), isFalse);
+      final back = MissedOptionDto.fromJson(json);
+      expect(back.sameStation, isTrue);
+      expect(back.isFree, isTrue);
+    });
+
+    test('a coach that cannot be taken says why, and carries no price', () {
+      final row = MissedOptionDto(
+        departureId: 'd-9',
+        departsAt: DateTime.utc(2026, 8, 10, 8, 30),
+        arrivesAt: DateTime.utc(2026, 8, 10, 16),
+        fare: const Money(12000, Currency.xaf),
+        seatsAvailable: 0,
+        refusalCode: 'change.does_not_fit',
+      );
+
+      final back = MissedOptionDto.fromJson(row.toJson());
+
+      expect(back.isTakeable, isFalse);
+      expect(back.owed, isNull);
+      expect(back.isFree, isFalse);
+    });
+
+    test('the screen carries the terms as keys, never as sentences', () {
+      final screen = MissedOptionsDto(
+        bookingRef: 'BEL-K4M2QX',
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        seatsNeeded: 2,
+        departedAt: DateTime.utc(2026, 8, 10, 5),
+        paidFare: const Money(12000, Currency.xaf),
+        options: const [],
+        terms: const ['policy.missed.fee|12|25'],
+        fromStationName: 'Gare de Mikalou',
+      );
+
+      final back = MissedOptionsDto.fromJson(screen.toJson());
+
+      // ADR-0008: the server emits a key and the surface renders it, so the
+      // agent reads the company's promise in the company's own words rather
+      // than a sentence this DTO invented.
+      expect(back.terms.single, 'policy.missed.fee|12|25');
+      expect(back.fromStationName, 'Gare de Mikalou');
+      expect(back.seatsNeeded, 2);
+      expect(back.isPossible, isTrue);
+      expect(back.involuntary, isFalse);
+    });
+
+    test('nothing can be done, and the reason is a code', () {
+      final screen = MissedOptionsDto(
+        bookingRef: 'BEL-K4M2QX',
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        seatsNeeded: 1,
+        departedAt: DateTime.utc(2026, 8, 10, 5),
+        paidFare: const Money(12000, Currency.xaf),
+        options: const [],
+        refusalCode: 'missed.not_offered',
+      );
+
+      final json = screen.toJson();
+      expect(json.containsKey('involuntary'), isFalse);
+      expect(json.containsKey('terms'), isFalse);
+
+      final back = MissedOptionsDto.fromJson(json);
+      expect(back.isPossible, isFalse);
+      expect(back.refusalCode, 'missed.not_offered');
+    });
+
+    test('what the counter did survives the round trip', () {
+      final done = MissedTransferDto(
+        bookingRef: 'BEL-K4M2QX',
+        departureId: 'd-9',
+        departsAt: DateTime.utc(2026, 8, 10, 8, 30),
+        seatLabels: const ['4C', '4D'],
+        paid: const Money(2700, Currency.xaf),
+        stationName: 'Gare de Kinsoundi',
+        boardingNotes: 'Guichet 2',
+      );
+
+      final back = MissedTransferDto.fromJson(done.toJson());
+
+      expect(back.seatLabels, ['4C', '4D']);
+      expect(back.paid, const Money(2700, Currency.xaf));
+      expect(back.stationName, 'Gare de Kinsoundi');
+      expect(back.boardingNotes, 'Guichet 2');
+    });
+
+    test('terms an operator never wrote are zero and zero', () {
+      const policy = MissedPolicyDto();
+
+      expect(policy.toJson(), {'windowHours': 0, 'feeBps': 0});
+      // Zero and zero is "not offered", and a policy stored before this
+      // field existed answers exactly that.
+      expect(MissedPolicyDto.fromJson(const {}).toDomain().isOffered, isFalse);
+      expect(
+        MissedPolicyDto.fromDomain(
+          const MissedPolicy(window: Duration(hours: 12), feeBps: 2500),
+        ).toJson(),
+        {'windowHours': 12, 'feeBps': 2500},
+      );
+    });
+  });
 }
 
 /// Reads the string constants declared on [ErrorCode] straight from source,

@@ -67,11 +67,15 @@ Future<Response> onRequest(RequestContext context) async {
       final change = _changeFrom(body);
       if (change.policy == null) return _badRequest(trace, change.field!);
 
+      final missed = _missedFrom(body);
+      if (missed.policy == null) return _badRequest(trace, missed.field!);
+
       final saved = await console.saveRefundPolicy(
         operatorId: scope.operatorId,
         name: name.trim(),
         policy: parsed.policy!,
         change: change.policy!,
+        missed: missed.policy!,
         actorUserId: context.read<Principal>().userId,
       );
 
@@ -92,6 +96,7 @@ Map<String, Object?> _json(RefundPolicySummary summary) =>
       name: summary.name,
       isDefault: summary.isDefault,
       change: summary.change,
+      missed: summary.missed,
       bookingCount: summary.bookingCount,
     ).toJson();
 
@@ -217,6 +222,39 @@ Map<String, Object?> _json(RefundPolicySummary summary) =>
   if (!policy.isWellFormed) return (policy: null, field: 'change.cutoffHours');
 
   return (policy: policy, field: null);
+}
+
+/// What happens to somebody who was late.
+///
+/// **An absent block is "not offered", not a default with numbers in it.**
+/// Unlike the change terms there is no ADR position to inherit: honouring a
+/// missed ticket is a commercial promise, and a console that predates these
+/// two questions must not be read as having made one.
+({MissedPolicy? policy, String? field}) _missedFrom(Map<String, Object?> body) {
+  final raw = body['missed'];
+  if (raw == null) return (policy: MissedPolicy.notOffered, field: null);
+  if (raw is! Map) return (policy: null, field: 'missed');
+  final block = raw.cast<String, Object?>();
+
+  // A week is already generous for a seat somebody did not turn up for; a
+  // month is a number nobody typed on purpose.
+  final window = block['windowHours'] ?? 0;
+  if (window is! int || window < 0 || window > 720) {
+    return (policy: null, field: 'missed.windowHours');
+  }
+
+  final fee = block['feeBps'] ?? 0;
+  if (fee is! int || fee < 0 || fee > 10000) {
+    return (policy: null, field: 'missed.feeBps');
+  }
+
+  return (
+    policy: MissedPolicy(
+      window: Duration(hours: window),
+      feeBps: fee,
+    ),
+    field: null,
+  );
 }
 
 Response _badRequest(String trace, String field) => Response.json(

@@ -344,6 +344,7 @@ abstract interface class OperatorConsole {
     required RefundPolicy policy,
     required String actorUserId,
     ChangePolicy change,
+    MissedPolicy missed,
   });
 
   /// Points future sales at one version of one policy.
@@ -495,6 +496,7 @@ final class RefundPolicySummary {
     required this.isDefault,
     required this.effectiveFrom,
     this.change = ChangePolicy.standard,
+    this.missed = MissedPolicy.notOffered,
     this.bookingCount = 0,
   });
 
@@ -507,6 +509,9 @@ final class RefundPolicySummary {
   /// same row and stamped by the same `(id, version)` pair as the refund
   /// terms, so a booking's change terms are the ones it was sold under.
   final ChangePolicy change;
+
+  /// What happens to somebody who was late, under the same version stamp.
+  final MissedPolicy missed;
 
   /// Whether new sales are stamped with this version right now. At most one
   /// version of one policy is true here.

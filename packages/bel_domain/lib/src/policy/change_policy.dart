@@ -236,3 +236,145 @@ Result<ChangeQuote, ChangeRefusal> quoteChange({
     ),
   );
 }
+
+/// What happens to somebody who was late.
+///
+/// A separate object from [ChangePolicy] because it answers a different
+/// question. A change is a decision taken in advance and priced by notice; a
+/// missed departure is a person at a counter with a ticket for a coach that
+/// has gone, and the only quantity that matters is how long ago it went.
+///
+/// **Both numbers default to zero, and zero means "not offered".** There is
+/// no ADR default to inherit here: honouring a missed ticket is a commercial
+/// promise, and a platform that made it on every operator's behalf would be
+/// giving away their seats. An operator opts in by answering the question.
+final class MissedPolicy {
+  const MissedPolicy({this.window = Duration.zero, this.feeBps = 0});
+
+  /// How long after departure the ticket keeps any value.
+  final Duration window;
+
+  /// What the transfer costs, as a share of the fare already paid. On top of
+  /// any fare difference, and settled before the passenger moves.
+  final int feeBps;
+
+  /// The operator has said nothing, so nothing is offered.
+  static const notOffered = MissedPolicy();
+
+  bool get isOffered => window > Duration.zero;
+
+  bool get isWellFormed => feeBps >= 0 && feeBps <= 10000 && !window.isNegative;
+
+  /// The terms as catalog keys, never as prose (ADR-0008).
+  List<String> describe() => [
+    if (!isOffered)
+      'policy.missed.notOffered'
+    else if (feeBps > 0)
+      'policy.missed.fee|${window.inHours}|${feeBps ~/ 100}'
+    else
+      'policy.missed.free|${window.inHours}',
+  ];
+}
+
+/// The operator does not move missed passengers at all.
+///
+/// Said plainly rather than dressed as "too late": a counter agent who knows
+/// their company has never offered this needs a different sentence from one
+/// whose passenger arrived a day late.
+final class MissedNotOffered extends ChangeRefusal {
+  const MissedNotOffered();
+  @override
+  String get code => 'missed.not_offered';
+}
+
+/// The window has closed. The ticket is spent.
+final class MissedWindowClosed extends ChangeRefusal {
+  const MissedWindowClosed(this.windowHours);
+  final int windowHours;
+  @override
+  String get code => 'missed.window_closed';
+  @override
+  Map<String, Object?> get params => {'hours': windowHours};
+}
+
+/// The coach has not left yet, so this is an ordinary change.
+///
+/// Refused rather than quietly treated as one: the two are priced by
+/// different terms, and a counter that could reach the missed-departure fee
+/// before departure would be a counter that could charge it to somebody who
+/// is simply changing their mind an hour early.
+final class MissedNotYet extends ChangeRefusal {
+  const MissedNotYet();
+  @override
+  String get code => 'missed.not_yet';
+}
+
+/// Money is owed and no drawer was named.
+///
+/// A counter transfer is paid in cash across the counter, and cash has to go
+/// into a till somebody counts at the end of a shift. The database refuses it
+/// too (`missed_transfers_paid_has_a_till`); this says which field to fix.
+final class MissedNeedsATill extends ChangeRefusal {
+  const MissedNeedsATill();
+  @override
+  String get code => 'missed.needs_a_till';
+}
+
+/// What it costs to put a missed passenger on a later coach.
+///
+/// The same [ChangeQuote] a change produces, priced by different rules, so
+/// the counter screen and the ledger below it need no second shape.
+///
+/// [involuntary] is honoured here as it is everywhere: a passenger who missed
+/// a connection because the operator's own earlier coach broke down did not
+/// miss anything (ADR-0016), and is moved free inside every window there is.
+Result<ChangeQuote, ChangeRefusal> quoteMissed({
+  required Money paidFare,
+  required Money newFare,
+  required DateTime departedAt,
+  required DateTime targetDepartsAt,
+  required DateTime now,
+  required MissedPolicy policy,
+  bool involuntary = false,
+}) {
+  if (departedAt.isAfter(now)) return const Err(MissedNotYet());
+  if (!targetDepartsAt.isAfter(now)) return const Err(ChangeIntoThePast());
+
+  final zero = Money.zero(paidFare.currency);
+
+  // Checked before the window, like every other involuntary case: an operator
+  // cannot put a passenger outside a window the operator's own failure
+  // pushed them past.
+  if (involuntary) {
+    return Ok(
+      ChangeQuote(
+        fee: zero,
+        fareDifference: zero,
+        owed: zero,
+        involuntary: true,
+      ),
+    );
+  }
+
+  if (!policy.isOffered) return const Err(MissedNotOffered());
+
+  final since = now.difference(departedAt);
+  if (since > policy.window) {
+    return Err(MissedWindowClosed(policy.window.inHours));
+  }
+
+  final fee = paidFare.percentBps(policy.feeBps);
+  final raw = newFare - paidFare;
+
+  return Ok(
+    ChangeQuote(
+      fee: fee,
+      // A cheaper coach gives nothing back, for the same reason a change
+      // does: refunding downward means a disbursement we cannot make or a
+      // counter claim worth less than the counter time it consumes.
+      fareDifference: raw.minor > 0 ? raw : zero,
+      owed: fee + (raw.minor > 0 ? raw : zero),
+      involuntary: false,
+    ),
+  );
+}

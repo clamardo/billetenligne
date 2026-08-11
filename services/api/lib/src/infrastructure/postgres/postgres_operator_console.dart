@@ -1212,7 +1212,8 @@ final class PostgresOperatorConsole implements OperatorConsole {
                    p.processing_hours, p.refund_service_fee,
                    p.non_refundable_fares,
                    p.change_free_hours, p.change_fee_bps,
-                   p.change_cutoff_hours, p.effective_from,
+                   p.change_cutoff_hours,
+                   p.missed_window_hours, p.missed_fee_bps, p.effective_from,
                    (o.default_refund_policy_id = p.id
                      AND o.default_refund_policy_version = p.version)
                      AS is_default,
@@ -1241,6 +1242,9 @@ final class PostgresOperatorConsole implements OperatorConsole {
     // `(id, version)` pair, so "the terms it was sold under" covers changes
     // as well as refunds without a second versioning scheme to keep honest.
     ChangePolicy change = ChangePolicy.standard,
+    // And the same for the passenger who was late — one save, one version,
+    // one commercial decision.
+    MissedPolicy missed = MissedPolicy.notOffered,
   }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
     // A new version, never an edit — and here the database agrees: 0014
     // revoked UPDATE on this table, so an adapter that tried to edit would
@@ -1269,13 +1273,16 @@ final class PostgresOperatorConsole implements OperatorConsole {
           (id, version, operator_id, name, tiers, destination,
            processing_hours, refund_service_fee, non_refundable_fares,
            change_free_hours, change_fee_bps, change_cutoff_hours,
+           missed_window_hours, missed_fee_bps,
            created_by)
         VALUES (COALESCE(@id, gen_random_uuid()), @version, @operator, @name,
                 @tiers::jsonb, @destination, @hours, @refundFee, @fares,
-                @changeFree, @changeFee, @changeCutoff, @actor)
+                @changeFree, @changeFee, @changeCutoff,
+                @missedWindow, @missedFee, @actor)
         RETURNING id, version, name, tiers, destination, processing_hours,
                   refund_service_fee, non_refundable_fares,
                   change_free_hours, change_fee_bps, change_cutoff_hours,
+                  missed_window_hours, missed_fee_bps,
                   effective_from, FALSE AS is_default, 0 AS booking_count
       '''),
       parameters: {
@@ -1294,6 +1301,8 @@ final class PostgresOperatorConsole implements OperatorConsole {
         'changeFree': TypedValue(Type.integer, change.freeBefore.inHours),
         'changeFee': TypedValue(Type.integer, change.feeBps),
         'changeCutoff': TypedValue(Type.integer, change.cutoff.inHours),
+        'missedWindow': TypedValue(Type.integer, missed.window.inHours),
+        'missedFee': TypedValue(Type.integer, missed.feeBps),
         'actor': TypedValue(Type.uuid, actorUserId),
       },
     );
@@ -1385,6 +1394,12 @@ final class PostgresOperatorConsole implements OperatorConsole {
         freeBefore: Duration(hours: row['change_free_hours'] as int? ?? 24),
         feeBps: row['change_fee_bps'] as int? ?? 1000,
         cutoff: Duration(hours: row['change_cutoff_hours'] as int? ?? 2),
+      ),
+      // Zero and zero for a row written before 0029, which is "not offered" —
+      // and is exactly what such a policy has been doing all along.
+      missed: MissedPolicy(
+        window: Duration(hours: row['missed_window_hours'] as int? ?? 0),
+        feeBps: row['missed_fee_bps'] as int? ?? 0,
       ),
       policy: RefundPolicy(
         id: row['id'].toString(),

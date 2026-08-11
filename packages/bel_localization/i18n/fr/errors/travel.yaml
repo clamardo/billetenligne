@@ -47,6 +47,14 @@ errors:
     does_not_fit: "Il ne reste que {available} places sur ce car, et vous êtes {needed}."
     must_be_paid: "Ce changement demande un supplément. Payez-le pour confirmer le nouveau départ."
     payment_in_flight: "Un paiement est déjà en cours pour un changement. Attendez la réponse avant d'en demander un autre."
+  # Le voyageur qui a raté son car (06-fleet-and-routes.md). Ces phrases sont
+  # lues à voix haute au guichet : elles disent ce que la compagnie fait, pas
+  # ce que le système refuse.
+  missed:
+    not_offered: "Cette compagnie ne reporte pas un billet non utilisé au départ."
+    window_closed: "Le report n'est possible que dans les {hours} h suivant le départ. Ce délai est passé."
+    not_yet: "Ce car n'est pas encore parti. Il s'agit d'un changement de départ, pas d'un report."
+    needs_a_till: "Ce report est payant : ouvrez une caisse pour encaisser."
   refund:
     outside_window: "Ce billet n'est plus remboursable selon les conditions de vente."
     fare_not_refundable: "Le tarif « {fareCode} » n'est pas remboursable."

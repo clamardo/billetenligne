@@ -149,6 +149,8 @@ final class _ScriptedConsole implements ConsoleGateway {
 
   /// And the change terms beside them, for the same reason.
   ChangePolicy? writtenChange;
+  MissedPolicy? writtenMissed;
+  MissedOptionsDto? missedResult;
 
   @override
   Future<({List<RefundPolicyDto> items, bool hasDefault})>
@@ -159,15 +161,50 @@ final class _ScriptedConsole implements ConsoleGateway {
     required String name,
     required RefundPolicy policy,
     ChangePolicy change = ChangePolicy.standard,
+    MissedPolicy missed = MissedPolicy.notOffered,
   }) async {
     written = policy;
     writtenChange = change;
+    writtenMissed = missed;
     saved.add('policy:$name:${policy.tiers.length}');
     return RefundPolicyDto.fromDomain(
       policy,
       name: name,
       isDefault: false,
       change: change,
+      missed: missed,
+    );
+  }
+
+  @override
+  Future<MissedOptionsDto> missedOptions(String bookingRef) async {
+    saved.add('missedOptions:$bookingRef');
+    return missedResult ??
+        MissedOptionsDto(
+          bookingRef: bookingRef,
+          originCity: 'BZV',
+          destinationCity: 'PNR',
+          seatsNeeded: 1,
+          departedAt: DateTime.utc(2026, 8, 10, 5),
+          paidFare: const Money.xaf(12000),
+          options: const [],
+        );
+  }
+
+  @override
+  Future<MissedTransferDto> moveMissed({
+    required String bookingRef,
+    required String departureId,
+    String? stationId,
+  }) async {
+    saved.add('missedMove:$bookingRef:$departureId:$stationId');
+    return MissedTransferDto(
+      bookingRef: bookingRef,
+      departureId: departureId,
+      departsAt: DateTime.utc(2026, 8, 10, 8, 30),
+      seatLabels: const ['4C'],
+      paid: const Money.xaf(2700),
+      stationName: 'Gare de Kinsoundi',
     );
   }
 
@@ -2227,6 +2264,186 @@ void main() {
       expect(gateway.saved, contains('claim:K4M2QX:st-bzv'));
     });
 
+    testWidgets('the coach from the other yard is the one row that shouts', (
+      tester,
+    ) async {
+      final gateway =
+          _ScriptedConsole(
+              capabilities: const [
+                'booking.read',
+                'booking.sell',
+                'booking.reschedule',
+              ],
+            )
+            ..missedResult = MissedOptionsDto(
+              bookingRef: 'BEL-K4M2QX',
+              originCity: 'BZV',
+              destinationCity: 'PNR',
+              seatsNeeded: 1,
+              departedAt: DateTime.utc(2026, 8, 10, 5),
+              paidFare: const Money.xaf(12000),
+              fromStationName: 'Gare de Mikalou',
+              terms: const ['policy.missed.fee|12|25'],
+              options: [
+                MissedOptionDto(
+                  departureId: 'd-9',
+                  departsAt: DateTime.utc(2026, 8, 10, 8, 30),
+                  arrivesAt: DateTime.utc(2026, 8, 10, 16),
+                  fare: const Money.xaf(12000),
+                  seatsAvailable: 4,
+                  stationName: 'Gare de Kinsoundi',
+                  sameStation: false,
+                  fee: const Money.xaf(3000),
+                  fareDifference: const Money.xaf(0),
+                  owed: const Money.xaf(3000),
+                ),
+              ],
+            );
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.counter);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Car raté'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(fieldNamed('Référence du billet'), 'BEL-K4M2QX');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Chercher un autre car'));
+      await tester.pumpAndSettle();
+
+      // The company's own promise, read aloud before a price is quoted.
+      expect(find.textContaining('dans les 12 h, contre 25 %'), findsOneWidget);
+      // 08:30 UTC is 09h30 in Brazzaville, and the row an agent must not
+      // misread: this coach leaves from the other side of the city.
+      expect(find.textContaining('09h30'), findsOneWidget);
+      expect(
+        find.textContaining("Départ d'une autre gare : Gare de Kinsoundi"),
+        findsOneWidget,
+      );
+      // Looking is a read. Nobody has been moved.
+      expect(gateway.saved, contains('missedOptions:BEL-K4M2QX'));
+      expect(gateway.saved.where((s) => s.startsWith('missedMove:')), isEmpty);
+    });
+
+    /// A screen with one later coach on it, priced at [owed].
+    MissedOptionsDto oneCoach({required int owed}) => MissedOptionsDto(
+      bookingRef: 'BEL-K4M2QX',
+      originCity: 'BZV',
+      destinationCity: 'PNR',
+      seatsNeeded: 1,
+      departedAt: DateTime.utc(2026, 8, 10, 5),
+      paidFare: const Money.xaf(12000),
+      options: [
+        MissedOptionDto(
+          departureId: 'd-9',
+          departsAt: DateTime.utc(2026, 8, 10, 8, 30),
+          arrivesAt: DateTime.utc(2026, 8, 10, 16),
+          fare: const Money.xaf(12000),
+          seatsAvailable: 4,
+          fee: Money.xaf(owed),
+          fareDifference: const Money.xaf(0),
+          owed: Money.xaf(owed),
+        ),
+      ],
+    );
+
+    Future<void> moveMissed(
+      WidgetTester tester,
+      _ScriptedConsole gateway,
+    ) async {
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.counter);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Car raté'));
+      await tester.pumpAndSettle();
+      await tester.enterText(fieldNamed('Référence du billet'), 'BEL-K4M2QX');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Chercher un autre car'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(KButton, 'Le mettre dessus'));
+      await tester.pumpAndSettle();
+    }
+
+    _ScriptedConsole agent() => _ScriptedConsole(
+      capabilities: const [
+        'booking.read',
+        'booking.sell',
+        'booking.reschedule',
+      ],
+    );
+
+    testWidgets('a paid transfer names the drawer that took it', (
+      tester,
+    ) async {
+      final gateway = agent()..missedResult = oneCoach(owed: 3000);
+      await moveMissed(tester, gateway);
+
+      // Cash across a counter has to say which drawer counted it, and the
+      // vendor is scoped to exactly one.
+      expect(gateway.saved, contains('missedMove:BEL-K4M2QX:d-9:st-bzv'));
+    });
+
+    testWidgets('a free transfer names no drawer at all', (tester) async {
+      final gateway = agent()..missedResult = oneCoach(owed: 0);
+      await moveMissed(tester, gateway);
+
+      // A till on a zero is a drawer nobody counted, and the server refuses
+      // it — so the screen must not send one.
+      expect(gateway.saved, contains('missedMove:BEL-K4M2QX:d-9:null'));
+    });
+
+    testWidgets('a company that never agreed to this says so, once', (
+      tester,
+    ) async {
+      final gateway =
+          _ScriptedConsole(
+              capabilities: const [
+                'booking.read',
+                'booking.sell',
+                'booking.reschedule',
+              ],
+            )
+            ..missedResult = MissedOptionsDto(
+              bookingRef: 'BEL-K4M2QX',
+              originCity: 'BZV',
+              destinationCity: 'PNR',
+              seatsNeeded: 1,
+              departedAt: DateTime.utc(2026, 8, 10, 5),
+              paidFare: const Money.xaf(12000),
+              options: const [],
+              refusalCode: 'missed.not_offered',
+            );
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.counter);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Car raté'));
+      await tester.pumpAndSettle();
+      await tester.enterText(fieldNamed('Référence du billet'), 'BEL-K4M2QX');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Chercher un autre car'));
+      await tester.pumpAndSettle();
+
+      // One sentence, and no list of coaches underneath it to argue with.
+      expect(
+        find.textContaining('ne reporte pas un billet non utilisé'),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(KButton, 'Le mettre dessus'), findsNothing);
+    });
+
+    testWidgets('a vendor who cannot reschedule is not offered the tab', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'booking.sell'],
+      );
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.counter);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Encaisser'), findsWidgets);
+      expect(find.text('Car raté'), findsNothing);
+    });
+
     testWidgets('a vendor who cannot refund is not offered the tab', (
       tester,
     ) async {
@@ -2566,6 +2783,69 @@ void main() {
       expect(find.text('Écrire des conditions'), findsNothing);
       expect(find.text('Appliquer aux nouvelles ventes'), findsNothing);
       expect(find.textContaining('90 % remboursés'), findsOneWidget);
+    });
+
+    testWidgets('a missed coach is a question the wizard asks', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'policy.manage'],
+      );
+      await openPolicies(tester, gateway);
+
+      await tester.tap(find.text('Écrire des conditions'));
+      await tester.pumpAndSettle();
+      await tester.enterText(fieldNamed('Nom de ces conditions'), 'Maison');
+
+      await tester.ensureVisible(find.text('Un voyageur qui rate son car'));
+      await tester.pumpAndSettle();
+
+      // Zero and zero is what the wizard opens on, and it says so in a
+      // sentence rather than leaving two empty boxes: not offering this is a
+      // real answer, and the one every operator gives today.
+      expect(
+        find.textContaining("Un billet non utilisé au départ n'est pas"),
+        findsOneWidget,
+      );
+
+      await tester.enterText(fieldNamed('Report possible pendant (h)'), '12');
+      await tester.enterText(fieldNamed('Frais de report (%)'), '25');
+      await tester.pumpAndSettle();
+
+      // The preview is the sentence the agent will read aloud at the counter,
+      // generated from the answer rather than typed by the operator.
+      expect(find.textContaining('dans les 12 h, contre 25 %'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(KButton, 'Enregistrer'));
+      await tester.pumpAndSettle();
+
+      // Percent in, basis points out — and stamped onto the same version as
+      // the refund bands beside it.
+      expect(gateway.writtenMissed!.window, const Duration(hours: 12));
+      expect(gateway.writtenMissed!.feeBps, 2500);
+      expect(gateway.writtenMissed!.isOffered, isTrue);
+    });
+
+    testWidgets('an operator who answers nothing promises nothing', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'policy.manage'],
+      );
+      await openPolicies(tester, gateway);
+
+      await tester.tap(find.text('Écrire des conditions'));
+      await tester.pumpAndSettle();
+      await tester.enterText(fieldNamed('Nom de ces conditions'), 'Maison');
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.widgetWithText(KButton, 'Enregistrer'));
+      await tester.tap(find.widgetWithText(KButton, 'Enregistrer'));
+      await tester.pumpAndSettle();
+
+      // Honouring a missed ticket is a commercial promise. A wizard that
+      // defaulted it to "yes" would be us making it on the company's behalf.
+      expect(gateway.writtenMissed!.window, Duration.zero);
+      expect(gateway.writtenMissed!.feeBps, 0);
+      expect(gateway.writtenMissed!.isOffered, isFalse);
     });
   });
 

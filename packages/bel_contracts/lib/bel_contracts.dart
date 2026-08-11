@@ -22,6 +22,7 @@ export 'src/auth/auth_dto.dart';
 export 'src/booking/booking_dto.dart';
 export 'src/booking/cancellation_dto.dart';
 export 'src/booking/change_dto.dart';
+export 'src/booking/missed_dto.dart';
 export 'src/catalog/city_dto.dart';
 export 'src/catalog/seat_map_dto.dart';
 export 'src/catalog/station_dto.dart';

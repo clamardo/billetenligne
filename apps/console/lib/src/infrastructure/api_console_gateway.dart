@@ -56,7 +56,28 @@ final class ApiConsoleGateway implements ConsoleGateway {
     required String name,
     required RefundPolicy policy,
     ChangePolicy change = ChangePolicy.standard,
-  }) => _client.saveRefundPolicy(name: name, policy: policy, change: change);
+    MissedPolicy missed = MissedPolicy.notOffered,
+  }) => _client.saveRefundPolicy(
+    name: name,
+    policy: policy,
+    change: change,
+    missed: missed,
+  );
+
+  @override
+  Future<MissedOptionsDto> missedOptions(String bookingRef) =>
+      _client.missedOptions(bookingRef);
+
+  @override
+  Future<MissedTransferDto> moveMissed({
+    required String bookingRef,
+    required String departureId,
+    String? stationId,
+  }) => _client.moveMissed(
+    bookingRef: bookingRef,
+    departureId: departureId,
+    stationId: stationId,
+  );
 
   @override
   Future<RefundPolicyDto?> setDefaultRefundPolicy({

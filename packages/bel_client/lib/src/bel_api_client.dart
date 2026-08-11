@@ -525,6 +525,7 @@ final class BelApiClient {
     required String name,
     required RefundPolicy policy,
     ChangePolicy change = ChangePolicy.standard,
+    MissedPolicy missed = MissedPolicy.notOffered,
   }) async => RefundPolicyDto.fromJson(
     await _postJson('/console/v1/policies', {
       'name': name,
@@ -536,6 +537,31 @@ final class BelApiClient {
       'refundServiceFee': policy.refundServiceFee,
       'nonRefundableFares': policy.nonRefundableFareCodes.toList()..sort(),
       'change': ChangePolicyDto.fromDomain(change).toJson(),
+      'missed': MissedPolicyDto.fromDomain(missed).toJson(),
+    }),
+  );
+
+  /// Later coaches for a passenger whose own coach has gone.
+  ///
+  /// A counter call: the reference is being read off a printed ticket by the
+  /// person holding it, and whether to honour it is the company's decision.
+  Future<MissedOptionsDto> missedOptions(String bookingRef) async =>
+      MissedOptionsDto.fromJson(
+        await _get('/console/v1/bookings/$bookingRef/missed'),
+      );
+
+  /// Puts them on one, takes the fee, and re-signs the ticket.
+  ///
+  /// [stationId] is the drawer the cash goes into — required when anything is
+  /// owed, refused when nothing is.
+  Future<MissedTransferDto> moveMissed({
+    required String bookingRef,
+    required String departureId,
+    String? stationId,
+  }) async => MissedTransferDto.fromJson(
+    await _postJson('/console/v1/bookings/$bookingRef/missed', {
+      'departureId': departureId,
+      if (stationId != null) 'stationId': stationId,
     }),
   );
 

@@ -229,4 +229,120 @@ void main() {
       expect(lines.any((l) => l.startsWith('policy.change.fee|')), isFalse);
     });
   });
+
+  group('the passenger who was late', () {
+    final departedAt = DateTime.utc(2026, 8, 10, 5);
+    const paid = Money.xaf(12000);
+
+    Result<ChangeQuote, ChangeRefusal> quote({
+      required Duration since,
+      Money newFare = paid,
+      MissedPolicy policy = const MissedPolicy(
+        window: Duration(hours: 12),
+        feeBps: 2500,
+      ),
+      bool involuntary = false,
+    }) => quoteMissed(
+      paidFare: paid,
+      newFare: newFare,
+      departedAt: departedAt,
+      targetDepartsAt: departedAt.add(since).add(const Duration(hours: 3)),
+      now: departedAt.add(since),
+      policy: policy,
+      involuntary: involuntary,
+    );
+
+    test('an operator who has said nothing offers nothing', () {
+      // The one default that must not be generous: honouring a missed ticket
+      // is a promise about somebody else's seats.
+      final refused = quote(
+        since: const Duration(minutes: 20),
+        policy: MissedPolicy.notOffered,
+      );
+
+      expect(refused.failureOrNull, isA<MissedNotOffered>());
+      expect(refused.failureOrNull!.code, 'missed.not_offered');
+    });
+
+    test('inside the window, the fee is a share of what they paid', () {
+      final ok = quote(since: const Duration(hours: 2)).valueOrNull!;
+
+      expect(ok.fee, const Money.xaf(3000));
+      expect(ok.fareDifference, const Money.xaf(0));
+      expect(ok.owed, const Money.xaf(3000));
+      expect(ok.isFree, isFalse);
+    });
+
+    test('a dearer coach adds its difference; a cheaper one gives nothing '
+        'back', () {
+      final dearer = quote(
+        since: const Duration(hours: 1),
+        newFare: const Money.xaf(15000),
+      ).valueOrNull!;
+      expect(dearer.fareDifference, const Money.xaf(3000));
+      expect(dearer.owed, const Money.xaf(6000));
+
+      // Downward differences are not refunded here for the same reason they
+      // are not on a change: the disbursement does not exist.
+      final cheaper = quote(
+        since: const Duration(hours: 1),
+        newFare: const Money.xaf(9000),
+      ).valueOrNull!;
+      expect(cheaper.fareDifference, const Money.xaf(0));
+      expect(cheaper.owed, const Money.xaf(3000));
+    });
+
+    test('past the window the ticket is spent, and it says for how long', () {
+      final refused = quote(since: const Duration(hours: 13));
+
+      expect(refused.failureOrNull, isA<MissedWindowClosed>());
+      expect(refused.failureOrNull!.params['hours'], 12);
+    });
+
+    test('a coach that has not left is a change, not a transfer', () {
+      final refused = quoteMissed(
+        paidFare: paid,
+        newFare: paid,
+        departedAt: departedAt,
+        targetDepartsAt: departedAt.add(const Duration(hours: 4)),
+        now: departedAt.subtract(const Duration(minutes: 30)),
+        policy: const MissedPolicy(window: Duration(hours: 12)),
+      );
+
+      // Refused rather than quietly priced as one: the two are charged under
+      // different terms, and a counter that could reach this fee before
+      // departure could charge it to somebody changing their mind early.
+      expect(refused.failureOrNull, isA<MissedNotYet>());
+    });
+
+    test("the operator's own failure is free, past every window", () {
+      final ok = quote(
+        since: const Duration(hours: 40),
+        policy: MissedPolicy.notOffered,
+        involuntary: true,
+      ).valueOrNull!;
+
+      // Checked before the window and before "not offered" — an operator
+      // cannot put somebody outside a window their own breakdown pushed them
+      // past (ADR-0016).
+      expect(ok.owed, const Money.xaf(0));
+      expect(ok.involuntary, isTrue);
+    });
+
+    test('the terms are keys with the numbers in them', () {
+      expect(
+        const MissedPolicy(
+          window: Duration(hours: 12),
+          feeBps: 2500,
+        ).describe(),
+        ['policy.missed.fee|12|25'],
+      );
+      expect(const MissedPolicy(window: Duration(hours: 6)).describe(), [
+        'policy.missed.free|6',
+      ]);
+      // And "we do not do this" is a sentence, not an empty list: a policy
+      // screen that said nothing would read as an oversight.
+      expect(MissedPolicy.notOffered.describe(), ['policy.missed.notOffered']);
+    });
+  });
 }

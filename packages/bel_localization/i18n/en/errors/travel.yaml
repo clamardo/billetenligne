@@ -47,6 +47,13 @@ errors:
     does_not_fit: "Only {available} seats are left on that coach, and there are {needed} of you."
     must_be_paid: "This change costs extra. Pay it to confirm the new departure."
     payment_in_flight: "A payment for a change is already under way. Wait for the answer before asking for another."
+  # The traveller who missed their coach. These sentences are read aloud at a
+  # counter: they say what the company does, not what the system refuses.
+  missed:
+    not_offered: "This company does not carry over a ticket that was not used at departure."
+    window_closed: "A transfer is only possible within {hours} h of departure, and that has passed."
+    not_yet: "This coach has not left yet. That is a change of departure, not a transfer."
+    needs_a_till: "This transfer costs money: open a till to take it."
   refund:
     outside_window: "This ticket is no longer refundable under the terms it was sold with."
     fare_not_refundable: "The \"{fareCode}\" fare is not refundable."

@@ -839,6 +839,46 @@ check "a traveller cannot refund a booking" "403" \
      "$BASE/console/v1/bookings/BEL-ABC123/refund" -H "$AUTH" \
      -H 'Content-Type: application/json' -d '{"reason":"give me the money"}')"
 
+# ── The passenger who was late ──────────────────────────────────────────────
+#
+# What only a socket proves here is the ordering: who may look, who may move
+# somebody, and that a request naming a drawer the caller is not scoped to is
+# refused before any money is quoted. The transfer itself — the lock, the
+# seats and the ledger — is proven in `missed_departure_pg_test.dart`.
+check "a traveller cannot look for somebody else's later coach" "403" \
+  "$(status -H "$AUTH" "$BASE/console/v1/bookings/BEL-ABC123/missed")"
+check "an anonymous caller cannot either" "401" \
+  "$(status "$BASE/console/v1/bookings/BEL-ABC123/missed")"
+# The same answer a stranger's reference gets on every other booking route:
+# a counter agent learns nothing about whether a reference exists somewhere
+# else in the country.
+check "a booking that is not this company's is not there" "404" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/bookings/BEL-ABC123/missed")"
+check "a move with no departure is refused" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/bookings/BEL-ABC123/missed" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d '{}')"
+# A well-formed move naming a drawer gets past every guard on the way in and
+# dies at the missing database, which is what "the validation is upstream of
+# the desk" looks like from a socket.
+check "a well-formed move gets past validation" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/bookings/BEL-ABC123/missed" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' \
+     -d '{"departureId":"11111111-1111-1111-1111-111111111111","stationId":"st-bzv"}')"
+check "a station that is not a string is a 400, naming the field" "stationId" \
+  "$(curl -s -X POST "$BASE/console/v1/bookings/BEL-ABC123/missed" \
+     -H "$OP_AUTH" -H 'Content-Type: application/json' \
+     -d '{"departureId":"d-1","stationId":7}' \
+     | grep -o 'stationId' | head -1)"
+check "a traveller cannot move themselves onto a later coach" "403" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/bookings/BEL-ABC123/missed" -H "$AUTH" \
+     -H 'Content-Type: application/json' \
+     -d '{"departureId":"11111111-1111-1111-1111-111111111111"}')"
+check "the counter screen is not a public one" "404" \
+  "$(status -H "$AUTH" "$BASE/public/v1/bookings/BEL-ABC123/missed")"
+
 # Paying out a claim is cash leaving a specific drawer, so it needs the
 # station as well as the code — and a vendor is scoped to their own.
 check "a claim without a code is refused" "400" \

@@ -99,8 +99,10 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Reschedule, by the traveller** | ✅ done | `01-feature-spec.md` §8.1 and ADR-0012 D-08. **Every row is priced before selection** — fee and fare difference on each line, which is what §8.1's mock asks for and what stops somebody tapping five times to compare four departures. D-08's three numbers are data now, stored on the same row as the refund terms and stamped onto the booking by the same `(id, version)` pair, so ADR-0015 rule 1 covers changes without a second versioning scheme. **New seats taken before a single old one is released**, both departures locked in id order, **ticket re-signed in the same transaction** (ADR-0007). **A cheaper departure gives nothing back**, said above the list rather than after the tap. **A row that cannot be taken is shown with its reason**, because a departure missing from a list is one somebody telephones about. **A change that owes money is refused to the franc** and settled at a counter — collecting it in-app needs a payment intent bound to a held-but-unapplied change, which is its own slice. An operator-caused change is free inside every cutoff (ADR-0016). The three numbers are answered in the refund-terms wizard, on the same save and the same version. 21 domain · 6 contract · 17 Postgres · 7 smoke · 18 traveller-app tests |
 | **Paying the difference in the app** | ✅ done | `01-feature-spec.md` §8.1, the boundary the reschedule slice named. A change that owes money becomes a **change order**: it holds the seats, states what is owed to the franc, and **moves nothing**. The booking moves on the capture and nowhere else — a change applied on `pending` is the free journey an optimistically issued ticket would be (ADR-0005). The order rides on an ordinary `holds` row, so the sweeper that puts lapsed holds back on sale already handles the expiry and a second pass only records it. One live order per booking (partial unique index); changing their mind releases the first, **a prompt in flight refuses the second**. The payment funnel is the existing one, with a change id on the intent deciding at settlement whether a capture confirms a booking or moves one. **The client names which debt, never how much.** A capture landing after the seats went back on sale moves nobody and leaves an intent a human can refund. 12 Postgres · 3 worker · 5 traveller-app · 3 contract · 7 smoke tests, one migration, one schema guarantee |
 | **Operator reliability score** | ✅ done | `08-disruption.md` §6, and the first thing on a search row that is about the company rather than the coach. A nightly worker pass writes `operators.on_time_rate` from the last ninety days: of the departures that ran, the share nobody had to declare anything about. **A column, not a query** — search is the hot path and the figure moves once a day. **No figure below twenty departures**, and a missing one draws nothing rather than a zero. 4 worker · 1 API Postgres · 1 component test, one migration |
+| **Where a coach leaves from** | ✅ done | `06-fleet-and-routes.md`. A departure names the terminal it boards at and the one it arrives at; the console keeps the catalogue on the same screen as the roads. **A station belongs to exactly one operator** — the nullable `operator_id` made a shared yard invisible to every company sharing it, since the tenant policy is false for NULL. **A coach cannot leave from a rival's terminal**, by composite FK rather than a WHERE clause. The yard is captured onto the departure like the seat layout, a closed yard is deactivated rather than deleted, and the search row names it only when the list offers a choice. 2 Postgres · 3 contract · 4 console · 1 traveller · 1 design test, one migration, 2 schema guarantees |
+| **The passenger who missed their coach** | ✅ done | `06-fleet-and-routes.md`, and the transfer the stations slice made tellable. Two numbers on the refund policy — how long a missed ticket keeps value, what the transfer costs — stamped by the same `(id, version)` pair as the refund bands. **Both default to zero, which means not offered**: honouring a missed ticket is a commercial promise no platform should make on a company's behalf. **The list crosses routes, not companies**, matched on the city pair, so the 09:30 from the other terminal is offered and a rival's coach never is. A **counter screen by design** — the quote is re-taken under the lock, a paid transfer names the till it was paid into, a free one names none. 7 domain · 7 contract · 7 Postgres · 8 smoke · 5 console tests, one migration, 2 schema guarantees |
 
-Five items of it are built, out of order and deliberately. The follower page is
+Eight items of it are built, out of order and deliberately. The follower page is
 what makes a disruption reach the person who would otherwise phone the agency,
 and that machinery shipped in Phase 2. Self-service cancellation is the other
 half of the refund path the counter already had, and every piece it needed —
@@ -109,8 +111,10 @@ leaving it out would have meant a system that can refund a booking only when
 somebody walks into an office. §8 is now built on both sides and both ways of paying: cancel, reschedule, and
 the difference collected in the app. What is left of it is small and named — a
 traveller cannot cancel a change order themselves, they wait the quarter of an
-hour out. Everything else in Phase 3 — the stores, offline tickets on device,
-card via PSP, analytics — is not started. `09-roadmap.md` has the remaining
+hour out. The funnel is on a back-office screen, a departure says which yard
+it boards at, and a passenger who missed one can be moved onto another at a
+counter. Everything else in Phase 3 — the stores, offline tickets on device,
+card via PSP — is not started. `09-roadmap.md` has the remaining
 Phase 1 work in **dependency order**. With both consoles rendered, the vitrine complete, TOTP in front of
 both back offices, object storage built, the section builder shipped and
 refunds executing end to end, the sales horizon extending itself and an
@@ -250,21 +254,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 471 tests
+         packages/bel_contracts packages/bel_crypto     # 485 tests
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 214 tests
 cd packages/bel_design     && flutter test  # 67 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 159 app tests
-cd apps/console   && flutter test        # 93 console tests
+cd apps/console   && flutter test        # 100 console tests
 cd apps/admin     && flutter test        # 28 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 352 files
-./infra/migrations/check.sh              # 33 schema guarantees
-./tool/integration.sh                    # 329 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 295 checks, incl. the Dart client
+dart run tool/check_layers.dart          # the onion rule, 354 files
+./infra/migrations/check.sh              # 34 schema guarantees
+./tool/integration.sh                    # 337 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 303 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -273,8 +277,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,098 tests in total**, plus 295 smoke checks, 33 executed schema guarantees,
-329 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,119 tests in total**, plus 303 smoke checks, 34 executed schema guarantees,
+337 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -293,6 +297,64 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+**The passenger who missed their coach** — the transfer the stations slice
+made tellable.
+
+Today a missed coach is a dead ticket, and the system says so twice over
+before anybody speaks to a human: self-service change offers only departures
+that have not left, and D-08's cutoff has already refused everybody inside two
+hours of departure. So a passenger standing at the terminal at 06h05 for the
+06:00 has been refused by two screens, and what actually happens next is that
+they plead with an agent, who puts them on the 09:30 or does not, according to
+nothing written down. This slice is that decision written down.
+
+**Two numbers on the refund policy, and both default to zero.** How long a
+missed ticket keeps any value, and what the transfer costs as a share of the
+fare paid. Zero and zero means *not offered*, which is what every policy
+written before this question existed already behaves as. Unlike the change
+terms there is no ADR default to inherit and none was invented: honouring a
+missed ticket is a **commercial promise**, and a platform that defaulted it to
+"yes" would be making that promise on every company's behalf. They live on
+`refund_policies` because a booking already stamps `(policy_id, version)` at
+sale, so a late passenger is judged by the terms they were sold under with no
+second versioning scheme to keep honest (ADR-0015 rule 1).
+
+**The list crosses routes, not companies.** Candidates are matched on the
+**city pair** rather than the route id, which is the whole reason the stations
+slice came first: a company's two Brazzaville terminals are two rows in
+`routes`, and the 09:30 from Kinsoundi is invisible to any query keyed on the
+road the passenger was sold. Another company is never offered — that is a new
+purchase, not a transfer, and pretending otherwise would move a fare between
+two operators' books. Every row names its yard, and a yard that is **not** the
+one they were told to come to is drawn in the warning colour, because it is a
+taxi ride somebody has to be told about.
+
+**It is a counter screen, and deliberately not in the app.** The person is
+standing in front of an agent with a printed ticket; whether to honour it is
+the company's decision to take in person, and the fee is cash into a drawer
+somebody counts at the end of a shift. So the quote is re-taken **under the
+lock** — at a counter the gap between reading a price aloud and taking the
+money is minutes, not milliseconds — and a paid transfer must name the till it
+was paid into, refused by CHECK constraint as well as by handler. A free
+transfer names none, because a station on a zero is a drawer nobody counted.
+
+What it cost: one migration, 2 executed schema guarantees, 7 domain tests, 7
+contract round-trips, 7 tests against real Postgres, 8 smoke checks, 5 console
+widget tests, one route, one port method pair, one ledger posting. Two
+pre-existing suites needed isolating rather than fixing: this suite now sells
+on its **own road** (the change desk shows the twenty soonest coaches on the
+road a booking is on, and seven extra departures four hours out evicted
+another suite's target from its own screen), and it puts its backdated coaches
+back in the future on the way out, because the worker's on-time figure rewrites
+the operator's past and cannot do that to a coach somebody holds a ticket on.
+One real bug fell out of writing the widget tests: the refusal on the counter
+screen was looked up under `error.` where the catalog root is `errors.`, so
+every reason a transfer could not happen rendered as a raw key.
+
+---
+
+## What the stations push changed, and what it cost
 
 **Stations become real** — where a coach actually leaves from.
 

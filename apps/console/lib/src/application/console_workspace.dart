@@ -283,8 +283,12 @@ final class ConsoleWorkspace {
     required String name,
     required RefundPolicy policy,
     ChangePolicy change = ChangePolicy.standard,
+    MissedPolicy missed = MissedPolicy.notOffered,
   }) => _run(() async {
-    if (name.trim().isEmpty || !policy.isWellFormed || !change.isWellFormed) {
+    if (name.trim().isEmpty ||
+        !policy.isWellFormed ||
+        !change.isWellFormed ||
+        !missed.isWellFormed) {
       _notice = 'policy.invalid';
       return;
     }
@@ -292,6 +296,7 @@ final class ConsoleWorkspace {
       name: name.trim(),
       policy: policy,
       change: change,
+      missed: missed,
     );
     _notice = saved.version > 1
         ? 'policy.savedVersion|${saved.name}|${saved.version}'
@@ -783,6 +788,40 @@ final class ConsoleWorkspace {
       _notice = 'refund.issued|${issued!.bookingRef}';
     });
     return issued;
+  }
+
+  /// Later coaches for a passenger whose own coach has gone.
+  ///
+  /// A read. The agent says the terms and the price out loud before anybody
+  /// hands over a note, exactly as the refund quote does.
+  Future<MissedOptionsDto?> missedOptions(String bookingRef) async {
+    MissedOptionsDto? options;
+    await _run(() async {
+      options = await _gateway.missedOptions(bookingRef.trim());
+    });
+    return options;
+  }
+
+  Future<MissedTransferDto?> moveMissed({
+    required String bookingRef,
+    required String departureId,
+    String? stationId,
+  }) async {
+    MissedTransferDto? moved;
+    await _run(() async {
+      moved = await _gateway.moveMissed(
+        bookingRef: bookingRef.trim(),
+        departureId: departureId,
+        stationId: stationId,
+      );
+      // The yard, in the notice, because it is the sentence the agent has to
+      // say next — and on the day it differs from the one on the old ticket
+      // it is the only thing that matters.
+      _notice = moved!.stationName == null
+          ? 'missed.moved|${moved!.bookingRef}'
+          : 'missed.movedTo|${moved!.bookingRef}|${moved!.stationName}';
+    });
+    return moved;
   }
 
   Future<ClaimedRefundDto?> payClaim({

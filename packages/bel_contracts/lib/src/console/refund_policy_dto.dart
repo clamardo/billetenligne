@@ -23,6 +23,7 @@ final class RefundPolicyDto {
     required this.nonRefundableFares,
     required this.isDefault,
     this.change = const ChangePolicyDto(),
+    this.missed = const MissedPolicyDto(),
     this.bookingCount = 0,
   });
 
@@ -41,6 +42,12 @@ final class RefundPolicyDto {
   /// assume in that case — they are what every policy stored before this
   /// field existed actually behaves as.
   final ChangePolicyDto change;
+
+  /// What happens to somebody who was late. Defaulted to "not offered",
+  /// which is what every policy stored before this field existed behaves as —
+  /// and the only honest default, since honouring a missed ticket is a
+  /// commercial promise no platform should make on a company's behalf.
+  final MissedPolicyDto missed;
 
   /// Whether new sales are stamped with this version. At most one version of
   /// one policy is true.
@@ -71,6 +78,10 @@ final class RefundPolicyDto {
   /// traveller's list of departures are priced by the same code.
   ChangePolicy changeToDomain() => change.toDomain();
 
+  /// The missed-departure terms as the domain object, so the console's
+  /// preview and the counter's quote are written by the same function.
+  MissedPolicy missedToDomain() => missed.toDomain();
+
   Map<String, Object?> toJson() => {
     'id': id,
     'version': version,
@@ -81,6 +92,7 @@ final class RefundPolicyDto {
     'refundServiceFee': refundServiceFee,
     'nonRefundableFares': nonRefundableFares,
     'change': change.toJson(),
+    'missed': missed.toJson(),
     'isDefault': isDefault,
     'bookingCount': bookingCount,
   };
@@ -101,6 +113,9 @@ final class RefundPolicyDto {
     change: ChangePolicyDto.fromJson(
       (json['change'] as Map?)?.cast<String, Object?>() ?? const {},
     ),
+    missed: MissedPolicyDto.fromJson(
+      (json['missed'] as Map?)?.cast<String, Object?>() ?? const {},
+    ),
     isDefault: json['isDefault'] as bool? ?? false,
     bookingCount: json['bookingCount'] as int? ?? 0,
   );
@@ -110,6 +125,7 @@ final class RefundPolicyDto {
     required String name,
     required bool isDefault,
     ChangePolicy change = ChangePolicy.standard,
+    MissedPolicy missed = MissedPolicy.notOffered,
     int bookingCount = 0,
   }) => RefundPolicyDto(
     id: policy.id,
@@ -121,6 +137,7 @@ final class RefundPolicyDto {
     refundServiceFee: policy.refundServiceFee,
     nonRefundableFares: policy.nonRefundableFareCodes.toList()..sort(),
     change: ChangePolicyDto.fromDomain(change),
+    missed: MissedPolicyDto.fromDomain(missed),
     isDefault: isDefault,
     bookingCount: bookingCount,
   );
@@ -216,5 +233,42 @@ final class ChangePolicyDto {
     freeBeforeHours: policy.freeBefore.inHours,
     feeBps: policy.feeBps,
     cutoffHours: policy.cutoff.inHours,
+  );
+}
+
+/// What happens to somebody who was late, on the wire.
+///
+/// Two numbers, in the units the operator answered in: hours for the window,
+/// basis points for the fee. Zero and zero is "not offered", and it is the
+/// default for the same reason it is the column default — a platform that
+/// promised a company's seats away by omission would be making a commercial
+/// commitment nobody agreed to.
+final class MissedPolicyDto {
+  const MissedPolicyDto({this.windowHours = 0, this.feeBps = 0});
+
+  final int windowHours;
+
+  /// Basis points, integer. 2500 = 25%, and no float ever touches a fare.
+  final int feeBps;
+
+  MissedPolicy toDomain() => MissedPolicy(
+    window: Duration(hours: windowHours),
+    feeBps: feeBps,
+  );
+
+  Map<String, Object?> toJson() => {
+    'windowHours': windowHours,
+    'feeBps': feeBps,
+  };
+
+  factory MissedPolicyDto.fromJson(Map<String, Object?> json) =>
+      MissedPolicyDto(
+        windowHours: json['windowHours'] as int? ?? 0,
+        feeBps: json['feeBps'] as int? ?? 0,
+      );
+
+  factory MissedPolicyDto.fromDomain(MissedPolicy policy) => MissedPolicyDto(
+    windowHours: policy.window.inHours,
+    feeBps: policy.feeBps,
   );
 }

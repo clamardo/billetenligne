@@ -321,3 +321,107 @@ BEGIN
   RAISE NOTICE 'OK  a departure can only board at its own operator''s station';
 END
 $$;
+
+DO $$
+DECLARE
+  yard    UUID;
+  gone    UUID := 'dddddddd-0000-0000-0000-000000000010';
+  later   UUID := 'dddddddd-0000-0000-0000-000000000011';
+  booking UUID := 'eeeeeeee-0000-0000-0000-000000000010';
+BEGIN
+  -- ── 16. A counter transfer has to add up, and say which drawer ────────────
+  -- The passenger who missed the 06:00 pays a fee, possibly a fare
+  -- difference, and moves. Three things are worth more than a handler's word
+  -- here, because each of them is a number somebody reconciles at the end of
+  -- a shift: the total is its parts, cash names its till, and a "transfer"
+  -- that leaves the passenger on the same coach is not one.
+  INSERT INTO stations (operator_id, city_code, name)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'BZV', 'Gare des Reports')
+  RETURNING id INTO yard;
+
+  INSERT INTO departures (id, operator_id, route_id, seat_layout_id, departs_at,
+                          arrives_at, capacity, fare_minor, currency, status)
+  VALUES
+    (gone,  '11111111-1111-1111-1111-111111111111',
+     'aaaaaaaa-0000-0000-0000-000000000001',
+     'bbbbbbbb-0000-0000-0000-000000000009',
+     now() - INTERVAL '1 hour', now() + INTERVAL '7 hours',
+     4, 12000, 'XAF', 'departed'),
+    (later, '11111111-1111-1111-1111-111111111111',
+     'aaaaaaaa-0000-0000-0000-000000000001',
+     'bbbbbbbb-0000-0000-0000-000000000009',
+     now() + INTERVAL '4 hours', now() + INTERVAL '12 hours',
+     4, 12000, 'XAF', 'scheduled');
+
+  INSERT INTO bookings (id, ref, operator_id, departure_id, fare_minor,
+                        service_fee_minor, total_minor, currency)
+  VALUES (booking, 'BEL-VERIF16', '11111111-1111-1111-1111-111111111111',
+          gone, 12000, 300, 12300, 'XAF');
+
+  BEGIN
+    INSERT INTO missed_transfers (booking_id, operator_id, from_departure_id,
+                                  to_departure_id, seat_labels, fee_minor,
+                                  difference_minor, paid_minor, currency,
+                                  station_id)
+    VALUES (booking, '11111111-1111-1111-1111-111111111111', gone, later,
+            ARRAY['1A'], 3000, 0, 2000, 'XAF', yard);
+    RAISE EXCEPTION 'FAIL: a transfer was paid an amount that is not its parts';
+  EXCEPTION WHEN check_violation THEN
+    NULL; -- expected
+  END;
+
+  BEGIN
+    INSERT INTO missed_transfers (booking_id, operator_id, from_departure_id,
+                                  to_departure_id, seat_labels, fee_minor,
+                                  difference_minor, paid_minor, currency)
+    VALUES (booking, '11111111-1111-1111-1111-111111111111', gone, later,
+            ARRAY['1A'], 3000, 0, 3000, 'XAF');
+    RAISE EXCEPTION 'FAIL: money was taken without naming a till';
+  EXCEPTION WHEN check_violation THEN
+    NULL; -- expected
+  END;
+
+  BEGIN
+    INSERT INTO missed_transfers (booking_id, operator_id, from_departure_id,
+                                  to_departure_id, seat_labels, fee_minor,
+                                  difference_minor, paid_minor, currency)
+    VALUES (booking, '11111111-1111-1111-1111-111111111111', gone, gone,
+            ARRAY['1A'], 0, 0, 0, 'XAF');
+    RAISE EXCEPTION 'FAIL: a transfer onto the same coach was recorded';
+  EXCEPTION WHEN check_violation THEN
+    NULL; -- expected
+  END;
+
+  -- A free transfer needs no till: the honest shape, rather than a station
+  -- invented to satisfy a NOT NULL.
+  INSERT INTO missed_transfers (booking_id, operator_id, from_departure_id,
+                                to_departure_id, seat_labels, fee_minor,
+                                difference_minor, paid_minor, currency)
+  VALUES (booking, '11111111-1111-1111-1111-111111111111', gone, later,
+          ARRAY['1A'], 0, 0, 0, 'XAF');
+
+  -- ── 17. The terms a late passenger is judged by are a rate ────────────────
+  -- The fee is basis points on a fare, and the day something writes a percent
+  -- into it a 25 % transfer becomes a 2 500 % one.
+  -- Written as a new version rather than an edit, because a refund policy is
+  -- append-only — which is the point of the block above this one.
+  BEGIN
+    INSERT INTO refund_policies (id, version, operator_id, name, tiers,
+                                 missed_window_hours, missed_fee_bps)
+    VALUES (gen_random_uuid(), 1, '11111111-1111-1111-1111-111111111111',
+            'Reports impossibles',
+            '[{"minLeadTimeMinutes":1440,"rateBps":10000}]'::jsonb, 12, 25000);
+    RAISE EXCEPTION 'FAIL: a missed-transfer fee above 100%% was accepted';
+  EXCEPTION WHEN check_violation THEN
+    NULL; -- expected
+  END;
+
+  -- Cleared away again: the public-boundary checks that follow count what a
+  -- traveller can see, and this coach is not one of theirs.
+  DELETE FROM missed_transfers WHERE booking_id = booking;
+  DELETE FROM bookings WHERE id = booking;
+  DELETE FROM departures WHERE id IN (gone, later);
+
+  RAISE NOTICE 'OK  a counter transfer adds up, names its till and actually moves';
+END
+$$;

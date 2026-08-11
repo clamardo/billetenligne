@@ -83,6 +83,13 @@ policy:
     noFee: "Between {a1} h and {a2} h before departure: changes are free."
     cutoff: "Less than {a1} h before departure: no changes."
     involuntaryFree: "If the operator changes or cancels your departure, changing is free, whatever the terms say."
+  # The traveller who missed their coach. Two numbers, and "nothing" is a
+  # real answer: honouring a missed ticket is a commercial promise, not a
+  # platform behaviour.
+  missed:
+    notOffered: "A ticket not used at departure is not carried over."
+    free: "Missed coach: free transfer to a departure within {a1} h."
+    fee: "Missed coach: transfer within {a1} h, for {a2}% of the fare paid."
 
 # A carrier's onboarding application (03-operator-lifecycle.md §2.2). The
 # domain returns FIELD NAMES — `rccmNumber`, `ownerPhone` — never sentences:

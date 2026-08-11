@@ -149,6 +149,108 @@ final class ChangeOrder {
 /// nothing and bounded by a deadline. This one is a purchase decision the
 /// traveller makes unprompted, priced by the terms they bought under, and
 /// available on any day nothing has gone wrong.
+/// One later coach a missed passenger could be put on, priced.
+///
+/// The same shape as [ChangeOption] with one addition that is the point of
+/// the feature: **which yard it leaves from**. A passenger who missed the
+/// 06:00 from Mikalou can be put on the 09:30 from Kinsoundi, and an agent
+/// who cannot see that on the row is an agent who sends somebody to the wrong
+/// side of the city.
+final class MissedOption {
+  const MissedOption({
+    required this.departureId,
+    required this.departsAt,
+    required this.arrivesAt,
+    required this.fare,
+    required this.seatsAvailable,
+    this.stationName,
+    this.boardingNotes,
+    this.sameStation = true,
+    this.quote,
+    this.refusal,
+  });
+
+  final String departureId;
+  final DateTime departsAt;
+  final DateTime arrivesAt;
+  final Money fare;
+  final int seatsAvailable;
+
+  final String? stationName;
+  final String? boardingNotes;
+
+  /// False when this coach leaves from somewhere other than the yard they
+  /// were told to come to. Computed on the server so the agent's screen and
+  /// the passenger's ticket cannot disagree about what "the other gare" is.
+  final bool sameStation;
+
+  final ChangeQuote? quote;
+  final ChangeRefusal? refusal;
+}
+
+/// The counter's whole screen for a passenger who was late.
+final class MissedOptions {
+  const MissedOptions({
+    required this.bookingRef,
+    required this.originCity,
+    required this.destinationCity,
+    required this.seatsNeeded,
+    required this.departedAt,
+    required this.paidFare,
+    required this.policy,
+    required this.options,
+    this.fromStationName,
+    this.involuntary = false,
+    this.refusal,
+  });
+
+  final String bookingRef;
+  final String originCity;
+  final String destinationCity;
+  final int seatsNeeded;
+
+  /// When the coach they hold a ticket for actually left.
+  final DateTime departedAt;
+
+  final Money paidFare;
+  final MissedPolicy policy;
+  final List<MissedOption> options;
+
+  /// The yard they were told to come to, when one was named.
+  final String? fromStationName;
+
+  final bool involuntary;
+
+  /// Set when nothing can be done: the operator does not offer this, the
+  /// window has closed, or the coach has not left yet.
+  final ChangeRefusal? refusal;
+}
+
+/// What the counter did.
+final class MissedTransfer {
+  const MissedTransfer({
+    required this.bookingRef,
+    required this.departureId,
+    required this.departsAt,
+    required this.seatLabels,
+    required this.paid,
+    this.stationName,
+    this.boardingNotes,
+  });
+
+  final String bookingRef;
+  final String departureId;
+  final DateTime departsAt;
+  final List<String> seatLabels;
+
+  /// What was taken across the counter, so the receipt and the drawer agree.
+  final Money paid;
+
+  /// Where the new coach leaves from — the sentence the agent says out loud.
+  final String? stationName;
+  final String? boardingNotes;
+}
+
 abstract interface class RescheduleDesk {
   /// The screen. Null when the reference is not this traveller's — which is
   /// what a reference that does not exist looks like too.
@@ -203,6 +305,44 @@ abstract interface class RescheduleDesk {
     required String intentId,
     required LedgerTransaction posting,
   });
+
+  // ── The passenger who was late ──────────────────────────────────────────
+
+  /// Later coaches for a booking whose departure has gone.
+  ///
+  /// Scoped to the operator rather than to a traveller: this is a counter
+  /// screen. A passenger who missed a coach is standing in front of somebody,
+  /// and the decision to honour their ticket is the company's to take — which
+  /// is also why it is not in the app.
+  ///
+  /// Candidates are every later departure of this operator **between the same
+  /// two cities**, not on the same route id. That is what lets the 09:30 from
+  /// the other gare be offered: a company's two Brazzaville terminals are two
+  /// routes, and a passenger does not care which row of our table their coach
+  /// belongs to.
+  Future<MissedOptions?> missedOptions({
+    required String bookingRef,
+    required String operatorId,
+    required DateTime now,
+  });
+
+  /// Moves them, takes the money, and re-signs the ticket — one transaction.
+  ///
+  /// [stationId] is the drawer the cash goes into, required when anything is
+  /// owed and refused when nothing is: money in a till has to say which till,
+  /// and a station on a free transfer is a station nobody counted.
+  ///
+  /// The quote is re-taken under the lock. The row was priced before it, and
+  /// a coach can fill between an agent reading a screen and pressing a
+  /// button — which at a counter is a genuine two minutes.
+  Future<({MissedTransfer? moved, ChangeRefusal? refusal})?> moveMissed({
+    required String bookingRef,
+    required String operatorId,
+    required String toDepartureId,
+    required String actorUserId,
+    required DateTime now,
+    String? stationId,
+  });
 }
 
 /// The null object, for a server with no database behind it.
@@ -236,6 +376,23 @@ final class NoReschedules implements RescheduleDesk {
   Future<ChangeOrder?> orderById({
     required String changeId,
     required String userId,
+  }) async => null;
+
+  @override
+  Future<MissedOptions?> missedOptions({
+    required String bookingRef,
+    required String operatorId,
+    required DateTime now,
+  }) async => null;
+
+  @override
+  Future<({MissedTransfer? moved, ChangeRefusal? refusal})?> moveMissed({
+    required String bookingRef,
+    required String operatorId,
+    required String toDepartureId,
+    required String actorUserId,
+    required DateTime now,
+    String? stationId,
   }) async => null;
 
   @override
