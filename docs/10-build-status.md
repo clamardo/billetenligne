@@ -102,7 +102,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Where a coach leaves from** | ✅ done | `06-fleet-and-routes.md`. A departure names the terminal it boards at and the one it arrives at; the console keeps the catalogue on the same screen as the roads. **A station belongs to exactly one operator** — the nullable `operator_id` made a shared yard invisible to every company sharing it, since the tenant policy is false for NULL. **A coach cannot leave from a rival's terminal**, by composite FK rather than a WHERE clause. The yard is captured onto the departure like the seat layout, a closed yard is deactivated rather than deleted, and the search row names it only when the list offers a choice. 2 Postgres · 3 contract · 4 console · 1 traveller · 1 design test, one migration, 2 schema guarantees |
 | **The passenger who missed their coach** | ✅ done | `06-fleet-and-routes.md`, and the transfer the stations slice made tellable. Two numbers on the refund policy — how long a missed ticket keeps value, what the transfer costs — stamped by the same `(id, version)` pair as the refund bands. **Both default to zero, which means not offered**: honouring a missed ticket is a commercial promise no platform should make on a company's behalf. **The list crosses routes, not companies**, matched on the city pair, so the 09:30 from the other terminal is offered and a rival's coach never is. A **counter screen by design** — the quote is re-taken under the lock, a paid transfer names the till it was paid into, a free one names none. 7 domain · 7 contract · 7 Postgres · 8 smoke · 5 console tests, one migration, 2 schema guarantees |
 
-Nine items of it are built, out of order and deliberately. The follower page is
+Ten items of it are built, out of order and deliberately. The follower page is
 what makes a disruption reach the person who would otherwise phone the agency,
 and that machinery shipped in Phase 2. Self-service cancellation is the other
 half of the refund path the counter already had, and every piece it needed —
@@ -113,7 +113,8 @@ the difference collected in the app, with the order the traveller can now give
 back rather than wait out. **§8 has nothing left named against it.** The funnel
 is on a back-office screen, a departure says which yard it boards at, and a
 passenger who missed one can be moved onto another at a counter. Everything else in Phase 3 — the stores, offline tickets on device,
-card via PSP — is not started. `09-roadmap.md` has the remaining
+card via PSP — is not started. Offline is: a ticket bought yesterday now
+renders in a tunnel today. `09-roadmap.md` has the remaining
 Phase 1 work in **dependency order**. With both consoles rendered, the vitrine complete, TOTP in front of
 both back offices, object storage built, the section builder shipped and
 refunds executing end to end, the sales horizon extending itself and an
@@ -259,12 +260,12 @@ rm -rf services/api/build                               # see below — it matte
 dart test services/api -x integration -x storage        # 214 tests
 cd packages/bel_design     && flutter test  # 67 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
-cd apps/traveller && flutter test        # 167 app tests
+cd apps/traveller && flutter test        # 180 app tests, incl. real SQLite
 cd apps/console   && flutter test        # 100 console tests
 cd apps/admin     && flutter test        # 28 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 354 files
+dart run tool/check_layers.dart          # the onion rule, 356 files
 ./infra/migrations/check.sh              # 34 schema guarantees
 ./tool/integration.sh                    # 343 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 307 checks, incl. the Dart client
@@ -276,7 +277,7 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,129 tests in total**, plus 307 smoke checks, 34 executed schema guarantees,
+**1,142 tests in total**, plus 307 smoke checks, 34 executed schema guarantees,
 343 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
@@ -296,6 +297,57 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+**A ticket in a tunnel** — the QR that no longer needs a network to render.
+
+The app has always kept the last list it loaded **in memory**, which survives
+a lost connection but not a killed process. The moment that matters is a
+passenger boarding at six in the morning somewhere with no signal, on a
+handset that swapped the app out overnight — and a QR that needs a request to
+render is a QR that fails exactly where it is needed.
+
+**The stored list is drawn before the request goes out**, not after it fails.
+On a dead connection the difference between the two is a spinner for however
+long a timeout takes, at the moment somebody is being asked to show their
+ticket. It arrives marked stale, using the banner the list already had: a
+stale ticket list is useful, a silently stale one is a lie.
+
+**Hand-written SQL against `sqlite3`, not Drift.** The roadmap said
+"Drift/SQLite" and this is the SQLite half. There is one table and three
+statements here; a code generator and a build step is a large thing to carry
+for that, and it would be the only codegen in the repository — which writes
+raw SQL against Postgres everywhere else for the same reason.
+`sqlite3_flutter_libs` ships the engine, because the Android system library is
+a version lottery across the handsets this app targets (ADR-0002).
+
+**What is stored is the booking as the server sent it**, JSON and all, rather
+than columns mirroring `BookingDto`. A mirror is a second definition of the
+wire format that drifts the first time a field is added, and a ticket is only
+useful whole — a row missing its signature renders a QR no conductor will
+accept.
+
+**Keyed by traveller, and replaced rather than merged.** A handset here is
+shared, and a vault keyed on nothing hands the next person to sign in somebody
+else's journey. The list the server answered with is the whole truth about
+what a traveller holds; merging would keep a refunded ticket renderable
+forever.
+
+**A cache that cannot be read is not a failure.** An unopenable database, a
+corrupt row, a failed write — each degrades to "nothing cached", never to a
+crash on launch. The tickets are still one request away, which is the trade a
+cache is allowed to make and a source of truth is not.
+
+What it cost: 6 tests against a real SQLite, 7 flow tests, one port, one
+adapter, three dependencies — `sqlite3`, `sqlite3_flutter_libs` and
+`path_provider`, the app's first platform channels. The debug APK builds with
+the engine linked in. What it did not build: **the refresh token is still not
+persisted**, so a returning traveller still signs in again — that one needs
+the Keychain and the Android Keystore, and it is a different dependency from
+this one.
+
+---
+
+## What the change-order push changed, and what it cost
 
 **The change they can give back** — the last named gap in `01-feature-spec.md`
 §8.

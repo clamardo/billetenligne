@@ -4,6 +4,7 @@ import 'package:bel_client/bel_client.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 
+import 'ports/ticket_vault.dart';
 import 'ports/travel_gateway.dart';
 
 /// What the tickets screen should render.
@@ -201,11 +202,23 @@ final class TicketsFlow {
   TicketsFlow({
     required TravelGateway gateway,
     Clock clock = const SystemClock(),
+    TicketVault vault = const NoTicketVault(),
   }) : _gateway = gateway,
-       _clock = clock;
+       _clock = clock,
+       _vault = vault;
 
   final TravelGateway _gateway;
   final Clock _clock;
+
+  /// Where the list survives the process being killed. Defaulted to the null
+  /// vault so every test and every surface without storage behaves as this
+  /// flow always has.
+  final TicketVault _vault;
+
+  /// Whose tickets are in [_cached]. Set on the first successful load and
+  /// used to key the vault — a shared handset must not hand the next person
+  /// to sign in somebody else's ticket.
+  String? _userId;
 
   final _steps = StreamController<TicketsStep>.broadcast();
 
@@ -229,6 +242,41 @@ final class TicketsFlow {
     await _fetch();
   }
 
+  /// The first load after launch: what is on the handset, then what the
+  /// server says.
+  ///
+  /// The stored list is drawn **before** the request goes out, marked stale,
+  /// rather than after it fails. On a handset at a coach door the difference
+  /// between the two is a spinner for however long a dead connection takes to
+  /// time out, which is exactly when somebody is being asked for their ticket.
+  ///
+  /// [userId] keys the vault. Null — nobody signed in — skips it entirely.
+  Future<void> loadCachedThen(String? userId) async {
+    _userId = userId;
+
+    if (userId != null && _cached.isEmpty) {
+      final stored = await _vault.read(userId);
+      if (stored.isNotEmpty) {
+        _cached = stored;
+        _emit(_ready(stale: true));
+      } else {
+        _emit(const TicketsLoading());
+      }
+    } else {
+      _emit(const TicketsLoading());
+    }
+
+    await _fetch();
+  }
+
+  /// Forgets every stored ticket. Called on sign-out, because the next person
+  /// to hold this handset is not the person whose journeys these are.
+  Future<void> forget() async {
+    _cached = const [];
+    _userId = null;
+    await _vault.clear();
+  }
+
   /// A pull-to-refresh, which must never blank a ticket somebody is looking
   /// at. The list stays on screen while this runs.
   Future<void> refresh() => _fetch();
@@ -239,6 +287,14 @@ final class TicketsFlow {
   Future<void> _fetch({bool silent = false}) async {
     try {
       _cached = await _gateway.bookings();
+      // Written after the answer, not before: a list stored from a request
+      // that then failed halfway is a list nobody can tell apart from a real
+      // one. Failing to store is not failing to load — the tickets are on the
+      // screen either way — so the write is deliberately not awaited into the
+      // error path below.
+      if (_userId case final id?) {
+        unawaited(_vault.write(id, _cached));
+      }
       if (!silent) _emit(_ready());
     } on ApiFailure catch (failure) {
       // A ticket already loaded is worth more than the error that stopped us

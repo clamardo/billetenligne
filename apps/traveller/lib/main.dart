@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'src/application/booking_flow.dart';
 import 'src/application/payment_flow.dart';
 import 'src/application/ports/identity_gateway.dart';
+import 'src/application/ports/ticket_vault.dart';
 import 'src/application/ports/travel_gateway.dart';
 import 'src/application/sign_in_flow.dart';
 import 'src/application/tickets_flow.dart';
@@ -13,6 +14,7 @@ import 'src/infrastructure/api_identity_gateway.dart';
 import 'src/infrastructure/api_travel_gateway.dart';
 import 'src/infrastructure/demo_identity_gateway.dart';
 import 'src/infrastructure/demo_travel_gateway.dart';
+import 'src/infrastructure/sqlite_ticket_vault.dart';
 import 'src/presentation/app.dart';
 import 'src/presentation/l10n.dart';
 
@@ -71,6 +73,19 @@ Future<void> main() async {
     identity = ApiIdentityGateway(client: client, session: session);
   }
 
+  // Where a ticket lives between launches. A failure to open it is not a
+  // failure to start: the app falls back to the null vault and behaves
+  // exactly as it did before this existed, which is the right trade for a
+  // cache — the tickets are still one request away.
+  TicketVault vault = const NoTicketVault();
+  if (apiUrl.isNotEmpty) {
+    try {
+      vault = await SqliteTicketVault.open();
+    } on Object {
+      vault = const NoTicketVault();
+    }
+  }
+
   // A session from a previous launch, if there is one to restore. Awaited
   // before the first frame so the funnel does not briefly believe a returning
   // traveller is a stranger.
@@ -85,7 +100,8 @@ Future<void> main() async {
       ),
       signIn: SignInFlow(gateway: identity),
       payment: PaymentFlow(gateway: gateway),
-      tickets: TicketsFlow(gateway: gateway),
+      tickets: TicketsFlow(gateway: gateway, vault: vault),
+      currentUserId: () => identity.account?.id,
       language: language,
     ),
   );

@@ -26,6 +26,18 @@ dependencies:
   # right on a screen and fails at a coach door in the sun. This is the one
   # artefact of the whole product a passenger cannot travel without.
   qr_flutter: ^4.1.0
+  # A ticket that survives the process being killed (`09-roadmap.md`, Phase 3).
+  #
+  # `sqlite3` and hand-written SQL rather than an ORM, which is the same
+  # choice the API makes against Postgres: there is one table and three
+  # statements here, and a code generator plus a build step is a large thing
+  # to carry for that. `sqlite3_flutter_libs` ships the engine itself, since
+  # the Android system library is a version lottery across the handsets this
+  # app is built for (ADR-0002).
+  sqlite3: ^2.4.0
+  sqlite3_flutter_libs: ^0.5.0
+  # Where the file goes. The only other platform channel this app carries.
+  path_provider: ^2.1.5
 dev_dependencies:
   flutter_test:
     sdk: flutter

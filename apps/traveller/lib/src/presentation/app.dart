@@ -43,6 +43,7 @@ final class TravellerApp extends StatelessWidget {
     required this.signIn,
     required this.payment,
     required this.tickets,
+    this.currentUserId,
     this.language = 'fr',
     super.key,
   });
@@ -52,6 +53,13 @@ final class TravellerApp extends StatelessWidget {
   final SignInFlow signIn;
   final PaymentFlow payment;
   final TicketsFlow tickets;
+
+  /// Who is signed in, asked each time rather than captured once — the answer
+  /// changes while the app is running. Keys the offline ticket store: a
+  /// handset here is shared, and a vault keyed on nothing would hand the next
+  /// person to sign in somebody else's ticket.
+  final String? Function()? currentUserId;
+
   final String language;
 
   @override
@@ -68,6 +76,7 @@ final class TravellerApp extends StatelessWidget {
         signIn: signIn,
         payment: payment,
         tickets: tickets,
+        currentUserId: currentUserId,
       ),
     ),
   );
@@ -79,12 +88,14 @@ class _Funnel extends StatefulWidget {
     required this.signIn,
     required this.payment,
     required this.tickets,
+    this.currentUserId,
   });
 
   final BookingFlow flow;
   final SignInFlow signIn;
   final PaymentFlow payment;
   final TicketsFlow tickets;
+  final String? Function()? currentUserId;
 
   @override
   State<_Funnel> createState() => _FunnelState();
@@ -493,7 +504,12 @@ class _FunnelState extends State<_Funnel> {
 
   void _openTickets() {
     setState(() => _viewingTickets = true);
-    widget.tickets.load();
+    // What is on the handset first, then what the server says. The stored
+    // list is drawn before the request goes out rather than after it fails:
+    // on a dead connection the difference between the two is a spinner for
+    // however long a timeout takes, at the moment somebody is being asked to
+    // show their ticket.
+    unawaited(widget.tickets.loadCachedThen(widget.currentUserId?.call()));
   }
 
   void _closeTickets() => setState(() => _viewingTickets = false);

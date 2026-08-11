@@ -5,6 +5,7 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_crypto/bel_crypto.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_traveller/src/presentation/l10n.dart';
+import 'package:bel_traveller/src/application/ports/ticket_vault.dart';
 import 'package:bel_traveller/src/application/tickets_flow.dart';
 import 'package:bel_traveller/src/presentation/screens/ticket_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/tickets_screen.dart';
@@ -79,13 +80,117 @@ void main() {
   late ScriptedGatewayFactory gateway;
   late _FixedClock clock;
   late TicketsFlow flow;
+  late _MapVault vault;
 
   final now = DateTime.utc(2026, 8, 10, 6);
 
   setUp(() {
     gateway = ScriptedGatewayFactory();
     clock = _FixedClock(now);
-    flow = TicketsFlow(gateway: gateway, clock: clock);
+    vault = _MapVault();
+    flow = TicketsFlow(gateway: gateway, clock: clock, vault: vault);
+  });
+
+  group('a ticket in a tunnel', () {
+    test(
+      'what is on the handset is drawn before the request goes out',
+      () async {
+        vault.rows['user-1'] = [
+          _booking(id: 'soon', departsAt: now.add(const Duration(hours: 2))),
+        ];
+        // Nothing is coming back: the handset has no signal, which is the
+        // morning this whole feature exists for.
+        gateway.bookingsFailure = const NetworkUnreachable();
+
+        await flow.loadCachedThen('user-1');
+
+        final step = flow.step as TicketsReady;
+        expect(step.upcoming.single.id, 'soon');
+        // Marked, always. A stale ticket list is useful; a silently stale one
+        // is a lie, and this one may be a fortnight old.
+        expect(step.stale, isTrue);
+      },
+    );
+
+    test('the server-s answer replaces it, and is written back', () async {
+      vault.rows['user-1'] = [
+        _booking(id: 'old', departsAt: now.add(const Duration(hours: 2))),
+      ];
+      gateway.bookingsResult = [
+        _booking(id: 'fresh', departsAt: now.add(const Duration(hours: 3))),
+      ];
+
+      await flow.loadCachedThen('user-1');
+
+      final step = flow.step as TicketsReady;
+      expect(step.upcoming.single.id, 'fresh');
+      expect(step.stale, isFalse);
+      // Written after the answer, not before: a list stored from a request
+      // that then failed is one nobody can tell apart from a real one.
+      expect(vault.rows['user-1']!.single.id, 'fresh');
+    });
+
+    test('nothing stored is the loading screen, not an empty list', () async {
+      gateway.bookingsResult = [
+        _booking(id: 'soon', departsAt: now.add(const Duration(hours: 2))),
+      ];
+
+      final loading = flow.loadCachedThen('user-1');
+      // A first-ever launch has nothing to draw, and "vous n'avez aucun
+      // billet" for a fifth of a second before the real list arrives is a
+      // sentence somebody screenshots.
+      expect(flow.step, isA<TicketsLoading>());
+      await loading;
+      expect((flow.step as TicketsReady).upcoming, hasLength(1));
+    });
+
+    test('nobody signed in touches no vault at all', () async {
+      vault.rows['user-1'] = [
+        _booking(id: 'soon', departsAt: now.add(const Duration(hours: 2))),
+      ];
+      gateway.bookingsResult = const [];
+
+      await flow.loadCachedThen(null);
+
+      expect(vault.reads, isEmpty);
+      expect(vault.writes, isEmpty);
+    });
+
+    test('one handset, and the tickets follow the traveller', () async {
+      vault.rows['user-1'] = [
+        _booking(id: 'hers', departsAt: now.add(const Duration(hours: 2))),
+      ];
+      gateway.bookingsFailure = const NetworkUnreachable();
+
+      // Somebody else signs in on the same telephone.
+      await flow.loadCachedThen('user-2');
+
+      // Not hers. A vault keyed on nothing would have handed them over.
+      expect(flow.step, isA<TicketsFailed>());
+    });
+
+    test('signing out forgets them', () async {
+      vault.rows['user-1'] = [
+        _booking(id: 'soon', departsAt: now.add(const Duration(hours: 2))),
+      ];
+
+      await flow.forget();
+
+      expect(vault.rows, isEmpty);
+      expect(flow.hasCache, isFalse);
+    });
+
+    test('a vault that cannot be read is no worse than no vault', () async {
+      vault.failReads = true;
+      gateway.bookingsResult = [
+        _booking(id: 'soon', departsAt: now.add(const Duration(hours: 2))),
+      ];
+
+      // A corrupt cache degrades to "nothing cached". It must never be the
+      // reason an app fails to start.
+      await flow.loadCachedThen('user-1');
+      expect((flow.step as TicketsReady).upcoming, hasLength(1));
+    });
   });
 
   group('the list', () {
@@ -2102,3 +2207,29 @@ ChangeOptionsDto _withPending(ChangeOptionsDto screen) => ChangeOptionsDto(
     seatLabels: const ['3C'],
   ),
 );
+
+/// The vault, as a map. The SQL is proven against a real SQLite in
+/// `ticket_vault_test.dart`; what belongs here is the flow's behaviour around
+/// it, which is testable in milliseconds without an engine.
+final class _MapVault implements TicketVault {
+  final rows = <String, List<BookingDto>>{};
+  final reads = <String>[];
+  final writes = <String>[];
+  bool failReads = false;
+
+  @override
+  Future<List<BookingDto>> read(String userId) async {
+    reads.add(userId);
+    if (failReads) return const [];
+    return rows[userId] ?? const [];
+  }
+
+  @override
+  Future<void> write(String userId, List<BookingDto> bookings) async {
+    writes.add(userId);
+    rows[userId] = bookings;
+  }
+
+  @override
+  Future<void> clear() async => rows.clear();
+}
