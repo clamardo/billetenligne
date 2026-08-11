@@ -59,6 +59,16 @@ final class ProtectionAgreementDto {
 
   bool get isActive => state == 'active';
 
+  /// In force **and** with room left under this month's ceiling.
+  ///
+  /// The question the disruption sheet asks before it draws option ③. An
+  /// agreement that is active and exhausted refuses every request until the
+  /// first of the month, and offering it at 05:40 is worse than not offering
+  /// it at all.
+  bool get isLive =>
+      isActive &&
+      (monthlyCapSeats == null || seatsUsedThisMonth < monthlyCapSeats!);
+
   /// This side has been asked to agree to somebody else's terms.
   bool get awaitingUs => !weProposed && state == 'proposed';
 
@@ -117,6 +127,13 @@ final class ProtectionAgreementDto {
   List<Corridor> get parsedCorridors => [
     for (final key in corridors) Corridor.parse(key),
   ];
+
+  /// Whether this agreement covers a road, in either direction.
+  ///
+  /// A corridor is unordered — BZV↔PNR is one road, not two — and the domain
+  /// type is what says so, here as on the server (ADR-0004).
+  bool covers(String origin, String destination) =>
+      parsedCorridors.any((c) => c.covers(origin, destination));
 }
 
 /// Writing the terms.
@@ -179,5 +196,164 @@ final class AgreementDecisionRequest {
       AgreementDecisionRequest(
         decision: Wire.requireString(json['decision'], 'decision'),
         reason: json['reason'] as String?,
+      );
+}
+
+/// One company asking another for room, on the wire (`08-disruption.md` §2.3).
+final class ProtectionRequestDto {
+  const ProtectionRequestDto({
+    required this.id,
+    required this.agreementId,
+    required this.counterpartyName,
+    required this.weAsked,
+    required this.fromDepartureId,
+    required this.toDepartureId,
+    required this.seatsRequested,
+    required this.state,
+    required this.requestedAt,
+    this.note,
+    this.routeCode,
+    this.departsAt,
+    this.replacementDepartsAt,
+    this.seatsFree = 0,
+    this.rebill,
+    this.autoAccepted = false,
+    this.seatsMoved,
+    this.declineReason,
+  });
+
+  final String id;
+  final String agreementId;
+  final String counterpartyName;
+
+  /// Whether this is ours to chase or ours to answer.
+  final bool weAsked;
+
+  final String fromDepartureId;
+  final String toDepartureId;
+  final int seatsRequested;
+
+  /// `pending` · `accepted` · `declined` · `applied` · `expired` · `failed`.
+  final String state;
+
+  final DateTime requestedAt;
+  final String? note;
+
+  /// Enough of the journey to decide without opening anything else. A
+  /// receiving operator deciding blind is one who says no.
+  final String? routeCode;
+  final DateTime? departsAt;
+  final DateTime? replacementDepartsAt;
+  final int seatsFree;
+
+  /// What the receiving operator would be paid at the agreed discount, for
+  /// the seats being asked for. Before the decision, not after.
+  final Money? rebill;
+
+  final bool autoAccepted;
+  final int? seatsMoved;
+  final String? declineReason;
+
+  bool get isPending => state == 'pending';
+  bool get awaitingUs => isPending && !weAsked;
+
+  /// Everybody asked for got a seat. Partial coverage is a success and is
+  /// said as a number, so this is a different question from "did it work".
+  bool get coversEverybody =>
+      seatsMoved != null && seatsMoved! >= seatsRequested;
+
+  Map<String, Object?> toJson() => Wire.compact({
+    'id': id,
+    'agreementId': agreementId,
+    'counterpartyName': counterpartyName,
+    'weAsked': weAsked,
+    'fromDepartureId': fromDepartureId,
+    'toDepartureId': toDepartureId,
+    'seatsRequested': seatsRequested,
+    'state': state,
+    'requestedAt': Wire.instant(requestedAt),
+    'note': note,
+    'routeCode': routeCode,
+    'departsAt': departsAt == null ? null : Wire.instant(departsAt!),
+    'replacementDepartsAt': replacementDepartsAt == null
+        ? null
+        : Wire.instant(replacementDepartsAt!),
+    'seatsFree': seatsFree,
+    'rebill': rebill == null ? null : Wire.money(rebill!),
+    'autoAccepted': autoAccepted,
+    'seatsMoved': seatsMoved,
+    'declineReason': declineReason,
+  });
+
+  factory ProtectionRequestDto.fromJson(
+    Map<String, Object?> json,
+  ) => ProtectionRequestDto(
+    id: Wire.requireString(json['id'], 'id'),
+    agreementId: Wire.requireString(json['agreementId'], 'agreementId'),
+    counterpartyName: Wire.requireString(
+      json['counterpartyName'],
+      'counterpartyName',
+    ),
+    weAsked: json['weAsked'] as bool? ?? false,
+    fromDepartureId: Wire.requireString(
+      json['fromDepartureId'],
+      'fromDepartureId',
+    ),
+    toDepartureId: Wire.requireString(json['toDepartureId'], 'toDepartureId'),
+    seatsRequested: Wire.requireInt(json['seatsRequested'], 'seatsRequested'),
+    state: Wire.requireString(json['state'], 'state'),
+    requestedAt: Wire.readInstant(json['requestedAt'], field: 'requestedAt'),
+    note: json['note'] as String?,
+    routeCode: json['routeCode'] as String?,
+    departsAt: json['departsAt'] == null
+        ? null
+        : Wire.readInstant(json['departsAt'], field: 'departsAt'),
+    replacementDepartsAt: json['replacementDepartsAt'] == null
+        ? null
+        : Wire.readInstant(
+            json['replacementDepartsAt'],
+            field: 'replacementDepartsAt',
+          ),
+    seatsFree: json['seatsFree'] as int? ?? 0,
+    rebill: json['rebill'] == null
+        ? null
+        : Wire.readMoney(json['rebill'], field: 'rebill'),
+    autoAccepted: json['autoAccepted'] as bool? ?? false,
+    seatsMoved: json['seatsMoved'] as int?,
+    declineReason: json['declineReason'] as String?,
+  );
+}
+
+/// Asking for room.
+final class ProtectionRequestBody {
+  const ProtectionRequestBody({
+    required this.departureId,
+    required this.replacementDepartureId,
+    this.note,
+  });
+
+  /// The coach that has failed.
+  final String departureId;
+
+  /// The other company's departure being asked for. Named, never "whichever
+  /// has room" — a departure nobody has looked at is not a plan.
+  final String replacementDepartureId;
+
+  final String? note;
+
+  Map<String, Object?> toJson() => Wire.compact({
+    'departureId': departureId,
+    'replacementDepartureId': replacementDepartureId,
+    'note': note,
+  });
+
+  factory ProtectionRequestBody.fromJson(Map<String, Object?> json) =>
+      ProtectionRequestBody(
+        departureId: Wire.requireString(json['departureId'], 'departureId'),
+        replacementDepartureId: Wire.requireString(
+          json['replacementDepartureId'],
+          'replacementDepartureId',
+        ),
+        note: json['note'] as String?,
       );
 }

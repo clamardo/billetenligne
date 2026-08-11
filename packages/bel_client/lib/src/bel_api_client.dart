@@ -624,6 +624,42 @@ final class BelApiClient {
     ),
   );
 
+  /// Protection requests this operator is a party to, in either direction
+  /// (`08-disruption.md` §2.3).
+  ///
+  /// One list rather than an inbox and an outbox: the same row is what we are
+  /// waiting on and what they are waiting on, and a console that fetched them
+  /// separately would show a decided request in one list and a pending one in
+  /// the other for as long as the two calls were apart.
+  Future<List<ProtectionRequestDto>> protectionRequests() async =>
+      Wire.readList(
+        (await _get('/console/v1/protection/requests'))['items'],
+        ProtectionRequestDto.fromJson,
+        field: 'items',
+      );
+
+  /// Ask another company for room on a coach of theirs.
+  Future<ProtectionRequestDto> askForProtection(
+    ProtectionRequestBody request,
+  ) async => ProtectionRequestDto.fromJson(
+    await _postJson('/console/v1/protection/requests', request.toJson()),
+  );
+
+  /// `accept` or `decline`, by the company being asked.
+  ///
+  /// Accepting **moves the passengers in the same call**: the seats are taken,
+  /// the bookings and tickets change hands and the rebill posts. There is no
+  /// second step to forget.
+  Future<ProtectionRequestDto> decideProtectionRequest({
+    required String requestId,
+    required AgreementDecisionRequest request,
+  }) async => ProtectionRequestDto.fromJson(
+    await _postJson(
+      '/console/v1/protection/requests/$requestId/decision',
+      request.toJson(),
+    ),
+  );
+
   /// The platform's payout queue: prepared and not yet paid, oldest first.
   Future<List<PayoutRunDto>> payoutQueue({String? reason}) async =>
       Wire.readList(

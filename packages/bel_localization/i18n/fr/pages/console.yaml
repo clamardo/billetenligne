@@ -28,6 +28,7 @@ console:
     declare: "Signaler un incident"
     rescue: "Car de secours"
     rebook: "Reloger les passagers"
+    protect: "Demander à une autre compagnie"
   # Le formulaire du régulateur, au bord de la route, sur un téléphone, en 2G,
   # parfois sous la pluie (08-disruption.md §2.1). Quatre grandes cibles, une
   # cause, et rien d'autre d'obligatoire.
@@ -135,6 +136,37 @@ console:
       active: "En vigueur"
       suspended: "Suspendu"
       ended: "Terminé"
+  # Demander de la place à une autre compagnie (08-disruption.md §2.2,
+  # option ③). Rien ne bouge à l'envoi : la demande arrive sur leur console et
+  # attend une personne. La phrase le dit deux fois, parce que le régulateur
+  # qui croit ses passagers placés arrête de chercher un car.
+  protectionAsk:
+    title: "Placer {count} passager(s) chez une autre compagnie"
+    none: "Aucune compagnie avec un accord en vigueur n'a de place sur cette ligne aujourd'hui."
+    seats: "{count} places libres"
+    covers: "{covered} sur {total}"
+    note: "Précision (facultatif)"
+    noteHint: "Ce que verra le régulateur d'en face."
+    waits: "Rien ne bouge tant qu'ils n'ont pas répondu. Continuez à chercher une solution."
+    back: "Retour"
+    confirm: "Demander"
+  # La file des demandes reçues (08-disruption.md §2.3). Un accord se lit une
+  # fois par trimestre ; une demande, c'est quelqu'un qui attend à la gare.
+  request:
+    title: "Demandes en cours"
+    theyAsked: "{name} demande {count} place(s)."
+    weAsked: "Vous demandez {count} place(s)."
+    awaitingUs: "À répondre"
+    awaitingThem: "En attente"
+    coach: "Votre départ"
+    seatsFree: "Places libres"
+    seatsValue: "{free} libres · {asked} demandées"
+    rebill: "Vous serez payé"
+    note: "Précision"
+    partial: "{covered} sur {total} seulement. Les autres resteront sur place."
+    movesNow: "En acceptant, les passagers changent de compagnie tout de suite et reçoivent un nouveau billet."
+    accept: "Accepter"
+    decline: "Refuser"
   manifest:
     summary: "{sold} vendus · {boarded} embarqués · {capacity} places"
     empty: "Aucun passager pour l'instant."
@@ -425,3 +457,7 @@ console:
     protection.resume: "Accord avec {a1} de nouveau en vigueur."
     protection.end: "Accord avec {a1} terminé."
     protection.noCorridors: "Choisissez au moins une ligne — un accord couvre des trajets."
+    protection.asked: "Demande envoyée à {a1} pour {a2} passager(s). Rien ne bouge tant qu'ils n'ont pas répondu."
+    protection.moved: "{a1} passager(s) voyagent maintenant avec {a2}. Nouveaux billets envoyés."
+    protection.movedPartial: "{a1} sur {a2} placés chez {a3}. Trouvez une solution pour les autres."
+    protection.requestDeclined: "Demande de {a1} refusée. Personne n'a été déplacé."

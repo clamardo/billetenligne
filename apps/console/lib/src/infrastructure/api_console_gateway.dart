@@ -169,6 +169,34 @@ final class ApiConsoleGateway implements ConsoleGateway {
   }) => _client.decideAgreement(agreementId: agreementId, request: request);
 
   @override
+  Future<List<ProtectionRequestDto>> protectionRequests() =>
+      _client.protectionRequests();
+
+  @override
+  Future<ProtectionRequestDto> askForProtection(
+    ProtectionRequestBody request,
+  ) => _client.askForProtection(request);
+
+  @override
+  Future<ProtectionRequestDto> decideProtectionRequest({
+    required String requestId,
+    required AgreementDecisionRequest request,
+  }) => _client.decideProtectionRequest(requestId: requestId, request: request);
+
+  @override
+  Future<List<DepartureSummaryDto>> tripsOn({
+    required String originCity,
+    required String destinationCity,
+    required DateTime date,
+  }) => _client.searchTrips(
+    SearchDeparturesQuery(
+      originCity: originCity,
+      destinationCity: destinationCity,
+      date: date,
+    ),
+  );
+
+  @override
   Future<RebookingAppliedDto> rebookOnto({
     required String departureId,
     required RebookRequest request,

@@ -29,3 +29,7 @@ sms:
   # because it is the one they have in their head and on their ticket.
   rebooked:
     body: "{operator}: your {route} at {oldTime} is not running. You now travel {date} at {time}, seat {seat}. No fees. Ref {reference}."
+  # The company name on the ticket changes, which is the most alarming thing
+  # that can happen to one without warning — so the message leads with it.
+  protected:
+    body: "{operator} is taking you. {route} on {date} at {time}, seat {seat}. Same ticket, no charge. Ref {reference}."

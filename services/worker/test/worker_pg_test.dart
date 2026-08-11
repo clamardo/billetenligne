@@ -69,6 +69,13 @@ void main() {
       ),
       timeZone: 'Africa/Brazzaville',
     );
+
+    // The API suite ran first, against this same database, and left its own
+    // queued messages behind. A drain takes a hundred rows at a time, so a
+    // backlog that grows past that turns "queue one and drain" into a test
+    // that fails for somebody else's reasons — and fails on the day an
+    // unrelated suite gains a test, which is the worst kind of red.
+    await seed.execute('DELETE FROM outbox WHERE delivered_at IS NULL');
   });
 
   tearDownAll(() async {

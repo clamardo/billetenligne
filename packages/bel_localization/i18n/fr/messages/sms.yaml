@@ -29,3 +29,8 @@ sms:
   # rappelee parce que c'est celle qu'il a en tete et sur son billet.
   rebooked:
     body: "{operator}: {route} de {oldTime} ne part pas. Vous partez le {date} a {time}, siege {seat}. Aucun frais. Ref {reference}."
+  # Le nom de la compagnie change : c'est ce qu'il y a de plus inquietant sur
+  # un billet, donc le message commence par la. Le passager cherche un car qui
+  # ne porte plus le meme nom que celui qu'il a reserve.
+  protected:
+    body: "{operator} vous prend en charge. {route} le {date} a {time}, siege {seat}. Meme billet, aucun frais. Ref {reference}."

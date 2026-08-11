@@ -371,6 +371,68 @@ final class _ScriptedConsole implements ConsoleGateway {
     return statementList;
   }
 
+  /// The live requests, as the server would answer.
+  List<ProtectionRequestDto> requestList = const [];
+
+  /// Everybody's departures on a road, as the public search would answer.
+  List<DepartureSummaryDto> tripList = const [];
+
+  /// How many of the party the receiving coach could actually take. Set per
+  /// test: "everybody" and "1 of 2" are different sentences on the console,
+  /// and only one of them sends somebody looking for another coach.
+  int? movedSeats;
+
+  @override
+  Future<List<ProtectionRequestDto>> protectionRequests() async {
+    saved.add('requests');
+    return requestList;
+  }
+
+  @override
+  Future<ProtectionRequestDto> askForProtection(
+    ProtectionRequestBody request,
+  ) async {
+    saved.add(
+      'ask:${request.departureId}:${request.replacementDepartureId}'
+      ':${request.note ?? ''}',
+    );
+    return _request(id: 'req-new');
+  }
+
+  @override
+  Future<ProtectionRequestDto> decideProtectionRequest({
+    required String requestId,
+    required AgreementDecisionRequest request,
+  }) async {
+    saved.add('decideRequest:$requestId:${request.decision}');
+    // Answered from the row the console is showing, so "how many were asked
+    // for" survives the round trip — the difference between "everybody" and
+    // "2 of 5" is the whole point of the notice.
+    final asked = requestList
+        .where((r) => r.id == requestId)
+        .firstOrNull
+        ?.seatsRequested;
+    return _request(
+      id: requestId,
+      state: request.decision == 'accept' ? 'applied' : 'declined',
+      seatsRequested: asked ?? 2,
+      seatsMoved: request.decision == 'accept'
+          ? movedSeats ?? asked ?? 2
+          : null,
+      declineReason: request.reason,
+    );
+  }
+
+  @override
+  Future<List<DepartureSummaryDto>> tripsOn({
+    required String originCity,
+    required String destinationCity,
+    required DateTime date,
+  }) async {
+    saved.add('trips:$originCity:$destinationCity');
+    return tripList;
+  }
+
   /// How many of the moved party the replacement could take. Set per test:
   /// the console renders "everybody" and "18 of 42" differently, and only one
   /// of those tells a dispatcher what to do next.
@@ -769,8 +831,10 @@ void main() {
 
       // The domain refuses it on the server too. Refusing it here as well is
       // what stops a roadside request travelling to find that out on 2G.
+      // Reads are not the claim — a dispatcher's console loads its agreements
+      // on the way in — so what is asserted is that nothing was *sent*.
       await confirm(tester);
-      expect(gateway.saved, isEmpty);
+      expect(gateway.saved.where((s) => s.startsWith('disruption')), isEmpty);
     });
 
     testWidgets('the answer says how many were told', (tester) async {
@@ -963,7 +1027,7 @@ void main() {
         find.widgetWithText(KButton, 'Envoyer ce car'),
       );
       expect(button.onPressed, isNull);
-      expect(gateway.saved, isEmpty);
+      expect(gateway.saved.where((s) => s.startsWith('rescue')), isEmpty);
     });
 
     testWidgets('an operator with no spare is told so', (tester) async {
@@ -1317,6 +1381,266 @@ void main() {
         find.text("Créez d'abord une ligne : un accord couvre des trajets."),
         findsOneWidget,
       );
+    });
+  });
+
+  group('asking another company for room', () {
+    /// A dispatcher, a broken 06:00 with forty-two aboard, a live agreement
+    /// on that road, and a competitor's 13:00 with six seats.
+    _ScriptedConsole stranded() =>
+        _ScriptedConsole(
+            capabilities: const ['booking.read', 'disruption.declare'],
+          )
+          ..agreementList = [_agreement()]
+          ..routeList = [
+            const RouteDto(
+              id: 'r-1',
+              code: 'BZV-PNR',
+              originCity: 'BZV',
+              destinationCity: 'PNR',
+              durationMinutes: 450,
+              active: true,
+            ),
+          ]
+          ..tripList = [_trip()]
+          ..boardList = [
+            DepartureBoardDto(
+              id: 'dep-broken',
+              routeCode: 'BZV-PNR',
+              departsAt: DateTime.utc(2026, 8, 10, 5),
+              status: 'scheduled',
+              capacity: 49,
+              sold: 42,
+              held: 0,
+              available: 7,
+              vehicle: 'ODN-001',
+              disruption: DisruptionDto(
+                id: 'd-1',
+                kind: DisruptionKind.breakdownEnRoute,
+                cause: DisruptionCause.mechanical,
+                declaredAt: DateTime.utc(2026, 8, 10, 5, 40),
+                marksInvoluntary: true,
+              ),
+            ),
+          ];
+
+    Finder inSheet(Finder finder) =>
+        find.descendant(of: find.byType(Dialog), matching: finder);
+
+    Future<void> open(WidgetTester tester) async {
+      await tester.tap(find.text('Demander à une autre compagnie').first);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the option is hidden when no agreement is in force', (
+      tester,
+    ) async {
+      final gateway = stranded()..agreementList = const [];
+      await pump(tester, gateway);
+
+      // A button that opens onto "aucune compagnie" costs a dispatcher
+      // fifteen seconds they do not have.
+      expect(find.text('Demander à une autre compagnie'), findsNothing);
+    });
+
+    testWidgets('an exhausted ceiling hides it too', (tester) async {
+      final gateway = stranded()..agreementList = [_agreement(used: 40)];
+      await pump(tester, gateway);
+
+      // In force and spent is refused all the same, until the first of the
+      // month. Offering it at 05:40 is worse than not offering it.
+      expect(find.text('Demander à une autre compagnie'), findsNothing);
+    });
+
+    testWidgets('the other company is offered with its live seat count', (
+      tester,
+    ) async {
+      final gateway = stranded();
+      await pump(tester, gateway);
+      await open(tester);
+
+      expect(gateway.saved, contains('trips:BZV:PNR'));
+      expect(inSheet(find.text('Trans Bony Voyages')), findsOneWidget);
+      expect(inSheet(find.textContaining('6 places libres')), findsOneWidget);
+      // Coverage per candidate, before the choice: six seats for forty-two
+      // people is a number the dispatcher acts on next.
+      expect(inSheet(find.text('6 sur 42')), findsOneWidget);
+    });
+
+    testWidgets('a company we have no agreement with is never offered', (
+      tester,
+    ) async {
+      final gateway = stranded()
+        ..tripList = [
+          _trip(id: 'dep-stranger', operatorId: 'op-x', operatorName: 'Autre'),
+        ];
+      await pump(tester, gateway);
+      await open(tester);
+
+      // The public search answers "who is going to Pointe-Noire". Only the
+      // subset under an agreement is something a dispatcher can act on.
+      expect(inSheet(find.text('Autre')), findsNothing);
+      expect(find.textContaining('Aucune compagnie'), findsOneWidget);
+    });
+
+    testWidgets('sending it says plainly that nothing has moved yet', (
+      tester,
+    ) async {
+      final gateway = stranded();
+      await pump(tester, gateway);
+      await open(tester);
+
+      await tester.tap(inSheet(find.text('Trans Bony Voyages')));
+      await tester.pumpAndSettle();
+
+      // The warning is next to the button, before the tap — not in the
+      // notice afterwards.
+      expect(
+        inSheet(find.textContaining("Rien ne bouge tant qu'ils")),
+        findsOneWidget,
+      );
+
+      final button = find.widgetWithText(KButton, 'Demander');
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('ask:dep-broken:dep-theirs:'));
+      // And it says it again afterwards. A dispatcher who reads "envoyé" as
+      // "placed" stops looking for a coach.
+      expect(
+        find.textContaining("Rien ne bouge tant qu'ils n'ont pas répondu"),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('answering a protection request', () {
+    _ScriptedConsole receiving() =>
+        _ScriptedConsole(
+            capabilities: const ['booking.read', 'disruption.declare'],
+          )
+          ..agreementList = [_agreement()]
+          ..requestList = [_request()];
+
+    Future<ConsoleWorkspace> openQueue(
+      WidgetTester tester,
+      _ScriptedConsole gateway,
+    ) async {
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+      return workspace;
+    }
+
+    testWidgets('carries what the dispatcher needs to answer', (tester) async {
+      final gateway = receiving();
+      await openQueue(tester, gateway);
+
+      expect(gateway.saved, contains('requests'));
+      expect(find.text('Ocean du Nord demande 2 place(s).'), findsOneWidget);
+      // Their seat count and what we will be paid, on the card. A receiving
+      // operator deciding blind is one who says no.
+      expect(find.textContaining('6 libres'), findsOneWidget);
+      expect(find.textContaining('15${Money.narrowNbsp}300'), findsOneWidget);
+      // And the one thing about the button that is not obvious.
+      expect(
+        find.textContaining(
+          'les passagers changent de compagnie tout de suite',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('accepting moves them, and says how many', (tester) async {
+      final gateway = receiving();
+      await openQueue(tester, gateway);
+
+      await tester.tap(find.text('Accepter'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('decideRequest:req-1:accept'));
+      expect(
+        find.textContaining('2 passager(s) voyagent maintenant'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a coach that cannot take everybody says so twice', (
+      tester,
+    ) async {
+      final gateway = receiving()
+        ..requestList = [_request(seatsRequested: 5, seatsFree: 2)]
+        ..movedSeats = 2;
+      await openQueue(tester, gateway);
+
+      // Before the decision…
+      expect(find.textContaining('2 sur 5 seulement'), findsOneWidget);
+
+      await tester.tap(find.text('Accepter'));
+      await tester.pumpAndSettle();
+
+      // …and after it, because the three still standing are somebody's next
+      // problem and a notice that said only "acceptée" would hide them.
+      expect(find.textContaining('2 sur 5 placés'), findsOneWidget);
+    });
+
+    testWidgets('a full coach cannot be accepted at all', (tester) async {
+      final gateway = receiving()..requestList = [_request(seatsFree: 0)];
+      await openQueue(tester, gateway);
+
+      // Travelling to the server to be told what the screen already knows is
+      // a promise made and broken in the same second.
+      final accept = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Accepter'),
+      );
+      expect(accept.onPressed, isNull);
+    });
+
+    testWidgets('declining moves nobody', (tester) async {
+      final gateway = receiving();
+      await openQueue(tester, gateway);
+
+      await tester.tap(find.text('Refuser'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('decideRequest:req-1:decline'));
+      expect(find.textContaining("Personne n'a été déplacé"), findsOneWidget);
+    });
+
+    testWidgets('our own ask is shown as waiting, with nothing to press', (
+      tester,
+    ) async {
+      final gateway = receiving()
+        ..requestList = [_request(weAsked: true, counterpartyName: 'TBV')];
+      await openQueue(tester, gateway);
+
+      expect(find.text('Vous demandez 2 place(s).'), findsOneWidget);
+      expect(find.text('En attente'), findsOneWidget);
+      // We do not answer our own ask, and the screen does not offer to.
+      expect(find.text('Accepter'), findsNothing);
+    });
+
+    testWidgets('a decided request leaves the queue', (tester) async {
+      final gateway = receiving()
+        ..requestList = [_request(state: 'applied', seatsMoved: 2)];
+      await openQueue(tester, gateway);
+
+      // History on this screen is noise between a dispatcher and the coach
+      // they are trying to fill.
+      expect(find.text('Demandes en cours'), findsNothing);
+    });
+
+    testWidgets('the tab carries the count, because nobody is watching it', (
+      tester,
+    ) async {
+      final gateway = receiving();
+      await openQueue(tester, gateway);
+
+      // A request nobody notices is a coachload nobody comes back for.
+      expect(find.byType(Badge), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
     });
   });
 
@@ -2438,6 +2762,62 @@ final class _ScriptedPicker implements FilePicker {
     return _file;
   }
 }
+
+/// One request, as the other company's console would receive it.
+ProtectionRequestDto _request({
+  String id = 'req-1',
+  String state = 'pending',
+  bool weAsked = false,
+  String counterpartyName = 'Ocean du Nord',
+  int seatsRequested = 2,
+  int seatsFree = 6,
+  int? seatsMoved,
+  String? note,
+  String? declineReason,
+}) => ProtectionRequestDto(
+  id: id,
+  agreementId: 'agr-1',
+  counterpartyName: counterpartyName,
+  weAsked: weAsked,
+  fromDepartureId: 'dep-broken',
+  toDepartureId: 'dep-theirs',
+  seatsRequested: seatsRequested,
+  state: state,
+  requestedAt: DateTime.utc(2026, 8, 10, 5, 40),
+  note: note,
+  routeCode: 'BZV-PNR',
+  departsAt: DateTime.utc(2026, 8, 10, 5),
+  replacementDepartsAt: DateTime.utc(2026, 8, 10, 13),
+  seatsFree: seatsFree,
+  rebill: const Money.xaf(15300),
+  seatsMoved: seatsMoved,
+  declineReason: declineReason,
+);
+
+/// A competitor's departure, as the public search returns it.
+DepartureSummaryDto _trip({
+  String id = 'dep-theirs',
+  String operatorId = 'op-bony',
+  String operatorName = 'Trans Bony Voyages',
+  int seatsAvailable = 6,
+  DateTime? departsAt,
+}) => DepartureSummaryDto(
+  id: id,
+  operatorId: operatorId,
+  operatorName: operatorName,
+  mode: 'bus',
+  originCity: 'BZV',
+  destinationCity: 'PNR',
+  departsAt: departsAt ?? DateTime.utc(2026, 8, 10, 13),
+  arrivesAt: (departsAt ?? DateTime.utc(2026, 8, 10, 13)).add(
+    const Duration(hours: 8),
+  ),
+  fare: const Money.xaf(9000),
+  serviceFee: const Money.xaf(300),
+  seatsAvailable: seatsAvailable,
+  capacity: 49,
+  seatSelectionEnabled: true,
+);
 
 /// One agreement, with the terms `08-disruption.md` §5 writes down.
 ProtectionAgreementDto _agreement({

@@ -411,6 +411,76 @@ final class OutboxDrain {
           eventId: 'booking.rebooked:$fromDepartureId:$bookingId',
         );
 
+      // A passenger whose coach failed is now on another **company's** coach
+      // (`08-disruption.md` §2.2 option ③). The most alarming thing that can
+      // happen to a ticket without warning is the name on it changing, so the
+      // message leads with the new carrier and keeps the reference they
+      // already have.
+      case 'booking.protected':
+        final bookingId = payload['bookingId'];
+        final fromDepartureId = payload['fromDepartureId'];
+        if (bookingId is! String || fromDepartureId is! String) return null;
+
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT b.ref, u.phone_e164, u.email, u.language,
+                   r.origin_city, r.destination_city,
+                   o.trading_name, o.legal_name,
+                   to_char(d.departs_at AT TIME ZONE @tz, 'DD/MM')
+                     AS departs_date,
+                   to_char(d.departs_at AT TIME ZONE @tz, 'HH24"h"MI')
+                     AS departs_time,
+                   to_char(od.departs_at AT TIME ZONE @tz, 'HH24"h"MI')
+                     AS old_time,
+                   (SELECT string_agg(bs.seat_label, ', '
+                                      ORDER BY bs.seat_label)
+                      FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats
+              FROM bookings b
+              JOIN departures d ON d.id = b.departure_id
+              JOIN departures od ON od.id = @from
+              JOIN routes r ON r.id = d.route_id
+              JOIN operators o ON o.id = b.operator_id
+              LEFT JOIN user_accounts u ON u.id = b.purchaser_user_id
+             WHERE b.id = @booking
+          '''),
+          parameters: {
+            'booking': TypedValue(Type.uuid, bookingId),
+            'from': TypedValue(Type.uuid, fromDepartureId),
+            'tz': TypedValue(Type.text, timeZone),
+          },
+        );
+
+        if (rows.isEmpty) return null;
+        final b = rows.first.toColumnMap();
+
+        final phone = b['phone_e164'] as String?;
+        final email = b['email'] as String?;
+        final to = phone ?? email;
+        if (to == null) return null;
+
+        final t = CatalogTranslator(_catalog, b['language'] as String? ?? 'fr');
+
+        // `o.trading_name` is now the RECEIVING operator, because the booking
+        // changed hands. That is the whole point of the message: the coach
+        // they are looking for has a different name painted on it.
+        final body = t('sms.protected.body', {
+          'operator': b['trading_name'] ?? b['legal_name'] ?? '',
+          'route': '${b['origin_city']}–${b['destination_city']}',
+          'oldTime': b['old_time'],
+          'date': b['departs_date'],
+          'time': b['departs_time'],
+          'seat': b['seats'] ?? '',
+          'reference': 'BEL-${b['ref']}',
+        });
+
+        return OutboundMessage(
+          channel: phone != null ? SignInChannel.phone : SignInChannel.email,
+          to: to,
+          subject: phone != null ? null : body,
+          body: body,
+          eventId: 'booking.protected:$fromDepartureId:$bookingId',
+        );
+
       default:
         // An event type nobody handles is marked delivered rather than
         // retried forever. It is a deploy-order artefact — a producer shipped

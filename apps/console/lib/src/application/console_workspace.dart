@@ -107,6 +107,26 @@ final class ConsoleWorkspace {
   /// expires unanswered.
   int get agreementsAwaitingUs => agreements.where((a) => a.awaitingUs).length;
 
+  /// Protection requests in either direction (`08-disruption.md` §2.3).
+  ///
+  /// One list, not an inbox and an outbox. The same row is the one we are
+  /// waiting on and the one they are waiting on, and two lists fetched
+  /// separately would show it decided in one and pending in the other for as
+  /// long as the two calls were apart.
+  List<ProtectionRequestDto> requests = const [];
+
+  /// Requests another company is waiting on us to answer. The number on the
+  /// tab: somebody is standing at a gare while this sits unread.
+  int get requestsAwaitingUs => requests.where((r) => r.awaitingUs).length;
+
+  /// Whether option ③ exists at all this morning — an agreement in force,
+  /// with room left under its ceiling.
+  ///
+  /// Asked by the disruption sheet before it draws the option, because
+  /// offering a dispatcher a rescue that will be refused at 05:40 is worse
+  /// than not offering it.
+  bool get canAskForProtection => agreements.any((a) => a.isLive);
+
   /// The operator's storefront. Null until the vitrine section is opened —
   /// nothing else on the console needs it, and loading it on every start
   /// would be a request per morning for a screen most people open twice.
@@ -119,6 +139,14 @@ final class ConsoleWorkspace {
   }
 
   bool can(String capability) => _identity?.can(capability) ?? false;
+
+  /// Whether this person's console has anything to do with protection at all.
+  ///
+  /// A vendor at a counter neither negotiates agreements nor answers a
+  /// roadside request, and loading two lists they will never see would be two
+  /// requests every morning on a connection that is paid for by the megabyte.
+  bool get _canSeeProtection =>
+      can('protection.manage') || can('disruption.declare');
 
   void openSection(ConsoleSection section) {
     _section = section;
@@ -146,6 +174,16 @@ final class ConsoleWorkspace {
     switch (_section) {
       case ConsoleSection.today:
         board = await _gateway.board(day);
+        // The disruption sheet is opened from this screen, and it has to know
+        // whether asking another company is even possible before it draws the
+        // option (§2.2 ③). Loaded here rather than lazily inside the sheet: a
+        // dispatcher at the roadside opens it once, on 2G, and an option that
+        // appears three seconds later is one they have already decided
+        // without.
+        if (_canSeeProtection) {
+          agreements = await _gateway.protectionAgreements();
+          requests = await _gateway.protectionRequests();
+        }
       case ConsoleSection.counter:
         board = await _gateway.board(day);
       case ConsoleSection.fleet:
@@ -164,6 +202,7 @@ final class ConsoleWorkspace {
         statements = await _gateway.statements();
       case ConsoleSection.protection:
         agreements = await _gateway.protectionAgreements();
+        requests = await _gateway.protectionRequests();
         // The corridors offered when proposing are built from the lines this
         // operator actually runs. Loading them lazily would mean an empty
         // list the first time the dialog opens, which reads as "we serve
@@ -303,6 +342,53 @@ final class ConsoleWorkspace {
         row,
   ];
 
+  /// Option ③ of `08-disruption.md` §2.2: somebody else's coach.
+  ///
+  /// Asked at the moment the dispatcher opens the sheet, never held warm — a
+  /// competitor's free-seat count ten minutes old is a rescue that fails at
+  /// the door. The list is narrowed here rather than on the server because
+  /// the narrowing is a *console* judgement: the public search answers "who
+  /// is going to Pointe-Noire this afternoon", and what a dispatcher can act
+  /// on is the subset that is somebody else's, later, has room, and is
+  /// covered by an agreement in force.
+  ///
+  /// An empty list is a real answer and the sheet says so plainly. Offering a
+  /// coach the server will refuse teaches people that our buttons lie.
+  Future<List<DepartureSummaryDto>> protectionCandidates(
+    DepartureBoardDto broken,
+  ) async {
+    // The board carries a route *code*; the public search needs two cities.
+    // Fetched here rather than with the morning's board, because most
+    // mornings nobody breaks down — and this is the one screen where the
+    // extra request buys something rather than costing it.
+    if (routes.isEmpty) routes = await _gateway.routes();
+
+    final route = routes.where((r) => r.code == broken.routeCode).firstOrNull;
+    if (route == null) return const [];
+
+    final covering = [
+      for (final agreement in agreements)
+        if (agreement.isLive &&
+            agreement.covers(route.originCity, route.destinationCity))
+          agreement.counterpartyId,
+    ];
+    if (covering.isEmpty) return const [];
+
+    final trips = await _gateway.tripsOn(
+      originCity: route.originCity,
+      destinationCity: route.destinationCity,
+      date: broken.departsAt,
+    );
+
+    return [
+      for (final trip in trips)
+        if (covering.contains(trip.operatorId) &&
+            trip.departsAt.isAfter(broken.departsAt) &&
+            trip.seatsAvailable > 0)
+          trip,
+    ]..sort((a, b) => a.departsAt.compareTo(b.departsAt));
+  }
+
   /// Option ② of ADR-0016 §2.2: the operator's own next departure.
   ///
   /// Partial coverage is a success and is said as a number. "18 sur 42" is
@@ -412,6 +498,57 @@ final class ConsoleWorkspace {
       request: AgreementDecisionRequest(decision: decision, reason: reason),
     );
     _notice = 'protection.$decision|${decided.counterpartyName}';
+    await _loadSection();
+  });
+
+  /// Ask another company for room (`08-disruption.md` §2.2 option ③).
+  ///
+  /// Nothing moves here: the request lands on the other console and waits.
+  /// The notice says so, because a dispatcher who reads "envoyé" and walks
+  /// away is one who never finds out that nobody answered.
+  Future<void> askForProtection({
+    required String departureId,
+    required String replacementDepartureId,
+    String? note,
+  }) => _run(() async {
+    final asked = await _gateway.askForProtection(
+      ProtectionRequestBody(
+        departureId: departureId,
+        replacementDepartureId: replacementDepartureId,
+        note: note,
+      ),
+    );
+    _notice =
+        'protection.asked|${asked.counterpartyName}|${asked.seatsRequested}';
+    await _loadSection();
+  });
+
+  /// `accept` or `decline`, by the company being asked.
+  ///
+  /// Accepting moves the passengers in the same call, so the notice is about
+  /// people and not about a record: how many travel with the other company
+  /// now, and — when the coach could not take everybody — how many are still
+  /// standing there. Partial coverage is a success and is said as a number.
+  Future<void> decideProtectionRequest({
+    required String requestId,
+    required String decision,
+    String? reason,
+  }) => _run(() async {
+    final decided = await _gateway.decideProtectionRequest(
+      requestId: requestId,
+      request: AgreementDecisionRequest(decision: decision, reason: reason),
+    );
+    if (decision == 'decline') {
+      _notice = 'protection.requestDeclined|${decided.counterpartyName}';
+    } else if (decided.coversEverybody) {
+      _notice =
+          'protection.moved|${decided.seatsMoved ?? 0}'
+          '|${decided.counterpartyName}';
+    } else {
+      _notice =
+          'protection.movedPartial|${decided.seatsMoved ?? 0}'
+          '|${decided.seatsRequested}|${decided.counterpartyName}';
+    }
     await _loadSection();
   });
 

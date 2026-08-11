@@ -52,6 +52,24 @@ final class ProtectionScreen extends StatelessWidget {
     ];
     final canManage = workspace.can('protection.manage');
 
+    // Answering a roadside request is the dispatcher's authority, not the
+    // finance office's — the same capability that declares a breakdown.
+    final canDecide = workspace.can('disruption.declare');
+
+    // Only the live ones. A declined request from three weeks ago is history,
+    // and history on this screen is noise between a dispatcher and the coach
+    // they are trying to fill.
+    final open =
+        [
+          for (final request in workspace.requests)
+            if (request.isPending) request,
+        ]..sort((a, b) {
+          if (a.awaitingUs == b.awaitingUs) {
+            return b.requestedAt.compareTo(a.requestedAt);
+          }
+          return a.awaitingUs ? -1 : 1;
+        });
+
     return ListView(
       padding: EdgeInsets.all(kilo.space.s4),
       children: [
@@ -88,6 +106,28 @@ final class ProtectionScreen extends StatelessWidget {
           ],
         ),
         SizedBox(height: kilo.space.s4),
+
+        // The inbound queue, above the agreements and above everything else
+        // on this screen. An agreement is read once a quarter; a request is
+        // somebody standing at a gare right now, and it is the only thing
+        // here with a clock running on it (§2.3).
+        if (open.isNotEmpty) ...[
+          Text(context.t('console.request.title'), style: kilo.text.label),
+          SizedBox(height: kilo.space.s2),
+          for (final request in open)
+            Padding(
+              padding: EdgeInsets.only(bottom: kilo.space.s3),
+              child: _RequestCard(
+                request: request,
+                canDecide: canDecide,
+                onDecide: (decision) => workspace.decideProtectionRequest(
+                  requestId: request.id,
+                  decision: decision,
+                ),
+              ),
+            ),
+          SizedBox(height: kilo.space.s3),
+        ],
 
         if (waiting.isNotEmpty) ...[
           Text(
@@ -412,6 +452,151 @@ class _AgreementCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// One live request, on whichever console is looking at it.
+///
+/// Deliberately not the same card as an agreement. An agreement is a term
+/// somebody reads once a quarter; this is a decision with people waiting on
+/// it, so it carries four facts and two buttons and nothing else: who is
+/// asking, how many, on which coach of ours, and what we would be paid.
+class _RequestCard extends StatelessWidget {
+  const _RequestCard({
+    required this.request,
+    required this.canDecide,
+    required this.onDecide,
+  });
+
+  final ProtectionRequestDto request;
+  final bool canDecide;
+  final void Function(String decision) onDecide;
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+
+    return KCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(request.counterpartyName, style: kilo.text.h3),
+                    SizedBox(height: kilo.space.s1),
+                    Text(
+                      context.t(
+                        request.weAsked
+                            ? 'console.request.weAsked'
+                            : 'console.request.theyAsked',
+                        {
+                          'count': request.seatsRequested,
+                          'name': request.counterpartyName,
+                        },
+                      ),
+                      style: kilo.text.body.copyWith(
+                        color: kilo.color.contentSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              KChip(
+                context.t(
+                  request.awaitingUs
+                      ? 'console.request.awaitingUs'
+                      : 'console.request.awaitingThem',
+                ),
+                tone: request.awaitingUs
+                    ? KChipTone.warning
+                    : KChipTone.neutral,
+              ),
+            ],
+          ),
+          SizedBox(height: kilo.space.s3),
+
+          if (request.routeCode != null)
+            _Term(
+              label: context.t('console.request.coach'),
+              value: [
+                request.routeCode!,
+                if (request.replacementDepartsAt case final at?) _time(at),
+              ].join(' · '),
+            ),
+          // Their live seat count, on the card rather than a screen away.
+          // §2.3: a receiving operator deciding blind is one who says no.
+          _Term(
+            label: context.t('console.request.seatsFree'),
+            value: context.t('console.request.seatsValue', {
+              'free': '${request.seatsFree}',
+              'asked': '${request.seatsRequested}',
+            }),
+          ),
+          if (request.rebill case final rebill?)
+            _Term(
+              label: context.t('console.request.rebill'),
+              value: rebill.format(locale: context.language),
+            ),
+          if (request.note case final note?)
+            _Term(label: context.t('console.request.note'), value: note),
+
+          if (request.seatsFree < request.seatsRequested)
+            Padding(
+              padding: EdgeInsets.only(top: kilo.space.s2),
+              child: Text(
+                // Partial coverage is a success and is said as a number
+                // before the decision, not discovered from the notice after.
+                context.t('console.request.partial', {
+                  'covered': '${request.seatsFree}',
+                  'total': '${request.seatsRequested}',
+                }),
+                style: kilo.text.caption.copyWith(color: kilo.color.warning),
+              ),
+            ),
+
+          if (canDecide && request.awaitingUs) ...[
+            SizedBox(height: kilo.space.s3),
+            Text(
+              // The one thing about this button that is not obvious: it does
+              // not schedule anything. The passengers change company, and
+              // their tickets change with them, while the page is open.
+              context.t('console.request.movesNow'),
+              style: kilo.text.caption.copyWith(
+                color: kilo.color.contentSecondary,
+              ),
+            ),
+            SizedBox(height: kilo.space.s2),
+            Wrap(
+              spacing: kilo.space.s2,
+              alignment: WrapAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => onDecide('decline'),
+                  child: Text(context.t('console.request.decline')),
+                ),
+                FilledButton(
+                  onPressed: request.seatsFree == 0
+                      ? null
+                      : () => onDecide('accept'),
+                  child: Text(context.t('console.request.accept')),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String _time(DateTime instant) {
+    final local = instant.toUtc().add(const Duration(hours: 1));
+    return '${local.hour.toString().padLeft(2, '0')}h'
+        '${local.minute.toString().padLeft(2, '0')}';
   }
 }
 

@@ -712,6 +712,7 @@ final class PgFixture {
   Future<void> clearAgreements() async {
     await _seed.execute('DELETE FROM protection_corridors');
     await _seed.execute('DELETE FROM protection_movements');
+    await _seed.execute('DELETE FROM protection_requests');
     await _seed.execute('DELETE FROM protection_agreements');
   }
 
@@ -822,6 +823,131 @@ final class PgFixture {
     final departureId = created.first.toColumnMap()['id'] as String;
     await _insertSeats(departureId, seatLabels, fareMinor);
     return departureId;
+  }
+
+  /// A departure belonging to the OTHER company, on their own route.
+  ///
+  /// Everything a protection request needs on the receiving side: a coach
+  /// that is not ours, on the same road, later, with seats on it.
+  Future<String> foreignDeparture({
+    required List<String> seatLabels,
+    Duration fromNow = const Duration(hours: 12),
+    int fareMinor = 9000,
+    String status = 'scheduled',
+  }) async {
+    await secondOperator();
+
+    final layout = await _seed.execute(
+      Sql.named('''
+        INSERT INTO seat_layouts (operator_id, name, sections, capacity)
+        VALUES (@operator, @name, '[]'::jsonb, @capacity)
+        RETURNING id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, secondOperatorId),
+        // Named per call: layouts are unique per operator and name, and a
+        // test that needs two of their coaches is the ordinary case here.
+        'name': TypedValue(
+          Type.text,
+          'Their coach ${DateTime.now().microsecondsSinceEpoch}',
+        ),
+        'capacity': TypedValue(Type.integer, seatLabels.length),
+      },
+    );
+
+    final route = await _seed.execute(
+      Sql.named('''
+        INSERT INTO routes (operator_id, origin_city, destination_city,
+                            code, duration_minutes)
+        VALUES (@operator, 'BZV', 'PNR', @code, 450)
+        RETURNING id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, secondOperatorId),
+        'code': TypedValue(
+          Type.text,
+          'TBV-BZV-PNR-${DateTime.now().microsecondsSinceEpoch}',
+        ),
+      },
+    );
+
+    final created = await _seed.execute(
+      Sql.named('''
+        INSERT INTO departures
+          (operator_id, route_id, seat_layout_id, departs_at, arrives_at,
+           capacity, fare_minor, currency, status)
+        VALUES (@operator, @route, @layout,
+                now() + make_interval(secs => @offset),
+                now() + make_interval(secs => @offset) + INTERVAL '8 hours',
+                @capacity, @fare, 'XAF', @status::departure_status)
+        RETURNING id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, secondOperatorId),
+        'route': TypedValue(Type.uuid, route.first.toColumnMap()['id']),
+        'layout': TypedValue(Type.uuid, layout.first.toColumnMap()['id']),
+        'offset': TypedValue(Type.double, fromNow.inSeconds.toDouble()),
+        'capacity': TypedValue(Type.integer, seatLabels.length),
+        'fare': TypedValue(Type.bigInteger, fareMinor),
+        'status': TypedValue(Type.text, status),
+      },
+    );
+
+    final departureId = created.first.toColumnMap()['id'] as String;
+    for (final label in seatLabels) {
+      await _seed.execute(
+        Sql.named('''
+          INSERT INTO seats (departure_id, seat_label, operator_id,
+                             section_code, fare_minor, currency)
+          VALUES (@departure, @label, @operator, 'STD', @fare, 'XAF')
+        '''),
+        parameters: {
+          'departure': TypedValue(Type.uuid, departureId),
+          'label': TypedValue(Type.text, label),
+          'operator': TypedValue(Type.uuid, secondOperatorId),
+          'fare': TypedValue(Type.bigInteger, fareMinor),
+        },
+      );
+    }
+    return departureId;
+  }
+
+  /// The ledger balance of one account, signed as the ledger stores it.
+  Future<int> balanceOf(String account) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT COALESCE(sum(CASE WHEN direction = 'credit' THEN amount_minor
+                                 ELSE -amount_minor END), 0)::bigint AS total
+          FROM ledger_entries WHERE account = @account
+      '''),
+      parameters: {'account': TypedValue(Type.text, account)},
+    );
+    final total = rows.first.toColumnMap()['total'];
+    return total is int ? total : int.parse('$total');
+  }
+
+  /// Who owns a booking, and which departure it sits on. Both change when a
+  /// passenger is protected onto another company's coach.
+  Future<({String operatorId, String departureId})> ownerOf(
+    String bookingId,
+  ) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT operator_id::text AS operator_id,
+               departure_id::text AS departure_id
+          FROM bookings WHERE id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    final row = rows.first.toColumnMap();
+    return (
+      operatorId: row['operator_id']! as String,
+      departureId: row['departure_id']! as String,
+    );
+  }
+
+  Future<void> clearProtectionRequests() async {
+    await _seed.execute('DELETE FROM protection_requests');
   }
 
   Future<void> _insertSeats(

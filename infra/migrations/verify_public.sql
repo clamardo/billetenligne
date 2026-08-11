@@ -154,7 +154,7 @@ DECLARE
     -- coach. A disruption is public; what two operators agreed to bill each
     -- other is not.
     'payout_runs', 'protection_agreements', 'protection_corridors',
-    'protection_movements'
+    'protection_movements', 'protection_requests'
   ];
 BEGIN
   FOREACH t IN ARRAY forbidden LOOP
@@ -676,5 +676,172 @@ BEGIN
 
   RESET ROLE;
   RAISE NOTICE 'OK  accepted terms are frozen, and a pair has one agreement';
+END
+$$;
+
+-- ── 16. The receiving operator answers, and nobody else ─────────────────────
+--
+-- 0020 decision 2. A protection request is the one row in this schema written
+-- by one tenant and answered by another, so "who may move it" is the whole
+-- control: the sender asks and cannot answer their own ask, the receiver
+-- answers and cannot rewrite what they were asked.
+DO $$
+DECLARE
+  ocean UUID := '11111111-1111-1111-1111-111111111111';
+  bony  UUID := '22222222-2222-2222-2222-222222222222';
+  agr   UUID := 'dddddddd-0000-0000-0000-000000000001';
+  broken UUID := 'cccccccc-0000-0000-0000-000000000001';
+  spare  UUID := 'cccccccc-0000-0000-0000-00000000000b';
+  req    UUID := 'eeeeeeee-1111-0000-0000-000000000001';
+  seen   INT;
+BEGIN
+  -- A coach belonging to the other company, to be asked for.
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  INSERT INTO seat_layouts (id, operator_id, name, sections, capacity)
+  VALUES ('bbbbbbbb-0000-0000-0000-00000000000b', bony, 'Their coach',
+          '[]'::jsonb, 40);
+
+  INSERT INTO routes (id, operator_id, origin_city, destination_city,
+                      code, duration_minutes)
+  VALUES ('aaaaaaaa-0000-0000-0000-00000000000b', bony, 'BZV', 'PNR',
+          'TBV-BZV-PNR', 450);
+
+  INSERT INTO departures
+    (id, operator_id, route_id, seat_layout_id, departs_at, arrives_at,
+     capacity, fare_minor, currency)
+  VALUES (spare, bony, 'aaaaaaaa-0000-0000-0000-00000000000b',
+          'bbbbbbbb-0000-0000-0000-00000000000b',
+          now() + INTERVAL '2 days 6 hours', now() + INTERVAL '2 days 14 hours',
+          40, 9000, 'XAF');
+
+  -- Océan du Nord, whose coach has failed, asks.
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', ocean::text, true);
+
+  INSERT INTO protection_requests
+    (id, agreement_id, sending_operator_id, receiving_operator_id,
+     from_departure_id, to_departure_id, seats_requested)
+  VALUES (req, agr, ocean, bony, broken, spare, 31);
+
+  -- And cannot answer their own ask. The UPDATE policy is a USING clause, so
+  -- the row is invisible to the statement rather than the statement being
+  -- refused — which means the assertion is that nothing moved, not that
+  -- something raised. Worth writing out: a silent zero-row UPDATE is exactly
+  -- the kind of control that reads as working and is not tested.
+  UPDATE protection_requests
+     SET state = 'accepted', decided_at = now() WHERE id = req;
+
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  SELECT count(*) INTO seen
+    FROM protection_requests WHERE id = req AND state = 'pending';
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: an operator accepted their own protection request';
+  END IF;
+
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', ocean::text, true);
+
+  -- Nor ask on somebody else's behalf.
+  BEGIN
+    INSERT INTO protection_requests
+      (agreement_id, sending_operator_id, receiving_operator_id,
+       from_departure_id, to_departure_id, seats_requested)
+    VALUES (agr, bony, ocean, spare, broken, 5);
+    RAISE EXCEPTION 'FAIL: an operator asked on another company''s behalf';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  -- The receiver sees it, which is the inbound queue §2.3 asks for.
+  PERFORM set_config('app.tenant_id', bony::text, true);
+  SELECT count(*) INTO seen FROM protection_requests WHERE id = req;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: the receiving operator cannot see the request';
+  END IF;
+
+  -- Answers it.
+  UPDATE protection_requests
+     SET state = 'accepted', decided_at = now() WHERE id = req;
+
+  -- And cannot rewrite what they were asked for.
+  BEGIN
+    UPDATE protection_requests SET seats_requested = 1 WHERE id = req;
+    RAISE EXCEPTION 'FAIL: the receiver rewrote the request';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  -- A third company sees nothing.
+  PERFORM set_config('app.tenant_id', 'dddddddd-0000-0000-0000-0000000000ff',
+                     true);
+  SELECT count(*) INTO seen FROM protection_requests WHERE id = req;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: a stranger read a protection request';
+  END IF;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  a protection request is asked by one side and answered by the other';
+END
+$$;
+
+-- ── 17. The two-tenant queue widens nothing ─────────────────────────────────
+--
+-- 0022. A request names two coaches owned by two companies, and neither
+-- tenant can read both `departures` rows — so the queue is assembled by a
+-- SECURITY DEFINER function, and a definer function is the one construct here
+-- that can hand somebody another tenant's rows by accident.
+--
+-- What is checked is that it did not: the function takes no operator argument
+-- and reads `app_tenant_id()` itself, so the two parties each see the request
+-- and a third company calling exactly the same function sees nothing. If this
+-- ever fails, a competitor is reading who is rescuing whom.
+DO $$
+DECLARE
+  ocean UUID := '11111111-1111-1111-1111-111111111111';
+  bony  UUID := '22222222-2222-2222-2222-222222222222';
+  req   UUID := 'eeeeeeee-1111-0000-0000-000000000001';
+  seen  INT;
+  free  INT;
+BEGIN
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'off', true);
+
+  -- The company that asked sees their own ask, and the counterparty named on
+  -- it is the other one.
+  PERFORM set_config('app.tenant_id', ocean::text, true);
+  SELECT count(*) INTO seen
+    FROM protection_queue() q WHERE q.id = req AND q.counterparty_id = bony;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: the sending operator cannot read their own request';
+  END IF;
+
+  -- The company being asked sees it too, with the seat count §2.3 says they
+  -- need to answer — read from a coach the asker cannot read at all.
+  PERFORM set_config('app.tenant_id', bony::text, true);
+  SELECT count(*), max(q.seats_free) INTO seen, free
+    FROM protection_queue() q WHERE q.id = req AND q.counterparty_id = ocean;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: the receiving operator cannot read the request';
+  END IF;
+  IF free IS NULL THEN
+    RAISE EXCEPTION 'FAIL: the queue carries no seat count';
+  END IF;
+
+  -- And a third company sees nothing, calling the same function.
+  PERFORM set_config('app.tenant_id', 'dddddddd-0000-0000-0000-0000000000ff',
+                     true);
+  SELECT count(*) INTO seen FROM protection_queue() q;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: a stranger read the protection queue';
+  END IF;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  the protection queue is scoped to its two parties';
 END
 $$;

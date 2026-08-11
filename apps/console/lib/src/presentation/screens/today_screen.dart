@@ -6,6 +6,7 @@ import '../../application/console_workspace.dart';
 import '../l10n.dart';
 import '../widgets/disruption_sheet.dart';
 import '../widgets/manifest_sheet.dart';
+import '../widgets/protection_sheet.dart';
 import '../widgets/rebook_sheet.dart';
 import '../widgets/rescue_sheet.dart';
 
@@ -240,6 +241,19 @@ class _DepartureRow extends StatelessWidget {
                     fullWidth: false,
                     onPressed: () => _rebook(context),
                   ),
+                // Option ③: somebody else's coach. Only when an agreement is
+                // actually in force with room left this month — a button that
+                // opens onto "aucune compagnie" is a button that costs a
+                // dispatcher fifteen seconds they do not have.
+                if (workspace.can('disruption.declare') &&
+                    workspace.canAskForProtection &&
+                    (row.disruption != null || row.vehicle == null))
+                  KButton(
+                    label: context.t('console.today.protect'),
+                    tone: KButtonTone.secondary,
+                    fullWidth: false,
+                    onPressed: () => _protect(context),
+                  ),
               ],
             ),
           ),
@@ -314,6 +328,32 @@ class _DepartureRow extends StatelessWidget {
     if (draft == null) return;
 
     await workspace.rebookOnto(
+      departureId: row.id,
+      replacementDepartureId: draft.replacementDepartureId,
+      note: draft.note,
+    );
+  }
+
+  /// Option ③ of §2.2: ask a company we have an agreement with.
+  ///
+  /// The candidates are fetched at the moment of asking, like the spare-coach
+  /// list and for the same reason: a competitor's free-seat count that is ten
+  /// minutes old is a rescue that fails at the door.
+  Future<void> _protect(BuildContext context) async {
+    final candidates = await workspace.protectionCandidates(row);
+    if (!context.mounted) return;
+
+    final draft = await showDialog<ProtectionDraft>(
+      context: context,
+      builder: (_) => ProtectionSheet(
+        routeCode: row.routeCode,
+        sold: row.sold,
+        candidates: candidates,
+      ),
+    );
+    if (draft == null) return;
+
+    await workspace.askForProtection(
       departureId: row.id,
       replacementDepartureId: draft.replacementDepartureId,
       note: draft.note,

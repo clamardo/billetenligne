@@ -1118,6 +1118,58 @@ check "a decision nobody defined is refused" "400" \
      "$BASE/console/v1/protection/agr-1/decision" -H "$OP_AUTH" \
      -H 'Content-Type: application/json' -d '{"decision":"ratify"}')"
 
+# ── Asking for the room, and answering ──────────────────────────────────────
+#
+# `08-disruption.md` §2.2 option ③ and §2.3. Same fakes caveat as above — no
+# protection desk, so a well-formed ask reaches a refusal rather than moving
+# anybody. What is proved is the surface, and one thing that is not obvious
+# from reading the routes: **asking and answering need `disruption.declare`,
+# not `protection.manage`.** The terms are agreed in an office by one person;
+# the 05:40 decision is taken at a roadside by another.
+echo
+echo "── asking another company for room"
+
+ask_as() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST \
+    "$BASE/console/v1/protection/requests" -H "$1" \
+    -H 'Content-Type: application/json' -d "$2"
+}
+
+check "an anonymous caller sees no requests" "401" \
+  "$(status "$BASE/console/v1/protection/requests")"
+check "a traveller cannot read the queue" "403" \
+  "$(status -H "$AUTH" "$BASE/console/v1/protection/requests")"
+check "the operator reads their own queue" "200" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/protection/requests")"
+
+check "an anonymous caller cannot ask" "401" \
+  "$(ask_as 'X-Nothing: 1' \
+     '{"departureId":"'"$DEP"'","replacementDepartureId":"'"$DEP"'"}')"
+check "a traveller cannot ask either" "403" \
+  "$(ask_as "$AUTH" \
+     '{"departureId":"'"$DEP"'","replacementDepartureId":"'"$DEP"'"}')"
+# A request with nowhere to go is caught at the edge rather than inside a
+# transaction that has already locked two coaches.
+check "an ask with no replacement is refused by name" "400" \
+  "$(ask_as "$OP_AUTH" '{"departureId":"'"$DEP"'"}')"
+check "a well-formed ask gets past validation" "409" \
+  "$(ask_as "$OP_AUTH" \
+     '{"departureId":"'"$DEP"'","replacementDepartureId":"'"$DEP"'"}')"
+
+check "GET is not a way to answer one" "405" \
+  "$(status -H "$OP_AUTH" \
+     "$BASE/console/v1/protection/requests/req-1/decision")"
+check "a decision nobody defined is refused" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/protection/requests/req-1/decision" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d '{"decision":"maybe"}')"
+# Accept and decline are the two the route knows, and a request nobody has
+# made is a 409 — the world refusing, not the payload.
+check "answering a request that does not exist is a 409" "409" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/protection/requests/req-1/decision" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d '{"decision":"accept"}')"
+
 
 # ── The Dart client against this same server ────────────────────────────────
 #

@@ -91,6 +91,98 @@ final class AgreementRefused extends AgreementRefusal {
   Map<String, Object?> get params => failure.params;
 }
 
+/// One company asking another for room (`08-disruption.md` §2.3).
+final class ProtectionRequestView {
+  const ProtectionRequestView({
+    required this.id,
+    required this.agreementId,
+    required this.sendingOperatorId,
+    required this.receivingOperatorId,
+    required this.counterpartyName,
+    required this.weAsked,
+    required this.fromDepartureId,
+    required this.toDepartureId,
+    required this.seatsRequested,
+    required this.state,
+    required this.requestedAt,
+    this.note,
+    this.routeCode,
+    this.departsAt,
+    this.replacementDepartsAt,
+    this.seatsFree = 0,
+    this.rebill,
+    this.autoAccepted = false,
+    this.seatsMoved,
+    this.declineReason,
+  });
+
+  final String id;
+  final String agreementId;
+  final String sendingOperatorId;
+  final String receivingOperatorId;
+
+  /// The other company, from the point of view of whoever asked for this.
+  final String counterpartyName;
+
+  /// Whether this is ours to chase or ours to answer.
+  final bool weAsked;
+
+  final String fromDepartureId;
+  final String toDepartureId;
+  final int seatsRequested;
+
+  /// `pending` · `accepted` · `declined` · `applied` · `expired` · `failed`.
+  final String state;
+
+  final DateTime requestedAt;
+  final String? note;
+
+  /// Enough of the journey to decide without opening anything else. §2.3 asks
+  /// for a live seat count on the receiving console, and a receiving operator
+  /// deciding blind is one who says no.
+  final String? routeCode;
+  final DateTime? departsAt;
+  final DateTime? replacementDepartsAt;
+  final int seatsFree;
+
+  /// What the receiving operator would be paid, at the agreed discount, for
+  /// the seats being asked for. Shown before the decision, not after.
+  final Money? rebill;
+
+  final bool autoAccepted;
+  final int? seatsMoved;
+  final String? declineReason;
+
+  bool get isPending => state == 'pending';
+  bool get awaitingUs => isPending && !weAsked;
+}
+
+/// No such request, or not one of ours.
+final class UnknownRequest extends AgreementRefusal {
+  const UnknownRequest();
+  @override
+  String get code => 'protection.unknown_request';
+}
+
+/// The request is not in a state that allows what was asked.
+final class WrongRequestState extends AgreementRefusal {
+  const WrongRequestState(this.state);
+  final String state;
+  @override
+  String get code => 'protection.wrong_request_state';
+  @override
+  Map<String, Object?> get params => {'state': state};
+}
+
+/// The seats were gone by the time somebody accepted. A real outcome and not
+/// an error: the receiving operator kept selling while the request sat in
+/// their queue, which is exactly what they should have been doing.
+final class NobodyCouldBeMoved extends AgreementRefusal {
+  const NobodyCouldBeMoved();
+  @override
+  String get code => 'protection.nobody_fits';
+}
+
 /// Inter-operator protection agreements (`08-disruption.md` §5).
 ///
 /// Separate from `DisruptionDesk` because the two are used on different days
@@ -133,6 +225,41 @@ abstract interface class ProtectionDesk {
     required String actorUserId,
     String? reason,
   });
+
+  /// Requests this operator is a party to, in either direction, newest first.
+  Future<List<ProtectionRequestView>> requestsFor(String operatorId);
+
+  /// Ask the other company for room (`08-disruption.md` §2.2 option ③).
+  ///
+  /// Refused before it is written if the agreement does not cover the road,
+  /// is not in force, or the month's ceiling has no room — the same domain
+  /// function the console calls before it draws the option.
+  Future<({ProtectionRequestView? request, AgreementRefusal? refusal})>
+  request({
+    required String operatorId,
+    required String departureId,
+    required String replacementDepartureId,
+    required String actorUserId,
+    required DateTime now,
+    String? note,
+  });
+
+  /// `accept` or `decline`, by the receiving operator.
+  ///
+  /// Accepting **applies the movement in the same transaction**: the seats
+  /// are taken on the receiving departure, the bookings and their tickets
+  /// move to the receiving operator, and the rebill posts against the two
+  /// payables. A request that is accepted and applied later is a window in
+  /// which a receiving operator sells the seats they just promised.
+  Future<({ProtectionRequestView? request, AgreementRefusal? refusal})>
+  decideRequest({
+    required String operatorId,
+    required String requestId,
+    required String decision,
+    required String actorUserId,
+    required DateTime now,
+    String? reason,
+  });
 }
 
 /// What the fakes composition answers with. Protection is a commercial
@@ -167,4 +294,30 @@ final class UnavailableProtection implements ProtectionDesk {
     required String actorUserId,
     String? reason,
   }) async => (agreement: null, refusal: const UnknownAgreement());
+
+  @override
+  Future<List<ProtectionRequestView>> requestsFor(String operatorId) async =>
+      const [];
+
+  @override
+  Future<({ProtectionRequestView? request, AgreementRefusal? refusal})>
+  request({
+    required String operatorId,
+    required String departureId,
+    required String replacementDepartureId,
+    required String actorUserId,
+    required DateTime now,
+    String? note,
+  }) async => (request: null, refusal: const AgreementRefused(NoAgreement()));
+
+  @override
+  Future<({ProtectionRequestView? request, AgreementRefusal? refusal})>
+  decideRequest({
+    required String operatorId,
+    required String requestId,
+    required String decision,
+    required String actorUserId,
+    required DateTime now,
+    String? reason,
+  }) async => (request: null, refusal: const UnknownRequest());
 }

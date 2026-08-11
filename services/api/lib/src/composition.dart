@@ -295,7 +295,7 @@ final class Services {
       console: PostgresOperatorConsole(db, timeZone: market.timeZone),
       disruptions: PostgresDisruptions(db, issuer: _ticketIssuer),
       payouts: PostgresPayouts(db),
-      protection: PostgresProtection(db),
+      protection: PostgresProtection(db, issuer: _ticketIssuer),
       platform: PostgresPlatformConsole(db),
       storefronts: PostgresStorefronts(db),
       applications: PostgresOperatorApplications(db),

@@ -56,7 +56,17 @@ final class ConsoleShell extends StatelessWidget {
             destinations: [
               for (final section in sections)
                 NavigationRailDestination(
-                  icon: Icon(_icon(section)),
+                  // A count on the tab, and only on the tab that has
+                  // something waiting on a person. A protection request nobody
+                  // notices is a coachload nobody comes back for (§2.3), and
+                  // this console is not the app somebody is staring at.
+                  icon: switch (_waiting(workspace, section)) {
+                    0 => Icon(_icon(section)),
+                    final n => Badge.count(
+                      count: n,
+                      child: Icon(_icon(section)),
+                    ),
+                  },
                   label: Text(context.t(_labelKey(section))),
                 ),
             ],
@@ -131,6 +141,12 @@ final class ConsoleShell extends StatelessWidget {
     // which the screen checks separately.
     if (w.can('booking.read')) ConsoleSection.protection,
   ];
+
+  /// How many things on a tab are waiting on this person to answer.
+  static int _waiting(ConsoleWorkspace w, ConsoleSection section) =>
+      section == ConsoleSection.protection
+      ? w.requestsAwaitingUs + w.agreementsAwaitingUs
+      : 0;
 
   static IconData _icon(ConsoleSection s) => switch (s) {
     ConsoleSection.today => Icons.today,

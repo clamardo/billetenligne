@@ -87,6 +87,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Payout runs** | ✅ done | `04-payments.md` §6.2. Prepare · approve · release, and the gap between them is the control: **an operator cannot create, approve or edit their own payout**, by grant rather than by handler, and **the person who prepared a run cannot approve it**. The amount is the ledger's own balance (`payable:operator` less their tills) read again at release, never the sum of the statement's line items. Releasing debits the payable and credits every till plus the bank in one movement, which is what makes "cash sales never generate a payout" true in the books. A week of nothing but cash is negative — the operator owes us the fees — and is refused as a transfer. The back office works the queue — the whole statement is in the row, because the person approving is agreeing to a number — and the operator reads their own statements in the console, cash line included. 8 domain · 3 contract · 13 Postgres · 8 smoke · 2 schema guarantees · 5 back-office · 3 console tests |
 | **`config/markets.yaml` is loaded** | ✅ done | ADR-0006, and the gap this document named first. The file is now the authority for the currency, the service fee, the dialling table and the rails; `Market.congoBrazzaville` is the **fallback** for when there is no file. A missing file falls back — that is every unit test and every fresh clone — and a **malformed one kills the process before it is healthy**, because an instance that comes up green serving last release's rails is the failure worth refusing. Enabling Orange Money, or a carrier renumbering, is a file and a restart. A currency whose exponent we do not know is refused by name, never guessed. 19 API tests · 7 smoke checks, two of them a second server started against a different file |
 | **IRROPS — the protection agreement** | ✅ done | `08-disruption.md` §5, the commercial half of option ③. Which roads, at what discount off the rescuer's public fare, up to how many seats a month, one way or both — agreed once in an office instead of at the roadside. **One party writes the terms and the other accepts them**, and afterwards the discount, the ceiling and the roads are frozen by a column-level grant. The **only row in the schema that belongs to two tenants**: an agreement neither party can read is not an agreement, so the policy names exactly two operators and an executed guarantee proves it names no third. Naming a competitor goes through a SECURITY DEFINER function returning the two facts a traveller already reads off a search result, because a SELECT policy on `operators` is all-columns and a competitor's negotiated commission is exactly what a competitor must not read. The ceiling reads `31 / 40` on the card, not on the refusal. Settlement posts one payable against the other, **no commission and no cash**, so it nets into the next payout run. 23 domain · 18 Postgres · 11 smoke · 2 schema guarantees · 7 console tests |
+| **IRROPS — the protection movement** | ✅ done | `08-disruption.md` §2.2 option ③, §2.3. The agreement now moves people. The dispatcher picks a competitor's departure out of the **public search** — the same list any traveller sees — narrowed to companies an agreement covers, later, with room; the ask lands on their console with what §2.3 says they need to answer: who, how many, which coach, what they will be paid. **Accepting applies the movement in the same transaction**, because a request accepted now and applied later is a window in which the receiving operator sells the seats they just promised. New seats taken before old ones released, both departures locked in id order, `operator_id` and `departure_id` changing together, and **every ticket re-signed under the receiving operator's code** (ADR-0007). The rebill is the discount on the **rescuer's** fare, posted payable-against-payable with no commission and no cash. The **one operation that crosses a tenant boundary**: it escalates into one narrow transaction that re-checks the agreement is still active and the request still pending, and the two SECURITY DEFINER functions it needed hand over only what a traveller can already read off a search result. 18 Postgres · 10 smoke · 2 schema guarantees · 13 console tests |
 | IRROPS — the protection movement, and the passenger's own choice | ⬜ not started | `08-disruption.md` §2.2 options ③ and ⑤. The agreement exists; nothing moves under it yet — the request the receiving operator accepts, the seats held and the tickets reissued under *their* name, the movement row and its posting. And §3.2: letting the passengers choose between the plans themselves, which produces better coverage than any dispatcher plan because a released seat returns to the pool |
 
 ## Phase 3 and beyond
@@ -218,14 +219,14 @@ dart test services/api -x integration -x storage        # 196 tests
 cd packages/bel_design     && flutter test  # 65 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 87 app tests
-cd apps/console   && flutter test        # 70 console tests
+cd apps/console   && flutter test        # 83 console tests
 cd apps/admin     && flutter test        # 23 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 307 files
-./infra/migrations/check.sh              # 36 schema guarantees
-./tool/integration.sh                    # 212 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 217 checks, incl. the Dart client
+dart run tool/check_layers.dart          # the onion rule, 310 files
+./infra/migrations/check.sh              # 38 schema guarantees
+./tool/integration.sh                    # 228 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 227 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -234,8 +235,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**878 tests in total**, plus 217 smoke checks, 36 executed schema guarantees,
-212 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**891 tests in total**, plus 227 smoke checks, 38 executed schema guarantees,
+228 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -250,6 +251,81 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+The protection **movement** (`08-disruption.md` §2.2 option ③, §2.3). The
+agreement went in last time and nothing had moved under it; now a passenger
+whose coach failed at Dolisie is carried to Pointe-Noire by another company,
+on a ticket that scans at their door.
+
+**The console reads a competitor's timetable through the public search.**
+A dispatcher has to name the other company's departure — the 13:00 with room
+— and there is no console endpoint that lists somebody else's coaches, nor
+should there be. So the sheet asks `/public/v1/trips`, the same list any
+traveller with the app can pull up, and narrows it to companies an agreement
+in force actually covers. Nothing was widened to make this work; what a
+dispatcher is spared is having to open a second app.
+
+**Accepting applies the movement, in the same transaction.** The obvious
+design — accept now, move the passengers on a queue — leaves a window in
+which the receiving operator sells the seats they have just promised, and the
+person who finds out is a passenger at a door. So the accept button does the
+whole thing: seats taken, bookings moved, tickets re-signed, ledger posted,
+message queued. It is a long transaction on purpose.
+
+**This is the one operation in the system that crosses a tenant boundary.**
+Not for convenience — it is not *possible* under either tenancy. The bookings
+belong to the sending operator, the seats to the receiving one, and neither
+connection can see both halves. So the privilege escalates into a single
+narrow transaction, and everything it would otherwise have to trust is
+re-checked inside it: the agreement must still be `active` and the request
+must still be `pending`. An agreement suspended between the ask and the
+answer authorises nothing, and there is an executed guarantee that says so.
+
+**RLS filters rows; it does not raise.** The first version of the inbound
+queue joined the request to both departures and returned nothing at all —
+whichever coach belonged to the counterparty was filtered out by policy, and
+the row vanished from the join rather than arriving short of a column. On the
+console of the company being asked for help, that reads as *nobody asked*.
+The fix is a SECURITY DEFINER function that takes **no operator argument** —
+it reads `app_tenant_id()` itself, so there is nothing to spoof — and hands
+back only what §2.3 says a receiving operator needs: when the coach leaves,
+which road, how many seats are free. Every one of those is already visible to
+any traveller searching that route. The failure mode is worth naming because
+it is silent in exactly one direction: the sender's own view worked fine.
+
+**A shared database made an unrelated suite fail.** The API integration suite
+and the worker suite run against the same Postgres, and the worker's drain
+takes a hundred rows at a time. Adding fifteen tests that queue messages
+pushed the backlog past that limit, and a worker test that queues one row and
+drains once started failing for somebody else's reasons — the kind of red that
+appears on the day an unrelated suite gains a test. The worker suite now
+clears the undelivered queue in `setUpAll`.
+
+**The rebill is on the rescuer's fare, not on what the passenger paid.** Two
+defensible numbers, and the wrong one is quietly unfair: a company with dearer
+seats would be paid less for giving one up than a company with cheap ones. The
+sending operator's pricing is none of their business either way. No commission
+is taken — taxing a rescue would discourage the only behaviour the agreement
+exists to encourage — and no cash moves, so it nets into the next payout run.
+
+**Partial coverage is said as a number, twice.** Before the decision on the
+card ("2 sur 5 seulement") and after it in the notice ("2 sur 5 placés"),
+because the three still standing at the roadside are somebody's next problem.
+The same rule the rebooking wave established, applied to a screen where the
+person reading it works for a different company than the people waiting.
+
+**And the ask does not pretend to be a placement.** The sheet says so next to
+the send button and the notice says it again afterwards. A dispatcher who
+reads *envoyé* as *placed* stops looking for a coach, and the passengers pay
+for that reading.
+
+**What it cost:** 3 migrations, 18 Postgres tests, 13 console tests, 10 smoke
+checks, 2 executed schema guarantees, and one silent join that would have
+shipped an empty queue.
+
+---
+
+## What the protection-agreement push changed, and what it cost
 
 The inter-operator protection agreement (`08-disruption.md` §5) — the
 commercial half of IRROPS option ③, and the half that has to exist first.

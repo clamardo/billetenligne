@@ -28,6 +28,7 @@ console:
     declare: "Report an incident"
     rescue: "Rescue coach"
     rebook: "Move passengers"
+    protect: "Ask another company"
   # The dispatcher's form: at a roadside, on a phone, on 2G, possibly in the
   # rain (08-disruption.md §2.1). Four large targets, a cause, and nothing
   # else required.
@@ -134,6 +135,37 @@ console:
       active: "In force"
       suspended: "Suspended"
       ended: "Ended"
+  # Asking another company for room (08-disruption.md §2.2, option ③).
+  # Nothing moves when it is sent: the request lands on their console and
+  # waits for a person. Said twice, because a dispatcher who believes their
+  # passengers are placed stops looking for a coach.
+  protectionAsk:
+    title: "Place {count} passenger(s) with another company"
+    none: "No company with an agreement in force has room on this road today."
+    seats: "{count} seats free"
+    covers: "{covered} of {total}"
+    note: "Note (optional)"
+    noteHint: "What their dispatcher will read."
+    waits: "Nothing moves until they answer. Keep looking for a coach."
+    back: "Back"
+    confirm: "Ask"
+  # The inbound queue (08-disruption.md §2.3). An agreement is read once a
+  # quarter; a request is somebody standing at a station right now.
+  request:
+    title: "Open requests"
+    theyAsked: "{name} is asking for {count} seat(s)."
+    weAsked: "You asked for {count} seat(s)."
+    awaitingUs: "Needs your answer"
+    awaitingThem: "Waiting"
+    coach: "Your departure"
+    seatsFree: "Seats free"
+    seatsValue: "{free} free · {asked} asked for"
+    rebill: "You will be paid"
+    note: "Note"
+    partial: "Only {covered} of {total}. The rest stay where they are."
+    movesNow: "Accepting moves the passengers to your company straight away, with new tickets."
+    accept: "Accept"
+    decline: "Decline"
   manifest:
     summary: "{sold} sold · {boarded} boarded · {capacity} seats"
     empty: "No passengers yet."
@@ -424,3 +456,7 @@ console:
     protection.resume: "Agreement with {a1} is in force again."
     protection.end: "Agreement with {a1} ended."
     protection.noCorridors: "Pick at least one road — an agreement covers journeys."
+    protection.asked: "Request sent to {a1} for {a2} passenger(s). Nothing moves until they answer."
+    protection.moved: "{a1} passenger(s) now travel with {a2}. New tickets sent."
+    protection.movedPartial: "{a1} of {a2} placed with {a3}. Find the others a coach."
+    protection.requestDeclined: "Request from {a1} declined. Nobody was moved."

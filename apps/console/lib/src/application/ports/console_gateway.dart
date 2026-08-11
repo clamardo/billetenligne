@@ -79,6 +79,34 @@ abstract interface class ConsoleGateway {
     required AgreementDecisionRequest request,
   });
 
+  /// Protection requests in either direction (`08-disruption.md` §2.3).
+  ///
+  /// One list, not an inbox and an outbox: the same row is what we are
+  /// waiting on and what they are waiting on.
+  Future<List<ProtectionRequestDto>> protectionRequests();
+
+  /// Ask another company for room on one of their coaches.
+  Future<ProtectionRequestDto> askForProtection(ProtectionRequestBody request);
+
+  /// `accept` or `decline`. Accepting moves the passengers in the same call.
+  Future<ProtectionRequestDto> decideProtectionRequest({
+    required String requestId,
+    required AgreementDecisionRequest request,
+  });
+
+  /// Everybody's departures on a road, for a local day — the public search,
+  /// asked from the console.
+  ///
+  /// The only place the console reads another company's timetable, and it
+  /// reads it exactly where a traveller would: a dispatcher looking for a
+  /// competitor with room is doing what any passenger with the app could do,
+  /// so there is nothing here to widen.
+  Future<List<DepartureSummaryDto>> tripsOn({
+    required String originCity,
+    required String destinationCity,
+    required DateTime date,
+  });
+
   Future<List<VehicleDto>> vehicles();
 
   Future<VehicleDto> saveVehicle({
