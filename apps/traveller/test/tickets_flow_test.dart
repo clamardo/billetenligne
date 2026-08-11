@@ -1642,6 +1642,73 @@ void main() {
       expect(gateway.changeCalls.last, 'options:BEL-live');
     });
 
+    test(
+      'the order they already hold is on the list they come back to',
+      () async {
+        final booking = await loaded();
+        await flow.openChange(booking);
+        await flow.orderChange('dep-later');
+        await flow.abandonChange();
+
+        // The screen the server draws after an abandoned payment carries the
+        // order — without it those seats are held for a quarter of an hour with
+        // nothing anywhere saying so.
+        gateway.changeResult = _withPending(gateway.changeResult!);
+        await flow.openChange(booking);
+
+        final step = flow.step as ChangingDeparture;
+        expect(step.options!.pending!.owed.minor, 2400);
+      },
+    );
+
+    test('cancelling it gives the seats back and re-reads the list', () async {
+      final booking = await loaded();
+      await flow.openChange(booking);
+      gateway.changeResult = _withPending(gateway.changeResult!);
+      await flow.openChange(booking);
+
+      await flow.cancelPendingChange();
+
+      // Re-read rather than edited in place: seats going back on sale change
+      // what every row on this screen says about room.
+      expect(gateway.changeCalls, contains('cancelOrder:BEL-live'));
+      expect(gateway.changeCalls.last, 'options:BEL-live');
+      final step = flow.step as ChangingDeparture;
+      expect(step.options!.pending, isNull);
+      expect(step.busy, isFalse);
+    });
+
+    test('with nothing waiting there is nothing to cancel', () async {
+      final booking = await loaded();
+      await flow.openChange(booking);
+
+      await flow.cancelPendingChange();
+
+      // The button is not drawn without an order, and the flow refuses the
+      // call anyway: a screen and a state that disagree is how a double tap
+      // releases somebody else's seats.
+      expect(gateway.changeCalls, isNot(contains('cancelOrder:BEL-live')));
+    });
+
+    test('a cancellation refused by a live prompt keeps the list', () async {
+      final booking = await loaded();
+      await flow.openChange(booking);
+      gateway.changeResult = _withPending(gateway.changeResult!);
+      await flow.openChange(booking);
+
+      gateway.cancelOrderFailure = const ServerRefused(
+        409,
+        ApiError(code: 'change.payment_in_flight'),
+      );
+      await flow.cancelPendingChange();
+
+      // Money is about to land on those seats. The refusal goes above the
+      // rows, and the answer is to wait a moment and look again.
+      final step = flow.step as ChangingDeparture;
+      expect(step.failure!.messageKey, contains('change.payment_in_flight'));
+      expect(step.options!.options, isNotEmpty);
+    });
+
     test('tapping before the rows arrive does nothing', () async {
       final booking = await loaded();
 
@@ -1659,6 +1726,7 @@ void main() {
       ChangeOptionsDto? options,
       List<String>? taps,
       List<String>? payTaps,
+      List<String>? cancelTaps,
     }) async {
       final catalog = await loadTestCatalog();
       tester.view.physicalSize = const Size(400, 2400);
@@ -1679,6 +1747,7 @@ void main() {
               options: options,
               onTake: (id) => taps?.add(id),
               onPay: (id) => payTaps?.add(id),
+              onCancelPending: () => cancelTaps?.add('cancel'),
               onClose: () {},
             ),
           ),
@@ -1691,6 +1760,7 @@ void main() {
       bool involuntary = false,
       String? refusalCode,
       Map<String, Object?> refusalParams = const {},
+      ChangeOrderDto? pending,
     }) => ChangeOptionsDto(
       bookingRef: 'BEL-live',
       originCity: 'Brazzaville',
@@ -1704,6 +1774,7 @@ void main() {
       involuntary: involuntary,
       refusalCode: refusalCode,
       refusalParams: refusalParams,
+      pending: pending,
     );
 
     ChangeOptionDto row({
@@ -1883,6 +1954,89 @@ void main() {
         findsOneWidget,
       );
     });
+
+    ChangeOrderDto held({int owed = 2400}) => ChangeOrderDto(
+      id: 'chg-1',
+      bookingId: 'bk-1',
+      bookingRef: 'BEL-live',
+      departureId: 'dep-later',
+      departsAt: now.add(const Duration(hours: 38)),
+      owed: Money(owed, Currency.xaf),
+      expiresAt: now.add(const Duration(minutes: 15)),
+      state: 'awaiting_payment',
+      seatLabels: const ['3C'],
+    );
+
+    testWidgets('a change already held is stated above the list', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        options: screen(
+          rows: [row(fee: 900, difference: 1500, owed: 2400)],
+          pending: held(),
+        ),
+      );
+
+      // Otherwise it is invisible: the seats are held for a quarter of an
+      // hour and the only ways out were to pay or to wait.
+      expect(find.text('Changement en attente de paiement'), findsOneWidget);
+      expect(find.textContaining('Reste à payer'), findsOneWidget);
+      // The deadline, because held seats with no stated end read as
+      // permanent.
+      expect(find.textContaining("Gardées jusqu'à"), findsOneWidget);
+    });
+
+    testWidgets('it offers exactly two ways out', (tester) async {
+      final pays = <String>[];
+      final cancels = <String>[];
+      await pump(
+        tester,
+        options: screen(rows: [row()], pending: held()),
+        payTaps: pays,
+        cancelTaps: cancels,
+      );
+
+      await tester.tap(find.widgetWithText(KButton, 'Payer'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(KButton, 'Annuler ce changement'));
+      await tester.pump();
+
+      // Pay it, or give it back. "Change to a different departure instead" is
+      // the list underneath, and spelling that out as a third button would be
+      // describing scrolling.
+      expect(pays, ['dep-later']);
+      expect(cancels, ['cancel']);
+    });
+
+    testWidgets('a closed window still lets them give the seats back', (
+      tester,
+    ) async {
+      final cancels = <String>[];
+      await pump(
+        tester,
+        options: screen(refusalCode: 'change.cutoff_passed', pending: held()),
+        cancelTaps: cancels,
+      );
+
+      // Nothing left to change to, and seats still held: cancelling is then
+      // the only move there is, so the card is drawn above the refusal
+      // rather than dropped with the rows.
+      expect(find.text('Changement en attente de paiement'), findsOneWidget);
+      await tester.tap(find.widgetWithText(KButton, 'Annuler ce changement'));
+      await tester.pump();
+      expect(cancels, ['cancel']);
+    });
+
+    testWidgets('no card at all when nothing is held', (tester) async {
+      await pump(tester, options: screen(rows: [row()]));
+
+      expect(find.text('Changement en attente de paiement'), findsNothing);
+      expect(
+        find.widgetWithText(KButton, 'Annuler ce changement'),
+        findsNothing,
+      );
+    });
   });
 
   group('the change receipt', () {
@@ -1920,3 +2074,31 @@ void main() {
     });
   });
 }
+
+/// The same screen with a change already holding seats on it — what the
+/// server draws for somebody who backed out of a PIN prompt.
+ChangeOptionsDto _withPending(ChangeOptionsDto screen) => ChangeOptionsDto(
+  bookingRef: screen.bookingRef,
+  originCity: screen.originCity,
+  destinationCity: screen.destinationCity,
+  seatsNeeded: screen.seatsNeeded,
+  currentDepartureId: screen.currentDepartureId,
+  currentDepartsAt: screen.currentDepartsAt,
+  paidFare: screen.paidFare,
+  options: screen.options,
+  policyLines: screen.policyLines,
+  involuntary: screen.involuntary,
+  pending: ChangeOrderDto(
+    id: 'chg-1',
+    bookingId: 'bk-1',
+    bookingRef: screen.bookingRef,
+    departureId: 'dep-later',
+    departsAt: DateTime.utc(2026, 8, 11, 14),
+    owed: Money(2400, Currency.xaf),
+    expiresAt: DateTime.utc(2026, 8, 11, 5, 15),
+    state: 'awaiting_payment',
+    fee: Money(900, Currency.xaf),
+    fareDifference: Money(1500, Currency.xaf),
+    seatLabels: const ['3C'],
+  ),
+);

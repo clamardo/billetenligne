@@ -468,6 +468,7 @@ class _FunnelState extends State<_Funnel> {
           failure: failure,
           onTake: widget.tickets.changeDeparture,
           onPay: widget.tickets.orderChange,
+          onCancelPending: widget.tickets.cancelPendingChange,
           onClose: widget.tickets.closeChoices,
         ),
 

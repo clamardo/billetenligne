@@ -234,6 +234,14 @@ travel:
     pay: "Pay {amount}"
     payAtAgency: "Payable at an agency"
     heldFor: "Seats held for {minutes} min while you pay."
+    # A change already waiting to be paid for. Above the list: without this
+    # card the seats stay held for a quarter of an hour with nothing saying
+    # so, and the only way out was to wait.
+    pendingTitle: "Change waiting to be paid for"
+    pending: "Seats held on the {time} departure on {date}. Still to pay: {amount}."
+    pendingUntil: "Held until {time}."
+    pendingPay: "Pay"
+    pendingCancel: "Cancel this change"
     terms: "Change terms"
     none: "No other departure from this operator on this route in the next seven days."
     confirm: "Take this departure"

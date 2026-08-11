@@ -21,12 +21,19 @@ import '../widgets/formatting.dart';
 ///   * **A cheaper departure gives nothing back, and the screen says so
 ///     before anybody taps.** Discovering it afterwards is the version of
 ///     this that generates a complaint.
+///
+/// And one thing that is not about the list: a change of theirs that is
+/// already holding seats is drawn **above** it, with what is owed, when it
+/// runs out, and a way to give it back. Somebody who backed out of a PIN
+/// prompt otherwise returns here to a quarter of an hour of held seats with
+/// nothing anywhere saying so, and the only ways out were to pay or to wait.
 final class ChangeScreen extends StatelessWidget {
   const ChangeScreen({
     required this.booking,
     required this.options,
     required this.onTake,
     required this.onPay,
+    required this.onCancelPending,
     required this.onClose,
     this.busy = false,
     this.failure,
@@ -44,6 +51,10 @@ final class ChangeScreen extends StatelessWidget {
   /// funnel — which is why it is a different callback from [onTake] even
   /// though the button beside them looks the same.
   final void Function(String departureId) onPay;
+
+  /// Gives the held seats back. Distinct from backing out of paying, which
+  /// leaves the order alone because people come straight back.
+  final VoidCallback onCancelPending;
 
   final VoidCallback onClose;
   final bool busy;
@@ -95,6 +106,17 @@ final class ChangeScreen extends StatelessWidget {
                         context.t(failure!.messageKey),
                         style: kilo.text.body,
                       ),
+                    ),
+                    SizedBox(height: kilo.space.s3),
+                  ],
+
+                  if (screen.pending case final order?) ...[
+                    _Pending(
+                      order: order,
+                      locale: locale,
+                      busy: busy,
+                      onPay: () => onPay(order.departureId),
+                      onCancel: onCancelPending,
                     ),
                     SizedBox(height: kilo.space.s3),
                   ],
@@ -163,6 +185,81 @@ final class ChangeScreen extends StatelessWidget {
                   ],
                 ],
               ),
+      ),
+    );
+  }
+}
+
+/// The change they already hold seats for.
+///
+/// Two buttons and no third: pay it, or give it back. "Change to a different
+/// departure instead" is the list underneath, and a screen that spelled that
+/// out as a third option would be describing scrolling.
+final class _Pending extends StatelessWidget {
+  const _Pending({
+    required this.order,
+    required this.locale,
+    required this.busy,
+    required this.onPay,
+    required this.onCancel,
+  });
+
+  final ChangeOrderDto order;
+  final String locale;
+  final bool busy;
+  final VoidCallback onPay;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+
+    return KCard(
+      tone: kilo.color.warningSoft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(context.t('travel.change.pendingTitle'), style: kilo.text.label),
+          SizedBox(height: kilo.space.s1),
+          Text(
+            context.t('travel.change.pending', {
+              'time': Format.time(order.departsAt),
+              'date': Format.shortDate(order.departsAt, locale: locale),
+              'amount': order.owed.format(locale: locale),
+            }),
+            style: kilo.text.body,
+          ),
+          SizedBox(height: kilo.space.s1),
+          // The deadline, because held seats with no stated end read as
+          // permanent — and these are gone in a quarter of an hour.
+          Text(
+            context.t('travel.change.pendingUntil', {
+              'time': Format.time(order.expiresAt),
+            }),
+            style: kilo.text.caption.copyWith(
+              color: kilo.color.contentSecondary,
+            ),
+          ),
+          SizedBox(height: kilo.space.s3),
+          Row(
+            children: [
+              Expanded(
+                child: KButton(
+                  label: context.t('travel.change.pendingPay'),
+                  onPressed: busy ? null : onPay,
+                ),
+              ),
+              SizedBox(width: kilo.space.s2),
+              Expanded(
+                child: KButton(
+                  label: context.t('travel.change.pendingCancel'),
+                  tone: KButtonTone.secondary,
+                  onPressed: busy ? null : onCancel,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

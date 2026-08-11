@@ -675,6 +675,14 @@ final class DemoTravelGateway implements TravelGateway {
     );
   }
 
+  @override
+  Future<void> cancelChangeOrder(String bookingRef) async {
+    // Nothing to release: the demo never owes a difference, so it never has
+    // an order waiting. Answering rather than throwing is the honest shape —
+    // the server's own answer to a booking with nothing waiting is a 404 the
+    // screen already treats as "there is nothing to give back".
+  }
+
   BookingDto _byRef(String ref) => [
     if (_booking != null) _booking!,
     _disruptedTrip,

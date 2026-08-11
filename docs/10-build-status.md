@@ -102,18 +102,17 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Where a coach leaves from** | ✅ done | `06-fleet-and-routes.md`. A departure names the terminal it boards at and the one it arrives at; the console keeps the catalogue on the same screen as the roads. **A station belongs to exactly one operator** — the nullable `operator_id` made a shared yard invisible to every company sharing it, since the tenant policy is false for NULL. **A coach cannot leave from a rival's terminal**, by composite FK rather than a WHERE clause. The yard is captured onto the departure like the seat layout, a closed yard is deactivated rather than deleted, and the search row names it only when the list offers a choice. 2 Postgres · 3 contract · 4 console · 1 traveller · 1 design test, one migration, 2 schema guarantees |
 | **The passenger who missed their coach** | ✅ done | `06-fleet-and-routes.md`, and the transfer the stations slice made tellable. Two numbers on the refund policy — how long a missed ticket keeps value, what the transfer costs — stamped by the same `(id, version)` pair as the refund bands. **Both default to zero, which means not offered**: honouring a missed ticket is a commercial promise no platform should make on a company's behalf. **The list crosses routes, not companies**, matched on the city pair, so the 09:30 from the other terminal is offered and a rival's coach never is. A **counter screen by design** — the quote is re-taken under the lock, a paid transfer names the till it was paid into, a free one names none. 7 domain · 7 contract · 7 Postgres · 8 smoke · 5 console tests, one migration, 2 schema guarantees |
 
-Eight items of it are built, out of order and deliberately. The follower page is
+Nine items of it are built, out of order and deliberately. The follower page is
 what makes a disruption reach the person who would otherwise phone the agency,
 and that machinery shipped in Phase 2. Self-service cancellation is the other
 half of the refund path the counter already had, and every piece it needed —
 policies as data, the ledger, the claim code, the outbox — was already there;
 leaving it out would have meant a system that can refund a booking only when
 somebody walks into an office. §8 is now built on both sides and both ways of paying: cancel, reschedule, and
-the difference collected in the app. What is left of it is small and named — a
-traveller cannot cancel a change order themselves, they wait the quarter of an
-hour out. The funnel is on a back-office screen, a departure says which yard
-it boards at, and a passenger who missed one can be moved onto another at a
-counter. Everything else in Phase 3 — the stores, offline tickets on device,
+the difference collected in the app, with the order the traveller can now give
+back rather than wait out. **§8 has nothing left named against it.** The funnel
+is on a back-office screen, a departure says which yard it boards at, and a
+passenger who missed one can be moved onto another at a counter. Everything else in Phase 3 — the stores, offline tickets on device,
 card via PSP — is not started. `09-roadmap.md` has the remaining
 Phase 1 work in **dependency order**. With both consoles rendered, the vitrine complete, TOTP in front of
 both back offices, object storage built, the section builder shipped and
@@ -254,21 +253,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 485 tests
+         packages/bel_contracts packages/bel_crypto     # 487 tests
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 214 tests
 cd packages/bel_design     && flutter test  # 67 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
-cd apps/traveller && flutter test        # 159 app tests
+cd apps/traveller && flutter test        # 167 app tests
 cd apps/console   && flutter test        # 100 console tests
 cd apps/admin     && flutter test        # 28 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
 dart run tool/check_layers.dart          # the onion rule, 354 files
 ./infra/migrations/check.sh              # 34 schema guarantees
-./tool/integration.sh                    # 337 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 303 checks, incl. the Dart client
+./tool/integration.sh                    # 343 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 307 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -277,8 +276,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,119 tests in total**, plus 303 smoke checks, 34 executed schema guarantees,
-337 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,129 tests in total**, plus 307 smoke checks, 34 executed schema guarantees,
+343 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -297,6 +296,44 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+**The change they can give back** — the last named gap in `01-feature-spec.md`
+§8.
+
+A change that owes money holds seats for a quarter of an hour while the
+traveller pays. If they back out of the PIN prompt, the app returns them to
+the priced list — and until this push that list said **nothing at all** about
+the order still holding their seats. The only ways out were to pay it or to
+wait it out, and neither is a thing anybody would guess.
+
+**The order is on the screen now.** What is held, what is owed, when it runs
+out, and two buttons: pay it, or give it back. There is no third button for
+"change to a different departure instead" — that is the list underneath, and
+spelling it out would be describing scrolling.
+
+**Cancelling is a different verb from abandoning, deliberately.** Backing out
+of a payment leaves the order alone, because people come straight back and
+those seats are theirs for the window they were promised. Cancelling is the
+traveller saying they no longer want the change, and the seats go back on sale
+at once — the same argument that made `DELETE /public/v1/holds/{id}` worth
+building rather than leaving to the sweeper: on a coach that is nearly full, a
+quarter of an hour is a real sale.
+
+**A payment in flight refuses it**, with the same refusal reserving a second
+order gets and for the same reason: releasing those seats a second before a
+capture lands strands money nobody can put anywhere. Nothing waiting is a 404
+rather than a cheerful 204 — the sweeper may have got there first, and a
+traveller told "done" about seats they no longer hold will believe it.
+
+What it cost: 6 tests against real Postgres, 2 contract round-trips, 4 smoke
+checks, 8 traveller-app tests, one verb on an existing route, one port method,
+one card. No migration: `booking_changes` already had the `cancelled` state
+and the release path already existed — what was missing was a way for the
+person whose seats they are to reach it.
+
+---
+
+## What the missed-departure push changed, and what it cost
 
 **The passenger who missed their coach** — the transfer the stations slice
 made tellable.
@@ -546,10 +583,12 @@ window — people come straight back.
 
 What it cost: 12 tests against real Postgres, 3 in the worker's suite, 5
 traveller-app tests, 3 contract round-trips, 7 smoke checks, one migration and
-one executed schema guarantee. What it did not build: a way for the traveller
-to cancel an order before it lapses — the seats are theirs for a quarter of an
-hour either way, and the button would mostly be pressed by people who are
-about to press it again.
+one executed schema guarantee. What it did not build, at the time: a way for
+the traveller to cancel an order before it lapses. The argument then was that
+the seats are theirs for a quarter of an hour either way — which missed that
+the order is **invisible** on the screen they come back to, and a held seat
+nobody can see is not a promise, it is a puzzle. Built since; see the top of
+this document.
 
 ---
 

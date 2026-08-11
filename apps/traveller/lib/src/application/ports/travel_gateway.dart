@@ -115,6 +115,14 @@ abstract interface class TravelGateway {
     required String departureId,
   });
 
+  /// Gives the held seats back before the window runs out.
+  ///
+  /// Distinct from backing out of a PIN prompt, which leaves the order alone:
+  /// somebody who abandons a payment often comes straight back, and those
+  /// seats are theirs for the length of the window. This is the traveller
+  /// saying they no longer want the change at all.
+  Future<void> cancelChangeOrder(String bookingRef);
+
   // ── Paying ────────────────────────────────────────────────────────────────
 
   /// How this booking can be paid, and where the money goes.

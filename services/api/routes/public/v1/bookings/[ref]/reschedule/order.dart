@@ -7,8 +7,10 @@ import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:dart_frog/dart_frog.dart';
 
-/// `POST /public/v1/bookings/<ref>/reschedule/order` — hold a change and say
-/// what it costs (§8.1).
+/// `POST   /public/v1/bookings/<ref>/reschedule/order` — hold a change and
+/// say what it costs (§8.1).
+/// `DELETE /public/v1/bookings/<ref>/reschedule/order` — give the seats back
+/// before the window runs out.
 ///
 /// The half of §8.1 that carries money. The plain POST next door moves a
 /// booking that owes nothing; this one takes the seats on the target
@@ -20,8 +22,16 @@ import 'package:dart_frog/dart_frog.dart';
 /// A change that turns out to owe nothing at the lock comes back **already
 /// applied**. The price fell between the list and the tap; refusing somebody
 /// for that would be an insult with a 409 attached.
+///
+/// The DELETE is there for the same reason `DELETE /public/v1/holds/{id}` is:
+/// seats given back the moment somebody changes their mind are seats on sale
+/// a quarter of an hour sooner, and on a coach that is nearly full that
+/// quarter of an hour is a real sale. No idempotency key — cancelling twice
+/// is cancelling once — and a **payment already in flight refuses it**, since
+/// releasing those seats a second before a capture lands strands money.
 Future<Response> onRequest(RequestContext context, String ref) async {
-  if (context.request.method != HttpMethod.post) {
+  if (context.request.method != HttpMethod.post &&
+      context.request.method != HttpMethod.delete) {
     return Response(statusCode: HttpStatus.methodNotAllowed);
   }
 
@@ -39,6 +49,38 @@ Future<Response> onRequest(RequestContext context, String ref) async {
 
   final parsed = BookingRef.parse(ref);
   if (parsed.valueOrNull == null) return _notFound(trace);
+
+  if (context.request.method == HttpMethod.delete) {
+    final cancelled = await services.reschedules.cancelChange(
+      bookingRef: parsed.valueOrNull!.value,
+      userId: principal.userId,
+    );
+    // Not theirs, and one that was never issued: the same answer, so this is
+    // not a way to learn which references exist.
+    if (cancelled == null) return _notFound(trace);
+
+    if (cancelled.refusal case final refusal?) {
+      return Response.json(
+        statusCode: HttpStatus.conflict,
+        body: ApiError(
+          code: refusal.code,
+          params: refusal.params,
+          traceId: trace,
+        ).toJson(),
+        headers: {BelHeaders.traceId: trace},
+      );
+    }
+
+    // Nothing waiting is a 404 rather than a 204: the sweeper may have got
+    // there first, and a traveller who is told "done" about seats they no
+    // longer hold will believe it.
+    return Response(
+      statusCode: cancelled.released
+          ? HttpStatus.noContent
+          : HttpStatus.notFound,
+      headers: {BelHeaders.traceId: trace},
+    );
+  }
 
   final body = await context.request.json() as Map<String, Object?>;
   final departureId = body['departureId'];

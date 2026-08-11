@@ -50,6 +50,7 @@ final class ChangeOptions {
     required this.options,
     this.involuntary = false,
     this.refusal,
+    this.pending,
   });
 
   final String bookingRef;
@@ -76,6 +77,16 @@ final class ChangeOptions {
   /// Set when no change is possible at all — the coach has left, or it is
   /// inside the cutoff. The screen renders the reason and no rows.
   final ChangeRefusal? refusal;
+
+  /// A change of theirs that is already holding seats and waiting to be paid
+  /// for.
+  ///
+  /// On the screen because it is otherwise **invisible**: somebody who backs
+  /// out of a PIN prompt comes back to this list with fifteen minutes of held
+  /// seats and nothing anywhere saying so, and the only ways out were to pay
+  /// or to wait. It is the same reason a reservation shows its payment code
+  /// rather than leaving somebody to remember it.
+  final ChangeOrder? pending;
 }
 
 /// What happened when they tapped.
@@ -142,13 +153,6 @@ final class ChangeOrder {
   bool get isApplied => state == 'applied';
 }
 
-/// The traveller moving themselves to another departure (§8.1).
-///
-/// Distinct from `PassengerChoices`, which is the same movement offered after
-/// a breakdown: that one is an entitlement the operator opened, priced at
-/// nothing and bounded by a deadline. This one is a purchase decision the
-/// traveller makes unprompted, priced by the terms they bought under, and
-/// available on any day nothing has gone wrong.
 /// One later coach a missed passenger could be put on, priced.
 ///
 /// The same shape as [ChangeOption] with one addition that is the point of
@@ -251,6 +255,13 @@ final class MissedTransfer {
   final String? boardingNotes;
 }
 
+/// The traveller moving themselves to another departure (§8.1).
+///
+/// Distinct from `PassengerChoices`, which is the same movement offered after
+/// a breakdown: that one is an entitlement the operator opened, priced at
+/// nothing and bounded by a deadline. This one is a purchase decision the
+/// traveller makes unprompted, priced by the terms they bought under, and
+/// available on any day nothing has gone wrong.
 abstract interface class RescheduleDesk {
   /// The screen. Null when the reference is not this traveller's — which is
   /// what a reference that does not exist looks like too.
@@ -291,6 +302,23 @@ abstract interface class RescheduleDesk {
   /// One order, as its traveller sees it. Null when it is not theirs.
   Future<ChangeOrder?> orderById({
     required String changeId,
+    required String userId,
+  });
+
+  /// Gives the held seats back before the window runs out.
+  ///
+  /// Worth building rather than leaving to the sweeper, for the same reason
+  /// releasing a hold is: seats freed the moment somebody changes their mind
+  /// are seats on sale a quarter of an hour sooner, and on a coach that is
+  /// nearly full that quarter of an hour is a real sale.
+  ///
+  /// Null when the reference is not theirs — which is what a reference that
+  /// was never issued looks like too. `released` is false with no refusal
+  /// when there was nothing waiting: cancelling twice is cancelling once.
+  /// A **payment already in flight refuses**, because releasing those seats a
+  /// second before a capture lands strands money nobody can put anywhere.
+  Future<({bool released, ChangeRefusal? refusal})?> cancelChange({
+    required String bookingRef,
     required String userId,
   });
 
@@ -375,6 +403,12 @@ final class NoReschedules implements RescheduleDesk {
   @override
   Future<ChangeOrder?> orderById({
     required String changeId,
+    required String userId,
+  }) async => null;
+
+  @override
+  Future<({bool released, ChangeRefusal? refusal})?> cancelChange({
+    required String bookingRef,
     required String userId,
   }) async => null;
 

@@ -95,6 +95,31 @@ final class PostgresReschedules implements RescheduleDesk {
     return rows.isEmpty ? null : rows.first.toColumnMap();
   }
 
+  /// The change this booking is already holding seats for, if any.
+  ///
+  /// Read under whatever scope the caller is in — the traveller's own, on the
+  /// options path — so the row policy decides what is visible rather than a
+  /// WHERE clause somebody could forget to write.
+  Future<ChangeOrder?> _openOrder(TxSession tx, String bookingId) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT c.id::text AS id, c.booking_id::text AS booking_id, b.ref,
+               c.to_departure_id::text AS to_departure_id, c.seat_labels,
+               c.fee_minor, c.difference_minor, c.owed_minor,
+               c.currency::text AS currency, c.state::text AS state,
+               c.expires_at, d.departs_at
+          FROM booking_changes c
+          JOIN bookings b ON b.id = c.booking_id
+          JOIN departures d ON d.id = c.to_departure_id
+         WHERE c.booking_id = @booking AND c.state = 'awaiting_payment'
+         ORDER BY c.created_at DESC
+         LIMIT 1
+      '''),
+      parameters: {'booking': TypedValue(Type.uuid, bookingId)},
+    );
+    return rows.isEmpty ? null : _orderFrom(rows.first.toColumnMap());
+  }
+
   static ChangePolicy _policyFrom(Map<String, Object?> row) => ChangePolicy(
     // D-08's own numbers for a booking sold before the operator wrote any
     // terms. Not a fallback picked here: the column defaults are the same
@@ -116,6 +141,12 @@ final class PostgresReschedules implements RescheduleDesk {
     final seatsNeeded = (row['seat_count'] as int?) ?? 1;
     final involuntary = row['involuntary_change'] as bool? ?? false;
 
+    // Read before anything is priced, and carried onto every answer below
+    // including the refusals: an order that is holding seats has to be
+    // visible even on the day the cutoff has closed and there is nothing
+    // left to change to, because cancelling it is then the only move left.
+    final pending = await _openOrder(tx, row['id'].toString());
+
     ChangeOptions shell({
       List<ChangeOption> options = const [],
       ChangeRefusal? refusal,
@@ -131,6 +162,7 @@ final class PostgresReschedules implements RescheduleDesk {
       options: options,
       involuntary: involuntary,
       refusal: refusal,
+      pending: pending,
     );
 
     // A booking that is not paid for has nothing to move. It is cancelled and
@@ -443,6 +475,51 @@ final class PostgresReschedules implements RescheduleDesk {
     );
     return rows.isEmpty ? null : _orderFrom(rows.first.toColumnMap());
   });
+
+  @override
+  Future<({bool released, ChangeRefusal? refusal})?> cancelChange({
+    required String bookingRef,
+    required String userId,
+  }) async {
+    // As themselves first, exactly as `change` and `reserveChange` do: a
+    // stranger's reference and one that was never issued answer identically.
+    final seen = await _db.transaction(DbScope.traveller(userId), (tx) async {
+      final row = await _booking(tx, bookingRef);
+      return row?['id'].toString();
+    });
+    if (seen == null) return null;
+
+    return _db.transaction(DbScope.platform(userId), (tx) async {
+      // Locked, because the row this reads is the one the settlement path
+      // writes: a capture landing between the SELECT and the UPDATE would
+      // apply a change whose seats this call had just given away.
+      final open = await tx.execute(
+        Sql.named('''
+          SELECT c.id::text AS id,
+                 EXISTS (SELECT 1 FROM payment_intents i
+                          WHERE i.change_id = c.id
+                            AND i.state IN ('created','pending','authorized',
+                                            'indeterminate'))
+                   AS in_flight
+            FROM booking_changes c
+           WHERE c.booking_id = @booking AND c.state = 'awaiting_payment'
+             FOR UPDATE OF c
+        '''),
+        parameters: {'booking': TypedValue(Type.uuid, seen)},
+      );
+      // Nothing waiting. Not an error: the sweeper may have got there first,
+      // or they tapped twice, and cancelling twice is cancelling once.
+      if (open.isEmpty) return (released: false, refusal: null);
+
+      final existing = open.first.toColumnMap();
+      if (existing['in_flight'] as bool? ?? false) {
+        return (released: false, refusal: const ChangePaymentInFlight());
+      }
+
+      await _releaseOrder(tx, existing['id']! as String);
+      return (released: true, refusal: null);
+    });
+  }
 
   @override
   Future<ChangeApplied?> applyPaidChange({

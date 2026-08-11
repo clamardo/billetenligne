@@ -239,6 +239,14 @@ travel:
     pay: "Payer {amount}"
     payAtAgency: "À régler en agence"
     heldFor: "Places gardées {minutes} min, le temps du paiement."
+    # Un changement déjà en attente de paiement. Affiché au-dessus de la
+    # liste : sans cette carte, les places restent gardées un quart d'heure
+    # sans que rien ne le dise, et la seule sortie était d'attendre.
+    pendingTitle: "Changement en attente de paiement"
+    pending: "Places gardées sur le départ de {time}, le {date}. Reste à payer : {amount}."
+    pendingUntil: "Gardées jusqu'à {time}."
+    pendingPay: "Payer"
+    pendingCancel: "Annuler ce changement"
     terms: "Conditions de changement"
     none: "Aucun autre départ de cette compagnie sur cette ligne dans les sept prochains jours."
     confirm: "Prendre ce départ"

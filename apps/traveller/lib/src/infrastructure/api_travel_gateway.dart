@@ -99,6 +99,10 @@ final class ApiTravelGateway implements TravelGateway {
   }) => _client.orderChange(bookingRef: bookingRef, departureId: departureId);
 
   @override
+  Future<void> cancelChangeOrder(String bookingRef) =>
+      _client.cancelChangeOrder(bookingRef);
+
+  @override
   Future<
     ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
   >

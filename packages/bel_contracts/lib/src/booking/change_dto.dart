@@ -95,6 +95,7 @@ final class ChangeOptionsDto {
     this.involuntary = false,
     this.refusalCode,
     this.refusalParams = const {},
+    this.pending,
   });
 
   final String bookingRef;
@@ -125,6 +126,12 @@ final class ChangeOptionsDto {
   final String? refusalCode;
   final Map<String, Object?> refusalParams;
 
+  /// A change of theirs that already holds seats and is waiting to be paid
+  /// for. Absent nearly always, and on the screen when it is not: somebody
+  /// who backed out of a PIN prompt otherwise comes back to this list with a
+  /// quarter of an hour of held seats and nothing anywhere saying so.
+  final ChangeOrderDto? pending;
+
   bool get isOpen => refusalCode == null;
 
   Map<String, Object?> toJson() => Wire.compact({
@@ -140,6 +147,7 @@ final class ChangeOptionsDto {
     'involuntary': involuntary,
     'refusalCode': refusalCode,
     'refusalParams': refusalParams.isEmpty ? null : refusalParams,
+    'pending': pending?.toJson(),
   });
 
   factory ChangeOptionsDto.fromJson(
@@ -173,6 +181,11 @@ final class ChangeOptionsDto {
     refusalCode: json['refusalCode'] as String?,
     refusalParams:
         (json['refusalParams'] as Map?)?.cast<String, Object?>() ?? const {},
+    pending: json['pending'] == null
+        ? null
+        : ChangeOrderDto.fromJson(
+            (json['pending']! as Map).cast<String, Object?>(),
+          ),
   );
 }
 

@@ -147,7 +147,25 @@ Map<String, Object?> _optionsJson(ChangeOptions options) => ChangeOptionsDto(
   involuntary: options.involuntary,
   refusalCode: options.refusal?.code,
   refusalParams: options.refusal?.params ?? const {},
+  pending: options.pending == null ? null : _orderDto(options.pending!),
 ).toJson();
+
+/// One order on the wire. Shared with the order route next door so the shape
+/// a traveller sees on the list and the shape they see after tapping cannot
+/// drift apart.
+ChangeOrderDto _orderDto(ChangeOrder order) => ChangeOrderDto(
+  id: order.id,
+  bookingId: order.bookingId,
+  bookingRef: order.bookingRef,
+  departureId: order.toDepartureId,
+  departsAt: order.departsAt,
+  owed: order.owed,
+  expiresAt: order.expiresAt,
+  state: order.state,
+  fee: order.fee,
+  fareDifference: order.fareDifference,
+  seatLabels: order.seatLabels,
+);
 
 Response _notFound(String trace) => Response.json(
   statusCode: HttpStatus.notFound,

@@ -1080,6 +1080,22 @@ check "a request with no departure is a 400, naming the field" "departureId" \
      | grep -o 'departureId' | head -1)"
 check "a malformed reference is refused the same way" "404" \
   "$(status -H "$AUTH" "$BASE/public/v1/bookings/not-a-ref/reschedule")"
+# Giving the seats back before the window runs out. Idempotent like
+# releasing a hold, so no key — and the same 404 for a booking that is not
+# theirs, because this must not become a way to free other people's seats.
+check "an anonymous caller cannot cancel a change" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+     "$BASE/public/v1/bookings/BEL-ABC123/reschedule/order")"
+check "a booking that is not theirs is not there" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+     "$BASE/public/v1/bookings/BEL-ABC123/reschedule/order" -H "$AUTH")"
+check "a malformed reference is refused the same way" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+     "$BASE/public/v1/bookings/not-a-ref/reschedule/order" -H "$AUTH")"
+check "there is no way to PUT an order" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+     "$BASE/public/v1/bookings/BEL-ABC123/reschedule/order" -H "$AUTH")"
+
 check "there is no way to DELETE a departure" "405" \
   "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
      "$BASE/public/v1/bookings/BEL-ABC123/reschedule" -H "$AUTH")"

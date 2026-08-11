@@ -254,6 +254,17 @@ final class _ScriptedGateway implements TravelGateway {
     );
   }
 
+  ApiFailure? cancelOrderFailure;
+
+  @override
+  Future<void> cancelChangeOrder(String bookingRef) async {
+    changeCalls.add('cancelOrder:$bookingRef');
+    if (cancelOrderFailure != null) throw cancelOrderFailure!;
+    // The seats are back on sale, so the next read of the screen is a
+    // different screen — which is exactly what the flow re-reads for.
+    changeResult = null;
+  }
+
   // ── Sharing a trip ────────────────────────────────────────────────────────
 
   /// The link, as the server would answer. Settable, because "already shared,

@@ -553,6 +553,41 @@ final class TicketsFlow {
     await openChange(current.booking);
   }
 
+  /// Gives the held seats back, without waiting for the window to run out.
+  ///
+  /// The other half of [abandonChange], and deliberately a separate verb.
+  /// Backing out of a PIN prompt leaves the order alone — people come
+  /// straight back — while this is the traveller saying they no longer want
+  /// the change at all, and the seats go on sale at once rather than a
+  /// quarter of an hour later.
+  ///
+  /// A refusal is shown above the list rather than instead of it: the one
+  /// that happens in practice is a payment already in flight, and the answer
+  /// to it is to wait a moment and look again.
+  Future<void> cancelPendingChange() async {
+    final current = _step;
+    if (current is! ChangingDeparture || current.busy) return;
+    if (current.options?.pending == null) return;
+
+    _emit(
+      ChangingDeparture(
+        booking: current.booking,
+        options: current.options,
+        busy: true,
+      ),
+    );
+
+    try {
+      await _gateway.cancelChangeOrder(current.booking.ref);
+      // Re-read rather than edited in place: the seats going back on sale
+      // changes what every row on this screen says about room.
+      final refreshed = await _gateway.changeOptions(current.booking.ref);
+      _emit(ChangingDeparture(booking: current.booking, options: refreshed));
+    } on ApiFailure catch (failure) {
+      await _refuseChange(current.booking, failure);
+    }
+  }
+
   /// Takes one. The movement happens server-side inside this call.
   Future<void> changeDeparture(String departureId) async {
     final current = _step;

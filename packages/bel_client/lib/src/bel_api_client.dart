@@ -329,6 +329,17 @@ final class BelApiClient {
     }),
   );
 
+  /// Gives the held seats back before the window runs out.
+  ///
+  /// Idempotent for the same reason releasing a hold is, so no key is
+  /// required. A payment already in flight refuses with a 409: releasing
+  /// those seats a second before a capture lands strands money.
+  Future<void> cancelChangeOrder(String bookingRef) => _send(
+    'DELETE',
+    '/public/v1/bookings/$bookingRef/reschedule/order',
+    idempotent: true,
+  );
+
   /// How this booking can be paid, and where the money goes.
   ///
   /// Server-driven: a rail appears only if this deployment can reach it AND

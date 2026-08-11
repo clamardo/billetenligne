@@ -1008,6 +1008,56 @@ void main() {
       ).toJson();
       expect(plain.containsKey('changeId'), isFalse);
     });
+
+    test('the list carries the order the traveller already holds', () {
+      final screen = ChangeOptionsDto(
+        bookingRef: 'BEL-7QK4M2',
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        seatsNeeded: 2,
+        currentDepartureId: 'dep-1',
+        currentDepartsAt: DateTime.utc(2026, 8, 12, 5),
+        paidFare: const Money(9000, Currency.xaf),
+        options: const [],
+        pending: ChangeOrderDto(
+          id: 'chg-1',
+          bookingId: 'bk-1',
+          bookingRef: 'BEL-7QK4M2',
+          departureId: 'dep-2',
+          departsAt: DateTime.utc(2026, 8, 12, 14),
+          owed: const Money(2400, Currency.xaf),
+          expiresAt: DateTime.utc(2026, 8, 11, 6, 15),
+          state: 'awaiting_payment',
+          seatLabels: const ['5A', '5B'],
+        ),
+      );
+
+      final back = ChangeOptionsDto.fromJson(
+        jsonDecode(jsonEncode(screen.toJson())) as Map<String, Object?>,
+      );
+
+      expect(back.pending!.id, 'chg-1');
+      expect(back.pending!.owed, const Money.xaf(2400));
+      expect(back.pending!.isAwaitingPayment, isTrue);
+    });
+
+    test('and says nothing at all when there is none', () {
+      final screen = ChangeOptionsDto(
+        bookingRef: 'BEL-7QK4M2',
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        seatsNeeded: 1,
+        currentDepartureId: 'dep-1',
+        currentDepartsAt: DateTime.utc(2026, 8, 12, 5),
+        paidFare: const Money(9000, Currency.xaf),
+        options: const [],
+      );
+
+      // Absent rather than null: nearly every one of these screens has no
+      // order behind it, and `Wire.compact` keeps the payload small.
+      expect(screen.toJson().containsKey('pending'), isFalse);
+      expect(ChangeOptionsDto.fromJson(screen.toJson()).pending, isNull);
+    });
   });
 
   group('the terms an operator writes', () {

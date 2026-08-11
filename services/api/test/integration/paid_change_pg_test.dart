@@ -315,6 +315,156 @@ void main() {
     });
   });
 
+  group('changing their mind', () {
+    test('the order is on the screen they come back to', () async {
+      await sellUnder(ChangePolicy.standard);
+      final trip = await sold();
+
+      final order = (await desk.reserveChange(
+        bookingRef: trip.ref,
+        userId: trip.userId,
+        toDepartureId: trip.target,
+        now: now,
+      ))!.order!;
+
+      final screen = await desk.options(
+        bookingRef: trip.ref,
+        userId: trip.userId,
+        now: now,
+      );
+
+      // Without this the seats are held for a quarter of an hour with
+      // nothing anywhere saying so, and the only ways out were to pay or to
+      // wait.
+      expect(screen!.pending!.id, order.id);
+      expect(screen.pending!.owed, order.owed);
+      expect(screen.pending!.toDepartureId, trip.target);
+    });
+
+    test('cancelling puts the seats back on sale at once', () async {
+      await sellUnder(ChangePolicy.standard);
+      final trip = await sold();
+
+      final order = (await desk.reserveChange(
+        bookingRef: trip.ref,
+        userId: trip.userId,
+        toDepartureId: trip.target,
+        now: now,
+      ))!.order!;
+      expect(await fixture.seatStateOn(trip.target, '5A'), 'held');
+
+      final cancelled = await desk.cancelChange(
+        bookingRef: trip.ref,
+        userId: trip.userId,
+      );
+
+      expect(cancelled!.released, isTrue);
+      expect(cancelled.refusal, isNull);
+      expect(await fixture.seatStateOn(trip.target, '5A'), 'available');
+      expect((await fixture.changeOrder(order.id))!['state'], 'cancelled');
+      // The booking never moved, which is the whole point of an order.
+      expect(await fixture.departureOf(trip.id), trip.from);
+    });
+
+    test('the screen forgets it afterwards', () async {
+      await sellUnder(ChangePolicy.standard);
+      final trip = await sold();
+
+      await desk.reserveChange(
+        bookingRef: trip.ref,
+        userId: trip.userId,
+        toDepartureId: trip.target,
+        now: now,
+      );
+      await desk.cancelChange(bookingRef: trip.ref, userId: trip.userId);
+
+      final screen = await desk.options(
+        bookingRef: trip.ref,
+        userId: trip.userId,
+        now: now,
+      );
+      expect(screen!.pending, isNull);
+    });
+
+    test('cancelling twice is cancelling once', () async {
+      await sellUnder(ChangePolicy.standard);
+      final trip = await sold();
+
+      await desk.reserveChange(
+        bookingRef: trip.ref,
+        userId: trip.userId,
+        toDepartureId: trip.target,
+        now: now,
+      );
+      await desk.cancelChange(bookingRef: trip.ref, userId: trip.userId);
+
+      final again = await desk.cancelChange(
+        bookingRef: trip.ref,
+        userId: trip.userId,
+      );
+
+      // Nothing waiting, and no error: the sweeper may have got there first,
+      // or they tapped twice on a connection that dropped.
+      expect(again!.released, isFalse);
+      expect(again.refusal, isNull);
+    });
+
+    test('a prompt in flight refuses the cancellation', () async {
+      await sellUnder(ChangePolicy.standard);
+      final trip = await sold();
+
+      final order = (await desk.reserveChange(
+        bookingRef: trip.ref,
+        userId: trip.userId,
+        toDepartureId: trip.target,
+        now: now,
+      ))!.order!;
+
+      await pay.start(
+        bookingId: trip.id,
+        userId: trip.userId,
+        railId: railId,
+        payerMsisdn: payer,
+        accountMsisdn: payer,
+        idempotencyKey: key(),
+        changeId: order.id,
+      );
+
+      final refused = await desk.cancelChange(
+        bookingRef: trip.ref,
+        userId: trip.userId,
+      );
+
+      // The same refusal as reserving a second order, and for the same
+      // reason: money is about to land on these seats.
+      expect(refused!.released, isFalse);
+      expect(refused.refusal, isA<ChangePaymentInFlight>());
+      expect(await fixture.seatStateOn(trip.target, '5A'), 'held');
+    });
+
+    test('somebody else-s booking is not theirs to cancel', () async {
+      await sellUnder(ChangePolicy.standard);
+      final trip = await sold();
+      await desk.reserveChange(
+        bookingRef: trip.ref,
+        userId: trip.userId,
+        toDepartureId: trip.target,
+        now: now,
+      );
+
+      final stranger = await fixture.traveller('change-stranger');
+
+      // Null, exactly as a reference that was never issued answers — this is
+      // not a way to release other people's seats or to learn which
+      // references exist.
+      expect(
+        await desk.cancelChange(bookingRef: trip.ref, userId: stranger),
+        isNull,
+      );
+      expect(await fixture.seatStateOn(trip.target, '5A'), 'held');
+    });
+  });
+
   group('the money', () {
     test('the prompt is for the order, at the order-s price', () async {
       await sellUnder(ChangePolicy.standard);
