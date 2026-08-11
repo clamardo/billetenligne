@@ -29,6 +29,7 @@ final class KTripCard extends StatelessWidget {
     this.scarce = false,
     this.accentColor,
     this.amenities = const [],
+    this.reliabilityLabel,
     super.key,
   });
 
@@ -53,6 +54,12 @@ final class KTripCard extends StatelessWidget {
 
   final Color? accentColor;
   final List<IconData> amenities;
+
+  /// The operator's on-time record, already worded by the caller — *« 92 % à
+  /// l'heure »*. Null when there is not enough history to say anything, and
+  /// null draws **nothing**: a blank is honest, and a 0 % chip beside a new
+  /// operator would be a judgement we have no data for.
+  final String? reliabilityLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -134,6 +141,8 @@ final class KTripCard extends StatelessWidget {
                           seatsLabel,
                           tone: scarce ? KChipTone.warning : KChipTone.neutral,
                         ),
+                      if (reliabilityLabel != null)
+                        KChip(reliabilityLabel!, tone: KChipTone.success),
                       for (final icon in amenities)
                         Icon(icon, size: 14, color: kilo.color.contentMuted),
                     ],

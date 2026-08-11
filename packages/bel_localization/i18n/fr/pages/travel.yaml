@@ -35,6 +35,9 @@ travel:
     priceFrom: "à partir de {amount}"
     soldOut: "Complet"
     scarce: "Presque complet"
+    # 08-disruption.md §6. Affiché seulement quand le serveur envoie un
+    # chiffre : sans historique suffisant, rien du tout.
+    onTime: "{rate} % à l'heure"
     offlineTitle: "Pas de réseau"
     offlineBody: "Les horaires ci-dessous datent de votre dernière connexion."
   seatmap:

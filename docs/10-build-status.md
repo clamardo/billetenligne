@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-11 · after commit *An order, and then a movement*
+**Updated:** 2026-08-11 · after commit *Of the coaches that ran*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -98,8 +98,9 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Cancel, by the traveller** | ✅ done | `01-feature-spec.md` §8.2. **An unpaid reservation is *released*, never "refunded"** — the commonest cancellation there is, and a claim code for nought francs reads as a bug to whoever is handed it. A paid booking quotes what comes back **beside what is kept**, under **the terms it was sold under** (ADR-0015 rule 1, by the join to `(policy_id, version)`), computed by the same `quoteRefund` the server executes (ADR-0004). **Cash paid at a counter comes back at a counter** whatever the policy's destination says, because a journey paid in notes never had a source; a wallet policy writes the debt as `approved` and the screen commits to a **window**, never to an arrival, since the disbursement float is not built. **Terms that give nothing back warn rather than refuse** — somebody who cannot travel would rather free the seat than no-show — and the warning is a sentence, not `0 FCFA` beside a button. The seat is **on sale again in the same transaction**, which is the whole reason to build this instead of answering the phone. A **payment in flight refuses the cancellation**, because releasing seats a second before a capture lands is what neither end can undo. `refund_policies` became readable by the public role — the first widening of that boundary — with every write still refused and a guarantee asserting both halves. 17 domain · 6 contract · 14 Postgres · 2 worker · 8 smoke · 1 schema guarantee · 20 traveller-app tests |
 | **Reschedule, by the traveller** | ✅ done | `01-feature-spec.md` §8.1 and ADR-0012 D-08. **Every row is priced before selection** — fee and fare difference on each line, which is what §8.1's mock asks for and what stops somebody tapping five times to compare four departures. D-08's three numbers are data now, stored on the same row as the refund terms and stamped onto the booking by the same `(id, version)` pair, so ADR-0015 rule 1 covers changes without a second versioning scheme. **New seats taken before a single old one is released**, both departures locked in id order, **ticket re-signed in the same transaction** (ADR-0007). **A cheaper departure gives nothing back**, said above the list rather than after the tap. **A row that cannot be taken is shown with its reason**, because a departure missing from a list is one somebody telephones about. **A change that owes money is refused to the franc** and settled at a counter — collecting it in-app needs a payment intent bound to a held-but-unapplied change, which is its own slice. An operator-caused change is free inside every cutoff (ADR-0016). The three numbers are answered in the refund-terms wizard, on the same save and the same version. 21 domain · 6 contract · 17 Postgres · 7 smoke · 18 traveller-app tests |
 | **Paying the difference in the app** | ✅ done | `01-feature-spec.md` §8.1, the boundary the reschedule slice named. A change that owes money becomes a **change order**: it holds the seats, states what is owed to the franc, and **moves nothing**. The booking moves on the capture and nowhere else — a change applied on `pending` is the free journey an optimistically issued ticket would be (ADR-0005). The order rides on an ordinary `holds` row, so the sweeper that puts lapsed holds back on sale already handles the expiry and a second pass only records it. One live order per booking (partial unique index); changing their mind releases the first, **a prompt in flight refuses the second**. The payment funnel is the existing one, with a change id on the intent deciding at settlement whether a capture confirms a booking or moves one. **The client names which debt, never how much.** A capture landing after the seats went back on sale moves nobody and leaves an intent a human can refund. 12 Postgres · 3 worker · 5 traveller-app · 3 contract · 7 smoke tests, one migration, one schema guarantee |
+| **Operator reliability score** | ✅ done | `08-disruption.md` §6, and the first thing on a search row that is about the company rather than the coach. A nightly worker pass writes `operators.on_time_rate` from the last ninety days: of the departures that ran, the share nobody had to declare anything about. **A column, not a query** — search is the hot path and the figure moves once a day. **No figure below twenty departures**, and a missing one draws nothing rather than a zero. 4 worker · 1 API Postgres · 1 component test, one migration |
 
-Four items of it are built, out of order and deliberately. The follower page is
+Five items of it are built, out of order and deliberately. The follower page is
 what makes a disruption reach the person who would otherwise phone the agency,
 and that machinery shipped in Phase 2. Self-service cancellation is the other
 half of the refund path the counter already had, and every piece it needed —
@@ -253,16 +254,16 @@ dart test packages/bel_domain packages/bel_localization \
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 214 tests
-cd packages/bel_design     && flutter test  # 65 component and contrast tests
+cd packages/bel_design     && flutter test  # 66 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 158 app tests
 cd apps/console   && flutter test        # 89 console tests
 cd apps/admin     && flutter test        # 23 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 346 files
+dart run tool/check_layers.dart          # the onion rule, 347 files
 ./infra/migrations/check.sh              # 31 schema guarantees
-./tool/integration.sh                    # 316 tests on real Postgres, incl. the worker
+./tool/integration.sh                    # 321 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 283 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
@@ -272,8 +273,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,078 tests in total**, plus 283 smoke checks, 31 executed schema guarantees,
-316 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,079 tests in total**, plus 283 smoke checks, 31 executed schema guarantees,
+321 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -292,6 +293,48 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+**The operator reliability score** (`08-disruption.md` §6) — the figure the
+contracts have carried since the first search screen was drawn, finally
+computed.
+
+**Of the coaches that ran, how many ran without anybody having to be told
+something had gone wrong.** That is the whole definition, and it is
+deliberately not "left within fifteen minutes": we hold no actual departure
+timestamps, only what a dispatcher declared, and building a punctuality
+threshold on data we do not have would produce a confident number that means
+nothing. What this figure states is a fact about the operator, one they
+control, and the one passengers ask about.
+
+**It is a column, not a query.** Search is the hot path — a hundred rows, on
+2G, re-run on every change of date — and a join over ninety days of departures
+and their disruptions on each of those searches is how a results screen gets
+slow for a number that moves once a night. A worker pass writes it; every
+reader is a column read.
+
+**Below twenty departures there is no figure at all, and no figure draws
+nothing.** An operator with three departures and one breakdown is not "67 % on
+time"; they are an operator nobody knows about yet. The sample size is stored
+beside the rate so the decision is auditable rather than buried in whichever
+query last ran, and the floor lives in one place rather than in every reader
+deciding for itself what "too small" looks like. A `0 %` chip beside a company
+that has just joined would be a judgement we have no data for.
+
+A cancelled departure counts against the operator — it is the disruption
+passengers remember best — and one that has not happened yet counts neither
+way. Old bad quarters stop counting when they leave the window, which is the
+argument for a window at all: one bad week should not define a company, and
+last year's fleet should not flatter this year's.
+
+What it cost: 4 worker tests against real Postgres, 1 in the catalogue's
+suite, 1 component test, one migration. What it did not build: the rest of §6
+— coach reliability in the fleet module, seasonal route risk, and the chronic-
+disruption review — each of which reads the same data and none of which is
+what a traveller sees.
+
+---
+
+## What the paid-change push changed, and what it cost
 
 **Paying the difference in the app** (`01-feature-spec.md` §8.1) — the
 boundary the reschedule push named, closed.

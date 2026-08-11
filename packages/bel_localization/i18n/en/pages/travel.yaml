@@ -35,6 +35,9 @@ travel:
     priceFrom: "from {amount}"
     soldOut: "Sold out"
     scarce: "Almost full"
+    # 08-disruption.md §6. Shown only when the server sends a figure: with too
+    # little history behind it, nothing at all.
+    onTime: "{rate}% on time"
     offlineTitle: "No signal"
     offlineBody: "The times below are from your last connection."
   seatmap:

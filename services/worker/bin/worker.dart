@@ -8,6 +8,7 @@ import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_api/src/composition.dart';
 import 'package:bel_worker/src/outbox_drain.dart';
 import 'package:bel_worker/src/payment_poller.dart';
+import 'package:bel_worker/src/reliability.dart';
 import 'package:bel_worker/src/sweepers.dart';
 import 'package:bel_worker/src/timetable_horizon.dart';
 
@@ -63,6 +64,7 @@ Future<int> main(List<String> args) async {
   final services = Services.resolve();
 
   final sweepers = Sweepers(db);
+  final reliability = Reliability(db);
   final horizon = TimetableHorizon(
     db: db,
     console: services.console,
@@ -104,6 +106,9 @@ Future<int> main(List<String> args) async {
     'changes': sweepers.expireChangeOrders,
     'reservations': sweepers.expireReservations,
     'challenges': sweepers.purgeChallenges,
+    // Last, and cheap to be last: the figure moves once a day, and a search
+    // reading yesterday's is reading something true about the operator.
+    'reliability': reliability.recompute,
   };
 
   var failed = false;

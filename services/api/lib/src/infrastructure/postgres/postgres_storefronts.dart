@@ -23,7 +23,7 @@ final class PostgresStorefronts implements Storefronts {
     o.id, o.code, o.legal_name, o.trading_name,
     o.accent_hue, o.header_pattern,
     o.title_fr, o.title_en, o.tagline_fr, o.tagline_en,
-    o.logo_asset, o.cover_asset
+    o.logo_asset, o.cover_asset, o.on_time_rate
   ''';
 
   @override
@@ -135,6 +135,9 @@ final class PostgresStorefronts implements Storefronts {
         return StorefrontDto(
           vitrine: _vitrine(row),
           routes: [for (final r in routes) _route(r.toColumnMap())],
+          // Null until the operator has run enough coaches to say anything
+          // honest about them (0027), and a null draws nothing at all.
+          onTimeRate: row['on_time_rate'] as int?,
         );
       });
 

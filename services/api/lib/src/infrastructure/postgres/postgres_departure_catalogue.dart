@@ -43,6 +43,10 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                    COALESCE(o.trading_name, o.legal_name) AS operator_name,
                    o.accent_hue,
                    o.logo_asset,
+                   -- A column, not a computation. The figure moves once a
+                   -- night; a join over ninety days of departures on every
+                   -- search is how a results screen gets slow (0027).
+                   o.on_time_rate,
                    r.origin_city,
                    r.destination_city,
                    d.departs_at,
@@ -77,7 +81,8 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                AND (@operator::uuid IS NULL OR d.operator_id = @operator::uuid)
                AND (@mode::text IS NULL OR d.mode = @mode::text)
              GROUP BY d.id, o.trading_name, o.legal_name, o.accent_hue,
-                      o.logo_asset, r.origin_city, r.destination_city
+                      o.logo_asset, o.on_time_rate, r.origin_city,
+                      r.destination_city
              ORDER BY d.departs_at
              LIMIT 100
           '''),
@@ -114,6 +119,10 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
       operatorAccentHue: r['accent_hue'] as String?,
       operatorLogoAsset: r['logo_asset'] as String?,
       amenities: (r['amenities'] as List?)?.cast<String>() ?? const [],
+      // Null below the sample floor, and null is drawn as nothing rather than
+      // as a zero: an operator nobody has data about must not read as the
+      // worst one on the screen.
+      onTimeRate: r['on_time_rate'] as int?,
     );
   }
 

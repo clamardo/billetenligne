@@ -124,6 +124,10 @@ void main() {
 
       expect(find.textContaining('Ocean du Nord'), findsWidgets);
       expect(find.byType(ListView), findsWidgets);
+      // 08-disruption.md §6: the operator's on-time record, on the row where
+      // the choice is actually made. Worded by the catalog, never by the
+      // server, and drawn only where there is a figure to draw.
+      expect(find.textContaining("à l'heure"), findsWidgets);
     });
   });
 

@@ -99,6 +99,28 @@ void main() {
       expect(row.seatsAvailable, 2);
       expect(row.capacity, 2);
     });
+
+    test('the on-time figure travels with the row, or does not', () async {
+      final departureId = await fixture.departure(
+        seatLabels: ['1A'],
+        fromNow: const Duration(hours: 9),
+      );
+
+      Future<int?> rateOnTheRow() async => (await catalogue.search(
+        query(date: await fixture.localDateIn(const Duration(hours: 9))),
+      )).firstWhere((d) => d.id == departureId).onTimeRate;
+
+      // Nothing computed yet: the column is null, and a null must arrive as a
+      // null rather than as a zero — an operator nobody has data about must
+      // not read as the worst one on the screen.
+      await fixture.setOnTimeRate(null);
+      expect(await rateOnTheRow(), isNull);
+
+      // And once the nightly pass has written one, every search carries it
+      // without a join: it is a column read (0027).
+      await fixture.setOnTimeRate(92);
+      expect(await rateOnTheRow(), 92);
+    });
   });
 
   group('the local-day question', () {

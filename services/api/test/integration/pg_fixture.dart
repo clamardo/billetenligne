@@ -784,6 +784,22 @@ final class PgFixture {
     );
   }
 
+  /// The nightly reliability pass's output, written directly.
+  ///
+  /// The pass itself is proven in the worker's suite; what this lets the
+  /// catalogue suite ask is the question that belongs to it — does a figure
+  /// reach a search row, and does an absent one stay absent.
+  Future<void> setOnTimeRate(int? rate) async {
+    await _seed.execute(
+      Sql.named('UPDATE operators SET on_time_rate = @rate WHERE id = @id'),
+      parameters: {
+        'rate': TypedValue(Type.integer, rate),
+        'id': TypedValue(Type.uuid, operatorId),
+      },
+      ignoreRows: true,
+    );
+  }
+
   /// What the manifest will print.
   Future<List<String>> bookingSeatLabels(String bookingId) async {
     final rows = await _seed.execute(

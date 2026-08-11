@@ -108,8 +108,9 @@ final class KBrandHeader extends StatelessWidget {
                     children: [
                       Text(
                         title,
-                        style: (compact ? kilo.text.h3 : kilo.text.h1)
-                            .copyWith(color: _onAccent),
+                        style: (compact ? kilo.text.h3 : kilo.text.h1).copyWith(
+                          color: _onAccent,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -125,9 +126,7 @@ final class KBrandHeader extends StatelessWidget {
                           padding: EdgeInsets.only(top: kilo.space.s1),
                           child: Text(
                             footnote!,
-                            style: kilo.text.caption.copyWith(
-                              color: _onAccent,
-                            ),
+                            style: kilo.text.caption.copyWith(color: _onAccent),
                           ),
                         ),
                     ],

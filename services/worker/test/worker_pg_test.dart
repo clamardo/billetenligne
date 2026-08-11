@@ -11,6 +11,7 @@ import 'package:bel_api/src/infrastructure/postgres/postgres_operator_console.da
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_worker/src/outbox_drain.dart';
+import 'package:bel_worker/src/reliability.dart';
 import 'package:bel_worker/src/sweepers.dart';
 import 'package:bel_worker/src/timetable_horizon.dart';
 import 'package:postgres/postgres.dart';
@@ -38,6 +39,7 @@ void main() {
   late Database db;
   late Connection seed;
   late Sweepers sweepers;
+  late Reliability reliability;
   late OutboxDrain drain;
   late PostgresOperatorConsole console;
 
@@ -59,6 +61,7 @@ void main() {
     );
 
     sweepers = Sweepers(db);
+    reliability = Reliability(db);
     console = PostgresOperatorConsole(db, timeZone: 'Africa/Brazzaville');
     drain = OutboxDrain(
       db: db,
@@ -474,6 +477,138 @@ void main() {
         await orderState(rows.first.toColumnMap()['id'] as String),
         'awaiting_payment',
       );
+    });
+  });
+
+  group('the on-time figure', () {
+    /// [total] departures in the past, of which [disrupted] had something
+    /// declared about them. Written directly: materialising ninety days of a
+    /// pattern to prove an arithmetic rule would test the horizon pass.
+    Future<void> ranCoaches({required int total, int disrupted = 0}) async {
+      await seed.execute(
+        Sql.named("DELETE FROM disruptions WHERE operator_id = @o"),
+        parameters: {'o': TypedValue(Type.uuid, operatorId)},
+        ignoreRows: true,
+      );
+      await seed.execute(
+        Sql.named('''
+          DELETE FROM departures
+           WHERE operator_id = @o AND departs_at < now()
+        '''),
+        parameters: {'o': TypedValue(Type.uuid, operatorId)},
+        ignoreRows: true,
+      );
+
+      for (var i = 0; i < total; i++) {
+        final rows = await seed.execute(
+          Sql.named('''
+            INSERT INTO departures
+              (operator_id, route_id, seat_layout_id, departs_at, arrives_at,
+               capacity, fare_minor, currency)
+            SELECT @o, r.id, l.id,
+                   now() - make_interval(days => @day::int),
+                   now() - make_interval(days => @day::int)
+                     + INTERVAL '6 hours',
+                   49, 12000, 'XAF'
+              FROM routes r, seat_layouts l
+             WHERE r.operator_id = @o AND l.operator_id = @o
+             LIMIT 1
+            RETURNING id
+          '''),
+          parameters: {
+            'o': TypedValue(Type.uuid, operatorId),
+            'day': TypedValue(Type.integer, i % 60 + 1),
+          },
+        );
+
+        if (i < disrupted) {
+          await seed.execute(
+            Sql.named('''
+              INSERT INTO disruptions
+                (operator_id, departure_id, kind, cause, marks_involuntary,
+                 resolved_at)
+              VALUES (@o, @d, 'delay', 'breakdown', TRUE, now())
+            '''),
+            parameters: {
+              'o': TypedValue(Type.uuid, operatorId),
+              'd': TypedValue(Type.uuid, rows.first.toColumnMap()['id']),
+            },
+            ignoreRows: true,
+          );
+        }
+      }
+    }
+
+    Future<({int? rate, int sample})> scoreboard() async {
+      final rows = await seed.execute(
+        Sql.named('''
+          SELECT on_time_rate, reliability_sample
+            FROM operators WHERE id = @o
+        '''),
+        parameters: {'o': TypedValue(Type.uuid, operatorId)},
+      );
+      final row = rows.first.toColumnMap();
+      return (
+        rate: row['on_time_rate'] as int?,
+        sample: row['reliability_sample'] as int,
+      );
+    }
+
+    test('is the share of coaches nobody had to explain', () async {
+      await ranCoaches(total: 25, disrupted: 5);
+
+      final result = await reliability.recompute();
+
+      expect(result.affected, greaterThanOrEqualTo(1));
+      final score = await scoreboard();
+      expect(score.rate, 80);
+      expect(score.sample, 25);
+    });
+
+    test('too little history is no figure at all', () async {
+      await ranCoaches(total: 4, disrupted: 1);
+
+      await reliability.recompute();
+
+      // Four departures and one breakdown is not "75 % on time"; it is an
+      // operator nobody knows about yet, and a blank says that honestly.
+      final score = await scoreboard();
+      expect(score.rate, isNull);
+      expect(score.sample, 4);
+    });
+
+    test('an old bad quarter stops counting', () async {
+      await ranCoaches(total: 25, disrupted: 25);
+
+      // Every one of them declared, but all of them outside the window.
+      await seed.execute(
+        Sql.named('''
+          UPDATE departures
+             SET departs_at = now() - INTERVAL '200 days',
+                 arrives_at = now() - INTERVAL '200 days' + INTERVAL '6 hours'
+           WHERE operator_id = @o AND departs_at < now()
+        '''),
+        parameters: {'o': TypedValue(Type.uuid, operatorId)},
+        ignoreRows: true,
+      );
+
+      await reliability.recompute();
+
+      final score = await scoreboard();
+      expect(score.sample, 0);
+      expect(score.rate, isNull);
+    });
+
+    test('a coach that has not run yet says nothing either way', () async {
+      await ranCoaches(total: 25);
+      await reliability.recompute();
+      final before = await scoreboard();
+
+      // Tomorrow's departures are not evidence about yesterday's operator.
+      await aDeparture();
+      await reliability.recompute();
+
+      expect((await scoreboard()).sample, before.sample);
     });
   });
 

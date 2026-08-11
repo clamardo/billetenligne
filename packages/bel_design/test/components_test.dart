@@ -382,7 +382,11 @@ void main() {
   });
 
   group('KTripCard', () {
-    Widget card({bool soldOut = false, VoidCallback? onTap}) => host(
+    Widget card({
+      bool soldOut = false,
+      VoidCallback? onTap,
+      String? reliabilityLabel,
+    }) => host(
       SizedBox(
         width: 380,
         child: KTripCard(
@@ -394,6 +398,7 @@ void main() {
           seatsLabel: '12 places',
           soldOut: soldOut,
           soldOutLabel: 'Complet',
+          reliabilityLabel: reliabilityLabel,
           onTap: onTap,
         ),
       ),
@@ -420,6 +425,18 @@ void main() {
       await tester.tap(find.byType(KTripCard));
       await tester.pump();
       expect(taps, 0);
+    });
+
+    testWidgets('an on-time record is shown, and its absence is silent', (
+      tester,
+    ) async {
+      await tester.pumpWidget(card(reliabilityLabel: '92 % à l\'heure'));
+      expect(find.text('92 % à l\'heure'), findsOneWidget);
+
+      // No figure draws nothing at all. A "0 %" or an "aucune donnée" chip
+      // beside a new operator is a judgement we have no data for.
+      await tester.pumpWidget(card());
+      expect(find.textContaining("l'heure"), findsNothing);
     });
   });
 

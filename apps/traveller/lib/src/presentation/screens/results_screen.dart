@@ -79,6 +79,15 @@ final class ResultsScreen extends StatelessWidget {
                 scarce: !d.isSoldOut && d.seatsAvailable <= d.capacity ~/ 5,
                 accentColor: _accent(context, d.operatorAccentHue),
                 amenities: _amenityIcons(d.amenities),
+                // Only when the server has a figure. It sends none until the
+                // operator has run enough coaches for one to mean something,
+                // and inventing "no data" wording here would put a sentence
+                // about our own gaps onto a search result.
+                reliabilityLabel: d.onTimeRate == null
+                    ? null
+                    : context.t('travel.results.onTime', {
+                        'rate': '${d.onTimeRate}',
+                      }),
                 onTap: () => onSelect(d),
               );
             },
