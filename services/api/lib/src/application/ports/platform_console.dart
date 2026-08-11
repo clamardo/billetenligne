@@ -343,6 +343,19 @@ abstract interface class PlatformConsole {
     required String actorUserId,
   });
 
+  /// Where people leave, by day (`04-payments.md` §8).
+  ///
+  /// Cross-tenant by nature — the platform's own health, not one operator's —
+  /// with [operatorId] narrowing it when somebody is looking into a single
+  /// company. Newest day first, because the question is nearly always about
+  /// this week.
+  Future<List<FunnelDay>> funnel({
+    required String actorUserId,
+    int days = 14,
+    String? operatorId,
+    String channel = 'app',
+  });
+
   /// Records that somebody looked. Cross-tenant *reads* are audited too, and
   /// this is the call that does it — deliberately separate, so the read path
   /// stays a plain query and the audit cannot be forgotten inside it.
@@ -355,4 +368,57 @@ abstract interface class PlatformConsole {
     String? operatorId,
     String? traceId,
   });
+}
+
+/// One day of the funnel we can actually count.
+///
+/// **The top of the funnel is missing, and deliberately.** A search leaves no
+/// row anywhere: recording one means a telemetry path, a consent question and
+/// a table that grows faster than the sales it describes. What this counts
+/// starts where the traveller first takes something from the inventory — a
+/// seat held — and every step after that is a row we already store for its
+/// own reasons. The screen says so rather than letting somebody read
+/// "conversion" as search-to-ticket.
+final class FunnelDay {
+  const FunnelDay({
+    required this.day,
+    required this.held,
+    required this.reserved,
+    required this.paid,
+    required this.holdsLapsed,
+    required this.paymentsFailed,
+  });
+
+  /// The local calendar day in the market's timezone. A funnel bucketed by
+  /// UTC splits an evening's sales across two rows in this market.
+  final DateTime day;
+
+  /// Seats claimed. The cohort every other figure on this row is about — so
+  /// a booking made today from yesterday's hold counts on yesterday's row,
+  /// which is the only way "of the people who started, how many finished"
+  /// means anything.
+  final int held;
+
+  /// Holds that became a booking.
+  final int reserved;
+
+  /// Bookings that were paid for, whenever they were paid.
+  final int paid;
+
+  /// Holds nobody came back to.
+  final int holdsLapsed;
+
+  /// Attempts the rail refused. Counted from the cohort's bookings rather
+  /// than from all intents, because an intent belongs to a journey somebody
+  /// started on a particular day.
+  final int paymentsFailed;
+
+  /// Percentages, rounded, and null when the denominator is zero rather than
+  /// zero: nought out of nought is not a bad day, it is a quiet one.
+  int? get holdToReservation => _rate(reserved, held);
+  int? get reservationToPaid => _rate(paid, reserved);
+  int? get holdToPaid => _rate(paid, held);
+
+  static int? _rate(int part, int whole) =>
+      whole == 0 ? null : (100 * part / whole).round();
 }

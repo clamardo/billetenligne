@@ -212,6 +212,19 @@ final class PgFixture {
     return [for (final row in rows) row.toColumnMap()];
   }
 
+  /// Audit rows for one action, whichever operator they name — including
+  /// the ones that name none, which is what a platform-wide read looks like.
+  Future<List<Map<String, dynamic>>> auditByAction(String action) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT action, actor_id, subject_type, subject_id, reason, operator_id
+          FROM audit_log WHERE action = @action ORDER BY created_at
+      '''),
+      parameters: {'action': TypedValue(Type.text, action)},
+    );
+    return [for (final row in rows) row.toColumnMap()];
+  }
+
   /// What this account holds on this operator. Empty when they are not staff
   /// of it at all — which is what an applicant looks like right up to the
   /// moment their application is activated.
@@ -948,6 +961,139 @@ final class PgFixture {
       ],
     );
     return reserved.valueOrNull!;
+  }
+
+  /// One journey, backdated, at whatever point it stopped.
+  ///
+  /// The funnel counts rows that exist because a sale happened, so the only
+  /// way to test it honestly is to write those rows — a hold, and then as
+  /// much of the rest as the traveller actually got through. [stoppedAt] is
+  /// where they gave up:
+  ///
+  ///   * `hold` — held a seat and never came back (still active);
+  ///   * `lapsed` — the hold timed out;
+  ///   * `booking` — reached a booking and never paid;
+  ///   * `refused` — reached a booking and the rail refused the payment;
+  ///   * `paid` — a confirmed booking.
+  ///
+  /// [daysAgo] backdates the **hold**, and nothing else: that is the cohort
+  /// key, and a test that backdates the booking too would pass even if the
+  /// query bucketed on the wrong column.
+  int _journeys = 0;
+
+  Future<void> journey({
+    required int daysAgo,
+    required String stoppedAt,
+    String channel = 'app',
+    String? onOperator,
+  }) async {
+    final operator = onOperator ?? operatorId;
+    final departureRows = await _seed.execute(
+      Sql.named('''
+        INSERT INTO departures
+          (operator_id, route_id, seat_layout_id, departs_at, arrives_at,
+           capacity, fare_minor, currency, status)
+        VALUES (@operator, @route, @layout,
+                now() + INTERVAL '30 days', now() + INTERVAL '31 days',
+                4, 12000, 'XAF', 'scheduled')
+        RETURNING id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operator),
+        'route': TypedValue(Type.uuid, routeId),
+        'layout': TypedValue(Type.uuid, layoutId),
+      },
+    );
+    final departureId = departureRows.first.toColumnMap()['id'].toString();
+
+    final holdState = stoppedAt == 'hold'
+        ? 'active'
+        : stoppedAt == 'lapsed'
+        ? 'expired'
+        : 'consumed';
+    final key =
+        'funnel-${DateTime.now().microsecondsSinceEpoch}'
+        '-${_journeys++}-$stoppedAt';
+
+    final holdRows = await _seed.execute(
+      Sql.named('''
+        INSERT INTO holds (operator_id, departure_id, seat_labels, state,
+                           created_at, expires_at, idempotency_key, channel)
+        VALUES (@operator, @departure, ARRAY['1A'], @state::hold_state,
+                now() - make_interval(days => @days::int),
+                now() - make_interval(days => @days::int)
+                      + INTERVAL '15 minutes',
+                @key, @channel)
+        RETURNING id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operator),
+        'departure': TypedValue(Type.uuid, departureId),
+        'state': TypedValue(Type.text, holdState),
+        'days': TypedValue(Type.integer, daysAgo),
+        'key': TypedValue(Type.text, key),
+        'channel': TypedValue(Type.text, channel),
+      },
+    );
+    final holdId = holdRows.first.toColumnMap()['id'].toString();
+    if (stoppedAt == 'hold' || stoppedAt == 'lapsed') return;
+
+    final bookingRows = await _seed.execute(
+      Sql.named('''
+        INSERT INTO bookings (ref, operator_id, departure_id, hold_id, state,
+                              fare_minor, service_fee_minor, total_minor,
+                              currency, channel, confirmed_at,
+                              payment_method, paid_at)
+        VALUES (@ref, @operator, @departure, @hold, @state::booking_state,
+                12000, 0, 12000, 'XAF', @channel,
+                CASE WHEN @state = 'confirmed' THEN now() END,
+                CASE WHEN @state = 'confirmed' THEN @method END,
+                CASE WHEN @state = 'confirmed' THEN now() END)
+        RETURNING id
+      '''),
+      parameters: {
+        // Unique per journey and short enough to look like a real one. The
+        // counter is what makes two seeded in the same microsecond distinct.
+        'ref': TypedValue(
+          Type.text,
+          'FN${_journeys.toRadixString(32)}'
+                  '${DateTime.now().microsecondsSinceEpoch.toRadixString(32)}'
+              .toUpperCase(),
+        ),
+        'operator': TypedValue(Type.uuid, operator),
+        'departure': TypedValue(Type.uuid, departureId),
+        'hold': TypedValue(Type.uuid, holdId),
+        'state': TypedValue(
+          Type.text,
+          stoppedAt == 'paid' ? 'confirmed' : 'pending_payment',
+        ),
+        'channel': TypedValue(Type.text, channel),
+        // A confirmed booking has to say how it was paid — the constraint is
+        // the one that stops a ticket existing with no money behind it.
+        // Mobile money whichever channel it came through: cash would need a
+        // till to reconcile against, and this fixture is about the funnel.
+        'method': TypedValue(Type.text, 'mobile_money'),
+      },
+    );
+    final bookingId = bookingRows.first.toColumnMap()['id'].toString();
+
+    if (stoppedAt == 'refused') {
+      await _seed.execute(
+        Sql.named('''
+          INSERT INTO payment_intents (booking_id, operator_id, rail_id,
+                                       amount_minor, currency, msisdn, state,
+                                       idempotency_key, failure_code,
+                                       terminal_at)
+          VALUES (@booking, @operator, 'cg.airtel_money', 12000, 'XAF',
+                  '242060000001', 'failed', @key, 'rail.declined', now())
+        '''),
+        parameters: {
+          'booking': TypedValue(Type.uuid, bookingId),
+          'operator': TypedValue(Type.uuid, operator),
+          'key': TypedValue(Type.text, 'pi-$key'),
+        },
+      );
+    }
   }
 
   /// A departure with [seatLabels] all available. Returns its id.

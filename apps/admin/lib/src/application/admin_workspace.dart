@@ -13,7 +13,11 @@ import 'ports/admin_gateway.dart';
 /// changed, months after onboarding), and the payments nobody could settle
 /// automatically third — a queue that is empty on a good day and is the only
 /// thing that matters on a bad one.
-enum AdminSection { queue, operators, payments, payouts }
+///
+/// The funnel comes last because it is the only section nobody has to act on:
+/// it is read on a Monday morning, or when a queue above it has been busier
+/// than it should be and somebody wants to know since when.
+enum AdminSection { queue, operators, payments, payouts, funnel }
 
 /// Everything the back office has loaded, and what it is doing.
 ///
@@ -76,6 +80,22 @@ final class AdminWorkspace {
   /// Everything prepared and not yet paid, across every operator.
   List<PayoutRunDto> payouts = const [];
 
+  /// Where people left, newest day first. Null until the section is opened —
+  /// an empty list is a real answer (a fortnight with no holds at all) and
+  /// must not be drawn as "still loading".
+  FunnelDto? funnel;
+
+  /// How far back the funnel looks. A fortnight by default: long enough for
+  /// last week to be on the same screen as this one, short enough to read.
+  var _funnelDays = 14;
+  int get funnelDays => _funnelDays;
+
+  void showFunnelDays(int days) {
+    _funnelDays = days;
+    _emit();
+    unawaited(refresh());
+  }
+
   /// The file that is open on top of the current section, if any.
   AdminOperatorDetailDto? _openOperator;
   AdminOperatorDetailDto? get openOperator => _openOperator;
@@ -133,6 +153,8 @@ final class AdminWorkspace {
         payments = await _gateway.unresolvedPayments(reason: _reason);
       case AdminSection.payouts:
         payouts = await _gateway.payouts(reason: _reason);
+      case AdminSection.funnel:
+        funnel = await _gateway.funnel(reason: _reason, days: _funnelDays);
     }
 
     // A file left open across a refresh is re-read, so a decision taken in

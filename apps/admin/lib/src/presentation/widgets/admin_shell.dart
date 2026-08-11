@@ -155,6 +155,10 @@ class _AdminShellState extends State<AdminShell> {
     // payout.approve. Our own analyst can answer "has Océan du Nord been
     // paid?" without holding the authority to pay them.
     if (w.can('finance.read')) AdminSection.payouts,
+    // Same capability as the payout queue, and for the same reason: aggregate
+    // counts, no traveller on them, and the analyst who is asked why last
+    // Tuesday was quiet should not need the authority to move money first.
+    if (w.can('finance.read')) AdminSection.funnel,
   ];
 
   static IconData _icon(AdminSection s) => switch (s) {
@@ -162,6 +166,7 @@ class _AdminShellState extends State<AdminShell> {
     AdminSection.operators => Icons.apartment,
     AdminSection.payments => Icons.help_outline,
     AdminSection.payouts => Icons.account_balance,
+    AdminSection.funnel => Icons.filter_alt_outlined,
   };
 
   static String _labelKey(AdminSection s) => switch (s) {
@@ -169,6 +174,7 @@ class _AdminShellState extends State<AdminShell> {
     AdminSection.operators => 'admin.nav.operators',
     AdminSection.payments => 'admin.nav.payments',
     AdminSection.payouts => 'admin.nav.payouts',
+    AdminSection.funnel => 'admin.nav.funnel',
   };
 
   /// Notices travel as `key|arg|arg`, so the *workspace* never holds prose.

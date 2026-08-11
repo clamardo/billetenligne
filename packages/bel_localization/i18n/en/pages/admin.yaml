@@ -7,6 +7,7 @@ admin:
     operators: "Operators"
     payments: "Payments"
     payouts: "Payouts"
+    funnel: "Funnel"
   signIn:
     title: "BilletEnLigne back office"
   noAccess:
@@ -156,6 +157,22 @@ admin:
       approved: "Approved"
       paid: "Paid"
       void: "Voided"
+  # Where people leave (04-payments.md §8). The screen says what it cannot
+  # measure before it says anything else: a search leaves no row, so the first
+  # figure is a seat held, not a search run.
+  funnel:
+    title: "Where people leave"
+    countsFrom: "Counting starts at the held seat. Searches are not recorded anywhere, so nothing here says how many people looked without booking."
+    days: "{n} days"
+    rate: "{rate}%"
+    quiet: "Nothing that day"
+    held: "Seats held"
+    reserved: "Booked"
+    paid: "Paid"
+    lost: "{lapsed} seat(s) released · {failed} payment(s) refused"
+    drop: "Conversion fell {points} points day on day. A payment rail or the funnel itself is broken."
+    emptyTitle: "No seats held in this window"
+    emptyBody: "Nobody started a booking on these days — or the window predates launch."
   notice:
     decision: "{a1} · decision recorded"
     commission: "Commission set to {a1}"

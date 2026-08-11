@@ -867,6 +867,23 @@ check "a traveller cannot approve one either" "403" \
 check "an operator cannot reach the payout queue" "403" \
   "$(status -H "$OP_AUTH" "$BASE/admin/v1/payouts")"
 
+# The funnel is aggregate — no traveller, no takings, no phone number — and it
+# is still behind the same wall. Anonymous learns nothing; a traveller and an
+# operator learn only that they may not be here.
+check "the funnel is closed to anonymous" "401" \
+  "$(status "$BASE/admin/v1/analytics/funnel")"
+check "a traveller cannot read the funnel" "403" \
+  "$(status -H "$AUTH" "$BASE/admin/v1/analytics/funnel")"
+check "an operator cannot read the funnel either" "403" \
+  "$(status -H "$OP_AUTH" "$BASE/admin/v1/analytics/funnel")"
+# Nothing writes a funnel — but the wall answers first, so a traveller
+# posting to it is refused for being a traveller rather than for using the
+# wrong verb. The 405 is there for platform staff, and the surface guard is
+# what a stranger meets.
+check "a write attempt meets the wall, not the verb" "403" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/admin/v1/analytics/funnel" -H "$AUTH")"
+
 # ── An operator reads their own statements, and nothing else ────────────────
 check "statements are closed to anonymous" "401" \
   "$(status "$BASE/console/v1/statements")"

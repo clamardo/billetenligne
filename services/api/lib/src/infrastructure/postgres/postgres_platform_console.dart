@@ -18,9 +18,16 @@ import '../db/database.dart';
 /// conditional on `pending_payment`: two reviewers approving one application
 /// at the same moment must produce one approval.
 final class PostgresPlatformConsole implements PlatformConsole {
-  const PostgresPlatformConsole(this._db);
+  const PostgresPlatformConsole(
+    this._db, {
+    this.timeZone = 'Africa/Brazzaville',
+  });
 
   final Database _db;
+
+  /// The market's timezone, passed to Postgres rather than hardcoded in SQL.
+  /// A funnel bucketed by UTC splits an evening's sales across two rows here.
+  final String timeZone;
 
   /// Which states a decision may be taken from.
   ///
@@ -329,6 +336,91 @@ final class PostgresPlatformConsole implements PlatformConsole {
       subjectId: subjectId,
       traceId: traceId,
     );
+  });
+
+  // ── The funnel ────────────────────────────────────────────────────────────
+
+  /// Every day in the window, including the quiet ones.
+  ///
+  /// `generate_series` rather than `GROUP BY` alone, because a day with no
+  /// holds must appear as a row of zeroes: the alert in `04-payments.md` §8
+  /// compares each day with the one before it, and a missing Sunday silently
+  /// turns that into Monday-against-Saturday.
+  ///
+  /// The cohort is keyed on the day the **hold** was created, not the day the
+  /// booking or the payment landed. Somebody who holds a seat at 23h50 and
+  /// pays at 00h10 is one journey, and splitting it across two rows would
+  /// invent a failure on one day and a conversion from nothing on the next.
+  static const _funnelSql = '''
+    WITH days AS (
+      SELECT generate_series(
+               (now() AT TIME ZONE @tz)::date - (@days::int - 1),
+               (now() AT TIME ZONE @tz)::date,
+               interval '1 day')::date AS day
+    ),
+    cohort AS (
+      SELECT (h.created_at AT TIME ZONE @tz)::date AS day,
+             h.id, h.state::text AS hold_state,
+             b.id AS booking_id, b.state::text AS booking_state
+        FROM holds h
+        LEFT JOIN bookings b ON b.hold_id = h.id
+       WHERE h.created_at >= (((now() AT TIME ZONE @tz)::date
+                               - (@days::int - 1)) AT TIME ZONE @tz)
+         AND h.channel = @channel
+         AND (@operator::uuid IS NULL OR h.operator_id = @operator::uuid)
+    )
+    SELECT d.day,
+           count(c.id)::int AS held,
+           count(c.booking_id)::int AS reserved,
+           count(*) FILTER (
+             WHERE c.booking_state IS NOT NULL
+               AND c.booking_state NOT IN ('pending_payment', 'expired')
+           )::int AS paid,
+           count(*) FILTER (
+             WHERE c.hold_state IN ('expired', 'released')
+           )::int AS holds_lapsed,
+           count(*) FILTER (
+             WHERE EXISTS (
+               SELECT 1 FROM payment_intents pi
+                WHERE pi.booking_id = c.booking_id
+                  AND pi.state::text IN ('failed', 'expired',
+                                         'cancelled', 'indeterminate')
+             )
+           )::int AS payments_failed
+      FROM days d LEFT JOIN cohort c ON c.day = d.day
+     GROUP BY d.day
+     ORDER BY d.day DESC
+  ''';
+
+  @override
+  Future<List<FunnelDay>> funnel({
+    required String actorUserId,
+    int days = 14,
+    String? operatorId,
+    String channel = 'app',
+  }) => _db.transaction(DbScope.platform(actorUserId), (tx) async {
+    final rows = await tx.execute(
+      Sql.named(_funnelSql),
+      parameters: {
+        'tz': timeZone,
+        // Clamped rather than trusted: the window is a query parameter, and a
+        // year of daily rows is a slow query somebody can ask for by typing.
+        'days': TypedValue(Type.integer, days.clamp(1, 90)),
+        'channel': channel,
+        'operator': TypedValue(Type.uuid, operatorId),
+      },
+    );
+    return [
+      for (final row in rows)
+        FunnelDay(
+          day: row[0] as DateTime,
+          held: row[1] as int,
+          reserved: row[2] as int,
+          paid: row[3] as int,
+          holdsLapsed: row[4] as int,
+          paymentsFailed: row[5] as int,
+        ),
+    ];
   });
 
   // ── Reconciliation ────────────────────────────────────────────────────────

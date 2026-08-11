@@ -59,6 +59,13 @@ final class ApiAdminGateway implements AdminGateway {
   }) => _client.unresolvedPayments(reason: reason);
 
   @override
+  Future<FunnelDto> funnel({
+    required String reason,
+    int days = 14,
+    String? operatorId,
+  }) => _client.funnel(reason: reason, days: days, operatorId: operatorId);
+
+  @override
   Future<List<PayoutRunDto>> payouts({required String reason}) =>
       _client.payoutQueue(reason: reason);
 

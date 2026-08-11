@@ -44,6 +44,13 @@ abstract interface class AdminGateway {
     required String reason,
   });
 
+  /// The funnel, newest day first.
+  Future<FunnelDto> funnel({
+    required String reason,
+    int days,
+    String? operatorId,
+  });
+
   /// The payout queue: prepared and not yet paid, oldest first.
   Future<List<PayoutRunDto>> payouts({required String reason});
 

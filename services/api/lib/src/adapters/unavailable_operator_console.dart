@@ -214,6 +214,14 @@ final class UnavailablePlatformConsole implements PlatformConsole {
   }) async => _refuse();
 
   @override
+  Future<List<FunnelDay>> funnel({
+    required String actorUserId,
+    int days = 14,
+    String? operatorId,
+    String channel = 'app',
+  }) async => _refuse();
+
+  @override
   Future<List<UnresolvedPayment>> unresolvedPayments({
     required String actorUserId,
     int limit = 100,

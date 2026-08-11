@@ -1058,6 +1058,83 @@ void main() {
       expect(dto.changeToDomain().isWellFormed, isTrue);
     });
   });
+
+  group('the funnel', () {
+    FunnelDayDto day(
+      String d, {
+      int held = 0,
+      int reserved = 0,
+      int paid = 0,
+      int lapsed = 0,
+      int failed = 0,
+    }) => FunnelDayDto(
+      day: d,
+      held: held,
+      reserved: reserved,
+      paid: paid,
+      holdsLapsed: lapsed,
+      paymentsFailed: failed,
+    );
+
+    test('a quiet day has no rate at all, rather than nought percent', () {
+      final quiet = day('2026-08-09');
+
+      expect(quiet.holdToReservation, isNull);
+      expect(quiet.reservationToPaid, isNull);
+      expect(quiet.holdToPaid, isNull);
+    });
+
+    test('the rates are of the step before, not of the top', () {
+      final d = day('2026-08-09', held: 40, reserved: 20, paid: 15);
+
+      expect(d.holdToReservation, 50);
+      // 15 of 20 booked, not 15 of 40 held: the second rate answers "of the
+      // people who got as far as a booking, how many paid".
+      expect(d.reservationToPaid, 75);
+      expect(d.holdToPaid, 38);
+    });
+
+    test('the worst day-over-day fall is what the alert fires on', () {
+      // Newest first, as the server sends it: 60% on the 10th, 90% on the 9th.
+      final funnel = FunnelDto(
+        days: [
+          day('2026-08-10', held: 10, paid: 6, reserved: 8),
+          day('2026-08-09', held: 10, paid: 9, reserved: 10),
+          day('2026-08-08', held: 10, paid: 8, reserved: 9),
+        ],
+      );
+
+      expect(funnel.worstDrop, 30);
+    });
+
+    test('a rise is not a fall, and a quiet day breaks no comparison', () {
+      final climbing = FunnelDto(
+        days: [
+          day('2026-08-10', held: 10, reserved: 10, paid: 9),
+          day('2026-08-09'),
+          day('2026-08-08', held: 10, reserved: 10, paid: 4),
+        ],
+      );
+
+      // The 9th carries no figure, so it is skipped rather than read as a
+      // collapse to zero and a recovery — which is what a naive chart draws.
+      expect(climbing.worstDrop, isNull);
+    });
+
+    test('the day survives the round trip as a date, not an instant', () {
+      final sent = FunnelDto(
+        days: [day('2026-08-10', held: 3, reserved: 2, paid: 1, lapsed: 1)],
+        operatorId: 'op-1',
+      );
+
+      final back = FunnelDto.fromJson(sent.toJson());
+
+      expect(back.days.single.day, '2026-08-10');
+      expect(back.days.single.holdsLapsed, 1);
+      expect(back.countsFrom, 'hold');
+      expect(back.operatorId, 'op-1');
+    });
+  });
 }
 
 /// Reads the string constants declared on [ErrorCode] straight from source,

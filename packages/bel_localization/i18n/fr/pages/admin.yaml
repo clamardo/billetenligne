@@ -8,6 +8,7 @@ admin:
     operators: "Compagnies"
     payments: "Paiements"
     payouts: "Versements"
+    funnel: "Parcours"
   signIn:
     title: "Back-office BilletEnLigne"
   noAccess:
@@ -157,6 +158,22 @@ admin:
       approved: "Approuvé"
       paid: "Versé"
       void: "Annulé"
+  # Où les gens s'arrêtent (04-payments.md §8). L'écran dit d'abord ce qu'il
+  # ne mesure pas : la recherche ne laisse aucune trace, donc le premier
+  # chiffre est la place bloquée, pas la recherche lancée.
+  funnel:
+    title: "Où les gens s'arrêtent"
+    countsFrom: "Le comptage commence à la place bloquée. Les recherches ne sont enregistrées nulle part : rien ici ne dit combien de personnes ont regardé sans réserver."
+    days: "{n} jours"
+    rate: "{rate} %"
+    quiet: "Rien ce jour-là"
+    held: "Places bloquées"
+    reserved: "Réservations"
+    paid: "Payées"
+    lost: "{lapsed} place(s) relâchée(s) · {failed} paiement(s) refusé(s)"
+    drop: "La conversion a chuté de {points} points d'un jour à l'autre. Un opérateur de paiement ou le parcours lui-même est en panne."
+    emptyTitle: "Aucune place bloquée sur la période"
+    emptyBody: "Personne n'a commencé de réservation ces jours-ci — ou la période choisie précède la mise en service."
   notice:
     decision: "{a1} · décision enregistrée"
     commission: "Commission fixée à {a1}"

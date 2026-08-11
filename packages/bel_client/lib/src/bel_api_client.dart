@@ -998,6 +998,28 @@ final class BelApiClient {
     field: 'items',
   );
 
+  /// Where people leave, by day (`04-payments.md` §8).
+  ///
+  /// Counted from holds, bookings and intents — rows that exist because a
+  /// sale happened, not because a tracker fired. The response says so in
+  /// `countsFrom`, and the screen repeats it: there is no search figure here.
+  Future<FunnelDto> funnel({
+    String? reason,
+    int days = 14,
+    String? operatorId,
+    String channel = 'app',
+  }) async => FunnelDto.fromJson(
+    await _get(
+      '/admin/v1/analytics/funnel',
+      query: {
+        'days': '$days',
+        'channel': channel,
+        if (operatorId != null) 'operatorId': operatorId,
+      },
+      reason: reason,
+    ),
+  );
+
   /// `reask` · `captured` · `failed` — the queue's only exits.
   ///
   /// [reason] is the standing one, sent in the header; [evidence] is what was

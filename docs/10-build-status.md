@@ -250,7 +250,7 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 463 tests
+         packages/bel_contracts packages/bel_crypto     # 468 tests
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 214 tests
@@ -258,13 +258,13 @@ cd packages/bel_design     && flutter test  # 66 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 158 app tests
 cd apps/console   && flutter test        # 89 console tests
-cd apps/admin     && flutter test        # 23 back-office tests
+cd apps/admin     && flutter test        # 28 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 347 files
+dart run tool/check_layers.dart          # the onion rule, 350 files
 ./infra/migrations/check.sh              # 31 schema guarantees
-./tool/integration.sh                    # 321 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 283 checks, incl. the Dart client
+./tool/integration.sh                    # 327 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 287 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -273,8 +273,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,079 tests in total**, plus 283 smoke checks, 31 executed schema guarantees,
-321 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,089 tests in total**, plus 287 smoke checks, 31 executed schema guarantees,
+327 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -293,6 +293,58 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+**The funnel** (`04-payments.md` §8) — where people leave, on a screen, at last.
+
+**Nothing new is recorded.** Every figure is counted from rows that exist
+because a sale happened: a hold, the booking that quotes it, the intents
+against that booking. That is the property worth having — the tickets on this
+screen are the tickets in the ledger, because they are the same rows, and
+there is no second pipeline to drift.
+
+**It says what it cannot see, first.** A search leaves no row anywhere, so the
+funnel starts at a held seat and the note above the table says so in words. A
+funnel whose top step is unlabelled gets read as search-to-ticket, and then
+somebody reprices a route from a number that never measured price. Counting
+searches means a telemetry path and a consent question of its own; that is a
+decision to take deliberately, not to acquire by leaving a chart unlabelled.
+
+**The cohort is the day the seat was held.** Not the day the money landed:
+somebody who holds at 23h50 and pays at 00h10 is one journey, and bucketing on
+the payment invents a failure on Monday and a conversion out of nothing on
+Tuesday. The integration test backdates the hold and nothing else, so a query
+that bucketed on the wrong column would fail rather than pass by luck.
+
+**Quiet days are rows of zeroes, not missing rows.** The alert §8 asks for is a
+day-over-day fall, and a fortnight with the Sundays absent quietly compares
+Monday against Saturday. `generate_series` costs one CTE and removes the whole
+class of bug. For the same reason nought out of nought has **no percentage at
+all** — a day nobody held a seat says *rien ce jour-là*, because a 0 % chip is
+an outage somebody investigates.
+
+**The alert is on the screen, not in a mailbox.** Ten points off the day
+before means a rail or the funnel is broken, and the person who can tell which
+is the one reading this. It is computed from the same list the screen draws,
+so the number in the warning and the numbers under it cannot disagree.
+
+Gated on `finance.read` — the capability every platform role holds, including
+`viewer` — because nothing here names a traveller, an operator's takings or a
+telephone number. It is still an **audited read**: it crosses every tenant,
+and `11-security.md` asks that crossing to leave a trace whether or not what
+was read was personal. The audit row names no operator, since a platform-wide
+read filed under one company is a company's history with somebody else's
+question in it.
+
+What it cost: 6 integration tests against real Postgres, 5 contract tests, 5
+back-office widget tests, 4 smoke checks, one route, one screen. No migration:
+the rows were already there. What it did not build: search-to-hold, for the
+reason above; and an operator-facing version of the same screen, which is a
+different question — a company wants their own funnel next to their own sales,
+not the platform's.
+
+---
+
+## What the reliability push changed, and what it cost
 
 **The operator reliability score** (`08-disruption.md` §6) — the figure the
 contracts have carried since the first search screen was drawn, finally

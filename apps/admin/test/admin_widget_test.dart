@@ -26,6 +26,7 @@ final class _ScriptedAdmin implements AdminGateway {
   List<AdminOperatorDto> roster = const [];
   List<UnresolvedPaymentDto> queue = const [];
   List<PayoutRunDto> runs = const [];
+  FunnelDto funnelResult = const FunnelDto(days: []);
   AdminOperatorDetailDto? file;
 
   /// `call:argument:…:reason`, in order.
@@ -87,6 +88,16 @@ final class _ScriptedAdmin implements AdminGateway {
   }) async {
     calls.add('payments:$reason');
     return queue;
+  }
+
+  @override
+  Future<FunnelDto> funnel({
+    required String reason,
+    int days = 14,
+    String? operatorId,
+  }) async {
+    calls.add('funnel:$days:$reason');
+    return funnelResult;
   }
 
   @override
@@ -728,6 +739,108 @@ void main() {
           'MTN confirme aucun débit:payment.timeout_no_response',
         ),
       );
+    });
+  });
+
+  group('the funnel', () {
+    FunnelDayDto day(
+      String d, {
+      int held = 0,
+      int reserved = 0,
+      int paid = 0,
+      int lapsed = 0,
+      int failed = 0,
+    }) => FunnelDayDto(
+      day: d,
+      held: held,
+      reserved: reserved,
+      paid: paid,
+      holdsLapsed: lapsed,
+      paymentsFailed: failed,
+    );
+
+    testWidgets('the screen says what it does not measure', (tester) async {
+      final gateway = _ScriptedAdmin(capabilities: const ['finance.read'])
+        ..funnelResult = FunnelDto(
+          days: [day('2026-08-10', held: 40, reserved: 20, paid: 15)],
+        );
+
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(AdminSection.funnel);
+      await tester.pumpAndSettle();
+
+      // The most important sentence on the screen: nothing here counts the
+      // people who searched and left, because nothing records a search.
+      expect(
+        find.textContaining('commence à la place bloquée'),
+        findsOneWidget,
+      );
+      expect(find.text('40'), findsOneWidget);
+      expect(find.text('20'), findsOneWidget);
+      expect(find.text('15'), findsOneWidget);
+    });
+
+    testWidgets('a ten point fall is on the screen, not in a mailbox', (
+      tester,
+    ) async {
+      final gateway = _ScriptedAdmin(capabilities: const ['finance.read'])
+        ..funnelResult = FunnelDto(
+          days: [
+            day('2026-08-10', held: 10, reserved: 8, paid: 5),
+            day('2026-08-09', held: 10, reserved: 10, paid: 9),
+          ],
+        );
+
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(AdminSection.funnel);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('chuté de 40 points'), findsOneWidget);
+    });
+
+    testWidgets('a quiet day is drawn as quiet, not as a collapse', (
+      tester,
+    ) async {
+      final gateway = _ScriptedAdmin(capabilities: const ['finance.read'])
+        ..funnelResult = FunnelDto(days: [day('2026-08-10')]);
+
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(AdminSection.funnel);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rien ce jour-là'), findsOneWidget);
+      expect(find.text('0 %'), findsNothing);
+    });
+
+    testWidgets('the window is a choice, and it is asked of the server', (
+      tester,
+    ) async {
+      final gateway = _ScriptedAdmin(capabilities: const ['finance.read'])
+        ..funnelResult = const FunnelDto(days: []);
+
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(AdminSection.funnel);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('30 jours'));
+      await tester.pumpAndSettle();
+
+      // Re-asked rather than sliced client-side: a fortnight of rows cannot
+      // answer a question about the month before it.
+      expect(gateway.calls, contains('funnel:30:'));
+    });
+
+    testWidgets('a reviewer who cannot read finance never sees the tab', (
+      tester,
+    ) async {
+      final gateway = _ScriptedAdmin(
+        capabilities: const ['platform.operator.review'],
+      );
+
+      await pump(tester, gateway);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Parcours'), findsNothing);
     });
   });
 
