@@ -64,6 +64,12 @@ Future<Response> onRequest(RequestContext context, String id) async {
       createdAt: intent.createdAt,
       expiresAt: intent.expiresAt,
       failureCode: intent.failureCode?.wire,
+      // The page again, on a checkout rail. Answered on every poll and not
+      // only on the first: the app may have been killed while somebody was
+      // typing a card number into a browser, and the screen they come back
+      // to has to be able to offer the same page rather than mint a second
+      // transaction at the PSP.
+      redirectUrl: intent.checkoutUrl,
       // Backs off as the wait grows: 5 s, then 10 s past a minute. A handset
       // polling every three seconds for ten minutes is 200 requests and a
       // meaningful slice of a prepaid bundle.

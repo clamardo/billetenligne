@@ -36,8 +36,13 @@ dependencies:
   # app is built for (ADR-0002).
   sqlite3: ^2.4.0
   sqlite3_flutter_libs: ^0.5.0
-  # Where the file goes. The only other platform channel this app carries.
+  # Where the file goes.
   path_provider: ^2.1.5
+  # Opens the card processor's hosted checkout in the handset's browser. The
+  # card number is typed on the bank's page and never enters this app, which
+  # is the whole reason the rail is shaped this way — carrying a card form
+  # here would drag PCI scope onto a bus-ticket app.
+  url_launcher: ^6.3.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

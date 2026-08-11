@@ -69,6 +69,14 @@ if curl -sf "$BASE/health" >/dev/null 2>&1; then
   echo "something is already serving $BASE — stop it first"; exit 1
 fi
 
+# The market this run serves: the shipped file with the card rail switched on.
+# Nothing else moves. A card PSP contract does not exist for this market yet,
+# so `config/markets.yaml` ships `cg.card` off and this file is the only place
+# it is on — which is exactly the shape ADR-0006 asks for, and it lets the
+# whole card path be walked over a socket with no merchant account.
+sed -e '/id: cg.card/,/disabledReasonKey/ s/enabled: false/enabled: true/' \
+    "$API_DIR/../../config/markets.yaml" > /tmp/bel-smoke-markets-card.yaml
+
 echo "── starting on :$PORT"
 # `exec` so the subshell is REPLACED by dart. Without it, $! is the subshell's
 # pid, the trap kills the shell, and dart is orphaned holding the port.
@@ -76,7 +84,12 @@ echo "── starting on :$PORT"
 # reached over a socket in a few requests. The number is env-tunable for
 # exactly this kind of reason — a market behind one carrier NAT needs a
 # different one, and finding that out should not need a release.
+# `CARD__SANDBOX` mints checkout pages that go nowhere and charge nobody. Both
+# halves of the switch are needed to reach a card here — the market file has
+# to announce the rail and the deployment has to have something behind it —
+# and the checks below prove each half separately.
 (cd "$API_DIR" && exec env PORT="$PORT" BEL_SIGNIN_MAX_PER_SOURCE=6 \
+  BEL_MARKETS_FILE=/tmp/bel-smoke-markets-card.yaml CARD__SANDBOX=1 \
   dart build/bin/server.dart >/tmp/bel-smoke.log 2>&1) &
 server_pid=$!
 
@@ -588,6 +601,80 @@ check "the ticket names its passenger and seat" "yes" \
 # A bearer that outlives its purpose is one somebody eventually finds.
 check "the payment code is gone once paid" "yes" \
   "$(grep -q '"paymentCode"' <<<"$paid" && echo no || echo yes)"
+
+# ── Paying by card, on somebody else's page ─────────────────────────────────
+#
+# The one rail that leaves the app. Its own booking, because the one above is
+# about to be settled by the fake rail and a booking can only be paid once.
+#
+# What is worth proving over a socket is the shape, not the charge: the option
+# is offered without a wallet number, the first answer carries a page rather
+# than a promise that a handset is ringing, and the outcome is still settled
+# by polling.
+echo
+echo "── paying by card"
+
+check "the card rail is announced by the market file" "yes" \
+  "$(grep -q '"id":"cg.card","kind":"card"[^}]*"enabled":true' <<<"$market" \
+     && echo yes || echo no)"
+
+card_hold="$(curl -s -X POST "$BASE/public/v1/holds" \
+  -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: smoke-card-hold-$$" \
+  -d "{\"departureId\":\"$DEP\",\"seatLabels\":[\"6A\"]}")"
+card_hold_id="$(sed 's/.*"id":"\([^"]*\)".*/\1/' <<<"$card_hold")"
+
+card_booking="$(curl -s -X POST "$BASE/public/v1/bookings" \
+  -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: smoke-card-booking-$$" \
+  -d "{\"holdId\":\"$card_hold_id\",\"passengers\":[{\"fullName\":\"Aline M.\",\"seatLabel\":\"6A\"}]}")"
+card_booking_id="$(sed 's/.*"id":"\([^"]*\)".*/\1/' <<<"$card_booking")"
+
+card_options="$(curl -s -H "$BOOK_AUTH" \
+  "$BASE/public/v1/bookings/$card_booking_id/payment-options")"
+
+check "a card is offered beside the wallets" "yes" \
+  "$(grep -q '"railId":"cg.card"' <<<"$card_options" && echo yes || echo no)"
+# The field the app branches on. A wallet option never carries it, so an old
+# build reading a new response sees the wallets it already understood.
+check "and says the card is entered elsewhere" "yes" \
+  "$(grep -q '"hostedCheckout":true' <<<"$card_options" && echo yes || echo no)"
+check "the card label is a catalog key" "yes" \
+  "$(grep -q '"labelKey":"enum.PaymentRailKind.card"' <<<"$card_options" \
+     && echo yes || echo no)"
+
+card_pay="$(curl -s -X POST "$BASE/public/v1/payments" \
+  -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: smoke-card-pay-$$" \
+  -d "{\"bookingId\":\"$card_booking_id\",\"railId\":\"cg.card\",\"returnUrl\":\"billetenligne://payment/return\"}")"
+
+# No `payerMsisdn` was sent and none was needed: a card payer may never have
+# had a mobile-money account in their life.
+check "a card payment starts with no wallet number" "yes" \
+  "$(grep -q '"state":"pending"' <<<"$card_pay" && echo yes || echo no)"
+check "it answers a page to open" "yes" \
+  "$(grep -q '"redirectUrl":"https://checkout.invalid/pay/' <<<"$card_pay" \
+     && echo yes || echo no)"
+check "the amount still comes from the booking" "yes" \
+  "$(grep -q '"amount":{"minor":12300,"currency":"XAF"}' <<<"$card_pay" \
+     && echo yes || echo no)"
+
+card_intent_id="$(sed 's/.*"id":"\([^"]*\)".*/\1/' <<<"$card_pay")"
+
+# The app may have been killed while somebody was typing a card number into a
+# browser. Coming back to a screen with no page on it means a second
+# transaction at the PSP for one journey.
+card_polled="$(curl -s -H "$BOOK_AUTH" "$BASE/public/v1/payments/$card_intent_id")"
+check "polling offers the same page again" "yes" \
+  "$(grep -q '"redirectUrl":"https://checkout.invalid/pay/' <<<"$card_polled" \
+     && echo yes || echo no)"
+check "and it is still not paid" "yes" \
+  "$(grep -q '"state":"pending"' <<<"$card_polled" && echo yes || echo no)"
+# A return URL is a browser redirect and anybody can type one. Coming back
+# proves nothing, and the booking stays unpaid until the rail says otherwise.
+check "coming back does not confirm anything" "yes" \
+  "$(curl -s -H "$BOOK_AUTH" "$BASE/public/v1/bookings" \
+     | grep -q '"seatLabel":"6A"[^}]*"state":"confirmed"' && echo no || echo yes)"
 
 # ── The storefront ──────────────────────────────────────────────────────────
 #

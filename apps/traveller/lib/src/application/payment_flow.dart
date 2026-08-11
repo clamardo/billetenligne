@@ -70,17 +70,58 @@ final class ConfirmingPayment extends PaymentStep {
   final bool busy;
 }
 
-/// The prompt is on the handset. Nobody has typed a PIN yet.
-final class AwaitingPin extends PaymentStep {
-  const AwaitingPin({
-    required this.intent,
-    required this.option,
-    required this.payerMsisdn,
-  });
+/// A payment is in flight and the outcome is not known yet.
+///
+/// The two waiting steps share this parent because one thing is true of both
+/// and must stay true of any rail added later: the outcome is settled by
+/// asking the server, never by what the traveller did on their handset or in
+/// a browser (ADR-0005 rule 2). The poller is written against this type, so a
+/// third rail gets the polling for free rather than by remembering to add a
+/// branch.
+sealed class AwaitingRail extends PaymentStep {
+  const AwaitingRail({required this.intent, required this.option});
 
   final PaymentIntentDto intent;
   final PaymentOptionDto option;
+
+  /// The same step carrying a fresher intent — how the poller re-emits
+  /// without knowing which rail it is looking at.
+  AwaitingRail withIntent(PaymentIntentDto next);
+}
+
+/// The page is open somewhere else. Nobody has typed a card number yet.
+///
+/// The card counterpart of [AwaitingPin], and a separate step because the two
+/// screens have nothing in common: one says "check your handset" and counts
+/// down a PIN prompt, the other hands over a link and waits for a browser to
+/// come back. Folding them together would mean one screen with two halves and
+/// a boolean deciding which is a lie.
+final class AwaitingCheckout extends AwaitingRail {
+  const AwaitingCheckout({required super.intent, required super.option});
+
+  /// Where the card is entered. Null while the PSP has not answered with one
+  /// — which is a real state and the screen says so rather than opening a
+  /// blank browser.
+  String? get checkoutUrl => intent.redirectUrl;
+
+  @override
+  AwaitingCheckout withIntent(PaymentIntentDto next) =>
+      AwaitingCheckout(intent: next, option: option);
+}
+
+/// The prompt is on the handset. Nobody has typed a PIN yet.
+final class AwaitingPin extends AwaitingRail {
+  const AwaitingPin({
+    required super.intent,
+    required super.option,
+    required this.payerMsisdn,
+  });
+
   final String payerMsisdn;
+
+  @override
+  AwaitingPin withIntent(PaymentIntentDto next) =>
+      AwaitingPin(intent: next, option: option, payerMsisdn: payerMsisdn);
 }
 
 final class PaymentSucceeded extends PaymentStep {
@@ -125,11 +166,21 @@ final class PaymentFlow {
   PaymentFlow({
     required TravelGateway gateway,
     Clock clock = const SystemClock(),
+    this.returnUrl,
   }) : _gateway = gateway,
        _clock = clock;
 
   final TravelGateway _gateway;
   final Clock _clock;
+
+  /// Where a card PSP sends the traveller back to — this app's own deep link.
+  ///
+  /// Null on a build with no scheme registered, and that is survivable: the
+  /// traveller lands on the PSP's own confirmation page and returns by hand,
+  /// which is a worse experience and not a lost payment. The money is
+  /// confirmed by polling either way, so the return is convenience and never
+  /// authority.
+  final String? returnUrl;
 
   final _steps = StreamController<PaymentStep>.broadcast();
 
@@ -237,7 +288,12 @@ final class PaymentFlow {
 
     final option = current.selected;
     if (option == null) return;
-    if (PhoneNumber.parse(current.payerMsisdn).isErr) return;
+    // A card has no number to validate. Checking one anyway is how a rail
+    // that needs no wallet ends up unreachable behind a phone field.
+    if (!option.hostedCheckout &&
+        PhoneNumber.parse(current.payerMsisdn).isErr) {
+      return;
+    }
 
     _emit(
       ConfirmingPayment(
@@ -270,21 +326,26 @@ final class PaymentFlow {
       ),
     );
 
+    final checkout = current.option.hostedCheckout;
+
     try {
       final intent = await _gateway.startPayment(
         bookingId: bookingId,
         railId: current.option.railId,
-        payerMsisdn: current.payerMsisdn,
+        payerMsisdn: checkout ? null : current.payerMsisdn,
         idempotencyKey: _attemptKey!,
         changeId: _changeId,
+        returnUrl: checkout ? returnUrl : null,
       );
 
       _emit(
-        AwaitingPin(
-          intent: intent,
-          option: current.option,
-          payerMsisdn: current.payerMsisdn,
-        ),
+        checkout
+            ? AwaitingCheckout(intent: intent, option: current.option)
+            : AwaitingPin(
+                intent: intent,
+                option: current.option,
+                payerMsisdn: current.payerMsisdn,
+              ),
       );
       _schedulePoll(intent);
     } on ApiFailure catch (failure) {
@@ -329,7 +390,7 @@ final class PaymentFlow {
 
   Future<void> _pollOnce() async {
     final current = _step;
-    if (current is! AwaitingPin) return;
+    if (current is! AwaitingRail) return;
 
     try {
       final intent = await _gateway.paymentStatus(current.intent.id);
@@ -347,13 +408,7 @@ final class PaymentFlow {
           // have left their wallet, and somebody is looking at it.
           _emit(PaymentUnresolved(intent));
         default:
-          _emit(
-            AwaitingPin(
-              intent: intent,
-              option: current.option,
-              payerMsisdn: current.payerMsisdn,
-            ),
-          );
+          _emit(current.withIntent(intent));
           _schedulePoll(intent);
       }
     } on ApiFailure catch (_) {

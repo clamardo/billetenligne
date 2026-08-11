@@ -332,6 +332,84 @@ void main() {
       );
     });
 
+    // A card rail is not pushed to a handset, so the two fields a wallet
+    // payment cannot do without are exactly the two a card payment has no
+    // value for. The wire format has to allow both shapes, and an old client
+    // reading a new response must not see a card rail as a broken wallet.
+    test('a card option carries no wallet to debit', () {
+      const card = PaymentOptionDto(
+        railId: 'cg.card',
+        operatorId: 'psp',
+        labelKey: 'enum.PaymentRailKind.card',
+        collectionMsisdn: '',
+        collectionName: '',
+        hostedCheckout: true,
+      );
+
+      final back = roundTrip(card.toJson, PaymentOptionDto.fromJson);
+      expect(back.hostedCheckout, isTrue);
+      expect(back.collectionMsisdn, isEmpty);
+    });
+
+    test('a wallet option says nothing about checkouts', () {
+      const wallet = PaymentOptionDto(
+        railId: 'cg.mtn_momo',
+        operatorId: 'mtn',
+        labelKey: 'enum.MobileOperator.mtn',
+        collectionMsisdn: '242060000001',
+        collectionName: 'Ocean du Nord',
+      );
+
+      // Absent rather than `false`: every rail before the card one was a
+      // wallet, and a field only the exception carries is a field nobody has
+      // to migrate.
+      expect(wallet.toJson().containsKey('hostedCheckout'), isFalse);
+      expect(
+        PaymentOptionDto.fromJson(wallet.toJson()).hostedCheckout,
+        isFalse,
+      );
+    });
+
+    test('a card payment names where to come back to, and no payer', () {
+      const request = StartPaymentRequest(
+        bookingId: 'bk-1',
+        railId: 'cg.card',
+        returnUrl: 'billetenligne://payment/return',
+      );
+
+      final json = request.toJson();
+      expect(json.containsKey('payerMsisdn'), isFalse);
+
+      final back = StartPaymentRequest.fromJson(json);
+      expect(back.payerMsisdn, isNull);
+      expect(back.returnUrl, 'billetenligne://payment/return');
+    });
+
+    test('the page to open travels on the intent', () {
+      final intent = PaymentIntent(
+        id: 'pi1',
+        bookingId: 'b1',
+        railId: 'cg.card',
+        amount: const Money.xaf(9300),
+        idempotencyKey: 'k',
+        createdAt: t0,
+        state: PaymentState.pending,
+      );
+      final back = roundTrip(
+        PaymentIntentDto.fromDomain(
+          intent,
+          redirectUrl: 'https://checkout.invalid/pay/pi1',
+        ).toJson,
+        PaymentIntentDto.fromJson,
+      );
+
+      expect(back.redirectUrl, 'https://checkout.invalid/pay/pi1');
+      // Still an ordinary in-flight intent: the outcome is settled by asking
+      // the server, never by whether a browser came back (ADR-0005).
+      expect(back.isInFlight, isTrue);
+      expect(back.pollAfterSeconds, 5);
+    });
+
     test('a refund quote is produced by the shared domain function', () {
       // The number here and the number the server charges with come from the
       // same call — that is the whole argument for Dart end to end.

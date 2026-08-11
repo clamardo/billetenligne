@@ -140,9 +140,16 @@ abstract interface class TravelGateway {
   Future<PaymentIntentDto> startPayment({
     required String bookingId,
     required String railId,
-    required String payerMsisdn,
     required String idempotencyKey,
+
+    /// The wallet the money is pulled from. Absent on a card, which is typed
+    /// on the PSP's own page and never touches this system.
+    String? payerMsisdn,
     String? changeId,
+
+    /// Where the PSP sends the traveller back to, on a card. Ignored by every
+    /// push rail.
+    String? returnUrl,
   });
 
   Future<PaymentIntentDto> paymentStatus(String intentId);

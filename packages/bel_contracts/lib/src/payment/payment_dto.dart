@@ -134,6 +134,7 @@ final class PaymentIntentDto {
     String? ussdCode,
     DateTime? expiresAt,
     String? bookingRef,
+    String? redirectUrl,
   }) => PaymentIntentDto(
     id: intent.id,
     state: intent.state.name,
@@ -143,6 +144,7 @@ final class PaymentIntentDto {
     failureCode: intent.failureCode?.wire,
     expiresAt: expiresAt,
     ussdCode: ussdCode,
+    redirectUrl: redirectUrl,
     bookingRef: bookingRef,
     pollAfterSeconds: intent.state.isInFlight
         ? intent.nextPollDelay.inSeconds
@@ -255,6 +257,7 @@ final class PaymentOptionDto {
     required this.collectionName,
     this.ussdCode,
     this.recommended = false,
+    this.hostedCheckout = false,
   });
 
   /// `cg.airtel_money`, `cg.mtn_momo`.
@@ -289,6 +292,16 @@ final class PaymentOptionDto {
   /// refused by the rail, not by us, and the app says which before sending.
   final bool recommended;
 
+  /// True when paying happens on the PSP's own page rather than on the
+  /// payer's handset.
+  ///
+  /// It changes the screen, which is why it is on the wire rather than
+  /// inferred from the rail id: there is no number to type, no PIN to wait
+  /// for, and the merchant number below is empty because a card has no wallet
+  /// at either end. Announced by the server so a rail added by configuration
+  /// draws the right screen without an app release (ADR-0006).
+  final bool hostedCheckout;
+
   Map<String, Object?> toJson() => {
     'railId': railId,
     'operatorId': operatorId,
@@ -297,6 +310,9 @@ final class PaymentOptionDto {
     'collectionName': collectionName,
     if (ussdCode != null) 'ussdCode': ussdCode,
     'recommended': recommended,
+    // Only when it is true. Nearly every rail in this market is mobile money,
+    // and a flag on every tile is bytes on a 2G connection.
+    if (hostedCheckout) 'hostedCheckout': true,
   };
 
   factory PaymentOptionDto.fromJson(Map<String, Object?> json) =>
@@ -304,16 +320,14 @@ final class PaymentOptionDto {
         railId: Wire.requireString(json['railId'], 'railId'),
         operatorId: Wire.requireString(json['operatorId'], 'operatorId'),
         labelKey: Wire.requireString(json['labelKey'], 'labelKey'),
-        collectionMsisdn: Wire.requireString(
-          json['collectionMsisdn'],
-          'collectionMsisdn',
-        ),
-        collectionName: Wire.requireString(
-          json['collectionName'],
-          'collectionName',
-        ),
+        // Empty on a card, which has no wallet at either end — so read
+        // rather than required, and defaulted to the empty string the server
+        // sends.
+        collectionMsisdn: json['collectionMsisdn'] as String? ?? '',
+        collectionName: json['collectionName'] as String? ?? '',
         ussdCode: json['ussdCode'] as String?,
         recommended: json['recommended'] == true,
+        hostedCheckout: json['hostedCheckout'] == true,
       );
 }
 
@@ -322,8 +336,9 @@ final class StartPaymentRequest {
   const StartPaymentRequest({
     required this.bookingId,
     required this.railId,
-    required this.payerMsisdn,
+    this.payerMsisdn,
     this.changeId,
+    this.returnUrl,
   });
 
   final String bookingId;
@@ -342,20 +357,35 @@ final class StartPaymentRequest {
   /// empty pays from a relative's, standing next to them and reading out the
   /// PIN prompt. The server records whether the two matched and never
   /// requires it.
-  final String payerMsisdn;
+  ///
+  /// Absent on a **card**, which is entered on the PSP's own page and never
+  /// touches this system. Optional rather than an empty string, so a rail
+  /// that needs one refuses the request by name instead of pushing a prompt
+  /// to "".
+  final String? payerMsisdn;
+
+  /// Where the PSP should send the traveller back to. Set on a card and
+  /// ignored on every push rail — mobile money answers on the handset, and a
+  /// browser opening for it would be a screen nobody asked for.
+  ///
+  /// A hint, never authority: coming back does not mean the money moved, and
+  /// the app polls exactly as it does on every other rail.
+  final String? returnUrl;
 
   Map<String, Object?> toJson() => Wire.compact({
     'bookingId': bookingId,
     'railId': railId,
     'payerMsisdn': payerMsisdn,
     'changeId': changeId,
+    'returnUrl': returnUrl,
   });
 
   factory StartPaymentRequest.fromJson(Map<String, Object?> json) =>
       StartPaymentRequest(
         bookingId: Wire.requireString(json['bookingId'], 'bookingId'),
         railId: Wire.requireString(json['railId'], 'railId'),
-        payerMsisdn: Wire.requireString(json['payerMsisdn'], 'payerMsisdn'),
+        payerMsisdn: json['payerMsisdn'] as String?,
         changeId: json['changeId'] as String?,
+        returnUrl: json['returnUrl'] as String?,
       );
 }

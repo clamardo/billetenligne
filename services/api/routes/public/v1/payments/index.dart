@@ -69,6 +69,9 @@ Future<Response> onRequest(RequestContext context) async {
         userId: principal.userId,
         railId: request.railId,
         payerMsisdn: request.payerMsisdn,
+        // Where the PSP sends them back to, on a checkout rail. Ignored by
+        // every push rail.
+        returnUrl: request.returnUrl,
         // Their own number, so the server can record whether they paid from
         // it. Recorded, never enforced.
         accountMsisdn: account?.phone,
@@ -133,6 +136,10 @@ PaymentIntentDto _toDto(dynamic intent) => PaymentIntentDto(
   createdAt: intent.createdAt,
   expiresAt: intent.expiresAt,
   failureCode: (intent.failureCode as PaymentFailureCode?)?.wire,
+  // Where the traveller enters their card, on a checkout rail. Null on every
+  // push rail, where the answer arrives on the handset and a browser opening
+  // would be a screen nobody asked for.
+  redirectUrl: intent.checkoutUrl as String?,
   // The app polls on a backoff. Told rather than guessed, so a rail that is
   // known to be slow today does not have every handset in the country asking
   // it every two seconds.

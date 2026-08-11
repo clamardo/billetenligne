@@ -4,7 +4,7 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_traveller/src/application/payment_flow.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'booking_flow_test.dart' show ScriptedGatewayFactory;
+import 'booking_flow_test.dart' show ScriptedGatewayFactory, cardOption;
 
 void main() {
   late ScriptedGatewayFactory gateway;
@@ -180,6 +180,75 @@ void main() {
 
       expect(flow.step, isA<PaymentSucceeded>());
     });
+  });
+
+  group('paying by card', () {
+    setUp(() {
+      gateway.options = [...ScriptedGatewayFactory.walletOptions, cardOption];
+      flow = PaymentFlow(
+        gateway: gateway,
+        returnUrl: 'billetenligne://payment/return',
+      );
+    });
+
+    test('a card needs no number to get past review', () async {
+      await reachMethod();
+      flow.chooseRail(cardOption);
+      // Deliberately unusable as a wallet number. The card rail must not care.
+      flow.setPayerNumber('');
+      flow.review();
+
+      expect(flow.step, isA<ConfirmingPayment>());
+    });
+
+    test('a wallet still needs one', () async {
+      await reachMethod();
+      flow.setPayerNumber('12');
+      flow.review();
+
+      expect(flow.step, isA<ChoosingMethod>());
+    });
+
+    test('paying by card waits on a page, not on a PIN', () async {
+      await reachMethod();
+      flow.chooseRail(cardOption);
+      flow.review();
+      await flow.pay();
+
+      final step = flow.step as AwaitingCheckout;
+      expect(step.checkoutUrl, 'https://checkout.invalid/pay/pi-1');
+      // No handset is involved, so no number was sent to be debited.
+      expect(gateway.startedPayments.single.payerMsisdn, '');
+      expect(gateway.returnUrls.single, 'billetenligne://payment/return');
+    });
+
+    test('a wallet payment carries no return address', () async {
+      await reachMethod();
+      flow.review();
+      await flow.pay();
+
+      // There is nowhere to come back from: the prompt lands on the handset
+      // and the app was never left.
+      expect(flow.step, isA<AwaitingPin>());
+      expect(gateway.returnUrls.single, isNull);
+    });
+
+    test(
+      'the card outcome is settled by polling, like every other rail',
+      () async {
+        gateway.statusScript.addAll(['pending', 'captured']);
+        await reachMethod();
+        flow.chooseRail(cardOption);
+        flow.review();
+        await flow.pay();
+
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        // Nobody came back from the browser. The ticket arrives anyway, which
+        // is ADR-0005 rule 2 applied to a rail that leaves the app entirely.
+        expect(flow.step, isA<PaymentSucceeded>());
+      },
+    );
   });
 
   tearDown(() => flow.dispose());

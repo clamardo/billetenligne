@@ -54,10 +54,11 @@ final class MemoryPaymentStore implements PaymentStore {
     required String bookingId,
     required String userId,
     required String railId,
-    required String payerMsisdn,
+    required String? payerMsisdn,
     required bool payerIsAccountHolder,
     required String idempotencyKey,
     required Duration window,
+    bool hostedCheckout = false,
   }) async {
     // A retry of the same attempt returns the SAME intent. Two prompts on one
     // handset is the failure this prevents.
@@ -67,10 +68,13 @@ final class MemoryPaymentStore implements PaymentStore {
     final booking = await _bookings.byIdUnscoped(bookingId);
     if (booking == null || booking.state != 'pending_payment') return null;
 
+    // A card has no collection account: the money lands in the PSP's
+    // merchant account rather than a wallet the operator holds, and requiring
+    // a row here would mean no operator could ever be paid by card.
     final account = accounts
         .where((a) => a.railId == railId && a.verified)
         .firstOrNull;
-    if (account == null) return null;
+    if (account == null && !hostedCheckout) return null;
 
     final intent = PaymentIntentRecord(
       id: 'pi-mem-${++_next}',
@@ -79,8 +83,8 @@ final class MemoryPaymentStore implements PaymentStore {
       railId: railId,
       amount: booking.total,
       state: PaymentState.created,
-      payerMsisdn: payerMsisdn,
-      collectionMsisdn: account.msisdn,
+      payerMsisdn: payerMsisdn ?? '',
+      collectionMsisdn: account?.msisdn ?? '',
       createdAt: _clock.now(),
       expiresAt: _clock.now().add(window),
     );
@@ -104,10 +108,11 @@ final class MemoryPaymentStore implements PaymentStore {
     required String changeId,
     required String userId,
     required String railId,
-    required String payerMsisdn,
+    required String? payerMsisdn,
     required bool payerIsAccountHolder,
     required String idempotencyKey,
     required Duration window,
+    bool hostedCheckout = false,
   }) async {
     final existingId = _byKey[idempotencyKey];
     if (existingId != null) return _byId[existingId];
@@ -118,7 +123,7 @@ final class MemoryPaymentStore implements PaymentStore {
     final account = accounts
         .where((a) => a.railId == railId && a.verified)
         .firstOrNull;
-    if (account == null) return null;
+    if (account == null && !hostedCheckout) return null;
 
     final intent = PaymentIntentRecord(
       id: 'pi-mem-${++_next}',
@@ -127,8 +132,8 @@ final class MemoryPaymentStore implements PaymentStore {
       railId: railId,
       amount: order.owed,
       state: PaymentState.created,
-      payerMsisdn: payerMsisdn,
-      collectionMsisdn: account.msisdn,
+      payerMsisdn: payerMsisdn ?? '',
+      collectionMsisdn: account?.msisdn ?? '',
       createdAt: _clock.now(),
       expiresAt: _clock.now().add(window),
       changeId: changeId,
@@ -153,6 +158,7 @@ final class MemoryPaymentStore implements PaymentStore {
     required Map<String, Object?> raw,
     PaymentFailureCode? failureCode,
     String? railTransactionId,
+    String? checkoutUrl,
   }) async {
     // Written first and unconditionally, like the real store: whether the
     // transition is legal is a separate question, and an illegal one is
@@ -174,9 +180,13 @@ final class MemoryPaymentStore implements PaymentStore {
 
     // An out-of-order callback arriving after a capture is a NORMAL event on
     // these rails. Keep the capture and say so.
+    // Kept from the first answer, like the real store: a second URL for one
+    // intent is a second transaction at the PSP.
+    final url = current.checkoutUrl ?? checkoutUrl;
+
     if (intent.transitionTo(state, now: _clock.now(), failureCode: failureCode)
         case Err()) {
-      return current;
+      return _byId[intentId] = _withUrl(current, url);
     }
 
     final updated = PaymentIntentRecord(
@@ -193,11 +203,32 @@ final class MemoryPaymentStore implements PaymentStore {
       failureCode: failureCode ?? current.failureCode,
       railTransactionId: railTransactionId ?? current.railTransactionId,
       changeId: current.changeId,
+      checkoutUrl: url,
     );
 
     _byId[intentId] = updated;
     return updated;
   }
+
+  /// The same record with a checkout URL on it. There is no `copyWith` on
+  /// `PaymentIntentRecord` and one field does not earn one.
+  static PaymentIntentRecord _withUrl(PaymentIntentRecord r, String? url) =>
+      PaymentIntentRecord(
+        id: r.id,
+        bookingId: r.bookingId,
+        operatorId: r.operatorId,
+        railId: r.railId,
+        amount: r.amount,
+        state: r.state,
+        payerMsisdn: r.payerMsisdn,
+        collectionMsisdn: r.collectionMsisdn,
+        createdAt: r.createdAt,
+        expiresAt: r.expiresAt,
+        failureCode: r.failureCode,
+        railTransactionId: r.railTransactionId,
+        changeId: r.changeId,
+        checkoutUrl: url,
+      );
 
   @override
   Future<List<PaymentIntentRecord>> inFlight({int limit = 100}) async =>

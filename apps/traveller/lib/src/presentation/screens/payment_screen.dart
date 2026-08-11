@@ -115,10 +115,14 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                             ),
                             // The name and the number the money goes to.
                             // Digits with nothing beside them are what a scam
-                            // looks like.
+                            // looks like. A card rail has no such number —
+                            // the money lands in the processor's merchant
+                            // account — so it says what it does instead.
                             Text(
-                              '${option.collectionName} · '
-                              '${Format.msisdn(option.collectionMsisdn)}',
+                              option.hostedCheckout
+                                  ? context.t('payment.card.tabHint')
+                                  : '${option.collectionName} · '
+                                        '${Format.msisdn(option.collectionMsisdn)}',
                               style: kilo.text.caption.copyWith(
                                 color: kilo.color.contentSecondary,
                               ),
@@ -138,39 +142,53 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
 
             SizedBox(height: kilo.space.s5),
 
-            KField(
-              label: context.t('payment.method.payFrom'),
-              hint: '06 123 45 67',
-              // Said plainly, because somebody paying from a relative's wallet
-              // needs to know it is allowed — and this is the commonest way a
-              // ticket gets paid for in this market.
-              helper: context.t('payment.method.payFromHelp'),
-              controller: _number,
-              keyboardType: TextInputType.phone,
-              error: step.failure == null
-                  ? null
-                  : context.t(step.failure!.messageKey),
-              onChanged: (value) {
-                widget.flow.setPayerNumber(value);
-                setState(() {});
-              },
-            ),
-
-            if (!step.payingFromOwnNumber && step.accountMsisdn != null) ...[
-              SizedBox(height: kilo.space.s2),
-              Row(
-                children: [
-                  Icon(Icons.info_outline, size: 16, color: kilo.color.info),
-                  SizedBox(width: kilo.space.s2),
-                  Expanded(
-                    child: Text(
-                      context.t('payment.method.notYourNumber'),
-                      style: kilo.text.caption.copyWith(color: kilo.color.info),
-                    ),
-                  ),
-                ],
+            // A card is not pushed to a handset, so there is no number to
+            // debit and asking for one would be a field with no meaning. The
+            // whole block goes, rather than being disabled: a greyed-out
+            // field still reads as something the traveller failed to fill in.
+            if (_pushesToHandset) ...[
+              KField(
+                label: context.t('payment.method.payFrom'),
+                hint: '06 123 45 67',
+                // Said plainly, because somebody paying from a relative's
+                // wallet needs to know it is allowed — and this is the
+                // commonest way a ticket gets paid for in this market.
+                helper: context.t('payment.method.payFromHelp'),
+                controller: _number,
+                keyboardType: TextInputType.phone,
+                error: step.failure == null
+                    ? null
+                    : context.t(step.failure!.messageKey),
+                onChanged: (value) {
+                  widget.flow.setPayerNumber(value);
+                  setState(() {});
+                },
               ),
-            ],
+
+              if (!step.payingFromOwnNumber && step.accountMsisdn != null) ...[
+                SizedBox(height: kilo.space.s2),
+                Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 16, color: kilo.color.info),
+                    SizedBox(width: kilo.space.s2),
+                    Expanded(
+                      child: Text(
+                        context.t('payment.method.notYourNumber'),
+                        style: kilo.text.caption.copyWith(
+                          color: kilo.color.info,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ] else
+              KCard(
+                child: Text(
+                  context.t('payment.card.lead'),
+                  style: kilo.text.body,
+                ),
+              ),
 
             SizedBox(height: kilo.space.s5),
             KButton(
@@ -184,9 +202,15 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
     );
   }
 
+  /// Whether the chosen rail asks a handset for a PIN. Read from the option
+  /// rather than from its id, so a rail added by configuration behaves
+  /// correctly without a new branch here.
+  bool get _pushesToHandset => !(widget.step.selected?.hostedCheckout ?? false);
+
   bool get _ready =>
       widget.step.selected != null &&
-      _number.text.replaceAll(RegExp(r'[^0-9]'), '').length >= 9;
+      (!_pushesToHandset ||
+          _number.text.replaceAll(RegExp(r'[^0-9]'), '').length >= 9);
 
   static String _format(String e164) => e164.isEmpty ? '' : Format.msisdn(e164);
 }

@@ -466,14 +466,15 @@ final class DemoTravelGateway implements TravelGateway {
   Future<PaymentIntentDto> startPayment({
     required String bookingId,
     required String railId,
-    required String payerMsisdn,
     required String idempotencyKey,
+    String? payerMsisdn,
     String? changeId,
+    String? returnUrl,
   }) async {
     await Future<void>.delayed(latency);
     _polls = 0;
 
-    if (payerMsisdn
+    if ((payerMsisdn ?? '')
         .replaceAll(RegExp(r'[^0-9]'), '')
         .endsWith(decliningMsisdn)) {
       throw const ServerRefused(
@@ -489,6 +490,12 @@ final class DemoTravelGateway implements TravelGateway {
       amount: _booking?.total ?? const Money.xaf(12300),
       createdAt: _now,
       expiresAt: _now.add(const Duration(minutes: 10)),
+      // A card in the demo gets a page that goes nowhere real — `.invalid` by
+      // RFC 2606 — because the screen it drives is worth seeing on a fresh
+      // clone and a URL that resolved to somebody's site would not be.
+      redirectUrl: payerMsisdn == null
+          ? 'https://checkout.invalid/pay/pi-demo-$_counter'
+          : null,
       pollAfterSeconds: 1,
     );
   }

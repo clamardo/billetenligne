@@ -47,6 +47,15 @@ payment:
     step2: "Entrez le code PIN mobile money de ce numéro."
     step3: "Votre billet apparaît ici dès que le paiement est confirmé."
     pay: "Payer {amount}"
+  card:
+    title: "Paiement par carte"
+    lead: "Le paiement se termine sur la page sécurisée de la banque."
+    onTheirPage: "Votre numéro de carte est saisi chez elle, jamais dans cette application."
+    open: "Ouvrir la page de paiement"
+    openAgain: "Vous pouvez rouvrir cette page autant de fois que nécessaire : c'est toujours le même paiement."
+    preparing: "Préparation de la page de paiement…"
+    copyLink: "Ouvrez ce lien dans votre navigateur :"
+    tabHint: "Carte Visa ou Mastercard. Aucun numéro de téléphone n'est demandé."
   waitingExtra:
     checkPhone: "Regardez le téléphone {msisdn}"
     leaveSafely: "Vous pouvez fermer cette page : le paiement continue et votre billet vous attendra ici."

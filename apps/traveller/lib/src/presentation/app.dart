@@ -17,6 +17,7 @@ import 'screens/passengers_screen.dart';
 import 'screens/payment_confirm_screen.dart';
 import 'screens/payment_result_screen.dart';
 import 'screens/payment_screen.dart';
+import 'screens/payment_checkout_screen.dart';
 import 'screens/payment_waiting_screen.dart';
 import 'screens/reserved_screen.dart';
 import 'screens/seat_map_screen.dart';
@@ -44,6 +45,7 @@ final class TravellerApp extends StatelessWidget {
     required this.payment,
     required this.tickets,
     this.currentUserId,
+    this.openUrl,
     this.language = 'fr',
     super.key,
   });
@@ -59,6 +61,12 @@ final class TravellerApp extends StatelessWidget {
   /// handset here is shared, and a vault keyed on nothing would hand the next
   /// person to sign in somebody else's ticket.
   final String? Function()? currentUserId;
+
+  /// Opens a page outside the app — today only the card rail's hosted
+  /// checkout. Injected rather than called from a screen so the presentation
+  /// layer keeps no opinion about browsers, and so a test can watch what was
+  /// opened without a plugin channel to stub.
+  final void Function(String url)? openUrl;
 
   final String language;
 
@@ -77,6 +85,7 @@ final class TravellerApp extends StatelessWidget {
         payment: payment,
         tickets: tickets,
         currentUserId: currentUserId,
+        openUrl: openUrl,
       ),
     ),
   );
@@ -89,6 +98,7 @@ class _Funnel extends StatefulWidget {
     required this.payment,
     required this.tickets,
     this.currentUserId,
+    this.openUrl,
   });
 
   final BookingFlow flow;
@@ -96,6 +106,7 @@ class _Funnel extends StatefulWidget {
   final PaymentFlow payment;
   final TicketsFlow tickets;
   final String? Function()? currentUserId;
+  final void Function(String url)? openUrl;
 
   @override
   State<_Funnel> createState() => _FunnelState();
@@ -341,6 +352,12 @@ class _FunnelState extends State<_Funnel> {
       ),
 
       AwaitingPin() => PaymentWaitingScreen(step: step, onCancel: _stopPaying),
+
+      AwaitingCheckout() => PaymentCheckoutScreen(
+        step: step,
+        onOpen: widget.openUrl,
+        onCancel: _stopPaying,
+      ),
 
       PaymentSucceeded() => PaymentReceiptScreen(
         step: step,

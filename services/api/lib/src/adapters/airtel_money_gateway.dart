@@ -51,6 +51,11 @@ final class AirtelMoneyGateway implements PaymentGateway {
   @override
   String get railId => 'cg.airtel_money';
 
+  /// A prompt on the payer's own handset, answered with a PIN in a menu we do
+  /// not control — which is the asynchrony ADR-0005 exists to contain.
+  @override
+  bool get pushesToHandset => true;
+
   @override
   Future<PaymentOutcome> requestPayment(PaymentRequest request) async {
     try {
@@ -63,7 +68,11 @@ final class AirtelMoneyGateway implements PaymentGateway {
           // country code, which is the opposite of how we store it — and
           // sending E.164 here is a subscriber-not-found that looks like a
           // wrong number.
-          'msisdn': _national(request.payerMsisdn),
+          // A push rail is never handed a request without one — that is
+          // what `pushesToHandset` promises the caller — so an absent
+          // number here is a wiring mistake and says so rather than
+          // sending a prompt to nowhere.
+          'msisdn': _national(_requirePayer(request)),
         },
         'transaction': {
           'amount': _amount(request.amount),
@@ -201,6 +210,15 @@ final class AirtelMoneyGateway implements PaymentGateway {
     final id = transaction?['id'];
     return id == null ? null : '$id';
   }
+
+  /// The wallet the money comes from, or a loud failure.
+  ///
+  /// A card rail leaves this null and this adapter is not a card rail. The
+  /// alternative — an empty string down the wire — is a subscriber-not-found
+  /// that reads, to everybody in the log, like a traveller's typo.
+  static String _requirePayer(PaymentRequest request) =>
+      request.payerMsisdn ??
+      (throw StateError('a push rail was given no payer number'));
 
   /// Airtel wants the national number, not E.164.
   ///

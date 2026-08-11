@@ -567,6 +567,7 @@ final class PgFixture {
     final rows = await _seed.execute(
       Sql.named('''
         SELECT state::text AS state, rail_id, msisdn, amount_minor,
+               checkout_url, hosted_checkout,
                (SELECT count(*)::int FROM payment_events e
                  WHERE e.intent_id = payment_intents.id) AS events
           FROM payment_intents WHERE id = @id

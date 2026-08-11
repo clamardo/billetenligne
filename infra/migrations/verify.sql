@@ -425,3 +425,64 @@ BEGIN
   RAISE NOTICE 'OK  a counter transfer adds up, names its till and actually moves';
 END
 $$;
+
+DO $$
+DECLARE
+  trip    UUID := 'dddddddd-0000-0000-0000-000000000012';
+  booking UUID := 'eeeeeeee-0000-0000-0000-000000000012';
+  op      UUID := '11111111-1111-1111-1111-111111111111';
+BEGIN
+  -- ── 18. A payment attempt says where the money is coming from ─────────────
+  -- Two shapes of rail now share one table. Every rail before the card one
+  -- pushed a prompt to a wallet, and `msisdn` was the number charged; a
+  -- hosted checkout has no wallet at all, and the card number never enters
+  -- this system. Both are legitimate and the row must be able to say which —
+  -- otherwise "which number did we charge?" gets a confident wrong answer at
+  -- the one moment somebody is disputing a payment.
+  INSERT INTO departures (id, operator_id, route_id, seat_layout_id, departs_at,
+                          arrives_at, capacity, fare_minor, currency, status)
+  VALUES (trip, op,
+          'aaaaaaaa-0000-0000-0000-000000000001',
+          'bbbbbbbb-0000-0000-0000-000000000009',
+          now() + INTERVAL '2 days', now() + INTERVAL '2 days 8 hours',
+          4, 12000, 'XAF', 'scheduled');
+
+  INSERT INTO bookings (id, ref, operator_id, departure_id, fare_minor,
+                        service_fee_minor, total_minor, currency)
+  VALUES (booking, 'BEL-VERIF18', op, trip, 12000, 300, 12300, 'XAF');
+
+  BEGIN
+    INSERT INTO payment_intents (booking_id, operator_id, rail_id, msisdn,
+                                 amount_minor, currency, idempotency_key)
+    VALUES (booking, op, 'cg.mtn_momo', NULL, 12300, 'XAF', 'verif18-a');
+    RAISE EXCEPTION 'FAIL: a prompt was pushed at no number at all';
+  EXCEPTION WHEN check_violation THEN
+    NULL; -- expected
+  END;
+
+  BEGIN
+    INSERT INTO payment_intents (booking_id, operator_id, rail_id, msisdn,
+                                 amount_minor, currency, idempotency_key,
+                                 checkout_url)
+    VALUES (booking, op, 'cg.mtn_momo', '242061234567', 12300, 'XAF',
+            'verif18-b', 'https://checkout.invalid/pay/x');
+    RAISE EXCEPTION 'FAIL: a push rail was given a page to open';
+  EXCEPTION WHEN check_violation THEN
+    NULL; -- expected
+  END;
+
+  -- The honest card shape: no wallet, and a page. Not an omission somebody
+  -- forgot to fill in — there is nothing to fill it in with.
+  INSERT INTO payment_intents (booking_id, operator_id, rail_id, msisdn,
+                               amount_minor, currency, idempotency_key,
+                               hosted_checkout, checkout_url)
+  VALUES (booking, op, 'cg.card', NULL, 12300, 'XAF', 'verif18-c',
+          TRUE, 'https://checkout.invalid/pay/verif18');
+
+  DELETE FROM payment_intents WHERE booking_id = booking;
+  DELETE FROM bookings WHERE id = booking;
+  DELETE FROM departures WHERE id = trip;
+
+  RAISE NOTICE 'OK  a wallet payment names a wallet, a card payment names a page';
+END
+$$;

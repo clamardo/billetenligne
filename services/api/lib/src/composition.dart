@@ -17,6 +17,7 @@ import 'application/hold_seats.dart';
 import 'adapters/airtel_money_gateway.dart';
 import 'adapters/ed25519_ticket_issuer.dart';
 import 'adapters/fake_payment_gateway.dart';
+import 'adapters/hosted_checkout_gateway.dart';
 import 'adapters/mtn_momo_gateway.dart';
 import 'application/ports/booking_store.dart';
 import 'application/ports/ticket_issuer.dart';
@@ -440,6 +441,27 @@ final class Services {
       clock: clock,
     );
 
+    // One fake rail, so a fresh clone can walk the whole payment funnel with
+    // no credentials and no network — including the failure screens, which is
+    // what `FakePaymentGateway.decliningMsisdn` is for.
+    //
+    // Scripted to settle on the second poll rather than left silent. A fake
+    // that never captures means a fresh clone can never reach a confirmed
+    // booking, a ticket or a QR — and the states nobody sees in development
+    // are exactly the ones that ship broken. One poll of waiting first, so
+    // the waiting screen is actually seen.
+    final fakeRails = <String, PaymentGateway>{
+      'cg.fake_money': FakePaymentGateway(clock: clock)..settlesAfter(1),
+    };
+
+    // The card rail, on the same opt-in the database composition uses. Off by
+    // default and never by accident: a sandbox checkout that appeared
+    // wherever credentials were missing would let a deployment take card
+    // payments that charge nobody.
+    if (((environment ?? const {})['CARD__SANDBOX'] ?? '').isNotEmpty) {
+      fakeRails['cg.card'] = SandboxCheckoutGateway();
+    }
+
     return Services._(
       holdSeats: HoldSeats(inventory: inventory, market: market),
       searchDepartures: SearchDepartures(catalogue: catalogue, market: market),
@@ -489,20 +511,9 @@ final class Services {
         operators: MemoryOperatorDirectory(
           commissions: const {'op-demo': CommissionTerm.seed},
         ),
-        // One fake rail, so a fresh clone can walk the whole payment funnel
-        // with no credentials and no network — including the failure screens,
-        // which is what `FakePaymentGateway.decliningMsisdn` is for.
-        //
-        // Scripted to settle on the second poll rather than left silent. A
-        // fake that never captures means a fresh clone can never reach a
-        // confirmed booking, a ticket or a QR — and the states nobody sees in
-        // development are exactly the ones that ship broken. One poll of
-        // waiting first, so the waiting screen is actually seen.
-        gateways: {
-          'cg.fake_money': FakePaymentGateway(clock: clock)..settlesAfter(1),
-        },
+        gateways: fakeRails,
       ),
-      railIds: const {'cg.fake_money'},
+      railIds: fakeRails.keys.toSet(),
       market: market,
       // A demo traveller, so a fresh clone can hold a seat without standing up
       // Firebase first — and a fake, so this token cannot reach a real
@@ -651,6 +662,27 @@ final class Services {
         country: market.code,
         currency: market.currency.code,
       );
+    }
+
+    // Card, through a hosted checkout. There is no merchant account for this
+    // market yet, so this is the one rail whose credentials nobody can hold —
+    // and the sandbox below is what `markets.yaml` switching `cg.card` on
+    // would reach today. Both halves of the switch still apply: the rail is
+    // announced only if the market file says so, and it collects only if
+    // there is something behind it.
+    final cardKey = env['CARD__APIKEY'] ?? '';
+    if (cardKey.isNotEmpty) {
+      rails['cg.card'] = HostedCheckoutGateway(
+        baseUrl: Uri.parse(env['CARD__BASEURL'] ?? 'https://api.invalid'),
+        apiKey: cardKey,
+        siteId: env['CARD__SITEID'] ?? '',
+        callbackUrl: '${env['PUBLIC_BASE_URL'] ?? ''}/hooks/payments/card',
+      );
+    } else if ((env['CARD__SANDBOX'] ?? '').isNotEmpty) {
+      // Opt-in, and never by accident: a sandbox card rail that appeared
+      // whenever credentials were missing would let a deployment take card
+      // payments that charge nobody.
+      rails['cg.card'] = SandboxCheckoutGateway();
     }
 
     // No credentials at all is a real state — every developer, and every CI

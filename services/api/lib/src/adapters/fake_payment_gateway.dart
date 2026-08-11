@@ -22,6 +22,11 @@ final class FakePaymentGateway implements PaymentGateway {
   @override
   final String railId;
 
+  /// A prompt on the payer's own handset, answered with a PIN in a menu we do
+  /// not control — which is the asynchrony ADR-0005 exists to contain.
+  @override
+  bool get pushesToHandset => true;
+
   final Clock _clock;
 
   /// How the next request behaves. Set per test; the default is the one that

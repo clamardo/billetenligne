@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-11 · after commit *Of the coaches that ran*
+**Updated:** 2026-08-12 · after commit *A card, on somebody else's page*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -77,7 +77,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Callback endpoint** | ✅ done | Body trusted only to select a row; state always re-queried. Answers 200 to everything |
 | **Payment poller** | ✅ done | Backoff from the domain; 15 min of silence becomes `indeterminate` |
 | **Commission, per operator** | ✅ done | `CommissionTerm` in basis points, read from `operators.commission_bps` when a fare settles. Netted at source; unreadable terms keep nothing rather than guess |
-| Production credentials | ⬜ not started | **Commercial, not engineering.** Both adapters run against sandbox hosts |
+| Production credentials | ⬜ not started | **Commercial, not engineering.** The two wallet adapters run against sandbox hosts; the card adapter runs against no host at all, because there is no merchant account for this market yet. Each is a contract and a set of secrets, not a line of code |
 | `indeterminate` reconciliation — API | ✅ done | The queue, joined to the booking, the operator and the traveller's number. Three exits: ask the rail again · captured · failed. 5 integration tests |
 | **`indeterminate` reconciliation — the screen** | ✅ done | In the back office. Longest-waiting first, everything needed to decide in the row, three exits — and captured/failed demand a sentence about *that* payment, which becomes the `payment_events` row |
 | **The statement as a document** | ✅ done | `04-payments.md` §6.2 asks for a PDF, and this is one — written by a hundred-line PDF writer rather than a layout engine, in the two standard fonts every reader has had since 1993, with the figures in Courier so a money column right-aligns by counting characters instead of by carrying a font-metrics table. Uncompressed: a statement is three kilobytes, and reading it with `strings` when somebody disputes what we sent is worth more than the bytes. **The commission rate is derived from these sales**, not read from the operator's row, because the row can be renegotiated and a document reprinting today's rate over last month's money is the kind of small dishonesty that ends a relationship. **Nothing is invented** — §6.2's mock shows change fees and dispute adjustments, neither is in the ledger, and a `0 FCFA` row for something we never compute is a more convincing lie than an absent one. The console downloads it through the authenticated client and hands it to the browser (a plain link sends no bearer token), and the back office serves **the same bytes from its own route**. Emailing it is **not** built: attachments are missing from the ACS adapter. 18 API unit · 4 Postgres · 4 client · 6 smoke · 3 console tests |
@@ -101,8 +101,9 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Operator reliability score** | ✅ done | `08-disruption.md` §6, and the first thing on a search row that is about the company rather than the coach. A nightly worker pass writes `operators.on_time_rate` from the last ninety days: of the departures that ran, the share nobody had to declare anything about. **A column, not a query** — search is the hot path and the figure moves once a day. **No figure below twenty departures**, and a missing one draws nothing rather than a zero. 4 worker · 1 API Postgres · 1 component test, one migration |
 | **Where a coach leaves from** | ✅ done | `06-fleet-and-routes.md`. A departure names the terminal it boards at and the one it arrives at; the console keeps the catalogue on the same screen as the roads. **A station belongs to exactly one operator** — the nullable `operator_id` made a shared yard invisible to every company sharing it, since the tenant policy is false for NULL. **A coach cannot leave from a rival's terminal**, by composite FK rather than a WHERE clause. The yard is captured onto the departure like the seat layout, a closed yard is deactivated rather than deleted, and the search row names it only when the list offers a choice. 2 Postgres · 3 contract · 4 console · 1 traveller · 1 design test, one migration, 2 schema guarantees |
 | **The passenger who missed their coach** | ✅ done | `06-fleet-and-routes.md`, and the transfer the stations slice made tellable. Two numbers on the refund policy — how long a missed ticket keeps value, what the transfer costs — stamped by the same `(id, version)` pair as the refund bands. **Both default to zero, which means not offered**: honouring a missed ticket is a commercial promise no platform should make on a company's behalf. **The list crosses routes, not companies**, matched on the city pair, so the 09:30 from the other terminal is offered and a rival's coach never is. A **counter screen by design** — the quote is re-taken under the lock, a paid transfer names the till it was paid into, a free one names none. 7 domain · 7 contract · 7 Postgres · 8 smoke · 5 console tests, one migration, 2 schema guarantees |
+| **Card via PSP, for the diaspora** | ✅ done | `04-payments.md`, ADR-0005 and ADR-0006, and the first rail that **leaves the app**. The port asks the rail `pushesToHandset` rather than switching on its id, so the branch appears once instead of as a list of rail ids nobody remembers to extend. **The card number never touches this system** — the traveller finishes on the processor's hosted page, which moves the whole PCI surface to the PSP. **No operator collection account, and there cannot be one**: a card settles into the processor's merchant account and reaches the operator through the ordinary payout run, so the option carries no number and the tile says what it does instead of showing a merchant account that does not exist. The one query deciding whether a rail may be offered learned the difference **without loosening anything for wallets**. The page is **stored, not held in memory**, and comes back on every poll including the ones the state machine refuses — an app killed mid-checkout must be offered the same page, not a second transaction. The return URL is a **hint, never authority**: anybody can type one, and the capture is settled by re-querying like every other rail. Two CHECK constraints keep the shapes apart — a push rail has a wallet, a checkout rail has a page. **No merchant account exists yet**, so the adapter targets the shape every hosted checkout in the region shares and a sandbox rail in the same file walks the funnel end to end. 6 unit · 5 Postgres · 8 traveller-app · 4 contract · 10 smoke · 2 schema guarantees, one migration |
 
-Ten items of it are built, out of order and deliberately. The follower page is
+Eleven items of it are built, out of order and deliberately. The follower page is
 what makes a disruption reach the person who would otherwise phone the agency,
 and that machinery shipped in Phase 2. Self-service cancellation is the other
 half of the refund path the counter already had, and every piece it needed —
@@ -112,9 +113,13 @@ somebody walks into an office. §8 is now built on both sides and both ways of p
 the difference collected in the app, with the order the traveller can now give
 back rather than wait out. **§8 has nothing left named against it.** The funnel
 is on a back-office screen, a departure says which yard it boards at, and a
-passenger who missed one can be moved onto another at a counter. Everything else in Phase 3 — the stores, offline tickets on device,
-card via PSP — is not started. Offline is: a ticket bought yesterday now
-renders in a tunnel today. `09-roadmap.md` has the remaining
+passenger who missed one can be moved onto another at a counter. Everything else in Phase 3 — the stores, and a manual pass on
+real SIMs in real sunlight — needs something no amount of code supplies: a
+signing certificate, a Mac, a merchant account, money that is actually
+somebody's. Offline is built: a ticket bought yesterday renders in a tunnel
+today. So is the card rail, against a sandbox — the funnel is walkable end to
+end and the day a PSP contract exists it is two environment variables and a
+line of YAML. `09-roadmap.md` has the remaining
 Phase 1 work in **dependency order**. With both consoles rendered, the vitrine complete, TOTP in front of
 both back offices, object storage built, the section builder shipped and
 refunds executing end to end, the sales horizon extending itself and an
@@ -254,21 +259,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 487 tests
+         packages/bel_contracts packages/bel_crypto     # 491 tests
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
-dart test services/api -x integration -x storage        # 214 tests
+dart test services/api -x integration -x storage        # 220 tests
 cd packages/bel_design     && flutter test  # 67 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
-cd apps/traveller && flutter test        # 180 app tests, incl. real SQLite
+cd apps/traveller && flutter test        # 193 app tests, incl. real SQLite
 cd apps/console   && flutter test        # 100 console tests
 cd apps/admin     && flutter test        # 28 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 356 files
-./infra/migrations/check.sh              # 34 schema guarantees
-./tool/integration.sh                    # 343 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 307 checks, incl. the Dart client
+dart run tool/check_layers.dart          # the onion rule, 358 files
+./infra/migrations/check.sh              # 35 schema guarantees
+./tool/integration.sh                    # 348 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 317 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -277,8 +282,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,142 tests in total**, plus 307 smoke checks, 34 executed schema guarantees,
-343 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,165 tests in total**, plus 317 smoke checks, 35 executed schema guarantees,
+348 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -297,6 +302,89 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+**A card, on somebody else's page** — the first rail that leaves the app.
+
+Every rail until now pushes a prompt to a handset. The traveller types a PIN
+into a menu we do not control, and the answer arrives by callback or by poll.
+A card does not work like that, and the whole slice is what falls out of
+admitting it: the port asks the rail `pushesToHandset` rather than switching
+on its id, and the branch appears once — in the use case, in the store, in the
+option list and in the app's step machine — instead of as a growing list of
+rail ids nobody remembers to extend.
+
+**The card number never touches this system.** The traveller is sent to the
+processor's own hosted page. That moves the entire PCI surface to the PSP, and
+there is no version of "just this once" that is worth taking it back — a
+bus-ticket app that collects a PAN has inherited an audit regime it will never
+staff.
+
+**There is no operator collection account, and there cannot be.** Every rail
+before this one pays into a company's own verified wallet; a card settles into
+the processor's merchant account and reaches the operator through the ordinary
+payout run — the same route a mobile-money capture takes once it clears. So
+the option carries no number at all. Empty, rather than a placeholder: a
+screen showing a merchant account that does not exist is a screen teaching
+people to trust digits. The tile says what it does instead. The one query that
+decides whether a rail may be offered had to learn the difference **without
+loosening anything for wallets** — a push rail with no verified account is
+still refused, and there is a test whose only job is to prove that the
+loosening did not leak.
+
+**The page is stored, not held in memory.** The app may be killed while
+somebody is typing a card number into a browser, and the screen they come back
+to has to offer *the same page*. Minting a second one is a second transaction
+at the PSP for one journey, which is how a traveller gets charged twice. It
+comes back on every poll, including the polls the state machine refuses as
+no-ops — a blank screen there means a second charge just as surely.
+
+**The return URL is a hint, never authority.** It is a browser redirect and
+anybody can type one. Coming back proves nothing; the capture is confirmed by
+re-querying the rail, exactly as a callback is (ADR-0005 rule 4). A smoke
+check exists for the specific case of somebody returning to a booking that is
+still unpaid, because that is what a fraudulent return looks like.
+
+**Two CHECK constraints keep the shapes apart.** A push rail has a wallet; a
+checkout rail has a page; neither can borrow the other's column. Inventing an
+`msisdn` to satisfy a NOT NULL is how "which number did we charge?" gets a
+confident wrong answer six weeks later, in front of somebody disputing a
+payment.
+
+**No merchant account exists for this market yet**, so the adapter is written
+against the shape every hosted checkout in the region shares — CinetPay,
+PayDunya, Flutterwave and Stripe Checkout all do the same three things —
+rather than one vendor's field names. Two methods change when a contract
+exists: what a checkout is asked for, and how its vocabulary maps onto ours.
+An unrecognised status is **pending, never failed**: PSPs add values, and
+treating an unknown one as a failure refuses money that has already moved. The
+sandbox rail lives in the same file, deliberately, so the two cannot drift.
+
+Switching it on is both halves of the same switch: `CARD__APIKEY` for the
+deployment and `enabled: true` in `config/markets.yaml` for the market. A
+deployment holding credentials still does not offer a rail the file has not
+announced, and the smoke run proves each half separately.
+
+What it cost: one migration, two schema guarantees, one adapter pair, 6 unit
+tests, 5 against real Postgres, 8 in the traveller app, 4 contract round trips
+and 10 smoke checks over a socket. One dependency — `url_launcher`, to open
+the page in the handset's browser rather than a web view, because a bank's
+3-D Secure step often bounces through the card issuer's own app and a web view
+that cannot be left is where those payments die.
+
+It also fixed a **pre-existing flake in the funnel suite**, found by running
+the integration suite half an hour after local midnight: the test took its
+"before" snapshot over a one-day window and its "after" over three, and the
+shorter window's cohort begins at midnight in the market's timezone rather
+than UTC. Any run that straddled that boundary compared two different
+populations. Both snapshots now use the same window.
+
+What it did not build: **a real merchant account**, and therefore no charge
+has ever been made. The rail is not production-ready under ADR-0005 until it
+has been through the pathology suite against a live PSP.
+
+---
+
+## What the offline push changed, and what it cost
 
 **A ticket in a tunnel** — the QR that no longer needs a network to render.
 

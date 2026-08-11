@@ -113,15 +113,17 @@ final class ApiTravelGateway implements TravelGateway {
   Future<PaymentIntentDto> startPayment({
     required String bookingId,
     required String railId,
-    required String payerMsisdn,
     required String idempotencyKey,
+    String? payerMsisdn,
     String? changeId,
+    String? returnUrl,
   }) => _client.startPayment(
     StartPaymentRequest(
       bookingId: bookingId,
       railId: railId,
       payerMsisdn: payerMsisdn,
       changeId: changeId,
+      returnUrl: returnUrl,
     ),
     idempotencyKey: idempotencyKey,
   );

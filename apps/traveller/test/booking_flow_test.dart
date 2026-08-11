@@ -16,6 +16,20 @@ import 'package:flutter_test/flutter_test.dart';
 /// disagree about a booking make both suites meaningless.
 typedef ScriptedGatewayFactory = _ScriptedGateway;
 
+/// The card rail, kept beside the wallets rather than in place of them — the
+/// tests that matter are the ones where both are on offer and the app has to
+/// behave differently for each. No collection number, because there is none:
+/// the money lands in the processor's merchant account, not an operator's
+/// wallet.
+const cardOption = PaymentOptionDto(
+  railId: 'cg.card',
+  operatorId: 'psp',
+  labelKey: 'enum.PaymentRailKind.card',
+  collectionMsisdn: '',
+  collectionName: '',
+  hostedCheckout: true,
+);
+
 final class _ScriptedGateway implements TravelGateway {
   _ScriptedGateway({this.searchResult});
 
@@ -89,7 +103,9 @@ final class _ScriptedGateway implements TravelGateway {
 
   // ── Paying ────────────────────────────────────────────────────────────────
 
-  List<PaymentOptionDto> options = const [
+  List<PaymentOptionDto> options = walletOptions;
+
+  static const walletOptions = <PaymentOptionDto>[
     PaymentOptionDto(
       railId: 'cg.mtn_momo',
       operatorId: 'mtn',
@@ -112,6 +128,11 @@ final class _ScriptedGateway implements TravelGateway {
   ApiFailure? startPaymentFailure;
 
   final startedPayments = <({String railId, String payerMsisdn, String key})>[];
+
+  /// The return address each call carried, in order. A card checkout is the
+  /// only rail that has one, and it is worth asserting on: a hosted page with
+  /// no way back is a traveller stranded in a browser.
+  final returnUrls = <String?>[];
 
   /// Which change order each call named, in order — null for a plain fare.
   /// Kept because "the difference was paid, not the journey" is a property of
@@ -358,16 +379,18 @@ final class _ScriptedGateway implements TravelGateway {
   Future<PaymentIntentDto> startPayment({
     required String bookingId,
     required String railId,
-    required String payerMsisdn,
+    String? payerMsisdn,
     required String idempotencyKey,
     String? changeId,
+    String? returnUrl,
   }) async {
     startedPayments.add((
       railId: railId,
-      payerMsisdn: payerMsisdn,
+      payerMsisdn: payerMsisdn ?? '',
       key: idempotencyKey,
     ));
     paidChanges.add(changeId);
+    returnUrls.add(returnUrl);
     if (startPaymentFailure != null) throw startPaymentFailure!;
     return PaymentIntentDto(
       id: 'pi-1',
@@ -376,6 +399,11 @@ final class _ScriptedGateway implements TravelGateway {
       amount: const Money.xaf(12300),
       createdAt: DateTime.utc(2026, 8, 9, 6),
       pollAfterSeconds: 0,
+      // A rail that pushes to a handset has no page to open; one that does
+      // not, does. Mirrors what the API actually answers.
+      redirectUrl: payerMsisdn == null
+          ? 'https://checkout.invalid/pay/pi-1'
+          : null,
     );
   }
 

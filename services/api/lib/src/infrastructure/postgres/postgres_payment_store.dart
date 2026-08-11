@@ -20,7 +20,8 @@ final class PostgresPaymentStore implements PaymentStore {
   static const _columns = '''
     id, booking_id, operator_id, rail_id, msisdn, collection_msisdn,
     amount_minor, currency::text AS currency, state::text AS state,
-    failure_code, rail_transaction_id, created_at, expires_at, change_id
+    failure_code, rail_transaction_id, created_at, expires_at, change_id,
+    checkout_url
   ''';
 
   @override
@@ -52,10 +53,11 @@ final class PostgresPaymentStore implements PaymentStore {
     required String bookingId,
     required String userId,
     required String railId,
-    required String payerMsisdn,
+    required String? payerMsisdn,
     required bool payerIsAccountHolder,
     required String idempotencyKey,
     required Duration window,
+    bool hostedCheckout = false,
   }) => _db.transaction(DbScope.traveller(userId), (tx) async {
     // A retry of the same attempt returns the SAME intent rather than opening
     // a second. `idempotency_keys` guards the route; this guards the row, and
@@ -72,12 +74,17 @@ final class PostgresPaymentStore implements PaymentStore {
     // The booking, its operator, and the operator's collection account for
     // this rail — one query, because all three have to be true together and
     // checking them separately leaves a window between each pair.
+    // A card has no collection account to join to: the money lands in the
+    // PSP's merchant account, not in a wallet the operator holds, and
+    // requiring a row here would mean no operator could ever be paid by card.
+    // The LEFT JOIN keeps one query for both kinds; the guard below is what
+    // still refuses a push rail with no verified wallet.
     final context = await tx.execute(
       Sql.named('''
         SELECT b.operator_id, b.total_minor, b.currency::text AS currency,
                a.msisdn AS collection_msisdn
           FROM bookings b
-          JOIN operator_payment_accounts a
+          LEFT JOIN operator_payment_accounts a
             ON a.operator_id = b.operator_id
            AND a.rail_id = @rail
            AND a.active
@@ -85,10 +92,12 @@ final class PostgresPaymentStore implements PaymentStore {
          WHERE b.id = @booking
            AND b.purchaser_user_id = app_user_id()
            AND b.state = 'pending_payment'
+           AND (@checkout OR a.msisdn IS NOT NULL)
       '''),
       parameters: {
         'booking': TypedValue(Type.uuid, bookingId),
         'rail': TypedValue(Type.text, railId),
+        'checkout': TypedValue(Type.boolean, hostedCheckout),
       },
     );
 
@@ -104,9 +113,9 @@ final class PostgresPaymentStore implements PaymentStore {
         INSERT INTO payment_intents
           (booking_id, operator_id, rail_id, msisdn, collection_msisdn,
            payer_is_account_holder, amount_minor, currency, idempotency_key,
-           expires_at)
+           hosted_checkout, expires_at)
         VALUES (@booking, @operator, @rail, @payer, @collection, @holder,
-                @amount, @currency, @key,
+                @amount, @currency, @key, @checkout,
                 now() + make_interval(secs => @window))
         RETURNING $_columns
       '''),
@@ -117,12 +126,14 @@ final class PostgresPaymentStore implements PaymentStore {
         'payer': TypedValue(Type.text, payerMsisdn),
         // Captured now, not looked up at settlement. An operator who changes
         // their collection number on Tuesday must not silently redirect
-        // Monday's in-flight payment.
-        'collection': TypedValue(Type.text, c['collection_msisdn'] as String),
+        // Monday's in-flight payment. Null on a card, which has no wallet at
+        // either end.
+        'collection': TypedValue(Type.text, c['collection_msisdn'] as String?),
         'holder': TypedValue(Type.boolean, payerIsAccountHolder),
         'amount': TypedValue(Type.bigInteger, c['total_minor'] as int),
         'currency': TypedValue(Type.text, (c['currency'] as String).trim()),
         'key': TypedValue(Type.text, idempotencyKey),
+        'checkout': TypedValue(Type.boolean, hostedCheckout),
         'window': TypedValue(Type.double, window.inSeconds.toDouble()),
       },
     );
@@ -135,10 +146,11 @@ final class PostgresPaymentStore implements PaymentStore {
     required String changeId,
     required String userId,
     required String railId,
-    required String payerMsisdn,
+    required String? payerMsisdn,
     required bool payerIsAccountHolder,
     required String idempotencyKey,
     required Duration window,
+    bool hostedCheckout = false,
   }) => _db.transaction(DbScope.traveller(userId), (tx) async {
     final existing = await tx.execute(
       Sql.named(
@@ -161,7 +173,7 @@ final class PostgresPaymentStore implements PaymentStore {
                c.currency::text AS currency, a.msisdn AS collection_msisdn
           FROM booking_changes c
           JOIN bookings b ON b.id = c.booking_id
-          JOIN operator_payment_accounts a
+          LEFT JOIN operator_payment_accounts a
             ON a.operator_id = c.operator_id
            AND a.rail_id = @rail
            AND a.active
@@ -170,10 +182,12 @@ final class PostgresPaymentStore implements PaymentStore {
            AND b.purchaser_user_id = app_user_id()
            AND c.state = 'awaiting_payment'
            AND c.expires_at > now()
+           AND (@checkout OR a.msisdn IS NOT NULL)
       '''),
       parameters: {
         'change': TypedValue(Type.uuid, changeId),
         'rail': TypedValue(Type.text, railId),
+        'checkout': TypedValue(Type.boolean, hostedCheckout),
       },
     );
 
@@ -186,9 +200,9 @@ final class PostgresPaymentStore implements PaymentStore {
         INSERT INTO payment_intents
           (booking_id, operator_id, rail_id, msisdn, collection_msisdn,
            payer_is_account_holder, amount_minor, currency, idempotency_key,
-           expires_at, change_id)
+           hosted_checkout, expires_at, change_id)
         VALUES (@booking, @operator, @rail, @payer, @collection, @holder,
-                @amount, @currency, @key,
+                @amount, @currency, @key, @checkout,
                 now() + make_interval(secs => @window), @change)
         RETURNING $_columns
       '''),
@@ -197,11 +211,12 @@ final class PostgresPaymentStore implements PaymentStore {
         'operator': TypedValue(Type.uuid, c['operator_id'].toString()),
         'rail': TypedValue(Type.text, railId),
         'payer': TypedValue(Type.text, payerMsisdn),
-        'collection': TypedValue(Type.text, c['collection_msisdn'] as String),
+        'collection': TypedValue(Type.text, c['collection_msisdn'] as String?),
         'holder': TypedValue(Type.boolean, payerIsAccountHolder),
         'amount': TypedValue(Type.bigInteger, c['owed_minor'] as int),
         'currency': TypedValue(Type.text, (c['currency'] as String).trim()),
         'key': TypedValue(Type.text, idempotencyKey),
+        'checkout': TypedValue(Type.boolean, hostedCheckout),
         'window': TypedValue(Type.double, window.inSeconds.toDouble()),
         'change': TypedValue(Type.uuid, changeId),
       },
@@ -230,6 +245,7 @@ final class PostgresPaymentStore implements PaymentStore {
     required Map<String, Object?> raw,
     PaymentFailureCode? failureCode,
     String? railTransactionId,
+    String? checkoutUrl,
   }) => _db.transaction(const DbScope.worker(), (tx) async {
     // The event is written FIRST and unconditionally. Whether the transition
     // is legal is a separate question, and an illegal one is exactly the
@@ -279,7 +295,35 @@ final class PostgresPaymentStore implements PaymentStore {
       failureCode: failureCode,
     );
 
-    if (moved case Err()) return record;
+    // Written whether or not the state moves, and only once. It arrives with
+    // the rail's FIRST answer, and an intent that refused the transition —
+    // an out-of-order callback after a capture — must not lose the page the
+    // traveller is currently looking at. `COALESCE` keeps the first: a second
+    // URL for one intent is a second transaction at the PSP.
+    if (checkoutUrl != null) {
+      await tx.execute(
+        Sql.named('''
+          UPDATE payment_intents
+             SET checkout_url = COALESCE(checkout_url, @url)
+           WHERE id = @id
+        '''),
+        parameters: {
+          'id': TypedValue(Type.uuid, intentId),
+          'url': TypedValue(Type.text, checkoutUrl),
+        },
+        ignoreRows: true,
+      );
+    }
+
+    if (moved case Err()) {
+      // Re-read rather than returned as it was: the URL above may have just
+      // been written onto it, and the caller renders what it gets back.
+      final again = await tx.execute(
+        Sql.named('SELECT $_columns FROM payment_intents WHERE id = @id'),
+        parameters: {'id': TypedValue(Type.uuid, intentId)},
+      );
+      return _record(again.first.toColumnMap());
+    }
 
     final updated = await tx.execute(
       Sql.named('''
@@ -349,6 +393,7 @@ final class PostgresPaymentStore implements PaymentStore {
         ),
         payerMsisdn: r['msisdn'] as String? ?? '',
         collectionMsisdn: r['collection_msisdn'] as String? ?? '',
+        checkoutUrl: r['checkout_url'] as String?,
         createdAt: r['created_at'] as DateTime,
         expiresAt: r['expires_at'] as DateTime?,
         changeId: r['change_id']?.toString(),

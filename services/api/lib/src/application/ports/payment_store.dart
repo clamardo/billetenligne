@@ -38,6 +38,7 @@ final class PaymentIntentRecord {
     this.failureCode,
     this.railTransactionId,
     this.changeId,
+    this.checkoutUrl,
   });
 
   final String id;
@@ -52,6 +53,14 @@ final class PaymentIntentRecord {
   final DateTime? expiresAt;
   final PaymentFailureCode? failureCode;
   final String? railTransactionId;
+
+  /// Where the traveller enters their card, on a hosted-checkout rail.
+  ///
+  /// Read back rather than held in memory: the app that opened it may be
+  /// killed while somebody is typing a card number into a browser, and the
+  /// screen they come back to has to offer the same page rather than mint a
+  /// second transaction at the PSP for one journey.
+  final String? checkoutUrl;
 
   /// The change order this intent pays for, when it pays for one.
   ///
@@ -82,10 +91,17 @@ abstract interface class PaymentStore {
     required String bookingId,
     required String userId,
     required String railId,
-    required String payerMsisdn,
+    required String? payerMsisdn,
     required bool payerIsAccountHolder,
     required String idempotencyKey,
     required Duration window,
+
+    /// True for a card: the money lands in the PSP's merchant account rather
+    /// than in a wallet the operator holds, so there is **no collection
+    /// account to require** and no number to push to. The ledger is
+    /// unaffected — `railCapture` already debits `psp:clearing:<rail>` and
+    /// credits the operator, and the payout run already moves it on.
+    bool hostedCheckout = false,
   });
 
   /// Opens an intent against a change order that is waiting to be paid.
@@ -101,10 +117,11 @@ abstract interface class PaymentStore {
     required String changeId,
     required String userId,
     required String railId,
-    required String payerMsisdn,
+    required String? payerMsisdn,
     required bool payerIsAccountHolder,
     required String idempotencyKey,
     required Duration window,
+    bool hostedCheckout = false,
   });
 
   /// The traveller's own view of an attempt.
@@ -130,6 +147,10 @@ abstract interface class PaymentStore {
     required Map<String, Object?> raw,
     PaymentFailureCode? failureCode,
     String? railTransactionId,
+
+    /// Written on the first answer from a checkout rail and never again: a
+    /// second URL for one intent is a second transaction at the PSP.
+    String? checkoutUrl,
   });
 
   /// Intents still worth asking about, oldest poll first.

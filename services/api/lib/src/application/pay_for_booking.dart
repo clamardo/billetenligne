@@ -106,9 +106,14 @@ final class PayForBooking {
     required String bookingId,
     required String userId,
     required String railId,
-    required String payerMsisdn,
+    required String? payerMsisdn,
     required String? accountMsisdn,
     required String idempotencyKey,
+
+    /// Where the PSP sends the traveller back to when they are done on a
+    /// hosted-checkout rail. Ignored by every push rail, and a hint rather
+    /// than authority even here: the money is confirmed by re-querying.
+    String? returnUrl,
 
     /// Set when this pays the difference on a change rather than the journey
     /// itself. Everything after the rail check is identical — the same
@@ -120,53 +125,67 @@ final class PayForBooking {
     final gateway = _gateways[railId];
     if (gateway == null) return Err(RailNotAvailable(railId));
 
-    final parsed = PhoneNumber.parse(payerMsisdn, table: market.msisdn);
-    if (parsed case Err(:final failure)) {
-      return Err(PayerNumberInvalid(failure.reason));
-    }
-    final payer = parsed.valueOrNull!;
+    // A card is entered on the PSP's page and this system never sees the
+    // number, so there is nothing here to validate and nothing to push to.
+    // Asked of the rail rather than switched on its id, so adding an
+    // aggregator is a class rather than a string somebody has to remember.
+    final checkout = !gateway.pushesToHandset;
 
-    // Checked BEFORE the prompt goes out, and only against rails this market
-    // actually describes. A number on the wrong carrier otherwise fails
-    // thirty seconds later as a generic decline, and the traveller has no
-    // idea it was fixable by switching a toggle.
-    //
-    // Scoped to known rails because the market's prefix table is what makes
-    // the claim: for a rail it has never heard of — the fake one, or an
-    // aggregator added by configuration — we cannot say a number is on the
-    // wrong carrier, and guessing would refuse payments that would have
-    // worked. That rail decides for itself.
-    final requested = market.rails.where((r) => r.id == railId).firstOrNull;
-    if (requested?.operator != null &&
-        payer.operator != MobileOperator.unknown &&
-        requested!.operator != payer.operator) {
-      return const Err(RailRefused(PaymentFailureCode.wrongOperatorForMsisdn));
+    PhoneNumber? payer;
+    if (!checkout) {
+      final parsed = PhoneNumber.parse(payerMsisdn ?? '', table: market.msisdn);
+      if (parsed case Err(:final failure)) {
+        return Err(PayerNumberInvalid(failure.reason));
+      }
+      payer = parsed.valueOrNull!;
+
+      // Checked BEFORE the prompt goes out, and only against rails this
+      // market actually describes. A number on the wrong carrier otherwise
+      // fails thirty seconds later as a generic decline, and the traveller
+      // has no idea it was fixable by switching a toggle.
+      //
+      // Scoped to known rails because the market's prefix table is what makes
+      // the claim: for a rail it has never heard of — the fake one, or an
+      // aggregator added by configuration — we cannot say a number is on the
+      // wrong carrier, and guessing would refuse payments that would have
+      // worked. That rail decides for itself.
+      final requested = market.rails.where((r) => r.id == railId).firstOrNull;
+      if (requested?.operator != null &&
+          payer.operator != MobileOperator.unknown &&
+          requested!.operator != payer.operator) {
+        return const Err(
+          RailRefused(PaymentFailureCode.wrongOperatorForMsisdn),
+        );
+      }
     }
 
     // Recorded, never enforced. It is the difference between "paid from
     // their own wallet" and "a relative paid", which matters in a dispute and
-    // matters not at all to whether the payment may proceed.
+    // matters not at all to whether the payment may proceed. False on a card,
+    // where there is no wallet to compare against.
     final payerIsAccountHolder =
-        accountMsisdn != null && accountMsisdn == payer.e164;
+        payer != null && accountMsisdn != null && accountMsisdn == payer.e164;
 
     final intent = changeId == null
         ? await _payments.open(
             bookingId: bookingId,
             userId: userId,
             railId: railId,
-            payerMsisdn: payer.e164,
+            payerMsisdn: payer?.e164,
             payerIsAccountHolder: payerIsAccountHolder,
             idempotencyKey: idempotencyKey,
             window: window,
+            hostedCheckout: checkout,
           )
         : await _payments.openForChange(
             changeId: changeId,
             userId: userId,
             railId: railId,
-            payerMsisdn: payer.e164,
+            payerMsisdn: payer?.e164,
             payerIsAccountHolder: payerIsAccountHolder,
             idempotencyKey: idempotencyKey,
             window: window,
+            hostedCheckout: checkout,
           );
 
     if (intent == null) return const Err(BookingNotPayable());
@@ -179,10 +198,11 @@ final class PayForBooking {
       PaymentRequest(
         intentId: intent.id,
         amount: intent.amount,
-        payerMsisdn: payer.e164,
-        collectionMsisdn: intent.collectionMsisdn,
+        payerMsisdn: payer?.e164,
+        collectionMsisdn: checkout ? null : intent.collectionMsisdn,
         reference: intent.id.substring(0, 8).toUpperCase(),
         description: 'BilletEnLigne',
+        returnUrl: checkout ? returnUrl : null,
       ),
     );
 
@@ -193,6 +213,8 @@ final class PayForBooking {
       raw: outcome.raw,
       failureCode: outcome.failureCode,
       railTransactionId: outcome.railTransactionId,
+      // Only a checkout rail answers with one, and only on the first answer.
+      checkoutUrl: outcome.checkoutUrl,
     );
 
     final settled = recorded ?? intent;

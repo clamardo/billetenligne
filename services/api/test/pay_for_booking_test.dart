@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:bel_api/src/adapters/ed25519_ticket_issuer.dart';
 import 'package:bel_api/src/adapters/fake_payment_gateway.dart';
+import 'package:bel_api/src/adapters/hosted_checkout_gateway.dart';
 import 'package:bel_api/src/application/hold_seats.dart';
 import 'package:bel_api/src/application/pay_for_booking.dart';
 import 'package:bel_api/src/application/ports/payment_gateway.dart';
@@ -348,6 +349,110 @@ void main() {
       // Retryable and the hold is kept: they can try again with the right PIN.
       expect(declined.failureCode!.retryable, isTrue);
       expect(declined.failureCode!.keepsHold, isTrue);
+    });
+  });
+
+  group('paying by card', () {
+    late SandboxCheckoutGateway card;
+
+    const cardRail = 'cg.card';
+
+    setUp(() {
+      card = SandboxCheckoutGateway();
+      pay = PayForBooking(
+        payments: payments,
+        bookings: bookings,
+        operators: operators,
+        gateways: {railId: rail, cardRail: card},
+      );
+    });
+
+    Future<Result<PaymentIntentRecord, PaymentFailure>> startCard({
+      String key = 'card-1',
+      String? returnUrl = 'billetenligne://payment/return',
+    }) async => pay.start(
+      bookingId: await aReservation(seat: '2A'),
+      userId: 'u-1',
+      railId: cardRail,
+      // No wallet, and no account number either. A card payer may never have
+      // had a mobile-money account in their life.
+      payerMsisdn: null,
+      accountMsisdn: null,
+      idempotencyKey: key,
+      returnUrl: returnUrl,
+    );
+
+    test('answers a page to open, and still only pending', () async {
+      final intent = (await startCard()).valueOrNull!;
+
+      expect(intent.state, PaymentState.pending);
+      expect(intent.checkoutUrl, startsWith('https://checkout.invalid/pay/'));
+      // Nobody has typed a card number. The page merely exists.
+      expect(intent.failureCode, isNull);
+    });
+
+    test('needs no wallet number and no carrier to agree with', () async {
+      final result = await startCard();
+
+      expect(result.isOk, isTrue);
+      // The check a push rail does — "this number is on this carrier" — has
+      // no meaning here and must not run: a card is not on a carrier.
+      expect(card.requests.single.payerMsisdn, isNull);
+      expect(card.requests.single.collectionMsisdn, isNull);
+    });
+
+    test('a wallet rail with no payer number is refused', () async {
+      // The mirror of the case above, and the one that would otherwise push
+      // a prompt into the void.
+      final result = await pay.start(
+        bookingId: await aReservation(seat: '3A'),
+        userId: 'u-1',
+        railId: railId,
+        payerMsisdn: null,
+        accountMsisdn: null,
+        idempotencyKey: 'wallet-no-number',
+      );
+
+      expect(result.isOk, isFalse);
+    });
+
+    test('carries the way back, and it is only a hint', () async {
+      await startCard();
+      expect(card.requests.single.returnUrl, 'billetenligne://payment/return');
+
+      // And a payment started with nowhere to come back to still works: the
+      // outcome is settled by re-querying, never by a browser returning
+      // (ADR-0005 rule 4).
+      final noReturn = await startCard(key: 'card-2', returnUrl: null);
+      expect(noReturn.isOk, isTrue);
+    });
+
+    test('the page survives a poll that says nothing new', () async {
+      final intent = (await startCard()).valueOrNull!;
+      card.statusScript.add(const PaymentOutcome(state: PaymentState.pending));
+
+      final polled = await pay.reconcile(intentId: intent.id, railId: cardRail);
+
+      // The app may have been killed mid-checkout. Coming back to a screen
+      // with no page on it would mean starting a second transaction at the
+      // PSP for one journey.
+      expect(polled!.checkoutUrl, intent.checkoutUrl);
+      expect(polled.state, PaymentState.pending);
+    });
+
+    test('a captured card lands like every other rail', () async {
+      final intent = (await startCard()).valueOrNull!;
+      card.statusScript.add(const PaymentOutcome(state: PaymentState.captured));
+
+      final captured = await pay.reconcile(
+        intentId: intent.id,
+        railId: cardRail,
+      );
+
+      expect(captured!.state, PaymentState.captured);
+      // Still holds the page it was created with — nothing about capture
+      // erases where the money was entered.
+      expect(captured.checkoutUrl, isNotNull);
     });
   });
 

@@ -58,6 +58,11 @@ final class MtnMomoGateway implements PaymentGateway {
   @override
   String get railId => 'cg.mtn_momo';
 
+  /// A prompt on the payer's own handset, answered with a PIN in a menu we do
+  /// not control — which is the asynchrony ADR-0005 exists to contain.
+  @override
+  bool get pushesToHandset => true;
+
   @override
   Future<PaymentOutcome> requestPayment(PaymentRequest request) async {
     try {
@@ -69,7 +74,15 @@ final class MtnMomoGateway implements PaymentGateway {
           // Ours, echoed back on every status query. MTN calls it
           // externalId; it is what a support agent matches on.
           'externalId': request.reference,
-          'payer': {'partyIdType': 'MSISDN', 'partyId': request.payerMsisdn},
+          // Absent only if a card rail's request reached a push adapter,
+          // which is a wiring mistake rather than a payment that should be
+          // attempted against "".
+          'payer': {
+            'partyIdType': 'MSISDN',
+            'partyId':
+                request.payerMsisdn ??
+                (throw StateError('a push rail was given no payer number')),
+          },
           // Both appear in the USSD prompt on the handset. Short, because a
           // feature phone shows a couple of lines.
           'payerMessage': request.description,

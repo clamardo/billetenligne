@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:bel_client/bel_client.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'src/application/booking_flow.dart';
 import 'src/application/payment_flow.dart';
@@ -99,9 +101,27 @@ Future<void> main() async {
         isSignedIn: () => identity.isSignedIn,
       ),
       signIn: SignInFlow(gateway: identity),
-      payment: PaymentFlow(gateway: gateway),
+      payment: PaymentFlow(
+        gateway: gateway,
+        // Where the card processor sends the browser once the bank is done.
+        // A deep link back into this app, and empty until one is registered —
+        // an empty value means "no return leg", which the API turns into a
+        // checkout that simply ends on the processor's own page. The traveller
+        // still gets their ticket either way: the outcome is settled by
+        // polling, never by whether a browser came back (ADR-0005).
+        returnUrl: const String.fromEnvironment('BEL_CARD_RETURN_URL').isEmpty
+            ? null
+            : const String.fromEnvironment('BEL_CARD_RETURN_URL'),
+      ),
       tickets: TicketsFlow(gateway: gateway, vault: vault),
       currentUserId: () => identity.account?.id,
+      // Only the card rail's hosted checkout uses this. `externalApplication`
+      // rather than an in-app web view on purpose: a bank's 3-D Secure step
+      // often bounces through the card issuer's own app, and a web view that
+      // cannot be left is where those payments die.
+      openUrl: (url) => unawaited(
+        launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+      ),
       language: language,
     ),
   );

@@ -106,6 +106,33 @@ Future<Response> onRequest(RequestContext context, String id) async {
     );
   }
 
+  // Card, which has no collection account to be derived from.
+  //
+  // Every rail above is an operator's own verified wallet; a card settles into
+  // the PSP's merchant account and is paid on to the operator by the ordinary
+  // payout run — the same route a mobile-money capture takes once it has
+  // cleared. So it cannot come out of `railsFor`, and it is appended here
+  // under both halves of the same switch every other rail passes: the market
+  // file has to offer it, and this deployment has to be able to collect on it.
+  for (final rail in services.market.rails) {
+    if (rail.kind != PaymentRailKind.card) continue;
+    if (!rail.enabled || !services.railIds.contains(rail.id)) continue;
+
+    options.add(
+      PaymentOptionDto(
+        railId: rail.id,
+        operatorId: rail.id,
+        labelKey: rail.labelKey,
+        // No wallet at either end. Empty rather than a placeholder number: a
+        // screen that showed one would be showing somebody a merchant account
+        // that does not exist.
+        collectionMsisdn: '',
+        collectionName: '',
+        hostedCheckout: true,
+      ),
+    );
+  }
+
   options.sort((a, b) {
     if (a.recommended == b.recommended) return 0;
     return a.recommended ? -1 : 1;

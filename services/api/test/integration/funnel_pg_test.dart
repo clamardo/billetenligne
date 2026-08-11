@@ -49,7 +49,13 @@ void main() {
     // Deltas, not absolutes: every other suite in this run sold something
     // through this same database today, and a test that asserted "six holds"
     // would be asserting what the suites before it happened to do.
-    final before = (await platform.funnel(actorUserId: analyst, days: 1)).first;
+    //
+    // **The same window on both sides.** Asking for one day and then for
+    // three compares two different queries: the shorter one's cohort begins
+    // at midnight, and a suite that ran either side of it — which is any run
+    // that happens to cross midnight in the market's own timezone, not UTC —
+    // makes the two rows count different sets of holds.
+    final before = (await platform.funnel(actorUserId: analyst, days: 3)).first;
 
     await fixture.journey(daysAgo: 0, stoppedAt: 'hold');
     await fixture.journey(daysAgo: 0, stoppedAt: 'lapsed');
