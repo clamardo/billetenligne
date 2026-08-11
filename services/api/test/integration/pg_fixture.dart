@@ -544,6 +544,22 @@ final class PgFixture {
     };
   }
 
+  /// What this passenger is recorded as having paid for their seat.
+  ///
+  /// On `booking_seats`, not on the departure: an involuntary change carries
+  /// the fare across onto a dearer coach (ADR-0016), and this is the column
+  /// that would quietly disagree.
+  Future<int> seatFareOnBooking(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT fare_minor::int AS fare FROM booking_seats
+         WHERE booking_id = @id ORDER BY seat_label LIMIT 1
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return rows.first.toColumnMap()['fare'] as int;
+  }
+
   Future<Map<String, Object?>> bookingPaymentColumns(String bookingId) async {
     final rows = await _seed.execute(
       Sql.named('''

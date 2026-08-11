@@ -12,6 +12,12 @@ sms:
     body: "Paiement non abouti pour {route}. Aucun montant n'a ete debite. Votre place est libre pendant {minutes} min."
   refundIssued:
     body: "Remboursement de {amount} envoye sur {destination}. Delai indicatif {hours}h. Ref {reference}."
+  # Le remboursement choisi par le passager lui-meme apres une perturbation
+  # (08-disruption.md §3.2). Il part en espece a l'agence : le versement par
+  # rail n'existe pas encore, et promettre autre chose serait mentir. Le code
+  # part par SMS parce qu'un code affiche une seule fois est un code perdu.
+  refundClaim:
+    body: "Remboursement de {amount} accepte. Retirez-le dans une agence {operator} avec le code {code}. Ref {reference}."
   ticketClaim:
     body: "Votre billet {route} du {date} vous attend. Ouvrez BilletEnLigne et entrez le code {code}."
   departureReminder:

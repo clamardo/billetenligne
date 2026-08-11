@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:bel_api/src/application/ports/notification_gateway.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:postgres/postgres.dart';
 
@@ -479,6 +480,61 @@ final class OutboxDrain {
           subject: phone != null ? null : body,
           body: body,
           eventId: 'booking.protected:$fromDepartureId:$bookingId',
+        );
+
+      // The passenger chose their money back (`08-disruption.md` §3.2). It is
+      // collected in cash at an agency, so the code that collects it has to
+      // outlive the app being closed — which is why it goes by SMS as well as
+      // onto the screen that issued it.
+      case 'booking.refunded':
+        final bookingId = payload['bookingId'];
+        if (bookingId is! String) return null;
+
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT b.ref, u.phone_e164, u.email, u.language,
+                   o.trading_name, o.legal_name,
+                   f.amount_minor, f.currency, f.claim_code
+              FROM refunds f
+              JOIN bookings b ON b.id = f.booking_id
+              JOIN operators o ON o.id = f.operator_id
+              LEFT JOIN user_accounts u ON u.id = b.purchaser_user_id
+             WHERE f.booking_id = @booking AND f.claim_code IS NOT NULL
+             ORDER BY f.created_at DESC
+             LIMIT 1
+          '''),
+          parameters: {'booking': TypedValue(Type.uuid, bookingId)},
+        );
+
+        if (rows.isEmpty) return null;
+        final b = rows.first.toColumnMap();
+
+        final phone = b['phone_e164'] as String?;
+        final email = b['email'] as String?;
+        final to = phone ?? email;
+        if (to == null) return null;
+
+        final t = CatalogTranslator(_catalog, b['language'] as String? ?? 'fr');
+        final currency =
+            Currency.byCode(b['currency'] as String) ?? Currency.xaf;
+        final language = b['language'] as String? ?? 'fr';
+
+        final body = t('sms.refundClaim.body', {
+          'amount': Money(
+            b['amount_minor'] as int,
+            currency,
+          ).format(locale: language),
+          'operator': b['trading_name'] ?? b['legal_name'] ?? '',
+          'code': b['claim_code'],
+          'reference': 'BEL-${b['ref']}',
+        });
+
+        return OutboundMessage(
+          channel: phone != null ? SignInChannel.phone : SignInChannel.email,
+          to: to,
+          subject: phone != null ? null : body,
+          body: body,
+          eventId: 'booking.refunded:$bookingId',
         );
 
       default:

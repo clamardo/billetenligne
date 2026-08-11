@@ -440,6 +440,52 @@ check "a traveller sees their own booking" "yes" \
   "$(curl -s -H "$BOOK_AUTH" "$BASE/public/v1/bookings" \
      | grep -q '"state":"pending_payment"' && echo yes || echo no)"
 
+# ── The passenger's own choice ──────────────────────────────────────────────
+#
+# `08-disruption.md` §3.2. The fakes composition has no disruption desk — a
+# breakdown is not something to fake — so the screen answers for a journey
+# nothing is happening to, which is itself the case worth checking: a
+# passenger who follows the link and finds a 404 assumes the worst.
+echo
+echo "── the passenger's own choice"
+
+booking_ref="$(sed 's/.*"ref":"\([^"]*\)".*/\1/' <<<"$booking")"
+
+check "an anonymous caller sees nobody's options" "401" \
+  "$(status "$BASE/public/v1/bookings/$booking_ref/options")"
+# A reference that is not theirs reaches the same answer as one that does not
+# exist. Anything else is an endpoint that tells a stranger which references
+# are real.
+check "somebody else's reference is not found" "404" \
+  "$(status -H "$AUTH" "$BASE/public/v1/bookings/$booking_ref/options")"
+check "a reference nobody issued is not found either" "404" \
+  "$(status -H "$BOOK_AUTH" "$BASE/public/v1/bookings/BEL-ZZZZZZ/options")"
+check "POST is not a way to read them" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/bookings/$booking_ref/options")"
+
+check "an anonymous caller cannot choose" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/bookings/$booking_ref/choice" \
+     -H 'Content-Type: application/json' -d '{"optionId":"keep"}')"
+check "a choice with no option is refused by name" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/bookings/$booking_ref/choice" -H "$BOOK_AUTH" \
+     -H 'Content-Type: application/json' -d '{}')"
+check "GET is not a way to take one" "405" \
+  "$(status -H "$BOOK_AUTH" "$BASE/public/v1/bookings/$booking_ref/choice")"
+# Nothing is happening to this journey, so there is nothing to choose — a 409,
+# which tells a client to say something rather than to fix its payload.
+check "choosing on an undisrupted journey is refused" "409" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/bookings/$booking_ref/choice" -H "$BOOK_AUTH" \
+     -H 'Content-Type: application/json' -d '{"optionId":"keep"}')"
+choice_error="$(curl -s -X POST \
+  "$BASE/public/v1/bookings/$booking_ref/choice" -H "$BOOK_AUTH" \
+  -H 'Content-Type: application/json' -d '{"optionId":"keep"}')"
+check "and the refusal is a key, never a sentence" "yes" \
+  "$(grep -q 'choice.nothing_disrupted' <<<"$choice_error" && echo yes || echo no)"
+
 # ── Paying by mobile money ──────────────────────────────────────────────────
 #
 # The fakes composition runs one fake rail with one verified collection

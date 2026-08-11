@@ -12,6 +12,12 @@ sms:
     body: "Payment did not go through for {route}. No amount was debited. Your seat is free for {minutes} min."
   refundIssued:
     body: "Refund of {amount} sent to {destination}. Expect it within {hours}h. Ref {reference}."
+  # The refund the passenger chose themselves after a disruption
+  # (08-disruption.md §3.2). It is collected in cash at an agency: rail
+  # disbursement does not exist yet, and promising otherwise would be a lie.
+  # The code goes by SMS because a code shown once is a code somebody loses.
+  refundClaim:
+    body: "Refund of {amount} approved. Collect it at any {operator} agency with code {code}. Ref {reference}."
   ticketClaim:
     body: "Your ticket for {route} on {date} is waiting. Open BilletEnLigne and enter code {code}."
   departureReminder:

@@ -499,6 +499,49 @@ void main() {
       },
     );
 
+    test('a refund the passenger chose says where the money is', () async {
+      final departureId = await aDeparture();
+      final bookingId = await aConfirmedBookingOn(departureId, seat: '2B');
+
+      // Approved, with a claim code — the state the choice screen leaves
+      // behind (`08-disruption.md` §3.2).
+      await seed.execute(
+        Sql.named('''
+          INSERT INTO refunds
+            (booking_id, operator_id, amount_minor, currency, rate_bps,
+             destination, state, involuntary, claim_code, claim_expires_at,
+             requested_by, approved_by, reason)
+          VALUES (@booking, @operator, 9300, 'XAF', 10000, 'agencyCash',
+                  'claim_issued', TRUE, 'K7M2QRTV',
+                  now() + INTERVAL '90 days', @actor, @actor, 'choice')
+        '''),
+        parameters: {
+          'booking': TypedValue(Type.uuid, bookingId),
+          'operator': TypedValue(Type.uuid, operatorId),
+          'actor': TypedValue(Type.uuid, await aTraveller()),
+        },
+      );
+
+      await queue(
+        eventType: 'booking.refunded',
+        bookingId: bookingId,
+        payload: {'bookingId': bookingId},
+        dedupeKey: 'booking.refunded:$bookingId',
+      );
+
+      await recording.drain();
+
+      final body = sent.sent.last.body;
+      // The code is the message. A code that only ever existed on one screen
+      // is a code somebody loses, and this one is worth 9 300 francs.
+      expect(body, contains('K7M2QRTV'));
+      expect(body, contains('9${Money.narrowNbsp}300'));
+      // And it says where: rail disbursement is a separately funded float
+      // that does not exist, so promising anything but the counter would be
+      // a promise the counter has to break.
+      expect(body, contains('agence'));
+    });
+
     test('a rescue coach tells the passenger their new seat', () async {
       final departureId = await aDeparture();
       final bookingId = await aConfirmedBookingOn(departureId, seat: '7C');
