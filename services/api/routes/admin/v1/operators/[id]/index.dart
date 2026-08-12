@@ -109,6 +109,8 @@ AdminOperatorDto adminOperatorDto(OperatorSummary o) => AdminOperatorDto(
   vehicleCount: o.vehicleCount,
   routeCount: o.routeCount,
   staffCount: o.staffCount,
+  riskBand: o.riskBand,
+  riskReasons: o.riskReasons,
 );
 
 Response _error(int status, ApiError error) =>

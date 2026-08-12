@@ -741,6 +741,49 @@ final class OutboxDrain {
           eventId: 'compliance:$operatorId:$docType:$stage',
         );
 
+      case 'operator.approved':
+        final operatorId = payload['operatorId'];
+        if (operatorId is! String) return null;
+
+        // The applicant, not the owner row: at the instant this is composed
+        // they have just become the owner, and the person who filled in the
+        // wizard is who is waiting to hear.
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT u.phone_e164, u.email, u.language,
+                   COALESCE(o.trading_name, o.legal_name) AS name
+              FROM operator_applications a
+              JOIN operators o ON o.id = a.operator_id
+              JOIN user_accounts u ON u.id = a.applicant_user_id
+             WHERE a.operator_id = @id
+          '''),
+          parameters: {'id': TypedValue(Type.uuid, operatorId)},
+        );
+
+        if (rows.isEmpty) return null;
+        final o = rows.first.toColumnMap();
+
+        final phone = o['phone_e164'] as String?;
+        final email = o['email'] as String?;
+        final to = phone ?? email;
+        if (to == null) return null;
+
+        final t = CatalogTranslator(_catalog, o['language'] as String? ?? 'fr');
+        final params = <String, Object?>{'operator': o['name'] ?? ''};
+
+        return OutboundMessage(
+          channel: phone != null ? SignInChannel.phone : SignInChannel.email,
+          to: to,
+          subject: phone != null
+              ? null
+              : t('email.operatorApproved.subject', params),
+          // Says what to do next, not that a state changed. "Votre dossier
+          // est approuvé" leaves somebody wondering whether to wait for a
+          // second message; the next step is a route and a departure.
+          body: t('sms.operatorApproved.body', params),
+          eventId: 'operator.approved:$operatorId',
+        );
+
       default:
         // An event type nobody handles is marked delivered rather than
         // retried forever. It is a deploy-order artefact — a producer shipped

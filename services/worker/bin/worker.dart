@@ -122,6 +122,18 @@ Future<int> main(List<String> args) async {
     // landed on time.
     'compliance': compliance.watch,
     'challenges': sweepers.purgeChallenges,
+    // Sorting the review queue and approving the small complete ones. Late,
+    // because nobody is standing at a coach door waiting for it — but before
+    // the drain would be better, so an approval sends its message the same
+    // run rather than the next one, and that is a reordering worth doing the
+    // day the pass is doing anything at all.
+    'onboarding': () async {
+      final result = await services.autoReview.run();
+      return SweepResult(
+        name: 'onboarding.assessed',
+        affected: result.assessed,
+      );
+    },
     // Last, and cheap to be last: the figure moves once a day, and a search
     // reading yesterday's is reading something true about the operator.
     'reliability': reliability.recompute,

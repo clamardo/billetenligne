@@ -1825,6 +1825,64 @@ void main() {
       expect(back.stage, 'quarantined');
     });
   });
+
+  group('an application that has been sorted', () {
+    test('an unassessed operator omits the band rather than claiming one', () {
+      final json = AdminOperatorDto(
+        id: 'op-1',
+        code: 'SOT',
+        legalName: 'Sotrapo SARL',
+        status: 'under_review',
+        marketCode: 'CG',
+        createdAt: DateTime.utc(2026, 3, 1),
+        commissionBps: 500,
+      ).toJson();
+
+      // Absent is not `low`: one is a judgement and the other is the absence
+      // of one, and a queue that drew them the same would let an unassessed
+      // file read as cleared.
+      expect(json.containsKey('riskBand'), isFalse);
+      expect(json.containsKey('riskReasons'), isFalse);
+      expect(AdminOperatorDto.fromJson(json).riskBand, isNull);
+    });
+
+    test('a band and its reasons survive the round trip', () {
+      final sent = AdminOperatorDto(
+        id: 'op-2',
+        code: 'DBL',
+        legalName: 'Doublon Express',
+        status: 'under_review',
+        marketCode: 'CG',
+        createdAt: DateTime.utc(2026, 3, 1),
+        commissionBps: 500,
+        riskBand: 'elevated',
+        riskReasons: const ['duplicate_operator', 'fleet_too_large'],
+      );
+
+      final back = AdminOperatorDto.fromJson(sent.toJson());
+
+      expect(back.riskBand, 'elevated');
+      expect(back.riskReasons, ['duplicate_operator', 'fleet_too_large']);
+    });
+
+    test('an approved operator carries its band with nothing to explain', () {
+      final back = AdminOperatorDto.fromJson(
+        AdminOperatorDto(
+          id: 'op-3',
+          code: 'SOT',
+          legalName: 'Sotrapo SARL',
+          status: 'active',
+          marketCode: 'CG',
+          createdAt: DateTime.utc(2026, 3, 1),
+          commissionBps: 500,
+          riskBand: 'low',
+        ).toJson(),
+      );
+
+      expect(back.riskBand, 'low');
+      expect(back.riskReasons, isEmpty);
+    });
+  });
 }
 
 /// Reads the string constants declared on [ErrorCode] straight from source,

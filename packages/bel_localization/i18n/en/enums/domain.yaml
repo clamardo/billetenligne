@@ -59,6 +59,11 @@ enum:
     urgent: "Final week"
     blocked: "Sales stopped"
     suspended: "Suspended"
+  # The three bands of the automatic sort (03-operator-lifecycle.md §2.3).
+  RiskBand:
+    low: "Automatic"
+    standard: "To review"
+    elevated: "Needs a look"
   DocumentType:
     transport_licence: "transport operating licence"
     fleet_insurance: "fleet insurance certificate"

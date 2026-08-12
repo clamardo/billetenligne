@@ -18,6 +18,8 @@ final class OperatorSummary {
     this.vehicleCount = 0,
     this.routeCount = 0,
     this.staffCount = 0,
+    this.riskBand,
+    this.riskReasons = const [],
   });
 
   final String id;
@@ -38,6 +40,14 @@ final class OperatorSummary {
   final String? tradingName;
   final String? rccmNumber;
   final String? taxId;
+
+  /// `low` · `standard` · `elevated`, written by the auto-review pass
+  /// (`03-operator-lifecycle.md` §2.3). Null until it has looked, which is
+  /// what an unsorted queue row looks like rather than a low-risk one.
+  final String? riskBand;
+
+  /// Why it is not the band below. Codes, rendered by the reviewer's screen.
+  final List<String> riskReasons;
 
   final int documentCount;
 

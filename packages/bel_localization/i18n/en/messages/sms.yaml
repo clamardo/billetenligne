@@ -62,3 +62,8 @@ sms:
     body: "BilletEnLigne: {document} expired on {date}. New sales are stopped; tickets already sold stay valid. Upload the renewed copy."
   complianceSuspended:
     body: "BilletEnLigne: {operator} is suspended, {document} expired on {date}. Departures already sold still run. Contact us."
+  # The operator can sell. Says the next step rather than a state change:
+  # "your application is approved" leaves somebody waiting for a second
+  # message that never comes.
+  operatorApproved:
+    body: "BilletEnLigne: {operator} is live. Sign in to the console to add your routes and departures, and sell your first tickets."

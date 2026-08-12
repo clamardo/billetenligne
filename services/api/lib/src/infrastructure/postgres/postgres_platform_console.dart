@@ -43,7 +43,7 @@ final class PostgresPlatformConsole implements PlatformConsole {
   static const _summaryColumns = '''
     o.id, o.code, o.legal_name, o.trading_name, o.market_code,
     o.status::text AS status, o.rccm_number, o.tax_id, o.commission_bps,
-    o.created_at
+    o.created_at, o.risk_band, o.risk_reasons
   ''';
 
   /// Counts in one pass rather than one query per operator. A queue screen
@@ -624,5 +624,10 @@ final class PostgresPlatformConsole implements PlatformConsole {
     vehicleCount: (r['vehicle_count'] as int?) ?? 0,
     routeCount: (r['route_count'] as int?) ?? 0,
     staffCount: (r['staff_count'] as int?) ?? 0,
+    riskBand: r['risk_band'] as String?,
+    riskReasons: [
+      for (final code in (r['risk_reasons'] as List?) ?? const [])
+        code as String,
+    ],
   );
 }

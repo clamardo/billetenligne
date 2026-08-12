@@ -1759,4 +1759,76 @@ void main() {
       expect(rows.single.toColumnMap()['delivered_at'], isNotNull);
     });
   });
+  group('an operator who was approved by nobody', () {
+    late FakeNotificationGateway sent;
+    late OutboxDrain recording;
+
+    setUp(() {
+      sent = FakeNotificationGateway();
+      recording = OutboxDrain(
+        db: db,
+        notifications: sent,
+        catalog: CatalogLoader.fromDirectory(
+          Platform.environment['BEL_I18N_DIR'] ??
+              'packages/bel_localization/i18n',
+        ),
+        timeZone: 'Africa/Brazzaville',
+      );
+    });
+
+    test('is told what to do next, not that a state changed', () async {
+      final user = await aTraveller();
+      final created = await seed.execute(
+        Sql.named('''
+          INSERT INTO operators (code, legal_name, trading_name, market_code,
+                                 status)
+          VALUES (@code, @name, 'Sotrapo', 'CG', 'active')
+          RETURNING id
+        '''),
+        parameters: {
+          'code': TypedValue(Type.text, unique('AR')),
+          'name': TypedValue(Type.text, 'Sotrapo ${unique('S')} SARL'),
+        },
+      );
+      final operatorId = created.first.toColumnMap()['id'] as String;
+
+      await seed.execute(
+        Sql.named('''
+          INSERT INTO operator_applications (operator_id, applicant_user_id,
+                                             submitted_at)
+          VALUES (@id, @user, now())
+        '''),
+        parameters: {
+          'id': TypedValue(Type.uuid, operatorId),
+          'user': TypedValue(Type.uuid, user),
+        },
+        ignoreRows: true,
+      );
+
+      await seed.execute(
+        Sql.named('''
+          INSERT INTO outbox (aggregate, aggregate_id, event_type, payload,
+                              dedupe_key)
+          VALUES ('operator', @id, 'operator.approved',
+                  jsonb_build_object('operatorId', @id::text),
+                  'operator.approved:' || @id::text)
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, operatorId)},
+        ignoreRows: true,
+      );
+
+      await recording.drain();
+
+      final message = sent.sent.singleWhere(
+        (m) => m.eventId == 'operator.approved:$operatorId',
+      );
+      // The applicant, not a support address, and the trading name they will
+      // recognise rather than the legal one they typed once.
+      expect(message.body, contains('Sotrapo'));
+      // "Votre dossier est approuvé" leaves somebody waiting for a second
+      // message. This one says where to go and what to make.
+      expect(message.body, contains('console'));
+      expect(message.body, contains('lignes'));
+    });
+  });
 }

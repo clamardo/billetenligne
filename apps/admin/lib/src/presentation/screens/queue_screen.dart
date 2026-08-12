@@ -160,6 +160,16 @@ final class OperatorRow extends StatelessWidget {
                       context.t('admin.status.${operator.status}'),
                       tone: statusTone(operator.status),
                     ),
+                    // The band the pass wrote, and only when it has looked.
+                    // Absent is not `low`: one is a judgement and the other
+                    // is the absence of one, and a queue that drew them the
+                    // same would let an unassessed file read as cleared.
+                    if (operator.riskBand != null)
+                      KChip(
+                        context.t('enum.RiskBand.${operator.riskBand}'),
+                        tone: riskTone(operator.riskBand!),
+                        icon: Icons.rule,
+                      ),
                     KChip(
                       context.t('admin.queue.commission', {
                         'rate': CommissionTerm(operator.commissionBps).display,
@@ -183,6 +193,21 @@ final class OperatorRow extends StatelessWidget {
                       ),
                   ],
                 ),
+                // Named, not counted. "3 signaux" tells a reviewer to open
+                // the file to find out what they are, which is the click this
+                // whole sorting exists to save.
+                if (operator.riskReasons.isNotEmpty) ...[
+                  SizedBox(height: kilo.space.s1),
+                  Text(
+                    [
+                      for (final code in operator.riskReasons)
+                        context.t('admin.risk.$code'),
+                    ].join(' · '),
+                    style: kilo.text.caption.copyWith(
+                      color: kilo.color.contentSecondary,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -219,6 +244,15 @@ final class OperatorRow extends StatelessWidget {
 }
 
 /// One tone per stage of the lifecycle, so a roster reads at a glance.
+/// Elevated is the only one that is red. `standard` is the ordinary case —
+/// most operators are simply bigger than the automatic bar — and colouring it
+/// as a warning would make the queue look alarming on a normal Tuesday.
+KChipTone riskTone(String band) => switch (band) {
+  'elevated' => KChipTone.danger,
+  'low' => KChipTone.success,
+  _ => KChipTone.neutral,
+};
+
 KChipTone statusTone(String status) => switch (status) {
   'active' || 'approved' => KChipTone.success,
   'suspended' || 'rejected' || 'offboarded' => KChipTone.danger,

@@ -198,3 +198,18 @@ admin:
     lapsedDays: "expired {days} d ago"
     emptyTitle: "Nothing to chase"
     emptyBody: "No document falls due inside this window. Widen it to look further ahead."
+  # Why an application is not in the band below. Reasons, never a score: a
+  # score invites argument about the threshold and hides which check failed.
+  # Never shown to the applicant — telling somebody which check they failed
+  # is how a check becomes a tool for finding the way past it.
+  risk:
+    incomplete: "application incomplete"
+    fleet_too_large: "fleet above the automatic bar"
+    departures_too_many: "too many daily departures"
+    settlement_name_mismatch: "account name differs from legal name"
+    licence_runway: "licence expires soon"
+    insurance_runway: "insurance expires soon"
+    screening_not_run: "no screening ran"
+    screening_hit: "screening match"
+    duplicate_operator: "duplicate of an existing operator"
+    prior_offboarding: "previously offboarded"

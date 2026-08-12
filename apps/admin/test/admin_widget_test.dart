@@ -189,6 +189,8 @@ AdminOperatorDto _operator({
   String status = 'under_review',
   int commissionBps = 500,
   DateTime? createdAt,
+  String? riskBand,
+  List<String> riskReasons = const [],
 }) => AdminOperatorDto(
   id: 'op-1',
   code: 'ODN',
@@ -204,6 +206,8 @@ AdminOperatorDto _operator({
   vehicleCount: 14,
   routeCount: 3,
   staffCount: 9,
+  riskBand: riskBand,
+  riskReasons: riskReasons,
 );
 
 UnresolvedPaymentDto _payment() => UnresolvedPaymentDto(
@@ -544,6 +548,57 @@ void main() {
       gateway.calls,
       contains('commission:op-1:750:dossier complet, RCCM vérifié'),
     );
+  });
+
+  group('the queue arrives pre-sorted', () {
+    testWidgets('an unassessed file wears no band at all', (tester) async {
+      final gateway = _ScriptedAdmin(
+        capabilities: const ['platform.operator.review'],
+      )..roster = [_operator()];
+
+      await pump(tester, gateway);
+
+      // Absent is not `low`. A queue that drew them the same would let a file
+      // nobody has looked at read as cleared.
+      for (final label in const ['Automatique', 'À instruire', 'À examiner']) {
+        expect(find.text(label), findsNothing, reason: label);
+      }
+    });
+
+    testWidgets('a sorted file names its reasons, not a count', (tester) async {
+      final gateway =
+          _ScriptedAdmin(capabilities: const ['platform.operator.review'])
+            ..roster = [
+              _operator(
+                riskBand: 'elevated',
+                riskReasons: const ['duplicate_operator', 'fleet_too_large'],
+              ),
+            ];
+
+      await pump(tester, gateway);
+
+      expect(find.text('À examiner'), findsOneWidget);
+      // "2 signaux" would tell a reviewer to open the file to find out what
+      // they are, which is the click this whole sorting exists to save.
+      expect(
+        find.textContaining("doublon d'une compagnie existante"),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('flotte au-dessus du seuil automatique'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an automatic approval has nothing to explain', (tester) async {
+      final gateway = _ScriptedAdmin(
+        capabilities: const ['platform.operator.review'],
+      )..roster = [_operator(status: 'active', riskBand: 'low')];
+
+      await pump(tester, gateway);
+
+      expect(find.text('Automatique'), findsOneWidget);
+    });
   });
 
   group('the compliance calendar', () {

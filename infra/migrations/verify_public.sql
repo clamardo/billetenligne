@@ -1497,11 +1497,38 @@ BEGIN
     NULL; -- expected
   END;
 
+  -- And the band the auto-review pass writes (0033). An applicant who could
+  -- set their own to `low` is an applicant who approves themselves, which is
+  -- the one thing that must be impossible on a self-signup path.
+  BEGIN
+    UPDATE operators SET risk_band = 'low' WHERE id = tenant;
+    RAISE EXCEPTION 'FAIL: an operator wrote its own risk band';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
   -- What it MAY write: its own shop window, and nothing else.
   UPDATE operators SET tagline_fr = 'Le confort à chaque voyage'
    WHERE id = tenant;
 
   RESET ROLE;
+
+  -- ── The applicant, mid-wizard ──
+  --
+  -- `bel_public` genuinely may write four columns of this table (0015) — it
+  -- is how the wizard saves — so the interesting question is the fifth.
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+
+  BEGIN
+    UPDATE operators SET risk_band = 'low' WHERE id = tenant;
+    RAISE EXCEPTION 'FAIL: an applicant graded their own application';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  RESET ROLE;
+  PERFORM set_config('app.public', 'off', true);
 
   -- ── Put it back, so the rest of this file finds the world it expects ──
   PERFORM set_config('app.platform', 'on', true);
@@ -1512,6 +1539,6 @@ BEGIN
   RESET ROLE;
   PERFORM set_config('app.platform', 'off', true);
 
-  RAISE NOTICE 'OK  an operator reads its sales block and cannot lift it';
+  RAISE NOTICE 'OK  an operator reads its sales block, and grades neither it nor itself';
 END
 $$;

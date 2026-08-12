@@ -40,7 +40,9 @@ import 'application/ports/notification_gateway.dart';
 import 'application/ports/seat_alerts.dart';
 import 'application/ports/seat_inventory.dart';
 import 'application/ports/object_store.dart';
+import 'application/auto_review_applications.dart';
 import 'application/ports/compliance_desk.dart';
+import 'application/ports/review_queue.dart';
 import 'application/ports/storefronts.dart';
 import 'application/ports/user_directory.dart';
 import 'application/pay_for_booking.dart';
@@ -81,6 +83,7 @@ import 'infrastructure/postgres/postgres_seat_alerts.dart';
 import 'infrastructure/postgres/postgres_seat_inventory.dart';
 import 'infrastructure/postgres/postgres_second_factors.dart';
 import 'infrastructure/postgres/postgres_compliance_desk.dart';
+import 'infrastructure/postgres/postgres_review_queue.dart';
 import 'infrastructure/postgres/postgres_storefronts.dart';
 import 'middleware/idempotency.dart';
 import 'ports/auth_gateway.dart';
@@ -120,6 +123,7 @@ final class Services {
     required this.storage,
     required this.payments,
     required this.payForBooking,
+    required this.autoReview,
     required this.railIds,
     required this.checkoutRails,
     required this.market,
@@ -249,6 +253,12 @@ final class Services {
   final PaymentStore payments;
   final PayForBooking payForBooking;
 
+  /// Decides which applications a person has to read
+  /// (03-operator-lifecycle.md §2.3). Driven by the worker rather than by a
+  /// request: nobody is waiting on the socket for it, and the activation it
+  /// performs is one the public surface has no grant to write.
+  final AutoReviewApplications autoReview;
+
   /// The rails this deployment can actually collect on. Intersected with the
   /// operator's verified accounts before anything is offered, so a rail we
   /// cannot reach is absent rather than present-and-broken.
@@ -377,6 +387,15 @@ final class Services {
       // provisioned — and `/health` reports it rather than the API dying.
       storage: AzureBlobStore.fromEnvironment(env) ?? MemoryObjectStore(),
       payments: paymentStore,
+      autoReview: AutoReviewApplications(
+        queue: PostgresReviewQueue(db),
+        // No screening contract exists, so this answers `notRun` and every
+        // application falls to a person. The automatic path is switched off
+        // by data rather than by dead code — the day a vendor is wired, this
+        // is the only line that changes.
+        screening: const NoApplicantScreening(),
+        clock: clock,
+      ),
       payForBooking: PayForBooking(
         market: market,
         payments: paymentStore,
@@ -567,6 +586,11 @@ final class Services {
       compliance: const NoComplianceDesk(),
       storage: MemoryObjectStore(),
       payments: memoryPayments,
+      autoReview: const AutoReviewApplications(
+        queue: NoReviewQueue(),
+        screening: NoApplicantScreening(),
+        clock: SystemClock(),
+      ),
       payForBooking: PayForBooking(
         market: market,
         payments: memoryPayments,

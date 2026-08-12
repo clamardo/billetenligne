@@ -60,6 +60,11 @@ enum:
     urgent: "Dernière semaine"
     blocked: "Vente arrêtée"
     suspended: "Suspendu"
+  # Les trois bandes du tri automatique (03-operator-lifecycle.md §2.3).
+  RiskBand:
+    low: "Automatique"
+    standard: "À instruire"
+    elevated: "À examiner"
   DocumentType:
     transport_licence: "licence de transport"
     fleet_insurance: "attestation d'assurance"

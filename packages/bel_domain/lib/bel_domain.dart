@@ -36,6 +36,7 @@ export 'src/policy/refund_policy.dart';
 export 'src/branding/brand_asset.dart';
 export 'src/operator/operator_application.dart';
 export 'src/operator/document_expiry.dart';
+export 'src/operator/onboarding_risk.dart';
 export 'src/disruption/disruption.dart';
 export 'src/disruption/protection.dart';
 export 'src/disruption/reaccommodation.dart';

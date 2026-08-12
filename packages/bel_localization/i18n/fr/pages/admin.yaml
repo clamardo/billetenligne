@@ -199,3 +199,18 @@ admin:
     lapsedDays: "expirée depuis {days} j"
     emptyTitle: "Rien à relancer"
     emptyBody: "Aucune pièce n'arrive à échéance dans cette fenêtre. Élargissez-la pour voir plus loin."
+  # Pourquoi une candidature n'est pas dans la bande du dessous. Des motifs,
+  # jamais un score : un score fait discuter du seuil et cache la case qui a
+  # échoué. Jamais montrés au candidat — dire à quelqu'un quel contrôle il a
+  # raté, c'est lui donner l'outil pour le contourner.
+  risk:
+    incomplete: "dossier incomplet"
+    fleet_too_large: "flotte au-dessus du seuil automatique"
+    departures_too_many: "trop de départs quotidiens"
+    settlement_name_mismatch: "nom du compte différent du nom légal"
+    licence_runway: "licence à échéance rapprochée"
+    insurance_runway: "assurance à échéance rapprochée"
+    screening_not_run: "aucun criblage effectué"
+    screening_hit: "correspondance au criblage"
+    duplicate_operator: "doublon d'une compagnie existante"
+    prior_offboarding: "antécédent de sortie de plateforme"

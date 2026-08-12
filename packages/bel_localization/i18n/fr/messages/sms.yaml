@@ -63,3 +63,7 @@ sms:
     body: "BilletEnLigne: {document} expiree le {date}. La vente est arretee, les billets deja vendus restent valables. Mettez la piece a jour."
   complianceSuspended:
     body: "BilletEnLigne: {operator} suspendu, {document} expiree depuis le {date}. Vos departs vendus sont assures. Contactez-nous."
+  # L'operateur peut vendre. Dit l'etape suivante, pas un changement d'etat :
+  # "votre dossier est approuve" laisse quelqu'un attendre un second message.
+  operatorApproved:
+    body: "BilletEnLigne: {operator} est active. Connectez-vous a la console pour creer vos lignes et vos departs, et vendre vos premiers billets."

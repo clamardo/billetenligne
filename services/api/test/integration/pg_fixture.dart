@@ -227,6 +227,69 @@ final class PgFixture {
     );
   }
 
+  /// The operator row, as the compliance and review passes leave it.
+  Future<Map<String, dynamic>> operatorColumns(String operatorId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT status::text AS status, risk_band, risk_reasons,
+               risk_assessed_at, sales_blocked_at, approved_at
+          FROM operators WHERE id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, operatorId)},
+    );
+    return rows.first.toColumnMap();
+  }
+
+  /// The same person applying again with a different company.
+  ///
+  /// Inserted rather than driven through the wizard: `start` refuses a second
+  /// application while the first exists, and §2.3 allows re-application after
+  /// thirty days — a rule about calendars, not about this fixture.
+  Future<String> reapply(String userId, {String? legalName}) async {
+    final suffix = DateTime.now().microsecondsSinceEpoch % 1000000;
+    final created = await _seed.execute(
+      Sql.named('''
+        INSERT INTO operators (code, legal_name, market_code, status,
+                               rccm_number, tax_id)
+        VALUES (@code, @name, 'CG', 'under_review', @rccm, @tax)
+        RETURNING id
+      '''),
+      parameters: {
+        'code': TypedValue(Type.text, 'RE$suffix'),
+        'name': TypedValue(Type.text, legalName ?? 'Retour $suffix SARL'),
+        'rccm': TypedValue(Type.text, 'CG-BZV-01-2020-B12-$suffix'),
+        'tax': TypedValue(Type.text, 'M2020110$suffix'),
+      },
+    );
+    final operatorId = created.first.toColumnMap()['id'] as String;
+
+    await _seed.execute(
+      Sql.named('''
+        INSERT INTO operator_applications
+          (operator_id, applicant_user_id, legal_form, registered_address,
+           year_founded, owner_name, owner_id_type, owner_id_number,
+           owner_phone, owner_email, transport_licence_number,
+           transport_licence_expires, insurer_name, fleet_insurance_expires,
+           routes_served, fleet_size, station_count, daily_departures,
+           settlement_kind, settlement_account_name, settlement_account_ref,
+           agreement_accepted_at, submitted_at)
+        VALUES (@id, @user, 'sarl', '4 rue de la Gare, Dolisie', 2019,
+                'Serge Loubaki', 'passport', '19CD98765', '+242060192286',
+                'serge@sotrapo.cg', 'TR-2025-0114', DATE '2032-03-31',
+                'NSIA Congo', DATE '2032-01-31', 'Dolisie - Pointe-Noire',
+                3, 1, 4, 'momo', @name, '+242060192286', now(), now())
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, operatorId),
+        'user': TypedValue(Type.uuid, userId),
+        'name': TypedValue(Type.text, legalName ?? 'Retour $suffix SARL'),
+      },
+      ignoreRows: true,
+    );
+
+    return operatorId;
+  }
+
   Future<List<Map<String, dynamic>>> auditFor(String operatorId) async {
     final rows = await _seed.execute(
       Sql.named('''

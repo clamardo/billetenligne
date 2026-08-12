@@ -27,6 +27,8 @@ final class AdminOperatorDto {
     this.vehicleCount = 0,
     this.routeCount = 0,
     this.staffCount = 0,
+    this.riskBand,
+    this.riskReasons = const [],
   });
 
   final String id;
@@ -49,6 +51,18 @@ final class AdminOperatorDto {
   final int routeCount;
   final int staffCount;
 
+  /// `low` · `standard` · `elevated`, from the auto-review pass
+  /// (`03-operator-lifecycle.md` §2.3). **Null means not yet looked at**, and
+  /// a queue must draw that differently from `low`: one is a judgement and
+  /// the other is the absence of one.
+  final String? riskBand;
+
+  /// Why it is not the band below, as codes. Rendered through the catalog
+  /// like every other server-emitted label (ADR-0008), and never shown to the
+  /// applicant — telling somebody which check they failed is how a check
+  /// becomes a tool for finding the way past it.
+  final List<String> riskReasons;
+
   Map<String, Object?> toJson() => Wire.compact({
     'id': id,
     'code': code,
@@ -65,6 +79,8 @@ final class AdminOperatorDto {
     'vehicleCount': vehicleCount,
     'routeCount': routeCount,
     'staffCount': staffCount,
+    'riskBand': riskBand,
+    if (riskReasons.isNotEmpty) 'riskReasons': riskReasons,
   });
 
   factory AdminOperatorDto.fromJson(Map<String, Object?> json) =>
@@ -84,6 +100,11 @@ final class AdminOperatorDto {
         vehicleCount: (json['vehicleCount'] as int?) ?? 0,
         routeCount: (json['routeCount'] as int?) ?? 0,
         staffCount: (json['staffCount'] as int?) ?? 0,
+        riskBand: json['riskBand'] as String?,
+        riskReasons: [
+          for (final code in (json['riskReasons'] as List?) ?? const [])
+            code as String,
+        ],
       );
 
   /// The lifecycle states a reviewer has to act on.
