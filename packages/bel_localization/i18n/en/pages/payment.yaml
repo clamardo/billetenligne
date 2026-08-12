@@ -48,14 +48,14 @@ payment:
     step3: "Your ticket appears here as soon as the payment is confirmed."
     pay: "Pay {amount}"
   card:
-    title: "Card payment"
-    lead: "The payment finishes on the bank's secure page."
-    onTheirPage: "Your card number is typed there, never in this app."
+    tabHint: "Visa or Mastercard. No telephone number is asked for."
+  checkout:
+    lead: "The payment finishes on {rail}'s secure page."
+    onTheirPage: "Your payment details are typed there, never in this app."
     open: "Open the payment page"
     openAgain: "You can reopen this page as often as you need — it is always the same payment."
     preparing: "Preparing the payment page…"
     copyLink: "Open this link in your browser:"
-    tabHint: "Visa or Mastercard. No telephone number is asked for."
   waitingExtra:
     checkPhone: "Look at the phone {msisdn}"
     leaveSafely: "You can close this page — the payment continues and your ticket will be waiting here."

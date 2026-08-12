@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-12 · after commit *A hundred and first departure*
+**Updated:** 2026-08-12 · after commit *The wallet that does not ring*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -77,7 +77,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Callback endpoint** | ✅ done | Body trusted only to select a row; state always re-queried. Answers 200 to everything |
 | **Payment poller** | ✅ done | Backoff from the domain; 15 min of silence becomes `indeterminate` |
 | **Commission, per operator** | ✅ done | `CommissionTerm` in basis points, read from `operators.commission_bps` when a fare settles. Netted at source; unreadable terms keep nothing rather than guess |
-| Production credentials | ⬜ not started | **Commercial, not engineering.** The two wallet adapters run against sandbox hosts; the card adapter runs against no host at all, because there is no merchant account for this market yet. Each is a contract and a set of secrets, not a line of code |
+| Production credentials | ⬜ not started | **Commercial, not engineering.** MTN and Airtel run against sandbox hosts; the card and Orange Money adapters run against no host at all, because neither a merchant account nor a merchant key exists for this market yet. Each is a contract and a set of secrets, not a line of code |
 | `indeterminate` reconciliation — API | ✅ done | The queue, joined to the booking, the operator and the traveller's number. Three exits: ask the rail again · captured · failed. 5 integration tests |
 | **`indeterminate` reconciliation — the screen** | ✅ done | In the back office. Longest-waiting first, everything needed to decide in the row, three exits — and captured/failed demand a sentence about *that* payment, which becomes the `payment_events` row |
 | **The statement as a document** | ✅ done | `04-payments.md` §6.2 asks for a PDF, and this is one — written by a hundred-line PDF writer rather than a layout engine, in the two standard fonts every reader has had since 1993, with the figures in Courier so a money column right-aligns by counting characters instead of by carrying a font-metrics table. Uncompressed: a statement is three kilobytes, and reading it with `strings` when somebody disputes what we sent is worth more than the bytes. **The commission rate is derived from these sales**, not read from the operator's row, because the row can be renegotiated and a document reprinting today's rate over last month's money is the kind of small dishonesty that ends a relationship. **Nothing is invented** — §6.2's mock shows change fees and dispute adjustments, neither is in the ledger, and a `0 FCFA` row for something we never compute is a more convincing lie than an absent one. The console downloads it through the authenticated client and hands it to the browser (a plain link sends no bearer token), and the back office serves **the same bytes from its own route**. Emailing it is **not** built: attachments are missing from the ACS adapter. 18 API unit · 4 Postgres · 4 client · 6 smoke · 3 console tests |
@@ -103,8 +103,9 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **The passenger who missed their coach** | ✅ done | `06-fleet-and-routes.md`, and the transfer the stations slice made tellable. Two numbers on the refund policy — how long a missed ticket keeps value, what the transfer costs — stamped by the same `(id, version)` pair as the refund bands. **Both default to zero, which means not offered**: honouring a missed ticket is a commercial promise no platform should make on a company's behalf. **The list crosses routes, not companies**, matched on the city pair, so the 09:30 from the other terminal is offered and a rival's coach never is. A **counter screen by design** — the quote is re-taken under the lock, a paid transfer names the till it was paid into, a free one names none. 7 domain · 7 contract · 7 Postgres · 8 smoke · 5 console tests, one migration, 2 schema guarantees |
 | **Card via PSP, for the diaspora** | ✅ done | `04-payments.md`, ADR-0005 and ADR-0006, and the first rail that **leaves the app**. The port asks the rail `pushesToHandset` rather than switching on its id, so the branch appears once instead of as a list of rail ids nobody remembers to extend. **The card number never touches this system** — the traveller finishes on the processor's hosted page, which moves the whole PCI surface to the PSP. **No operator collection account, and there cannot be one**: a card settles into the processor's merchant account and reaches the operator through the ordinary payout run, so the option carries no number and the tile says what it does instead of showing a merchant account that does not exist. The one query deciding whether a rail may be offered learned the difference **without loosening anything for wallets**. The page is **stored, not held in memory**, and comes back on every poll including the ones the state machine refuses — an app killed mid-checkout must be offered the same page, not a second transaction. The return URL is a **hint, never authority**: anybody can type one, and the capture is settled by re-querying like every other rail. Two CHECK constraints keep the shapes apart — a push rail has a wallet, a checkout rail has a page. **No merchant account exists yet**, so the adapter targets the shape every hosted checkout in the region shares and a sandbox rail in the same file walks the funnel end to end. 6 unit · 5 Postgres · 8 traveller-app · 4 contract · 10 smoke · 2 schema guarantees, one migration |
 | **Search pagination** | ✅ done | The hard `LIMIT 100` is gone, and with it the quiet failure it hid: the hundred-and-first coach on a busy road simply did not exist. A **keyset cursor**, not an offset — the list underneath a scrolling traveller moves, and `OFFSET 20` over a list that gained a row repeats one coach and loses another. The cursor names **when the last row leaves and which one it was**, because two companies scheduling the 06:00 on the same road is the ordinary case, and the same pair is the `ORDER BY` so the assumed ordering and the produced one are one thing. **Opaque and server-minted**, and a cursor nobody minted is refused rather than answered with page one. The server reads one row more than a page, which is the whole answer to "is there another?". The app asks when the foot of the list is built and **keeps its rows when a page fails to arrive**; the header says "et plus" until the list is complete. 6 use-case · 4 Postgres · 7 traveller-app · 2 widget · 6 contract · 6 smoke tests |
+| **Orange Money** | ✅ done | ~45% of the market, and the rail that turned out **not to push**. Orange's Web Payment API answers with a page rather than ringing a handset, which is the shape the card slice had already built — so this cost a class and an `if` instead of a second payment funnel, which is the return on `pushesToHandset` being a question asked of the rail. No payer number, no carrier check and no USSD fallback, all three falling out of that one answer. **Unlike a card it has a merchant account**, so the option names who is paid — and that is what moved `hostedCheckout` off the rail's `kind` and onto the deployment's gateway, because Orange Money is mobile money *and* a hosted checkout at once. `pay_token` rides on the intent as the rail's reference, since Orange needs it on every status query. **No merchant key exists yet**; the adapter targets the published API and `markets.yaml` still ships the rail off. 2 unit · 5 smoke checks |
 
-Twelve items of it are built, out of order and deliberately. The follower page is
+Thirteen items of it are built, out of order and deliberately. The follower page is
 what makes a disruption reach the person who would otherwise phone the agency,
 and that machinery shipped in Phase 2. Self-service cancellation is the other
 half of the refund path the counter already had, and every piece it needed —
@@ -120,9 +121,10 @@ signing certificate, a Mac, a merchant account, money that is actually
 somebody's. Offline is built: a ticket bought yesterday renders in a tunnel
 today. So is the card rail, against a sandbox — the funnel is walkable end to
 end and the day a PSP contract exists it is two environment variables and a
-line of YAML. The first item of **Phase 4** is built too: search is paged,
-which is the difference between a service that works on one road and one that
-works on a hundred. `09-roadmap.md` has the remaining
+line of YAML. Two items of **Phase 4** are built too: search is paged, which is the
+difference between a service that works on one road and one that works on a
+hundred; and Orange Money, which is the largest single unlock in this market
+and needs only a merchant key now. `09-roadmap.md` has the remaining
 Phase 1 work in **dependency order**. With both consoles rendered, the vitrine complete, TOTP in front of
 both back offices, object storage built, the section builder shipped and
 refunds executing end to end, the sales horizon extending itself and an
@@ -265,7 +267,7 @@ dart test packages/bel_domain packages/bel_localization \
          packages/bel_contracts packages/bel_crypto     # 497 tests
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
-dart test services/api -x integration -x storage        # 226 tests
+dart test services/api -x integration -x storage        # 228 tests
 cd packages/bel_design     && flutter test  # 67 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 202 app tests, incl. real SQLite
@@ -273,10 +275,10 @@ cd apps/console   && flutter test        # 100 console tests
 cd apps/admin     && flutter test        # 28 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 358 files
+dart run tool/check_layers.dart          # the onion rule, 359 files
 ./infra/migrations/check.sh              # 35 schema guarantees
 ./tool/integration.sh                    # 352 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 323 checks, incl. the Dart client
+./tool/smoke_api.sh                      # 329 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -285,7 +287,7 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,186 tests in total**, plus 323 smoke checks, 35 executed schema guarantees,
+**1,188 tests in total**, plus 329 smoke checks, 35 executed schema guarantees,
 352 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
@@ -305,6 +307,68 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+**The wallet that does not ring** — Orange Money, the largest single unlock in
+this market.
+
+MTN and Airtel take a number and ring a handset. Orange's Web Payment API does
+not: it takes an order and answers with a page, the traveller authorises it on
+Orange's own site, and we find out by asking. That is the same shape a card
+takes, which was built the day before — so this rail cost **a class and an
+`if`** rather than a second payment funnel. It is the entire return on
+`pushesToHandset` having been a question asked of the rail rather than a list
+of rail ids somebody has to remember to extend.
+
+Three consequences, and each is somewhere the old assumption would have broken:
+
+* **No payer number.** The traveller types their own on Orange's page. Sending
+  one would be a field Orange ignores and a wrong-number support call we
+  invented ourselves.
+* **The carrier check does not fire.** "This number is on the wrong network"
+  is a fact about a rail you push to. There is nothing here to push.
+* **No USSD fallback on the waiting screen.** `#150#` is a real Orange code
+  and it knows nothing about this payment; offering it would send somebody
+  into a menu that cannot help them.
+
+**Unlike a card, it has a merchant account**, so the option names who is being
+paid exactly as MTN's does. That is what forced the last change: the payment
+screen now reads `hostedCheckout` off the option rather than deciding it from
+the rail's `kind`, because Orange Money is mobile money **and** a hosted
+checkout at once and no category can express that. The tile shows the
+collection name and number whenever there is one to show, and says what it is
+instead only when there is nobody to name.
+
+`pay_token` rides on the intent as the rail's own reference. Orange requires it
+on every status query and it is not derivable from anything else we hold, so a
+process restart would otherwise leave a live payment unaskable — the durable
+copy is `psp_reference`, which the store already writes.
+
+The words moved too. The checkout screen's catalog block is now
+`payment.checkout.*` and takes the rail's name from the key the server sent, so
+the page no longer calls Orange Money somebody's bank. `payment.card.*` keeps
+only the one line that really is about cards.
+
+**Written against no merchant key.** There is no Orange contract for this
+deployment, so the adapter targets the Web Payment API as published. If the
+eventual contract turns out to be Orange's merchant-*push* API instead, this
+file is what changes — `pushesToHandset` becomes true, `requestPayment` sends a
+subscriber number, and nothing above it moves. That is what the port is for.
+`config/markets.yaml` still ships the rail off: credentials and the market file
+are two halves of one switch, and the smoke run proves each separately.
+
+That smoke section also changed direction. It used to prove a rail could be
+switched **on** by pushing a file; it now proves one can be switched **off**.
+Turning a rail on can wait for a release. Turning one off is the urgent
+direction — a carrier having a bad morning is a tile that takes a PIN and
+loses it, and the fix has to be a file and a restart.
+
+What it cost: one adapter, 2 use-case tests, 5 smoke checks against a sandbox
+rail, and a collection account in the in-memory store so the combination is
+exercised by every screen that runs on fakes.
+
+---
+
+## What the pagination push changed, and what it cost
 
 **A hundred and first departure** — search stops ending at a number nobody
 chose.

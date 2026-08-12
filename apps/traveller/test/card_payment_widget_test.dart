@@ -59,6 +59,9 @@ void main() {
         find.textContaining('jamais dans cette application'),
         findsOneWidget,
       );
+      // The rail names itself in the bar rather than the screen calling
+      // everything a card.
+      expect(find.text('Carte bancaire'), findsWidgets);
 
       await tester.tap(find.text('Ouvrir la page de paiement'));
       expect(opened, ['https://checkout.invalid/pay/pi-1']);
@@ -179,8 +182,10 @@ void main() {
       // The field is gone rather than disabled: a greyed-out box still reads
       // as something the traveller failed to fill in.
       expect(find.text('Numéro à débiter'), findsNothing);
+      // Named, not assumed: the sentence carries the rail's own label, which
+      // is what lets Orange Money use this screen without reading as a bank.
       expect(
-        find.textContaining('la page sécurisée de la banque'),
+        find.textContaining('la page sécurisée de Carte bancaire'),
         findsOneWidget,
       );
     });

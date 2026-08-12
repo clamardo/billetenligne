@@ -4,13 +4,16 @@ import 'package:flutter/material.dart';
 import '../../application/payment_flow.dart';
 import '../l10n.dart';
 
-/// The card page is open somewhere else, and this screen is the way back.
+/// The payment page is open somewhere else, and this screen is the way back.
 ///
-/// The counterpart of `PaymentWaitingScreen` for a hosted checkout, and a
-/// separate screen because the two have nothing in common: one says "look at
-/// your handset" and offers a USSD code, this one hands over a link and waits
-/// for a browser. Three things carry it:
+/// The counterpart of `PaymentWaitingScreen` for a hosted checkout — a card,
+/// or Orange Money — and a separate screen because the two have nothing in
+/// common: one says "look at your handset" and offers a USSD code, this one
+/// hands over a link and waits for a browser. Four things carry it:
 ///
+///   * **It names the rail rather than assuming a card.** The name comes from
+///     the option the server sent, so a wallet whose payment happens on a web
+///     page reads as itself instead of as somebody's bank.
 ///   * **The button can be pressed again.** A browser that failed to open, a
 ///     page dismissed by accident, an app killed while somebody was typing —
 ///     all of them land back here, and the same page is offered rather than a
@@ -18,7 +21,7 @@ import '../l10n.dart';
 ///   * **It never claims failure.** Coming back is not evidence of anything.
 ///     The money is confirmed by polling, exactly as on every other rail, and
 ///     the poller keeps asking after this screen is gone.
-///   * **It says the card is entered on the bank's page, not ours.** That is
+///   * **It says the details are entered on their page, not ours.** That is
 ///     both true and the reassurance somebody needs before typing a card
 ///     number into a telephone.
 final class PaymentCheckoutScreen extends StatelessWidget {
@@ -44,11 +47,14 @@ final class PaymentCheckoutScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final kilo = context.kilo;
     final url = step.checkoutUrl;
+    // The rail's own name, from the key the server sent. Two catalog strings
+    // composed on the client, never a sentence built on the server (ADR-0008).
+    final rail = context.t(step.option.labelKey);
 
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: Text(context.t('payment.card.title'), style: kilo.text.h3),
+        title: Text(rail, style: kilo.text.h3),
       ),
       body: SafeArea(
         child: ListView(
@@ -63,19 +69,19 @@ final class PaymentCheckoutScreen extends StatelessWidget {
               const Center(child: CircularProgressIndicator()),
               SizedBox(height: kilo.space.s5),
               Text(
-                context.t('payment.card.preparing'),
+                context.t('payment.checkout.preparing'),
                 style: kilo.text.body,
                 textAlign: TextAlign.center,
               ),
             ] else ...[
               Text(
-                context.t('payment.card.lead'),
+                context.t('payment.checkout.lead', {'rail': rail}),
                 style: kilo.text.bodyLg,
                 textAlign: TextAlign.center,
               ),
               SizedBox(height: kilo.space.s3),
               Text(
-                context.t('payment.card.onTheirPage'),
+                context.t('payment.checkout.onTheirPage'),
                 style: kilo.text.body.copyWith(
                   color: kilo.color.contentSecondary,
                 ),
@@ -84,14 +90,14 @@ final class PaymentCheckoutScreen extends StatelessWidget {
               SizedBox(height: kilo.space.s6),
               if (onOpen case final open?) ...[
                 KButton(
-                  label: context.t('payment.card.open'),
+                  label: context.t('payment.checkout.open'),
                   onPressed: () => open(url),
                 ),
                 SizedBox(height: kilo.space.s3),
                 Text(
                   // Pressing it twice is safe, and saying so is what stops
                   // somebody starting a second payment out of doubt.
-                  context.t('payment.card.openAgain'),
+                  context.t('payment.checkout.openAgain'),
                   style: kilo.text.caption.copyWith(
                     color: kilo.color.contentSecondary,
                   ),
@@ -99,7 +105,7 @@ final class PaymentCheckoutScreen extends StatelessWidget {
                 ),
               ] else ...[
                 Text(
-                  context.t('payment.card.copyLink'),
+                  context.t('payment.checkout.copyLink'),
                   style: kilo.text.body,
                   textAlign: TextAlign.center,
                 ),

@@ -456,6 +456,55 @@ void main() {
     });
   });
 
+  group('a wallet that does not push', () {
+    late SandboxCheckoutGateway orange;
+
+    // Orange Money is mobile money AND a hosted checkout. Nothing in the use
+    // case may key on the rail's category — only on whether it pushes.
+    const orangeRail = 'cg.orange_money';
+
+    setUp(() {
+      orange = SandboxCheckoutGateway(railId: orangeRail);
+      pay = PayForBooking(
+        payments: payments,
+        bookings: bookings,
+        operators: operators,
+        gateways: {railId: rail, orangeRail: orange},
+      );
+    });
+
+    test('asks for no number, even on a rail with a carrier', () async {
+      final result = await pay.start(
+        bookingId: await aReservation(seat: '4A'),
+        userId: 'u-1',
+        railId: orangeRail,
+        payerMsisdn: null,
+        accountMsisdn: null,
+        idempotencyKey: 'orange-1',
+      );
+
+      expect(result.isOk, isTrue);
+      expect(result.valueOrNull!.checkoutUrl, isNotNull);
+    });
+
+    test('the carrier check does not fire on a checkout rail', () async {
+      // An MTN number against Orange Money. On a push rail this is refused
+      // before anything is sent; here it is not a fact about the payment at
+      // all — the traveller types their own number on Orange's page.
+      final result = await pay.start(
+        bookingId: await aReservation(seat: '5A'),
+        userId: 'u-1',
+        railId: orangeRail,
+        payerMsisdn: mtnNumber,
+        accountMsisdn: mtnNumber,
+        idempotencyKey: 'orange-2',
+      );
+
+      expect(result.isOk, isTrue);
+      expect(orange.requests.single.payerMsisdn, isNull);
+    });
+  });
+
   test('the payment window is shorter than the seat hold', () {
     // ADR-0005 rule 5. Inverted, a seat is sold out from under somebody who
     // is entering their PIN — and the two constants live in different files,

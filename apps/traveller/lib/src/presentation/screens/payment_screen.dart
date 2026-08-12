@@ -119,7 +119,13 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                             // the money lands in the processor's merchant
                             // account — so it says what it does instead.
                             Text(
-                              option.hostedCheckout
+                              // Who is being paid, when there is somebody to
+                              // name. A card has nobody — the money lands in
+                              // the processor's merchant account — and says
+                              // what it is instead. Orange Money does have a
+                              // merchant account, and naming it matters just
+                              // as much as it does for MTN.
+                              option.collectionMsisdn.isEmpty
                                   ? context.t('payment.card.tabHint')
                                   : '${option.collectionName} · '
                                         '${Format.msisdn(option.collectionMsisdn)}',
@@ -185,7 +191,9 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
             ] else
               KCard(
                 child: Text(
-                  context.t('payment.card.lead'),
+                  context.t('payment.checkout.lead', {
+                    'rail': context.t(step.selected!.labelKey),
+                  }),
                   style: kilo.text.body,
                 ),
               ),

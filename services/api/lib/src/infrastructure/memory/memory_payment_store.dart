@@ -34,12 +34,23 @@ final class MemoryPaymentStore implements PaymentStore {
 
   var _next = 0;
 
-  /// One rail, one verified account. Overridable so a test can prove the
+  /// Verified accounts, one per rail. Overridable so a test can prove the
   /// "operator has no verified account" refusal.
+  ///
+  /// Orange Money is here as well as the fake wallet because it is the one
+  /// rail that is mobile money **and** a hosted checkout, and a demo without
+  /// it leaves that combination unexercised by every screen that runs on
+  /// fakes — which is every screen on a fresh clone.
   List<CollectionAccount> accounts = const [
     CollectionAccount(
       railId: 'cg.fake_money',
       msisdn: '242060000001',
+      displayName: 'Ocean du Nord',
+      verified: true,
+    ),
+    CollectionAccount(
+      railId: 'cg.orange_money',
+      msisdn: '242060000002',
       displayName: 'Ocean du Nord',
       verified: true,
     ),

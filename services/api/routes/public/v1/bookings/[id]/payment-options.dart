@@ -92,6 +92,8 @@ Future<Response> onRequest(RequestContext context, String id) async {
     // time.
     if (rail != null && !rail.enabled) continue;
 
+    final checkout = services.checkoutRails.contains(a.railId);
+
     options.add(
       PaymentOptionDto(
         railId: a.railId,
@@ -100,7 +102,15 @@ Future<Response> onRequest(RequestContext context, String id) async {
         labelKey: rail?.labelKey ?? 'enum.PaymentRail.${a.railId}',
         collectionMsisdn: a.msisdn,
         collectionName: a.displayName,
-        ussdCode: rail?.ussdCode,
+        // Only where there is a menu to dial. A rail whose answer arrives on
+        // a web page has no USSD fallback, and offering one would send
+        // somebody into a menu that knows nothing about this payment.
+        ussdCode: checkout ? null : rail?.ussdCode,
+        // Orange Money is mobile money AND a hosted checkout, which is
+        // exactly why this is read from the deployment's gateway rather than
+        // from the rail's `kind`: the screen has to draw the shape the rail
+        // actually is, not the category it belongs to.
+        hostedCheckout: checkout,
         recommended: a.railId == recommendedRail,
       ),
     );

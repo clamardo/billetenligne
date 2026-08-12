@@ -75,6 +75,7 @@ fi
 # it is on — which is exactly the shape ADR-0006 asks for, and it lets the
 # whole card path be walked over a socket with no merchant account.
 sed -e '/id: cg.card/,/disabledReasonKey/ s/enabled: false/enabled: true/' \
+    -e '/id: cg.orange_money/,/disabledReasonKey/ s/enabled: false/enabled: true/' \
     "$API_DIR/../../config/markets.yaml" > /tmp/bel-smoke-markets-card.yaml
 
 echo "── starting on :$PORT"
@@ -89,7 +90,8 @@ echo "── starting on :$PORT"
 # to announce the rail and the deployment has to have something behind it —
 # and the checks below prove each half separately.
 (cd "$API_DIR" && exec env PORT="$PORT" BEL_SIGNIN_MAX_PER_SOURCE=6 \
-  BEL_MARKETS_FILE=/tmp/bel-smoke-markets-card.yaml CARD__SANDBOX=1 \
+  BEL_MARKETS_FILE=/tmp/bel-smoke-markets-card.yaml \
+  CARD__SANDBOX=1 ORANGE__SANDBOX=1 \
   dart build/bin/server.dart >/tmp/bel-smoke.log 2>&1) &
 server_pid=$!
 
@@ -703,6 +705,65 @@ check "and it is still not paid" "yes" \
 check "coming back does not confirm anything" "yes" \
   "$(curl -s -H "$BOOK_AUTH" "$BASE/public/v1/bookings" \
      | grep -q '"seatLabel":"6A"[^}]*"state":"confirmed"' && echo no || echo yes)"
+
+# ── Orange Money, which does not push ───────────────────────────────────────
+#
+# The largest wallet in this market, and the one that answers with a page
+# rather than a PIN prompt. What is worth proving over a socket is that
+# nothing keys on the rail's *category*: this is mobile money and a hosted
+# checkout at the same time, and every branch in the system reads the second
+# fact rather than the first.
+echo
+echo "── orange money"
+
+# Its own booking: the card one above is already paying, and a booking can
+# only be paid once.
+orange_hold="$(curl -s -X POST "$BASE/public/v1/holds" \
+  -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: smoke-orange-hold-$$" \
+  -d "{\"departureId\":\"$DEP\",\"seatLabels\":[\"7A\"]}")"
+orange_hold_id="$(sed 's/.*"id":"\([^"]*\)".*/\1/' <<<"$orange_hold")"
+
+orange_booking="$(curl -s -X POST "$BASE/public/v1/bookings" \
+  -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: smoke-orange-booking-$$" \
+  -d "{\"holdId\":\"$orange_hold_id\",\"passengers\":[{\"fullName\":\"Aline M.\",\"seatLabel\":\"7A\"}]}")"
+orange_booking_id="$(sed 's/.*"id":"\([^"]*\)".*/\1/' <<<"$orange_booking")"
+
+orange_options="$(curl -s -H "$BOOK_AUTH" \
+  "$BASE/public/v1/bookings/$orange_booking_id/payment-options")"
+
+check "orange money is offered as mobile money" "yes" \
+  "$(grep -q '"railId":"cg.orange_money"' <<<"$orange_options" \
+     && echo yes || echo no)"
+# It has a merchant account and names it, unlike a card — the money lands in
+# the operator's own Orange balance.
+check "and names who is being paid" "yes" \
+  "$(grep -q '"railId":"cg.orange_money","operatorId":"orange"[^}]*"collectionMsisdn":"242' \
+     <<<"$orange_options" && echo yes || echo no)"
+# The whole row, so the assertions below are about Orange's option and not
+# about whatever else the list happens to contain.
+orange_row="$(grep -o '{"railId":"cg.orange_money"[^}]*}' <<<"$orange_options")"
+
+check "and says the payment finishes elsewhere" "yes" \
+  "$(grep -q '"hostedCheckout":true' <<<"$orange_row" && echo yes || echo no)"
+# A page rail has no menu to dial. Offering one would send somebody into a
+# USSD session that knows nothing about this payment.
+check "and offers no USSD fallback" "yes" \
+  "$(grep -q '"ussdCode"' <<<"$orange_row" && echo no || echo yes)"
+
+orange_pay="$(curl -s -X POST "$BASE/public/v1/payments" \
+  -H "$BOOK_AUTH" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: smoke-orange-$$" \
+  -d "{\"bookingId\":\"$orange_booking_id\",\"railId\":\"cg.orange_money\"}")"
+
+# No payerMsisdn was sent and none was needed: the traveller types their own
+# number on Orange's page, which is the whole difference from MTN.
+check "an orange payment needs no number from us" "yes" \
+  "$(grep -q '"state":"pending"' <<<"$orange_pay" && echo yes || echo no)"
+check "and answers a page to open" "yes" \
+  "$(grep -q '"redirectUrl":"https://checkout.invalid/pay/' <<<"$orange_pay" \
+     && echo yes || echo no)"
 
 # ── The storefront ──────────────────────────────────────────────────────────
 #
@@ -1652,22 +1713,26 @@ else
   echo "$client_out" | sed 's/^/       /'
 fi
 
-# ── A rail is enabled by pushing a file ─────────────────────────────────────
+# ── A rail is switched by pushing a file ────────────────────────────────────
 #
 # The claim ADR-0006 makes, over a socket: the rails an app renders come from
-# `config/markets.yaml`, so switching Orange Money on is a config push and a
-# restart rather than a release — which matters in a market where a large
+# `config/markets.yaml`, so switching a wallet on or off is a config push and
+# a restart rather than a release — which matters in a market where a large
 # share of handsets never update.
+#
+# Off rather than on, deliberately. Turning a rail on can wait for a release;
+# **turning one off is the urgent direction** — a carrier having a bad morning
+# is a tile that takes a PIN and loses it, and the fix has to be a file.
 #
 # A second server, on its own port, started against a different file. Nothing
 # is rebuilt and no Dart changes; the only difference is the YAML.
 echo
-echo "── a rail is enabled by pushing a file"
+echo "── a rail is switched by pushing a file"
 
 CONFIG_PORT=$((PORT + 1))
 CONFIG_BASE="http://localhost:$CONFIG_PORT"
 
-sed -e '/id: cg.orange_money/,/disabledReasonKey/ s/enabled: false/enabled: true/' \
+sed -e '/id: cg.mtn_momo/,/^$/ s/enabled: true/enabled: false/' \
     -e 's/serviceFeeMinor: 300/serviceFeeMinor: 450/' \
     "$API_DIR/../../config/markets.yaml" > /tmp/bel-smoke-markets.yaml
 
@@ -1687,10 +1752,19 @@ done
 
 pushed="$(curl -s "$CONFIG_BASE/public/v1/market")"
 check "the pushed market is served" "200" "$(status "$CONFIG_BASE/public/v1/market")"
-check "Orange Money is now enabled" "yes" \
-  "$(grep -q '"id":"cg.orange_money","kind":"mobileMoney","labelKey":"enum.MobileOperator.orange"[^}]*"enabled":true' <<<"$pushed" && echo yes || echo no)"
-check "and the shipped file still says otherwise" "yes" \
-  "$(grep -q '"id":"cg.orange_money"[^}]*"enabled":false' <<<"$market" && echo yes || echo no)"
+rail_enabled() {
+  # The rail objects carry nested money, so a brace-counting grep reads the
+  # wrong closing brace. Parsed rather than pattern-matched.
+  python3 -c 'import json,sys
+rails = json.load(sys.stdin)["rails"]
+row = next(r for r in rails if r["id"] == sys.argv[1])
+print("yes" if row.get("enabled") else "no")' "$1"
+}
+
+check "MTN Money is now switched off" "no" \
+  "$(rail_enabled cg.mtn_momo <<<"$pushed")"
+check "and the running server still offers it" "yes" \
+  "$(rail_enabled cg.mtn_momo <<<"$market")"
 check "the service fee moved with the file" "yes" \
   "$(grep -q '"serviceFee":{"minor":450,"currency":"XAF"}' <<<"$pushed" && echo yes || echo no)"
 

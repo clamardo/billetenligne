@@ -18,6 +18,7 @@ import 'adapters/airtel_money_gateway.dart';
 import 'adapters/ed25519_ticket_issuer.dart';
 import 'adapters/fake_payment_gateway.dart';
 import 'adapters/hosted_checkout_gateway.dart';
+import 'adapters/orange_money_gateway.dart';
 import 'adapters/mtn_momo_gateway.dart';
 import 'application/ports/booking_store.dart';
 import 'application/ports/ticket_issuer.dart';
@@ -114,6 +115,7 @@ final class Services {
     required this.payments,
     required this.payForBooking,
     required this.railIds,
+    required this.checkoutRails,
     required this.market,
     required this.authGateway,
     required this.directory,
@@ -232,6 +234,14 @@ final class Services {
   /// operator's verified accounts before anything is offered, so a rail we
   /// cannot reach is absent rather than present-and-broken.
   final Set<String> railIds;
+
+  /// Of those, the ones that answer with a page instead of ringing a handset.
+  ///
+  /// Asked of the gateway rather than derived from the rail's `kind`: Orange
+  /// Money is mobile money and is a hosted checkout, a card is neither and is
+  /// also one, and the payment screen needs to know which shape it is drawing
+  /// rather than which category the rail belongs to.
+  final Set<String> checkoutRails;
 
   /// The country this deployment serves, read from `config/markets.yaml` at
   /// startup rather than compiled in (ADR-0006).
@@ -361,6 +371,10 @@ final class Services {
         reschedules: reschedules,
       ),
       railIds: rails.keys.toSet(),
+      checkoutRails: {
+        for (final entry in rails.entries)
+          if (!entry.value.pushesToHandset) entry.key,
+      },
       market: market,
       authGateway: FirebaseAuthGateway(
         config: FirebaseConfig.fromEnvironment(env),
@@ -479,6 +493,16 @@ final class Services {
       fakeRails['cg.card'] = SandboxCheckoutGateway();
     }
 
+    // Orange Money on the same terms. Worth having a sandbox for even though
+    // it is a wallet: it is the one rail that is mobile money *and* a hosted
+    // checkout, and that combination is what the payment screen has to draw
+    // from the option rather than from the rail's category.
+    if (((environment ?? const {})['ORANGE__SANDBOX'] ?? '').isNotEmpty) {
+      fakeRails['cg.orange_money'] = SandboxCheckoutGateway(
+        railId: 'cg.orange_money',
+      );
+    }
+
     return Services._(
       holdSeats: HoldSeats(inventory: inventory, market: market),
       searchDepartures: SearchDepartures(catalogue: catalogue, market: market),
@@ -531,6 +555,10 @@ final class Services {
         gateways: fakeRails,
       ),
       railIds: fakeRails.keys.toSet(),
+      checkoutRails: {
+        for (final entry in fakeRails.entries)
+          if (!entry.value.pushesToHandset) entry.key,
+      },
       market: market,
       // A demo traveller, so a fresh clone can hold a seat without standing up
       // Firebase first — and a fake, so this token cannot reach a real
@@ -678,6 +706,31 @@ final class Services {
         clientSecret: env['AIRTEL__CLIENTSECRET'] ?? '',
         country: market.code,
         currency: market.currency.code,
+      );
+    }
+
+    // Orange Money — the largest wallet here, and the one that does not push.
+    // It is a hosted checkout, so it needs no payer number and answers with a
+    // page; everything that requires already exists, which is why this rail
+    // is a class and an `if` rather than a second payment funnel.
+    final orangeId = env['ORANGE__CLIENTID'] ?? '';
+    if (orangeId.isNotEmpty) {
+      rails['cg.orange_money'] = OrangeMoneyGateway(
+        baseUrl: Uri.parse(env['ORANGE__BASEURL'] ?? 'https://api.orange.com'),
+        clientId: orangeId,
+        clientSecret: env['ORANGE__CLIENTSECRET'] ?? '',
+        merchantKey: env['ORANGE__MERCHANTKEY'] ?? '',
+        country: env['ORANGE__COUNTRY'] ?? market.code.toLowerCase(),
+        returnUrl: '${env['PUBLIC_BASE_URL'] ?? ''}/payments/return',
+        cancelUrl: '${env['PUBLIC_BASE_URL'] ?? ''}/payments/cancelled',
+        callbackUrl: '${env['PUBLIC_BASE_URL'] ?? ''}/hooks/payments/orange',
+      );
+    } else if ((env['ORANGE__SANDBOX'] ?? '').isNotEmpty) {
+      // Opt-in, like the card sandbox and for the same reason: a rail that
+      // appeared wherever credentials were missing would let a deployment
+      // take payments that charge nobody.
+      rails['cg.orange_money'] = SandboxCheckoutGateway(
+        railId: 'cg.orange_money',
       );
     }
 
