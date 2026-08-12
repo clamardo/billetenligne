@@ -20,6 +20,7 @@ import 'screens/payment_screen.dart';
 import 'screens/payment_checkout_screen.dart';
 import 'screens/payment_waiting_screen.dart';
 import 'screens/reserved_screen.dart';
+import 'screens/seat_alert_screen.dart';
 import 'screens/seat_map_screen.dart';
 import 'screens/ticket_screen.dart';
 import 'screens/tickets_screen.dart';
@@ -211,6 +212,7 @@ class _FunnelState extends State<_Funnel> {
         :final stale,
         :final hasMore,
         :final loadingMore,
+        :final watching,
       ) =>
         ResultsScreen(
           query: _flow.lastQuery!,
@@ -218,7 +220,12 @@ class _FunnelState extends State<_Funnel> {
           stale: stale,
           hasMore: hasMore,
           loadingMore: loadingMore,
+          watching: watching,
           onSelect: _flow.openSeatMap,
+          // A full coach is not a dead end. It is the one row on this screen
+          // where the only useful thing left to offer is "tell me if it
+          // changes".
+          onWatch: _flow.offerAlert,
           onBack: _flow.reset,
           onLoadMore: () => unawaited(_flow.searchMore()),
           onRefresh: () => _flow.search(_flow.lastQuery!),
@@ -234,6 +241,42 @@ class _FunnelState extends State<_Funnel> {
             );
           },
         ),
+
+      // The sold-out detour. Reached only from a full coach, and it is the
+      // one screen in the funnel that sells nothing.
+      AskingForAlert(
+        :final departure,
+        :final seats,
+        :final saving,
+        :final alert,
+        :final failure,
+      ) =>
+        SeatAlertScreen(
+          departure: departure,
+          seats: seats,
+          watching: alert != null,
+          saving: saving,
+          maxSeats: _flow.maxSeats,
+          failure: failure,
+          onSeats: _flow.setAlertSeats,
+          onConfirm: () => unawaited(_flow.confirmAlert()),
+          onCancel: () => unawaited(_flow.cancelAlert()),
+          onBack: _backToResults,
+        ),
+
+      // The second reason this product asks who somebody is: an alert is a
+      // promise to send a message, and an anonymous one has no recipient.
+      AlertNeedsIdentity() => SignInScreen(
+        flow: widget.signIn,
+        onSignedIn: (_) {
+          widget.signIn.reset();
+          unawaited(_flow.resumeAlertAfterIdentity());
+        },
+        onCancel: () {
+          widget.signIn.reset();
+          _flow.abandonAlert();
+        },
+      ),
 
       LoadingSeatMap() => Scaffold(
         appBar: AppBar(leading: BackButton(onPressed: _backToResults)),

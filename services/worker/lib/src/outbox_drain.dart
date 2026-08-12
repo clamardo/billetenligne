@@ -604,6 +604,65 @@ final class OutboxDrain {
           eventId: 'booking.cancelled:$bookingId',
         );
 
+      case 'seat.available':
+        final alertId = payload['alertId'];
+        if (alertId is! String) return null;
+
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT u.phone_e164, u.email, u.language,
+                   a.seats_wanted,
+                   r.origin_city, r.destination_city,
+                   o.trading_name, o.legal_name,
+                   to_char(d.departs_at AT TIME ZONE @tz, 'DD/MM')
+                     AS departs_date,
+                   to_char(d.departs_at AT TIME ZONE @tz, 'HH24"h"MI')
+                     AS departs_time
+              FROM seat_alerts a
+              JOIN departures d ON d.id = a.departure_id
+              JOIN routes r ON r.id = d.route_id
+              JOIN operators o ON o.id = d.operator_id
+              LEFT JOIN user_accounts u ON u.id = a.user_id
+             WHERE a.id = @id
+          '''),
+          parameters: {
+            'id': TypedValue(Type.uuid, alertId),
+            'tz': TypedValue(Type.text, timeZone),
+          },
+        );
+
+        if (rows.isEmpty) return null;
+        final a = rows.first.toColumnMap();
+
+        final phone = a['phone_e164'] as String?;
+        final email = a['email'] as String?;
+        final to = phone ?? email;
+        if (to == null) return null;
+
+        final t = CatalogTranslator(_catalog, a['language'] as String? ?? 'fr');
+        final params = <String, Object?>{
+          'route': '${a['origin_city']}–${a['destination_city']}',
+          'date': a['departs_date'],
+          'time': a['departs_time'],
+          'operator': a['trading_name'] ?? a['legal_name'] ?? '',
+          'seats': '${a['seats_wanted']}',
+        };
+
+        return OutboundMessage(
+          channel: phone != null ? SignInChannel.phone : SignInChannel.email,
+          to: to,
+          subject: phone != null
+              ? null
+              : t('email.seatAvailable.subject', params),
+          // Says "went back on sale", never "reserved for you". Nothing is
+          // held: everybody waiting got this at the same moment and the
+          // first to pay gets the seat. A message that implied otherwise
+          // would send somebody to a station for a coach that filled while
+          // they read it.
+          body: t('sms.seatAvailable.body', params),
+          eventId: 'seat.available:$alertId',
+        );
+
       default:
         // An event type nobody handles is marked delivered rather than
         // retried forever. It is a deploy-order artefact — a producer shipped

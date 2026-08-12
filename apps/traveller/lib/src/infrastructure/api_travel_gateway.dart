@@ -27,6 +27,17 @@ final class ApiTravelGateway implements TravelGateway {
       _client.seatMap(departureId);
 
   @override
+  Future<SeatAlertDto> watchSeats(String departureId, {int seats = 1}) =>
+      _client.watchSeats(departureId, seats: seats);
+
+  @override
+  Future<void> unwatchSeats(String departureId) =>
+      _client.unwatchSeats(departureId);
+
+  @override
+  Future<List<SeatAlertDto>> seatAlerts() => _client.seatAlerts();
+
+  @override
   Future<HoldDto> hold({
     required String departureId,
     required List<String> seatLabels,

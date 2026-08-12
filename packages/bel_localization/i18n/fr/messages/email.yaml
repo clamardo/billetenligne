@@ -26,3 +26,6 @@ email:
 
       Votre billet est dans l'application BilletEnLigne. Présentez le code QR
       au contrôleur — il fonctionne sans réseau.
+  # Un sujet qui dit ce qui s'est passe, pas ce qui est promis.
+  seatAvailable:
+    subject: "Des places se liberent: {route} le {date}"

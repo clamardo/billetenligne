@@ -25,6 +25,19 @@ abstract interface class TravelGateway {
 
   Future<SeatMapDto> seatMap(String departureId);
 
+  /// Ask to be told when a full coach has room again.
+  ///
+  /// Holds nothing and promises nobody a seat — everybody waiting is told at
+  /// the same moment and the first to pay gets it. The screen wording has to
+  /// say so, because "we'll let you know" is easily read as "we're keeping
+  /// one for you".
+  Future<SeatAlertDto> watchSeats(String departureId, {int seats});
+
+  Future<void> unwatchSeats(String departureId);
+
+  /// Every coach this traveller is still waiting on.
+  Future<List<SeatAlertDto>> seatAlerts();
+
   /// Claims seats.
   ///
   /// [idempotencyKey] is supplied by the caller so that a retry of a *lost*

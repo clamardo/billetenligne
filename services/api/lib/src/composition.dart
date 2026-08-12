@@ -37,6 +37,7 @@ import 'application/ports/operator_applications.dart';
 import 'application/ports/platform_console.dart';
 import 'application/ports/departure_catalogue.dart';
 import 'application/ports/notification_gateway.dart';
+import 'application/ports/seat_alerts.dart';
 import 'application/ports/seat_inventory.dart';
 import 'application/ports/object_store.dart';
 import 'application/ports/storefronts.dart';
@@ -75,6 +76,7 @@ import 'infrastructure/postgres/postgres_operator_directory.dart';
 import 'infrastructure/postgres/postgres_payment_store.dart';
 import 'infrastructure/postgres/postgres_platform_console.dart';
 import 'infrastructure/postgres/postgres_idempotency_store.dart';
+import 'infrastructure/postgres/postgres_seat_alerts.dart';
 import 'infrastructure/postgres/postgres_seat_inventory.dart';
 import 'infrastructure/postgres/postgres_second_factors.dart';
 import 'infrastructure/postgres/postgres_storefronts.dart';
@@ -111,6 +113,7 @@ final class Services {
     required this.platform,
     required this.storefronts,
     required this.applications,
+    required this.seatAlerts,
     required this.storage,
     required this.payments,
     required this.payForBooking,
@@ -201,6 +204,13 @@ final class Services {
   /// that is the whole situation — so the console's middleware would refuse
   /// them before a handler ran.
   final OperatorApplications applications;
+
+  /// Who is waiting for a seat on a coach that is full.
+  ///
+  /// A port rather than a table read inline, because the fakes composition
+  /// answers "nothing to wait for" and a fresh clone should get that answer
+  /// instead of a stack trace.
+  final SeatAlerts seatAlerts;
 
   /// Where a logo goes.
   ///
@@ -350,6 +360,7 @@ final class Services {
       platform: PostgresPlatformConsole(db),
       storefronts: PostgresStorefronts(db),
       applications: PostgresOperatorApplications(db),
+      seatAlerts: PostgresSeatAlerts(db),
       // Falls back to the in-memory store rather than refusing to start. A
       // deployment with a database and no storage account is a real state —
       // it is every deployment on the day before the storage account is
@@ -542,6 +553,7 @@ final class Services {
       platform: const UnavailablePlatformConsole(),
       storefronts: MemoryStorefronts.demo(),
       applications: MemoryOperatorApplications(clock: clock),
+      seatAlerts: const NoSeatAlerts(),
       storage: MemoryObjectStore(),
       payments: memoryPayments,
       payForBooking: PayForBooking(

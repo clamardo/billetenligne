@@ -509,4 +509,63 @@ void main() {
       expect(find.text('Où allez-vous ?'), findsOneWidget);
     });
   });
+
+  group('a coach that is full', () {
+    testWidgets('a sold-out row is shown, and offers to tell them', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await searchBzvToPnr(tester);
+
+      // Dimmed, not hidden: seeing that the coach is full is how somebody
+      // learns to book earlier, and hiding it makes the service look empty.
+      expect(find.text('Complet'), findsOneWidget);
+      expect(find.text('Prevenez-moi'), findsOneWidget);
+    });
+
+    testWidgets('the offer never promises a seat', (tester) async {
+      await pumpApp(tester);
+      await searchBzvToPnr(tester);
+
+      await tester.tap(find.text('Prevenez-moi'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Car complet'), findsOneWidget);
+      // The sentence the whole screen exists for. "We'll let you know" reads
+      // as "you have a seat", and that reading ends with somebody at a
+      // station at 05:30 for a coach that filled overnight.
+      expect(find.textContaining("Aucune place n'est gardee"), findsOneWidget);
+    });
+
+    testWidgets('asking turns the screen into a confirmation', (tester) async {
+      await pumpApp(tester);
+      await searchBzvToPnr(tester);
+
+      await tester.tap(find.text('Prevenez-moi'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(KButton, 'Prevenez-moi'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Vous serez prevenu'), findsOneWidget);
+      // One message, said out loud. An alert that fires twice is an alert
+      // people mute.
+      expect(find.textContaining('un seul message'), findsOneWidget);
+      expect(find.text('Ne plus me prevenir'), findsOneWidget);
+    });
+
+    testWidgets('an anonymous traveller is asked who they are', (tester) async {
+      await pumpApp(tester, signedIn: false);
+      await searchBzvToPnr(tester);
+
+      await tester.tap(find.text('Prevenez-moi'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(KButton, 'Prevenez-moi'));
+      await tester.pumpAndSettle();
+
+      // An alert is a promise to send somebody a message. Anonymous, there is
+      // nobody to send it to.
+      expect(find.text('Car complet'), findsNothing);
+      expect(find.byType(TextField), findsWidgets);
+    });
+  });
 }

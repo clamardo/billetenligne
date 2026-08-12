@@ -9,6 +9,7 @@ import 'package:bel_api/src/composition.dart';
 import 'package:bel_worker/src/outbox_drain.dart';
 import 'package:bel_worker/src/payment_poller.dart';
 import 'package:bel_worker/src/reliability.dart';
+import 'package:bel_worker/src/seat_alerts.dart';
 import 'package:bel_worker/src/sweepers.dart';
 import 'package:bel_worker/src/timetable_horizon.dart';
 
@@ -64,6 +65,7 @@ Future<int> main(List<String> args) async {
   final services = Services.resolve();
 
   final sweepers = Sweepers(db);
+  final seatAlerts = SeatAlertPass(db);
   final reliability = Reliability(db);
   final horizon = TimetableHorizon(
     db: db,
@@ -104,6 +106,12 @@ Future<int> main(List<String> args) async {
     // back on sale, and this pass only records that the promise attached to
     // them has lapsed.
     'changes': sweepers.expireChangeOrders,
+    // After the holds, and that ordering is the pass: an abandoned checkout
+    // is the commonest way a seat comes back, and it is not free until
+    // `holds` has released it. Before the outbox would be better still, but
+    // the drain runs every few minutes and payments come first.
+    'alerts': seatAlerts.notify,
+    'alerts-expired': seatAlerts.expire,
     'reservations': sweepers.expireReservations,
     'challenges': sweepers.purgeChallenges,
     // Last, and cheap to be last: the figure moves once a day, and a search

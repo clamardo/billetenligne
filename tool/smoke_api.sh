@@ -765,6 +765,51 @@ check "and answers a page to open" "yes" \
   "$(grep -q '"redirectUrl":"https://checkout.invalid/pay/' <<<"$orange_pay" \
      && echo yes || echo no)"
 
+# ── Waiting for a seat ──────────────────────────────────────────────────────
+#
+# The 06:00 sells out and somebody wants to be told when it does not. There is
+# no database behind this server, so what a socket can prove here is the half
+# that does not need one — and it is the half that has broken before:
+#
+#   * the routes are mounted, under the traveller's identity and not without;
+#   * a party this product does not sell to is refused by the handler, with a
+#     field name, rather than by a constraint five layers down;
+#   * a deployment with no store answers "nothing to wait for" rather than a
+#     stack trace, which is what a fresh clone actually is;
+#   * withdrawing twice succeeds twice, because somebody tapping "no longer
+#     interested" got what they wanted both times.
+echo
+echo "── seat alerts"
+
+check "an alert needs a name" "401" \
+  "$(status -X POST "$BASE/public/v1/departures/$DEP/alerts" \
+     -H 'Content-Type: application/json' -d '{"seatsWanted":1}')"
+
+check "and so does the list of them" "401" \
+  "$(status "$BASE/public/v1/alerts")"
+
+# Seven is not a party this product sells to, and the refusal names the field
+# rather than the constraint.
+alert_big="$(curl -s -X POST "$BASE/public/v1/departures/$DEP/alerts" \
+  -H "$BOOK_AUTH" -H 'Content-Type: application/json' -d '{"seatsWanted":9}')"
+check "a party nobody can sell to is refused by name" "yes" \
+  "$(grep -q '"field":"seatsWanted"' <<<"$alert_big" && echo yes || echo no)"
+
+# No store wired in the demo composition. 404 is the honest answer — there is
+# nothing to wait for — and a 500 here would be the fresh-clone experience.
+check "with no store, there is nothing to wait for" "404" \
+  "$(status -X POST "$BASE/public/v1/departures/$DEP/alerts" \
+     -H "$BOOK_AUTH" -H 'Content-Type: application/json' -d '{"seatsWanted":1}')"
+
+check "withdrawing succeeds" "204" \
+  "$(status -X DELETE "$BASE/public/v1/departures/$DEP/alerts" -H "$BOOK_AUTH")"
+check "and withdrawing again succeeds too" "204" \
+  "$(status -X DELETE "$BASE/public/v1/departures/$DEP/alerts" -H "$BOOK_AUTH")"
+
+check "the list is empty rather than absent" "yes" \
+  "$(curl -s -H "$BOOK_AUTH" "$BASE/public/v1/alerts" \
+     | grep -q '"items":\[\]' && echo yes || echo no)"
+
 # ── The storefront ──────────────────────────────────────────────────────────
 #
 # `blt.cg/o/ODN`, over real HTTP. The demo composition seeds one operator, so

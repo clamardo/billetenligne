@@ -12,6 +12,7 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_worker/src/outbox_drain.dart';
 import 'package:bel_worker/src/reliability.dart';
+import 'package:bel_worker/src/seat_alerts.dart';
 import 'package:bel_worker/src/sweepers.dart';
 import 'package:bel_worker/src/timetable_horizon.dart';
 import 'package:postgres/postgres.dart';
@@ -1233,6 +1234,222 @@ void main() {
       // A scheduler running once a day against a hundred operators should see
       // a visible problem, not a silent backlog.
       expect(result.name, contains('more due'));
+    });
+  });
+
+  group('somebody waiting for a seat', () {
+    late SeatAlertPass alerts;
+    late FakeNotificationGateway sent;
+    late OutboxDrain recording;
+
+    setUp(() {
+      alerts = SeatAlertPass(db);
+      sent = FakeNotificationGateway();
+      recording = OutboxDrain(
+        db: db,
+        notifications: sent,
+        catalog: CatalogLoader.fromDirectory(
+          Platform.environment['BEL_I18N_DIR'] ??
+              'packages/bel_localization/i18n',
+        ),
+        timeZone: 'Africa/Brazzaville',
+      );
+    });
+
+    /// Every seat on a coach held for two hours: a full coach.
+    Future<void> fill(String departureId) async {
+      final hold = await seed.execute(
+        Sql.named('''
+          INSERT INTO holds (operator_id, departure_id, seat_labels,
+                             expires_at, idempotency_key)
+          SELECT @operator, @departure, array_agg(seat_label),
+                 now() + INTERVAL '2 hours', @key
+            FROM seats WHERE departure_id = @departure
+          RETURNING id
+        '''),
+        parameters: {
+          'operator': TypedValue(Type.uuid, operatorId),
+          'departure': TypedValue(Type.uuid, departureId),
+          'key': TypedValue(Type.text, unique('fill')),
+        },
+      );
+      await seed.execute(
+        Sql.named('''
+          UPDATE seats SET state = 'held', hold_id = @hold,
+                           held_until = now() + INTERVAL '2 hours'
+           WHERE departure_id = @departure
+        '''),
+        parameters: {
+          'hold': TypedValue(Type.uuid, hold.first.toColumnMap()['id']),
+          'departure': TypedValue(Type.uuid, departureId),
+        },
+        ignoreRows: true,
+      );
+    }
+
+    /// Puts [count] seats back on sale — a cancellation, or a hold nobody
+    /// paid for that the hold sweeper has already been past.
+    Future<void> free(String departureId, {int count = 1}) => seed.execute(
+      Sql.named('''
+        UPDATE seats
+           SET state = 'available', hold_id = NULL, held_until = NULL
+         WHERE departure_id = @departure
+           AND seat_label IN (SELECT seat_label FROM seats
+                               WHERE departure_id = @departure
+                                 AND state = 'held'
+                               ORDER BY seat_label LIMIT @n)
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, departureId),
+        'n': TypedValue(Type.integer, count),
+      },
+      ignoreRows: true,
+    );
+
+    Future<String> waitingOn(
+      String departureId,
+      String userId, {
+      int seats = 1,
+    }) async {
+      final rows = await seed.execute(
+        Sql.named('''
+          INSERT INTO seat_alerts (departure_id, user_id, seats_wanted)
+          VALUES (@departure, @user, @seats)
+          RETURNING id
+        '''),
+        parameters: {
+          'departure': TypedValue(Type.uuid, departureId),
+          'user': TypedValue(Type.uuid, userId),
+          'seats': TypedValue(Type.integer, seats),
+        },
+      );
+      return rows.first.toColumnMap()['id'] as String;
+    }
+
+    Future<DateTime?> notifiedAt(String alertId) async {
+      final rows = await seed.execute(
+        Sql.named('SELECT notified_at FROM seat_alerts WHERE id = @id'),
+        parameters: {'id': TypedValue(Type.uuid, alertId)},
+      );
+      return rows.first.toColumnMap()['notified_at'] as DateTime?;
+    }
+
+    test('a full coach queues nothing', () async {
+      final departureId = await aDeparture();
+      await fill(departureId);
+      final alertId = await waitingOn(departureId, await aTraveller());
+
+      await alerts.notify();
+
+      // The whole point of the row is that it has not fired.
+      expect(await notifiedAt(alertId), isNull);
+    });
+
+    test('a freed seat tells everybody waiting, at once', () async {
+      // Not a queue. Both are told in the same pass, and the first to pay
+      // gets the seat — which is the only promise this system can keep when
+      // the same inventory is on sale to the whole market.
+      final departureId = await aDeparture();
+      await fill(departureId);
+      final first = await waitingOn(departureId, await aTraveller());
+      final second = await waitingOn(departureId, await aTraveller());
+      await free(departureId);
+
+      await alerts.notify();
+
+      expect(await notifiedAt(first), isNotNull);
+      expect(await notifiedAt(second), isNotNull);
+    });
+
+    test('it fires once, and a second pass finds nothing', () async {
+      // A seat that came free and went again is not news worth a second SMS.
+      final departureId = await aDeparture();
+      await fill(departureId);
+      await waitingOn(departureId, await aTraveller());
+      await free(departureId);
+
+      await alerts.notify();
+      final again = await alerts.notify();
+
+      expect(again.affected, 0);
+    });
+
+    test('a party larger than the room is not told', () async {
+      // One seat is not news to a family of three. Telling them anyway is a
+      // wasted journey to a station dressed up as good news.
+      final departureId = await aDeparture();
+      await fill(departureId);
+      final alertId = await waitingOn(
+        departureId,
+        await aTraveller(),
+        seats: 3,
+      );
+      await free(departureId);
+
+      await alerts.notify();
+      expect(await notifiedAt(alertId), isNull);
+
+      await free(departureId, count: 2);
+      await alerts.notify();
+      expect(await notifiedAt(alertId), isNotNull);
+    });
+
+    test('a coach that has left is closed, not left waiting', () async {
+      final departureId = await aDeparture();
+      await fill(departureId);
+      final alertId = await waitingOn(departureId, await aTraveller());
+
+      await seed.execute(
+        Sql.named('''
+          UPDATE departures
+             SET departs_at = now() - INTERVAL '1 hour', status = 'departed'
+           WHERE id = @id
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, departureId)},
+        ignoreRows: true,
+      );
+
+      await alerts.expire();
+
+      // Cancelled, never notified: nothing was sent. A row left waiting for
+      // ever would be examined by every pass, and would answer "am I still
+      // waiting?" with a yes that is no longer possible.
+      final rows = await seed.execute(
+        Sql.named('''
+          SELECT notified_at, cancelled_at FROM seat_alerts WHERE id = @id
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, alertId)},
+      );
+      final row = rows.first.toColumnMap();
+      expect(row['notified_at'], isNull);
+      expect(row['cancelled_at'], isNotNull);
+    });
+
+    test('the message says back on sale, never reserved for you', () async {
+      final departureId = await aDeparture();
+      await fill(departureId);
+      final alertId = await waitingOn(
+        departureId,
+        await aTraveller(),
+        seats: 2,
+      );
+      await free(departureId, count: 2);
+
+      await alerts.notify();
+      await recording.drain();
+
+      // Found by event id rather than taken as the only one: earlier tests in
+      // this group left their own alerts queued, and a drain takes a hundred
+      // rows at a time.
+      final message = sent.sent.singleWhere(
+        (m) => m.eventId == 'seat.available:$alertId',
+      );
+      expect(message.body, contains('BZV–PNR'));
+      // Two seats, because that is what was asked for.
+      expect(message.body, startsWith('2 '));
+      // The sentence that stops somebody travelling to a station for a coach
+      // that filled while they were reading about it.
+      expect(message.body, contains('Premier arrive'));
     });
   });
 }

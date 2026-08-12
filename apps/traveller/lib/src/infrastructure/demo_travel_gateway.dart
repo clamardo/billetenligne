@@ -27,6 +27,10 @@ final class DemoTravelGateway implements TravelGateway {
   final _departures = <String, DepartureSummaryDto>{};
   final _seats = <String, List<SeatDto>>{};
   final _holds = <String, HoldDto>{};
+
+  /// Alerts by departure. One per departure, which is the server's rule too —
+  /// a partial unique index there, a map key here.
+  final _alerts = <String, SeatAlertDto>{};
   var _counter = 0;
 
   /// Delay before every answer. Not decoration: a screen that renders
@@ -55,9 +59,14 @@ final class DemoTravelGateway implements TravelGateway {
       ).add(Duration(days: 1, hours: 6, minutes: i * 90));
 
       final id = 'demo-dep-${i + 1}';
-      // One of them is nearly full, so "almost full" and "sold out" are both
-      // reachable without waiting for real traffic.
-      final taken = i == 3 ? 50 : (i * 6) % 48;
+      // One nearly full and one genuinely sold out, so "almost full" and
+      // "complet" — and the alert the second one offers — are all reachable
+      // on a fresh clone without waiting for real traffic.
+      final taken = switch (i) {
+        3 => 50,
+        2 => 52,
+        _ => (i * 6) % 48,
+      };
 
       _departures[id] = DepartureSummaryDto(
         id: id,
@@ -188,6 +197,55 @@ final class DemoTravelGateway implements TravelGateway {
       ],
       seats: List.of(seats),
     );
+  }
+
+  @override
+  Future<SeatAlertDto> watchSeats(String departureId, {int seats = 1}) async {
+    await Future<void>.delayed(latency);
+
+    final departure = _departures[departureId];
+    if (departure == null) {
+      throw const ServerRefused(404, ApiError(code: ErrorCode.notFound));
+    }
+
+    // Refused rather than accepted-and-fired-immediately, exactly as the
+    // server does it: the honest answer to "tell me when there is room" on a
+    // coach with room is "go and book it".
+    if (departure.seatsAvailable >= seats) {
+      throw ServerRefused(
+        400,
+        ApiError(
+          code: ErrorCode.badRequest,
+          params: {'available': departure.seatsAvailable},
+        ),
+      );
+    }
+
+    return _alerts[departureId] ??= SeatAlertDto(
+      id: 'demo-alert-${++_counter}',
+      departureId: departureId,
+      seatsWanted: seats,
+      createdAt: _now,
+    );
+  }
+
+  @override
+  Future<void> unwatchSeats(String departureId) async {
+    await Future<void>.delayed(latency);
+    _alerts.remove(departureId);
+  }
+
+  @override
+  Future<List<SeatAlertDto>> seatAlerts() async {
+    await Future<void>.delayed(latency);
+    final waiting = _alerts.values.toList()
+      ..sort((a, b) {
+        final da = _departures[a.departureId]?.departsAt;
+        final db = _departures[b.departureId]?.departsAt;
+        if (da == null || db == null) return 0;
+        return da.compareTo(db);
+      });
+    return waiting;
   }
 
   @override

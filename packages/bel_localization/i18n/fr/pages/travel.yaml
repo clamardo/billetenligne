@@ -43,6 +43,23 @@ travel:
     onTime: "{rate} % à l'heure"
     offlineTitle: "Pas de réseau"
     offlineBody: "Les horaires ci-dessous datent de votre dernière connexion."
+  # Le car est complet. On propose d'etre prevenu, et le vocabulaire est
+  # choisi avec soin : « remise en vente », jamais « place reservee ». Rien
+  # n'est garde, tout le monde est prevenu au meme instant, le premier qui
+  # paie l'emporte. Une formulation plus chaleureuse enverrait quelqu'un a la
+  # gare pour un car deja rempli.
+  alert:
+    title: "Car complet"
+    lead: "{operator} · {route}, {date} a {time}"
+    body: "Nous vous envoyons un SMS si des places sont remises en vente. Aucune place n'est gardee : tout le monde est prevenu en meme temps et le premier qui paie l'emporte."
+    seats: "Combien de places vous faut-il ?"
+    confirm: "Prevenez-moi"
+    watching: "Vous serez prevenu"
+    watchingBody: "Nous vous ecrirons des que {count} place(s) repassent en vente sur ce depart. Vous ne recevrez qu'un seul message."
+    cancel: "Ne plus me prevenir"
+    back: "Retour aux departs"
+    signIn: "Connectez-vous pour etre prevenu"
+    available: "Des places sont libres maintenant. Reservez plutot que d'attendre."
   seatmap:
     title: "Choisissez votre place"
     front: "AVANT"

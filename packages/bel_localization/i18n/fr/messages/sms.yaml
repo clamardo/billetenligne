@@ -46,5 +46,10 @@ sms:
   # Le nom de la compagnie change : c'est ce qu'il y a de plus inquietant sur
   # un billet, donc le message commence par la. Le passager cherche un car qui
   # ne porte plus le meme nom que celui qu'il a reserve.
+  # Le siege est reparu, il n'est pas reserve. Tout le monde recoit ce message
+  # au meme instant et le premier qui paie l'emporte : dire "votre place vous
+  # attend" enverrait quelqu'un a la gare pour un car deja plein.
+  seatAvailable:
+    body: "{seats} place(s) de nouveau en vente: {operator} {route} le {date} a {time}. Premier arrive, premier servi. Reservez dans BilletEnLigne."
   protected:
     body: "{operator} vous prend en charge. {route} le {date} a {time}, siege {seat}. Meme billet, aucun frais. Ref {reference}."

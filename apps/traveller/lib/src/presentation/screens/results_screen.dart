@@ -27,6 +27,8 @@ final class ResultsScreen extends StatelessWidget {
     this.onRefresh,
     this.onLoadMore,
     this.onTryTomorrow,
+    this.onWatch,
+    this.watching = const <String>{},
     super.key,
   });
 
@@ -58,6 +60,17 @@ final class ResultsScreen extends StatelessWidget {
 
   final VoidCallback? onTryTomorrow;
 
+  /// Offered on full coaches only. A sold-out card is not tappable — there is
+  /// nothing behind it to book — so without this the row is a dead end, and
+  /// "the 06:00 is full" is the moment a traveller is most willing to be
+  /// told when that changes.
+  final void Function(DepartureSummaryDto)? onWatch;
+
+  /// Departure ids already being waited on. Drawn as a state rather than an
+  /// offer: asking twice is asking once on the server, and a button that
+  /// re-offers something already done reads as one that did nothing.
+  final Set<String> watching;
+
   @override
   Widget build(BuildContext context) {
     final kilo = context.kilo;
@@ -85,7 +98,7 @@ final class ResultsScreen extends StatelessWidget {
               if (index == departures.length) return _foot(context);
 
               final d = departures[index];
-              return KTripCard(
+              final card = KTripCard(
                 departureTime: Format.time(d.departsAt),
                 arrivalTime: Format.time(d.arrivesAt),
                 operatorName: d.operatorName,
@@ -116,6 +129,38 @@ final class ResultsScreen extends StatelessWidget {
                 // label that is always there is a label nobody reads.
                 boardingLabel: _boardingLabel(departures, d),
                 onTap: () => onSelect(d),
+              );
+
+              // The alert affordance sits under the card rather than inside
+              // it, and only on full coaches. Inside would put a second
+              // tappable thing on a row whose whole job is one tap; on every
+              // row it would be noise beside eight coaches that can be
+              // booked right now.
+              if (!d.isSoldOut || onWatch == null) return card;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  card,
+                  SizedBox(height: kilo.space.s1),
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: TextButton.icon(
+                      onPressed: () => onWatch!(d),
+                      icon: Icon(
+                        watching.contains(d.id)
+                            ? Icons.notifications_active_outlined
+                            : Icons.notifications_none,
+                        size: 18,
+                      ),
+                      label: Text(
+                        watching.contains(d.id)
+                            ? context.t('travel.alert.watching')
+                            : context.t('travel.alert.confirm'),
+                      ),
+                    ),
+                  ),
+                ],
               );
             },
           );

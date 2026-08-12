@@ -79,6 +79,34 @@ final class BelApiClient {
     return SeatMapDto.fromJson(body);
   }
 
+  /// Ask to be told when a full coach has room again.
+  ///
+  /// Not idempotent-keyed and not retried on a lost answer: the server treats
+  /// asking twice as asking once (one live alert per traveller per departure),
+  /// so a repeat is free and a key would only hide that.
+  Future<SeatAlertDto> watchSeats(String departureId, {int seats = 1}) async {
+    final body = await _send(
+      'POST',
+      '/public/v1/departures/$departureId/alerts',
+      body: WatchSeatsRequest(seatsWanted: seats).toJson(),
+    );
+    return SeatAlertDto.fromJson(body ?? const {});
+  }
+
+  /// Stop waiting. Succeeds when there was nothing waiting, because tapping
+  /// "no longer interested" twice got what was wanted both times.
+  Future<void> unwatchSeats(String departureId) => _send(
+    'DELETE',
+    '/public/v1/departures/$departureId/alerts',
+    idempotent: true,
+  );
+
+  /// Every coach this traveller is still waiting on, soonest first.
+  Future<List<SeatAlertDto>> seatAlerts() async {
+    final body = await _get('/public/v1/alerts');
+    return Wire.readList(body['items'], SeatAlertDto.fromJson, field: 'items');
+  }
+
   /// Where you can go.
   ///
   /// The first call the app makes — the search screen cannot render without

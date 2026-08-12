@@ -1256,3 +1256,102 @@ BEGIN
   RAISE NOTICE 'OK  a traveller reads open terminals, not closed ones, and writes none';
 END
 $$;
+
+-- ── Waiting for a seat ────────────────────────────────────────────────────────
+--
+-- An alert is a row of intent on a coach that is full. Three things have to be
+-- true of it, and none of them can be enforced in a handler:
+--
+--   * asking twice is asking once — a partial unique index, because two taps
+--     on a bad connection are the ordinary case and two rows are two messages;
+--   * withdrawing frees the slot to ask again, because somebody who changed
+--     their mind twice is a normal person, not a constraint violation;
+--   * one traveller cannot see another's. Who is waiting for a seat on the
+--     06:00 is a list of people who want to travel, and it is nobody's list
+--     but their own.
+DO $$
+DECLARE
+  aline UUID := '55555555-5555-5555-5555-555555555551';
+  serge UUID := '55555555-5555-5555-5555-555555555552';
+  trip  UUID := 'dddddddd-0000-0000-0000-000000000031';
+  mine  UUID;
+  seen  INT;
+BEGIN
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+
+  INSERT INTO departures (id, operator_id, route_id, seat_layout_id, departs_at,
+                          arrives_at, capacity, fare_minor, currency, status)
+  VALUES (trip, '11111111-1111-1111-1111-111111111111',
+          'aaaaaaaa-0000-0000-0000-000000000001',
+          'bbbbbbbb-0000-0000-0000-000000000001',
+          now() + INTERVAL '3 days', now() + INTERVAL '3 days 8 hours',
+          4, 12000, 'XAF', 'scheduled');
+
+  -- A party of seven is not a party this product sells to. Asserted here,
+  -- under the platform role, so the CHECK is what refuses it rather than a
+  -- row-level policy arriving first.
+  BEGIN
+    INSERT INTO seat_alerts (departure_id, user_id, seats_wanted)
+    VALUES (trip, serge, 7);
+    RAISE EXCEPTION 'FAIL: an alert was taken for a party nobody can sell';
+  EXCEPTION WHEN check_violation THEN
+    NULL; -- expected
+  END;
+
+  RESET ROLE;
+  PERFORM set_config('app.platform', 'off', true);
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.user_id', aline::text, true);
+
+  INSERT INTO seat_alerts (departure_id, user_id, seats_wanted)
+  VALUES (trip, aline, 2)
+  RETURNING id INTO mine;
+
+  -- Asked twice on a connection that dropped. One row.
+  BEGIN
+    INSERT INTO seat_alerts (departure_id, user_id, seats_wanted)
+    VALUES (trip, aline, 1);
+    RAISE EXCEPTION 'FAIL: one traveller is waiting twice for one coach';
+  EXCEPTION WHEN unique_violation THEN
+    NULL; -- expected
+  END;
+
+  -- Sent and withdrawn at once is a row that means two things.
+  BEGIN
+    UPDATE seat_alerts SET notified_at = now(), cancelled_at = now()
+     WHERE id = mine;
+    RAISE EXCEPTION 'FAIL: an alert was both sent and withdrawn';
+  EXCEPTION WHEN check_violation THEN
+    NULL; -- expected
+  END;
+
+  -- Withdrawing frees the slot. The index is over *live* alerts only.
+  UPDATE seat_alerts SET cancelled_at = now() WHERE id = mine;
+  INSERT INTO seat_alerts (departure_id, user_id, seats_wanted)
+  VALUES (trip, aline, 4);
+
+  -- Somebody else waiting on the same coach.
+  PERFORM set_config('app.user_id', serge::text, true);
+  INSERT INTO seat_alerts (departure_id, user_id, seats_wanted)
+  VALUES (trip, serge, 1);
+
+  SELECT count(*) INTO seen FROM seat_alerts;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: a traveller reads % alerts, only one is theirs', seen;
+  END IF;
+
+  -- And cannot wait on somebody else's behalf.
+  BEGIN
+    INSERT INTO seat_alerts (departure_id, user_id, seats_wanted)
+    VALUES (trip, aline, 1);
+    RAISE EXCEPTION 'FAIL: a traveller signed somebody else up for an alert';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  an alert is asked once, withdrawn freely, and read by nobody else';
+END
+$$;

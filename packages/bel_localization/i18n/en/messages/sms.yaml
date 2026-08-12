@@ -43,6 +43,11 @@ sms:
   # because it is the one they have in their head and on their ticket.
   rebooked:
     body: "{operator}: your {route} at {oldTime} is not running. You now travel {date} at {time}, seat {seat}. No fees. Ref {reference}."
+  # The seat is back on sale, not reserved. Everybody waiting gets this at the
+  # same moment and the first to pay gets it: "your seat is waiting" would
+  # send somebody to a station for a coach that filled while they read it.
+  seatAvailable:
+    body: "{seats} seat(s) back on sale: {operator} {route} on {date} at {time}. First come, first served. Book in BilletEnLigne."
   # The company name on the ticket changes, which is the most alarming thing
   # that can happen to one without warning — so the message leads with it.
   protected:

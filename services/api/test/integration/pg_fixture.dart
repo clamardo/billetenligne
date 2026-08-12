@@ -1177,6 +1177,33 @@ final class PgFixture {
     return departureId;
   }
 
+  /// Backdates every hold on a departure so its seats are lapsed.
+  ///
+  /// The sweeper would do this eventually. Waiting two hours for it is not a
+  /// test, and the property under test is that a seat whose hold has run out
+  /// is free *whether or not* the sweeper has been past — which is exactly
+  /// what the claim path already believes.
+  Future<void> lapseHolds(String departureId) async {
+    await _seed.execute(
+      Sql.named("""
+        UPDATE holds
+           SET created_at = now() - INTERVAL '20 minutes',
+               expires_at = now() - INTERVAL '1 minute'
+         WHERE departure_id = @id AND state = 'active'
+      """),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+      ignoreRows: true,
+    );
+    await _seed.execute(
+      Sql.named("""
+        UPDATE seats SET held_until = now() - INTERVAL '1 minute'
+         WHERE departure_id = @id AND state = 'held'
+      """),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+      ignoreRows: true,
+    );
+  }
+
   /// Moves a departure into the past, after it has been sold.
   ///
   /// A seat cannot be held on a coach that has already left — the real path

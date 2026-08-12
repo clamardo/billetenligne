@@ -42,9 +42,15 @@ final class ResultsReady extends BookingStep {
     this.stale = false,
     this.hasMore = false,
     this.loadingMore = false,
+    this.watching = const <String>{},
   });
 
   final List<DepartureSummaryDto> departures;
+
+  /// Departure ids this traveller is already waiting on. Carried on the step
+  /// rather than read per row, so a full coach can say "you are waiting"
+  /// instead of offering to start an alert that already exists.
+  final Set<String> watching;
 
   /// True when these came from the last successful load rather than from this
   /// request. Rendered with a banner: stale times are useful, silently stale
@@ -59,6 +65,46 @@ final class ResultsReady extends BookingStep {
   /// A page is on its way. Only ever true underneath rows that are already
   /// on screen, so the list never disappears to fetch its own continuation.
   final bool loadingMore;
+}
+
+/// The sold-out detour: "tell me if a seat frees up".
+///
+/// A step of its own rather than a dialog over the results, because the
+/// screen has one job the wording has to get right — it must say a seat went
+/// back **on sale**, not that one is being kept. Nothing is held, everybody
+/// waiting is told at the same moment, and the first to pay gets it.
+final class AskingForAlert extends BookingStep {
+  const AskingForAlert(
+    this.departure, {
+    required this.seats,
+    this.saving = false,
+    this.alert,
+    this.failure,
+  });
+
+  final DepartureSummaryDto departure;
+
+  /// How many seats would make the trip worth taking. Seeded from the search,
+  /// because somebody who searched for four is not served by one coming free.
+  final int seats;
+
+  final bool saving;
+
+  /// Set once the server has stored it. Its presence is what turns the screen
+  /// from a request into a confirmation.
+  final SeatAlertDto? alert;
+
+  final ApiFailure? failure;
+
+  bool get isWatching => alert != null;
+}
+
+/// Sign-in, asked for the second reason in the product: an alert is a promise
+/// to send somebody a message, and an anonymous one has no recipient.
+final class AlertNeedsIdentity extends BookingStep {
+  const AlertNeedsIdentity(this.departure, this.seats);
+  final DepartureSummaryDto departure;
+  final int seats;
 }
 
 final class LoadingSeatMap extends BookingStep {
@@ -217,6 +263,12 @@ final class BookingFlow {
 
   String? _attemptKey;
 
+  /// Departure ids this traveller has a live alert on. Held here rather than
+  /// re-fetched per search: it is one small list per session, and a search
+  /// that had to wait on a second request to know whether to say "you are
+  /// waiting" would be a slower search for everybody.
+  final _watching = <String>{};
+
   List<CityDto> _cities = const [];
 
   /// Where you can go. Empty until [start] has run.
@@ -255,9 +307,31 @@ final class BookingFlow {
     _emit(const Starting());
     try {
       _cities = await _gateway.cities();
+      await _loadAlerts();
       _emit(const Idle());
     } on ApiFailure catch (failure) {
       _emit(StepFailed(failure));
+    }
+  }
+
+  /// What this traveller is already waiting on.
+  ///
+  /// Failures are swallowed on purpose, and only here: the app must open for
+  /// somebody whose alert list did not load. The cost of getting it wrong is
+  /// offering to start an alert that already exists, which the server answers
+  /// by returning the existing one.
+  Future<void> _loadAlerts() async {
+    if (!_isSignedIn()) return;
+    try {
+      final alerts = await _gateway.seatAlerts();
+      _watching
+        ..clear()
+        ..addAll([
+          for (final alert in alerts)
+            if (alert.isWaiting) alert.departureId,
+        ]);
+    } on ApiFailure catch (_) {
+      // Left as it was.
     }
   }
 
@@ -272,12 +346,14 @@ final class BookingFlow {
       final page = await _gateway.search(query);
       _lastResults = page.items;
       _nextCursor = page.nextCursor;
-      _emit(ResultsReady(_lastResults, hasMore: page.hasMore));
+      _emit(
+        ResultsReady(_lastResults, hasMore: page.hasMore, watching: _watching),
+      );
     } on ApiFailure catch (failure) {
       // Signal dropped mid-search. Showing what we had a minute ago, clearly
       // marked as old, beats an empty screen — the 06:00 has not moved.
       if (_lastResults.isNotEmpty && failure is! ServerRefused) {
-        _emit(ResultsReady(_lastResults, stale: true));
+        _emit(ResultsReady(_lastResults, stale: true, watching: _watching));
       } else {
         _emit(StepFailed(failure));
       }
@@ -303,6 +379,7 @@ final class BookingFlow {
         stale: current.stale,
         hasMore: true,
         loadingMore: true,
+        watching: _watching,
       ),
     );
 
@@ -310,9 +387,126 @@ final class BookingFlow {
       final page = await _gateway.search(query.nextPage(cursor));
       _lastResults = [..._lastResults, ...page.items];
       _nextCursor = page.nextCursor;
-      _emit(ResultsReady(_lastResults, hasMore: page.hasMore));
+      _emit(
+        ResultsReady(_lastResults, hasMore: page.hasMore, watching: _watching),
+      );
     } on ApiFailure catch (_) {
-      _emit(ResultsReady(_lastResults, hasMore: true));
+      _emit(ResultsReady(_lastResults, hasMore: true, watching: _watching));
+    }
+  }
+
+  // ── Sold out ──────────────────────────────────────────────────────────────
+
+  /// Opens the "tell me if a seat frees up" screen for a full coach.
+  ///
+  /// Seeded with the number of passengers the traveller searched for, because
+  /// that is the number that makes the trip worth taking: a family of four
+  /// told about one free seat has been sent to a station for nothing.
+  void offerAlert(DepartureSummaryDto departure) {
+    _activeDeparture = departure;
+    _emit(
+      AskingForAlert(
+        departure,
+        seats: (_lastQuery?.passengers ?? 1).clamp(1, maxSeats),
+        alert: _watching.contains(departure.id)
+            ? SeatAlertDto(
+                id: 'known',
+                departureId: departure.id,
+                seatsWanted: _lastQuery?.passengers ?? 1,
+                createdAt: DateTime.now().toUtc(),
+              )
+            : null,
+      ),
+    );
+  }
+
+  void setAlertSeats(int seats) {
+    final current = _step;
+    if (current is! AskingForAlert || current.isWatching) return;
+    _emit(AskingForAlert(current.departure, seats: seats.clamp(1, maxSeats)));
+  }
+
+  /// Registers the alert.
+  ///
+  /// The sign-in gate is here rather than on the button, because whether
+  /// somebody is signed in can change between drawing a screen and tapping
+  /// it — a revoked token is exactly that case.
+  Future<void> confirmAlert() async {
+    final current = _step;
+    if (current is! AskingForAlert || current.saving) return;
+
+    if (!_isSignedIn()) {
+      _emit(AlertNeedsIdentity(current.departure, current.seats));
+      return;
+    }
+
+    _emit(
+      AskingForAlert(current.departure, seats: current.seats, saving: true),
+    );
+
+    try {
+      final alert = await _gateway.watchSeats(
+        current.departure.id,
+        seats: current.seats,
+      );
+      _watching.add(current.departure.id);
+      _emit(
+        AskingForAlert(current.departure, seats: current.seats, alert: alert),
+      );
+    } on ApiFailure catch (failure) {
+      // Stays on this screen with the reason. The commonest failure is the
+      // happy one — seats came back between drawing the screen and tapping —
+      // and bouncing to a generic error page would hide that.
+      _emit(
+        AskingForAlert(
+          current.departure,
+          seats: current.seats,
+          failure: failure,
+        ),
+      );
+    }
+  }
+
+  /// Withdraws it. The screen goes back to offering, not back to the results:
+  /// somebody who has just cancelled an alert is the person most likely to
+  /// change their mind about how many seats they wanted.
+  Future<void> cancelAlert() async {
+    final current = _step;
+    if (current is! AskingForAlert || !current.isWatching) return;
+
+    _emit(
+      AskingForAlert(
+        current.departure,
+        seats: current.seats,
+        alert: current.alert,
+        saving: true,
+      ),
+    );
+
+    try {
+      await _gateway.unwatchSeats(current.departure.id);
+    } on ApiFailure catch (_) {
+      // Swallowed. An alert that outlives a failed withdrawal costs one
+      // message; an error screen over a tap the traveller has already
+      // finished with costs their trust in the button.
+    }
+    _watching.remove(current.departure.id);
+    _emit(AskingForAlert(current.departure, seats: current.seats));
+  }
+
+  /// Back from the sign-in the alert asked for, into the same request.
+  Future<void> resumeAlertAfterIdentity() async {
+    final current = _step;
+    if (current is! AlertNeedsIdentity) return;
+    await _loadAlerts();
+    _emit(AskingForAlert(current.departure, seats: current.seats));
+    await confirmAlert();
+  }
+
+  void abandonAlert() {
+    final current = _step;
+    if (current is AlertNeedsIdentity) {
+      _emit(AskingForAlert(current.departure, seats: current.seats));
     }
   }
 

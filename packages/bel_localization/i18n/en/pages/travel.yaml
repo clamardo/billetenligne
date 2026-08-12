@@ -41,6 +41,23 @@ travel:
     onTime: "{rate}% on time"
     offlineTitle: "No signal"
     offlineBody: "The times below are from your last connection."
+  # The coach is full. We offer to tell them, and the wording is chosen with
+  # care: "back on sale", never "a seat is being held". Nothing is kept,
+  # everybody is told at the same moment, and the first to pay gets it. Warmer
+  # wording would send somebody to a station for a coach that filled while
+  # they read it.
+  alert:
+    title: "Coach full"
+    lead: "{operator} · {route}, {date} at {time}"
+    body: "We will text you if seats go back on sale. No seat is held: everybody waiting is told at the same moment, and the first to pay gets it."
+    seats: "How many seats do you need?"
+    confirm: "Tell me"
+    watching: "You will be told"
+    watchingBody: "We will write as soon as {count} seat(s) go back on sale on this departure. You will get one message only."
+    cancel: "Stop telling me"
+    back: "Back to departures"
+    signIn: "Sign in to be told"
+    available: "There are seats now. Book rather than wait."
   seatmap:
     title: "Choose your seat"
     front: "FRONT"

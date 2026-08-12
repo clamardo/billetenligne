@@ -82,6 +82,33 @@ final class _ScriptedGateway implements TravelGateway {
   @override
   Future<SeatMapDto> seatMap(String departureId) async => _seatMap(departureId);
 
+  /// Every departure this gateway was asked to watch, and with how many
+  /// seats. A list rather than a set: asking twice is a thing the flow must
+  /// not do behind the traveller's back.
+  final watched = <(String, int)>[];
+  final unwatched = <String>[];
+  ApiFailure? watchFailure;
+
+  @override
+  Future<SeatAlertDto> watchSeats(String departureId, {int seats = 1}) async {
+    watched.add((departureId, seats));
+    if (watchFailure != null) throw watchFailure!;
+    return SeatAlertDto(
+      id: 'alert-${watched.length}',
+      departureId: departureId,
+      seatsWanted: seats,
+      createdAt: DateTime.utc(2026, 1, 1),
+    );
+  }
+
+  @override
+  Future<void> unwatchSeats(String departureId) async {
+    unwatched.add(departureId);
+  }
+
+  @override
+  Future<List<SeatAlertDto>> seatAlerts() async => const [];
+
   @override
   Future<HoldDto> hold({
     required String departureId,
@@ -1028,6 +1055,162 @@ void main() {
       // A timer that fires after the traveller has already moved on must not
       // throw them into an error screen.
       expect(flow.step, isA<Idle>());
+    });
+  });
+
+  group('a coach that is full', () {
+    test('offering an alert seeds the party from the search', () async {
+      final gateway = _ScriptedGateway(
+        searchResult: [_departure(available: 0)],
+      );
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.search(
+        SearchDeparturesQuery(
+          originCity: 'BZV',
+          destinationCity: 'PNR',
+          date: DateTime.utc(2026, 8, 10),
+          passengers: 3,
+        ),
+      );
+      flow.offerAlert((flow.step as ResultsReady).departures.single);
+
+      // Three, because that is who is travelling. One seat coming free is not
+      // news to a family of three.
+      expect((flow.step as AskingForAlert).seats, 3);
+    });
+
+    test('the party is capped at what the product will sell', () async {
+      final gateway = _ScriptedGateway(
+        searchResult: [_departure(available: 0)],
+      );
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.search(_query);
+      flow.offerAlert(_departure(available: 0));
+      flow.setAlertSeats(99);
+
+      expect((flow.step as AskingForAlert).seats, flow.maxSeats);
+    });
+
+    test('confirming registers it and says so', () async {
+      final gateway = _ScriptedGateway(
+        searchResult: [_departure(available: 0)],
+      );
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.search(_query);
+      flow.offerAlert(_departure(available: 0));
+      flow.setAlertSeats(2);
+      await flow.confirmAlert();
+
+      expect(gateway.watched, [('dep-1', 2)]);
+      expect((flow.step as AskingForAlert).isWatching, isTrue);
+    });
+
+    test('an anonymous traveller is asked who they are first', () async {
+      // An alert is a promise to send somebody a message. Anonymous, there is
+      // nobody to send it to.
+      final gateway = _ScriptedGateway(
+        searchResult: [_departure(available: 0)],
+      );
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => false);
+
+      await flow.search(_query);
+      flow.offerAlert(_departure(available: 0));
+      await flow.confirmAlert();
+
+      expect(flow.step, isA<AlertNeedsIdentity>());
+      // And nothing was asked of the server on the strength of a tap.
+      expect(gateway.watched, isEmpty);
+    });
+
+    test('signing in resumes the same request', () async {
+      final gateway = _ScriptedGateway(
+        searchResult: [_departure(available: 0)],
+      );
+      var signedIn = false;
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => signedIn);
+
+      await flow.search(_query);
+      flow.offerAlert(_departure(available: 0));
+      flow.setAlertSeats(4);
+      await flow.confirmAlert();
+
+      signedIn = true;
+      await flow.resumeAlertAfterIdentity();
+
+      // The same four seats, not a default one. Losing the number across a
+      // sign-in is how somebody ends up told about a seat they cannot use.
+      expect(gateway.watched, [('dep-1', 4)]);
+      expect((flow.step as AskingForAlert).isWatching, isTrue);
+    });
+
+    test('backing out of sign-in returns to the offer, not an error', () async {
+      final gateway = _ScriptedGateway(
+        searchResult: [_departure(available: 0)],
+      );
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => false);
+
+      await flow.search(_query);
+      flow.offerAlert(_departure(available: 0));
+      await flow.confirmAlert();
+      flow.abandonAlert();
+
+      expect(flow.step, isA<AskingForAlert>());
+      expect((flow.step as AskingForAlert).isWatching, isFalse);
+    });
+
+    test('a refusal stays on the screen with the reason', () async {
+      // The commonest refusal here is the happy one — seats came back between
+      // drawing the screen and tapping — so it must not become a generic
+      // error page.
+      final gateway = _ScriptedGateway(searchResult: [_departure(available: 0)])
+        ..watchFailure = const ServerRefused(
+          400,
+          ApiError(code: ErrorCode.badRequest, params: {'available': 2}),
+        );
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.search(_query);
+      flow.offerAlert(_departure(available: 0));
+      await flow.confirmAlert();
+
+      final step = flow.step as AskingForAlert;
+      expect(step.isWatching, isFalse);
+      expect(step.failure, isA<ServerRefused>());
+    });
+
+    test('withdrawing goes back to offering, and tells the server', () async {
+      final gateway = _ScriptedGateway(
+        searchResult: [_departure(available: 0)],
+      );
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.search(_query);
+      flow.offerAlert(_departure(available: 0));
+      await flow.confirmAlert();
+      await flow.cancelAlert();
+
+      expect(gateway.unwatched, ['dep-1']);
+      expect((flow.step as AskingForAlert).isWatching, isFalse);
+    });
+
+    test('a registered alert is remembered on the next search', () async {
+      final gateway = _ScriptedGateway(
+        searchResult: [_departure(available: 0)],
+      );
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.search(_query);
+      flow.offerAlert(_departure(available: 0));
+      await flow.confirmAlert();
+      await flow.search(_query);
+
+      // So the row says "you will be told" rather than offering again. A
+      // button that re-offers something already done reads as one that did
+      // nothing.
+      expect((flow.step as ResultsReady).watching, contains('dep-1'));
     });
   });
 }

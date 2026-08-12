@@ -1571,6 +1571,61 @@ void main() {
       );
     });
   });
+
+  group('waiting for a seat', () {
+    test('an alert survives the round trip', () {
+      final sent = SeatAlertDto(
+        id: 'alert-1',
+        departureId: 'dep-1',
+        seatsWanted: 3,
+        createdAt: DateTime.utc(2026, 8, 15, 9, 12),
+      );
+
+      final back = SeatAlertDto.fromJson(sent.toJson());
+
+      expect(back.id, 'alert-1');
+      expect(back.departureId, 'dep-1');
+      expect(back.seatsWanted, 3);
+      expect(back.createdAt, DateTime.utc(2026, 8, 15, 9, 12));
+      expect(back.isWaiting, isTrue);
+    });
+
+    test('a spent alert says when it fired, and is no longer waiting', () {
+      // Kept rather than deleted: "I was told, late" and "I was never told"
+      // are different complaints, and only a kept row tells them apart.
+      final sent = SeatAlertDto(
+        id: 'alert-2',
+        departureId: 'dep-2',
+        seatsWanted: 1,
+        createdAt: DateTime.utc(2026, 8, 15, 9),
+        notifiedAt: DateTime.utc(2026, 8, 15, 11, 30),
+      );
+
+      final back = SeatAlertDto.fromJson(sent.toJson());
+
+      expect(back.notifiedAt, DateTime.utc(2026, 8, 15, 11, 30));
+      expect(back.isWaiting, isFalse);
+    });
+
+    test('a waiting alert omits the moment it has not reached', () {
+      final json = SeatAlertDto(
+        id: 'alert-3',
+        departureId: 'dep-3',
+        seatsWanted: 1,
+        createdAt: DateTime.utc(2026, 8, 15),
+      ).toJson();
+
+      expect(json.containsKey('notifiedAt'), isFalse);
+    });
+
+    test('the request carries the party, not a promise', () {
+      // One field, and it is the number that decides whether a message is
+      // worth sending at all: a family of four is not served by one seat.
+      const request = WatchSeatsRequest(seatsWanted: 4);
+      expect(request.toJson(), {'seatsWanted': 4});
+      expect(WatchSeatsRequest.fromJson(request.toJson()).seatsWanted, 4);
+    });
+  });
 }
 
 /// Reads the string constants declared on [ErrorCode] straight from source,

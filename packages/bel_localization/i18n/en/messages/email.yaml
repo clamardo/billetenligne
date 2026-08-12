@@ -26,3 +26,6 @@ email:
 
       Your ticket is in the BilletEnLigne app. Show the QR code to the
       conductor — it works with no network.
+  # A subject that says what happened, not what is promised.
+  seatAvailable:
+    subject: "Seats are free again: {route} on {date}"
