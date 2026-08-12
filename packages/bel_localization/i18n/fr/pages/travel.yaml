@@ -114,6 +114,12 @@ travel:
       other: "{count} places"
     departsOn: "{date} · {time}"
     show: "Voir le billet"
+    # Repartir, depuis un trajet deja fait. Le retour d'abord : un aller a
+    # Pointe-Noire est presque toujours un retour, et c'est celui qui coute
+    # le plus de saisie a quelqu'un qui nous a deja dit ou il va. La ville
+    # est nommee, parce que « retour » seul ne dit pas vers ou.
+    bookReturn: "Retour vers {city}"
+    bookAgain: "Refaire ce trajet"
   ticket:
     title: "Billet"
     seatOf: "Billet {index} sur {total}"

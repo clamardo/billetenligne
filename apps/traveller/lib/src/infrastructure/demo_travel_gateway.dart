@@ -404,8 +404,11 @@ final class DemoTravelGateway implements TravelGateway {
         state: 'confirmed',
         departureId: 'dep-demo-rescue',
         operatorName: 'Ocean du Nord',
-        originCity: 'Brazzaville',
-        destinationCity: 'Pointe-Noire',
+        // Codes, not names: `routes.origin_city` references `cities(code)`,
+        // so this is what the server actually sends — and it is what a
+        // "refaire ce trajet" search has to be built from.
+        originCity: 'BZV',
+        destinationCity: 'PNR',
         departsAt: leaves,
         arrivesAt: leaves.add(const Duration(hours: 7, minutes: 30)),
         passengers: const [
@@ -516,8 +519,8 @@ final class DemoTravelGateway implements TravelGateway {
         state: 'confirmed',
         departureId: 'dep-demo-past',
         operatorName: 'Ocean du Nord',
-        originCity: 'Pointe-Noire',
-        destinationCity: 'Brazzaville',
+        originCity: 'PNR',
+        destinationCity: 'BZV',
         departsAt: departed,
         arrivesAt: departed.add(const Duration(hours: 7, minutes: 30)),
         passengers: const [

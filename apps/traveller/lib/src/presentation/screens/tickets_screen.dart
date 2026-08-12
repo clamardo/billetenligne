@@ -28,6 +28,8 @@ final class TicketsScreen extends StatelessWidget {
     required this.onRefresh,
     this.stale = false,
     this.onSearch,
+    this.onBookAgain,
+    this.cityNames = const {},
     super.key,
   });
 
@@ -56,6 +58,18 @@ final class TicketsScreen extends StatelessWidget {
   final bool stale;
 
   final VoidCallback? onSearch;
+
+  /// "Go again", from a trip already taken. `reversed` is the return leg,
+  /// which is most of why this exists: a journey to Pointe-Noire is nearly
+  /// always a journey back from it, and re-typing two cities is a tax on
+  /// somebody who has already told us where they go.
+  final void Function(BookingDto booking, {bool reversed})? onBookAgain;
+
+  /// Code to name — `BZV` to *Brazzaville*. A booking carries the code,
+  /// because that is what the route is keyed on, and a screen that prints it
+  /// is asking a traveller to read a database. Missing codes fall back to the
+  /// code itself: an unknown city is better named badly than not at all.
+  final Map<String, String> cityNames;
 
   bool get _isEmpty => upcoming.isEmpty && past.isEmpty;
 
@@ -117,6 +131,7 @@ final class TicketsScreen extends StatelessWidget {
                           onChoices: onChoices,
                           onCancel: onCancel,
                           onChange: onChange,
+                          cityNames: cityNames,
                         ),
                     ],
 
@@ -130,6 +145,8 @@ final class TicketsScreen extends StatelessWidget {
                           onChoices: onChoices,
                           onCancel: onCancel,
                           onChange: onChange,
+                          onBookAgain: onBookAgain,
+                          cityNames: cityNames,
                           past: true,
                         ),
                     ],
@@ -165,6 +182,8 @@ class _BookingCard extends StatelessWidget {
     required this.onChoices,
     required this.onCancel,
     required this.onChange,
+    this.onBookAgain,
+    this.cityNames = const {},
     this.past = false,
   });
 
@@ -177,7 +196,11 @@ class _BookingCard extends StatelessWidget {
   /// that was never paid for — and that one has no ticket to open.
   final void Function(BookingDto booking) onCancel;
   final void Function(BookingDto booking) onChange;
+  final void Function(BookingDto booking, {bool reversed})? onBookAgain;
+  final Map<String, String> cityNames;
   final bool past;
+
+  String _city(String code) => cityNames[code] ?? code;
 
   @override
   Widget build(BuildContext context) {
@@ -199,7 +222,8 @@ class _BookingCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    '${booking.originCity} → ${booking.destinationCity}',
+                    '${_city(booking.originCity)} → '
+                    '${_city(booking.destinationCity)}',
                     style: kilo.text.body.copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -302,6 +326,27 @@ class _BookingCard extends StatelessWidget {
                 label: context.t('travel.cancel.action'),
                 tone: KButtonTone.ghost,
                 onPressed: () => onCancel(booking),
+              ),
+            ],
+
+            // A trip already taken is the best evidence there is about where
+            // somebody goes. The return leg is first of the two, because it
+            // is the one they are more likely to want and the one that costs
+            // the most taps to type again.
+            if (past && onBookAgain != null) ...[
+              SizedBox(height: kilo.space.s3),
+              KButton(
+                label: context.t('travel.tickets.bookReturn', {
+                  'city': _city(booking.originCity),
+                }),
+                tone: KButtonTone.secondary,
+                onPressed: () => onBookAgain!(booking, reversed: true),
+              ),
+              SizedBox(height: kilo.space.s2),
+              KButton(
+                label: context.t('travel.tickets.bookAgain'),
+                tone: KButtonTone.ghost,
+                onPressed: () => onBookAgain!(booking),
               ),
             ],
           ],

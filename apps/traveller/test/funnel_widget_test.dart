@@ -568,4 +568,56 @@ void main() {
       expect(find.byType(TextField), findsWidgets);
     });
   });
+
+  group('going again', () {
+    testWidgets('a past trip offers the return, named by city', (tester) async {
+      await pumpApp(tester);
+      await tester.tap(find.byIcon(Icons.confirmation_number_outlined));
+      await tester.pumpAndSettle();
+
+      // The booking carries `PNR`, because that is what the route is keyed
+      // on. A screen that printed it would be asking somebody to read a
+      // database.
+      expect(find.text('Retour vers Pointe-Noire'), findsOneWidget);
+      expect(find.text('Refaire ce trajet'), findsOneWidget);
+    });
+
+    testWidgets('the return lands on the results for the other direction', (
+      tester,
+    ) async {
+      final flow = await pumpApp(tester);
+      await tester.tap(find.byIcon(Icons.confirmation_number_outlined));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Retour vers Pointe-Noire'));
+      await tester.pumpAndSettle();
+
+      // The past trip was PNR → BZV, so the return is BZV → PNR — and it is
+      // the results, not a form to fill in again.
+      expect(flow.step, isA<ResultsReady>());
+      expect(flow.lastQuery!.originCity, 'BZV');
+      expect(flow.lastQuery!.destinationCity, 'PNR');
+    });
+
+    testWidgets('backing out lands on a form that already knows the road', (
+      tester,
+    ) async {
+      final flow = await pumpApp(tester);
+      await tester.tap(find.byIcon(Icons.confirmation_number_outlined));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Refaire ce trajet'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Refaire ce trajet'));
+      await tester.pumpAndSettle();
+      expect(flow.step, isA<ResultsReady>());
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+
+      // The date is the one thing left to change, which is the whole point of
+      // going through the results first.
+      expect(find.text('Où allez-vous ?'), findsOneWidget);
+      expect(find.text('Brazzaville'), findsWidgets);
+    });
+  });
 }

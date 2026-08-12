@@ -474,6 +474,8 @@ class _FunnelState extends State<_Funnel> {
         onRefresh: widget.tickets.refresh,
         onBack: _closeTickets,
         onSearch: _closeTickets,
+        onBookAgain: _bookAgain,
+        cityNames: {for (final c in _flow.cities) c.code: c.name},
       ),
 
       ViewingTicket(:final booking, :final seatIndex) => switch (step.ticket) {
@@ -582,6 +584,17 @@ class _FunnelState extends State<_Funnel> {
   }
 
   void _closeTickets() => setState(() => _viewingTickets = false);
+
+  /// The same road again, from a trip already taken.
+  ///
+  /// Straight to the results rather than to a pre-filled search form: the
+  /// whole point is that it is one tap, and the form is what backing out
+  /// lands on — already carrying the route and the party, so changing the
+  /// date is the one thing left to do.
+  void _bookAgain(BookingDto booking, {bool reversed = false}) {
+    setState(() => _viewingTickets = false);
+    unawaited(_flow.searchAgain(booking, reversed: reversed));
+  }
 
   /// Leaves paying without losing the reservation. The payment code and its
   /// deadline are still on the screen underneath.

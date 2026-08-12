@@ -112,6 +112,13 @@ travel:
       other: "{count} seats"
     departsOn: "{date} · {time}"
     show: "Show ticket"
+    # Go again, from a trip already taken. The return leg first: a journey to
+    # Pointe-Noire is nearly always a journey back from it, and that is the
+    # one that costs the most typing to somebody who has already told us
+    # where they go. The city is named, because "return" alone does not say
+    # where to.
+    bookReturn: "Return to {city}"
+    bookAgain: "Take this trip again"
   ticket:
     title: "Ticket"
     seatOf: "Ticket {index} of {total}"

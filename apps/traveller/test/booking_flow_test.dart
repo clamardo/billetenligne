@@ -1213,6 +1213,96 @@ void main() {
       expect((flow.step as ResultsReady).watching, contains('dep-1'));
     });
   });
+
+  group('going again, from a trip already taken', () {
+    BookingDto taken({String from = 'PNR', String to = 'BZV', int party = 1}) =>
+        BookingDto(
+          id: 'bk-1',
+          ref: 'BEL-4T9K2M',
+          state: 'confirmed',
+          departureId: 'dep-past',
+          operatorName: 'Ocean du Nord',
+          originCity: from,
+          destinationCity: to,
+          departsAt: DateTime.utc(2026, 7, 1, 6),
+          arrivesAt: DateTime.utc(2026, 7, 1, 14),
+          passengers: [
+            for (var i = 0; i < party; i++)
+              PassengerDto(fullName: 'P$i', seatLabel: '${i + 1}A'),
+          ],
+          total: const Money.xaf(12300),
+          createdAt: DateTime.utc(2026, 6, 28),
+        );
+
+    test('the same road, tomorrow', () async {
+      // Tomorrow rather than today: somebody opening a past ticket in the
+      // evening and shown today's board is shown coaches that have already
+      // left, which reads as a broken app rather than as a late hour.
+      final gateway = _ScriptedGateway(searchResult: [_departure()]);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.searchAgain(taken(), now: DateTime.utc(2026, 8, 10, 21));
+
+      expect(flow.lastQuery!.originCity, 'PNR');
+      expect(flow.lastQuery!.destinationCity, 'BZV');
+      expect(flow.lastQuery!.date, DateTime.utc(2026, 8, 11));
+    });
+
+    test('the return leg swaps the two cities and nothing else', () async {
+      final gateway = _ScriptedGateway(searchResult: [_departure()]);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.searchAgain(
+        taken(party: 2),
+        reversed: true,
+        now: DateTime.utc(2026, 8, 10),
+      );
+
+      expect(flow.lastQuery!.originCity, 'BZV');
+      expect(flow.lastQuery!.destinationCity, 'PNR');
+      expect(flow.lastQuery!.passengers, 2);
+    });
+
+    test(
+      'the party comes from the booking, not from the last search',
+      () async {
+        // A traveller who searched for one seat last week and travelled with
+        // three is a traveller who travels with three.
+        final gateway = _ScriptedGateway(searchResult: [_departure()]);
+        final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+        await flow.search(_query);
+        await flow.searchAgain(taken(party: 3), now: DateTime.utc(2026, 8, 10));
+
+        expect(flow.lastQuery!.passengers, 3);
+      },
+    );
+
+    test(
+      'an old booking above the cap does not build a refused query',
+      () async {
+        // The cap can change. A booking made under a looser one must not
+        // produce a search the server answers with a 400.
+        final gateway = _ScriptedGateway(searchResult: [_departure()]);
+        final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+        await flow.searchAgain(taken(party: 9), now: DateTime.utc(2026, 8, 10));
+
+        expect(flow.lastQuery!.passengers, flow.maxSeats);
+      },
+    );
+
+    test('it lands on the results, not on the form', () async {
+      final gateway = _ScriptedGateway(searchResult: [_departure()]);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.searchAgain(taken(), now: DateTime.utc(2026, 8, 10));
+
+      // One tap is the whole feature. The form is what backing out lands on,
+      // already carrying the road and the party.
+      expect(flow.step, isA<ResultsReady>());
+    });
+  });
 }
 
 final class _FailingRelease extends _ScriptedGateway {

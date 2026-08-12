@@ -360,6 +360,43 @@ final class BookingFlow {
     }
   }
 
+  /// The same journey again, from a trip already taken.
+  ///
+  /// **Tomorrow, not today**, and the same party. Somebody who opens a past
+  /// ticket in the evening and is shown today's board is shown coaches that
+  /// have already left — an empty results screen for a road they know is
+  /// busy, which reads as a broken app rather than as a late hour. Tomorrow
+  /// is also what the search screen itself defaults to, so the two agree.
+  ///
+  /// [reversed] is the return leg, which is most of why this exists: a trip
+  /// to Pointe-Noire is nearly always a trip back from it, and swapping two
+  /// dropdowns is the tax a traveller pays for us not having noticed.
+  ///
+  /// The party comes from the booking rather than from the last search, and
+  /// is capped at what the product sells — an old booking made under a
+  /// different cap must not produce a query the server refuses.
+  Future<void> searchAgain(
+    BookingDto booking, {
+    bool reversed = false,
+    DateTime? now,
+  }) {
+    final today = (now ?? DateTime.now()).toUtc();
+    return search(
+      SearchDeparturesQuery(
+        originCity: reversed ? booking.destinationCity : booking.originCity,
+        destinationCity: reversed
+            ? booking.originCity
+            : booking.destinationCity,
+        date: DateTime.utc(
+          today.year,
+          today.month,
+          today.day,
+        ).add(const Duration(days: 1)),
+        passengers: booking.passengers.length.clamp(1, maxSeats),
+      ),
+    );
+  }
+
   /// The next page, appended.
   ///
   /// **A failure here is not a failure of the screen.** The rows already
