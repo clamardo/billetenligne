@@ -1441,3 +1441,77 @@ BEGIN
   RAISE NOTICE 'OK  a road is read by everyone, described by its operator alone';
 END
 $$;
+
+-- ── 11. A block the blocked party cannot lift ───────────────────────────────
+--
+-- The compliance pass stops an operator selling when a licence lapses
+-- (03-operator-lifecycle.md §3.3). The whole enforcement rests on one
+-- question: can the operator undo it from its own console? RLS cannot answer
+-- that — the tenant policy exists precisely to let a company write its own
+-- row — so the answer is a column grant, and this executes it.
+DO $$
+DECLARE
+  tenant CONSTANT UUID := '11111111-1111-1111-1111-111111111111';
+  seen   INT;
+BEGIN
+  PERFORM set_config('app.platform', 'on', true);
+  SET LOCAL ROLE bel_admin;
+
+  UPDATE operators
+     SET sales_blocked_at = now(), sales_blocked_doc = 'fleet_insurance'
+   WHERE id = tenant;
+
+  RESET ROLE;
+  PERFORM set_config('app.platform', 'off', true);
+
+  -- ── The operator, in its own console ──
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.tenant_id', tenant::text, true);
+
+  -- It can see it. Being told why sales stopped is the point of the banner.
+  SELECT count(*) INTO seen
+    FROM operators WHERE id = tenant AND sales_blocked_at IS NOT NULL;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: an operator cannot read its own block';
+  END IF;
+
+  BEGIN
+    UPDATE operators SET sales_blocked_at = NULL WHERE id = tenant;
+    RAISE EXCEPTION 'FAIL: an operator lifted its own sales block';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  -- The same grant is what stops the two older holes on this table.
+  BEGIN
+    UPDATE operators SET commission_bps = 0 WHERE id = tenant;
+    RAISE EXCEPTION 'FAIL: an operator set its own commission to zero';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  BEGIN
+    UPDATE operators SET status = 'active' WHERE id = tenant;
+    RAISE EXCEPTION 'FAIL: an operator wrote its own lifecycle state';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  -- What it MAY write: its own shop window, and nothing else.
+  UPDATE operators SET tagline_fr = 'Le confort à chaque voyage'
+   WHERE id = tenant;
+
+  RESET ROLE;
+
+  -- ── Put it back, so the rest of this file finds the world it expects ──
+  PERFORM set_config('app.platform', 'on', true);
+  SET LOCAL ROLE bel_admin;
+  UPDATE operators
+     SET sales_blocked_at = NULL, sales_blocked_doc = NULL
+   WHERE id = tenant;
+  RESET ROLE;
+  PERFORM set_config('app.platform', 'off', true);
+
+  RAISE NOTICE 'OK  an operator reads its sales block and cannot lift it';
+END
+$$;

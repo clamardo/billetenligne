@@ -1181,6 +1181,47 @@ check "a well-formed claim gets past validation" "503" \
      -H 'Content-Type: application/json' \
      -d '{"claimCode":"K4M2QX","stationId":"st-bzv"}')"
 
+# ── The paperwork banner ────────────────────────────────────────────────────
+#
+# The fakes composition has no documents, so what is provable over HTTP is the
+# shape and the wall: every role in the console may read it, nobody outside
+# may, and an operator with nothing dated is answered `clear` rather than with
+# a blank. The ladder itself is proven in `compliance_pg_test.dart`, against
+# the table that carries the dates.
+echo "── compliance"
+
+check "the banner is closed to anonymous" "401" \
+  "$(status "$BASE/console/v1/compliance")"
+check "and to a traveller who found the URL" "403" \
+  "$(status -H "$AUTH" "$BASE/console/v1/compliance")"
+
+compliance="$(curl -s -H "$OP_AUTH" "$BASE/console/v1/compliance")"
+check "an operator reads its own standing" "200" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/compliance")"
+# Nothing dated is not the same as non-compliant, and the server does not
+# claim it is.
+check "nothing dated answers clear" "yes" \
+  "$(grep -q '"stage":"clear"' <<<"$compliance" && echo yes || echo no)"
+check "and nothing is blocked" "yes" \
+  "$(grep -q 'salesBlockedAt' <<<"$compliance" && echo no || echo yes)"
+# A cached copy is a company still being told it has a week.
+check "the banner is never cached" "yes" \
+  "$(curl -s -D - -o /dev/null -H "$OP_AUTH" "$BASE/console/v1/compliance" \
+     | grep -qi 'cache-control: private, no-store' && echo yes || echo no)"
+
+# Read-only, and not by omission: the pass sets the block, and an endpoint an
+# operator could POST to would be an operator clearing its own.
+check "nothing here can be written" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/compliance" -H "$OP_AUTH")"
+
+check "our own calendar is closed to anonymous" "401" \
+  "$(status "$BASE/admin/v1/compliance")"
+check "and to an operator" "403" \
+  "$(status -H "$OP_AUTH" "$BASE/admin/v1/compliance")"
+check "and to a traveller" "403" \
+  "$(status -H "$AUTH" "$BASE/admin/v1/compliance")"
+
 # ── The back office refuses everybody it should ─────────────────────────────
 #
 # The admin surface cannot be *exercised* against the fakes composition — it

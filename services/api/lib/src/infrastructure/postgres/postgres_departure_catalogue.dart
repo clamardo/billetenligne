@@ -98,6 +98,12 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                -- they cannot buy.
                AND d.departs_at > now()
                AND (d.sales_close_at IS NULL OR d.sales_close_at > now())
+               -- An operator whose insurance lapsed disappears from search
+               -- rather than selling a seat and refusing it at checkout
+               -- (03-operator-lifecycle.md §3.3, §4). Their coaches still
+               -- run and their tickets are still valid — only the sale is
+               -- gone.
+               AND o.sales_blocked_at IS NULL
                AND (@operator::uuid IS NULL OR d.operator_id = @operator::uuid)
                AND (@mode::text IS NULL OR d.mode = @mode::text)
                -- Everything strictly after the last row of the previous

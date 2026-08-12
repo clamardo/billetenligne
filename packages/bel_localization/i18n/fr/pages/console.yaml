@@ -2,6 +2,13 @@
 # est celui d'une agence, pas celui d'une base de données — « départ » et non
 # « materialisation », « car » et non « véhicule ».
 console:
+  # Le bandeau de conformité (03-operator-lifecycle.md §3.3). Il apparaît à
+  # trente jours et ne se ferme pas : il ne parle pas d'un travail qui vient
+  # de se terminer, mais d'une date après laquelle la vente s'arrête.
+  compliance:
+    expiring: "Votre {document} expire dans {days} jour(s). Déposez la pièce à jour dans la console — passé cette date, la vente de nouveaux billets s'arrête automatiquement."
+    blocked: "Votre {document} a expiré. La vente de nouveaux billets est arrêtée. Les billets déjà vendus restent valables et vos départs sont assurés — déposez la pièce à jour pour reprendre la vente."
+    suspended: "Compte suspendu : {document} expirée depuis plus d'une semaine. Vos départs déjà vendus restent assurés. Déposez la pièce et contactez-nous pour le rétablissement."
   nav:
     today: "Aujourd'hui"
     counter: "Guichet"

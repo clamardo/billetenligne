@@ -1771,6 +1771,60 @@ void main() {
       expect(json.containsKey('via'), isFalse);
     });
   });
+
+  group('compliance standing', () {
+    test('an operator still selling omits everything about a block', () {
+      final json = const ComplianceDto(
+        operatorId: 'op-1',
+        stage: 'clear',
+      ).toJson();
+
+      expect(json['stage'], 'clear');
+      expect(json.containsKey('salesBlockedAt'), isFalse);
+      expect(json.containsKey('blockedDoc'), isFalse);
+      expect(json.containsKey('documents'), isFalse);
+      expect(ComplianceDto.fromJson(json).salesBlocked, isFalse);
+    });
+
+    test('a blocked operator survives the round trip with its reason', () {
+      final sent = ComplianceDto(
+        operatorId: 'op-2',
+        operatorName: 'Trans Bony',
+        stage: 'blocked',
+        salesBlockedAt: DateTime.utc(2026, 4, 2, 3, 15),
+        blockedDoc: 'fleet_insurance',
+        documents: [
+          ComplianceDocDto(
+            docType: 'fleet_insurance',
+            expiresAt: DateTime.utc(2026, 4, 1),
+            stage: 'blocked',
+            daysLeft: -1,
+          ),
+        ],
+      );
+
+      final back = ComplianceDto.fromJson(sent.toJson());
+
+      expect(back.salesBlocked, isTrue);
+      expect(back.salesBlockedAt, DateTime.utc(2026, 4, 2, 3, 15));
+      expect(back.blockedDoc, 'fleet_insurance');
+      expect(back.operatorName, 'Trans Bony');
+      // Signed: past expiry counts down through zero rather than clamping,
+      // because "three days ago" is the number the reader needs.
+      expect(back.documents.single.daysLeft, -1);
+    });
+
+    test('a stage the client has never heard of is still a stage', () {
+      // The server sends the domain enum's name, never a sentence (ADR-0008),
+      // so an older console must render a new rung rather than crash on it.
+      final back = ComplianceDto.fromJson(const {
+        'operatorId': 'op-3',
+        'stage': 'quarantined',
+      });
+
+      expect(back.stage, 'quarantined');
+    });
+  });
 }
 
 /// Reads the string constants declared on [ErrorCode] straight from source,

@@ -115,6 +115,13 @@ final class DepartureNotSellable extends ClaimOutcome {
   /// can be printed and the conductor is not handed a passenger who bought a
   /// seat while the coach was pulling out.
   static const salesClosed = 'sales_closed';
+
+  /// The operator is not selling: a compliance document lapsed and the
+  /// expiry ladder stopped new sales, or they are suspended
+  /// (03-operator-lifecycle.md §3.3, §4). Every ticket already sold is
+  /// untouched and the coach still runs — this refuses the *sale*, not the
+  /// departure.
+  static const operatorBlocked = 'operator_blocked';
 }
 
 /// Claims and releases seats atomically.

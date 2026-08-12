@@ -6,6 +6,7 @@ import 'package:bel_api/src/application/ports/notification_gateway.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_api/src/composition.dart';
+import 'package:bel_worker/src/compliance_watch.dart';
 import 'package:bel_worker/src/outbox_drain.dart';
 import 'package:bel_worker/src/payment_poller.dart';
 import 'package:bel_worker/src/reliability.dart';
@@ -65,6 +66,7 @@ Future<int> main(List<String> args) async {
   final services = Services.resolve();
 
   final sweepers = Sweepers(db);
+  final compliance = ComplianceWatch(db);
   final seatAlerts = SeatAlertPass(db);
   final reliability = Reliability(db);
   final horizon = TimetableHorizon(
@@ -113,6 +115,12 @@ Future<int> main(List<String> args) async {
     'alerts': seatAlerts.notify,
     'alerts-expired': seatAlerts.expire,
     'reservations': sweepers.expireReservations,
+    // The one pass that takes something away rather than tidying up: it
+    // stops an operator whose insurance lapsed from selling, and suspends
+    // them a week later. Late in the order because the ladder is measured in
+    // days — a block that lands ten minutes after the drain is a block that
+    // landed on time.
+    'compliance': compliance.watch,
     'challenges': sweepers.purgeChallenges,
     // Last, and cheap to be last: the figure moves once a day, and a search
     // reading yesterday's is reading something true about the operator.

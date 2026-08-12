@@ -10,6 +10,7 @@ import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_operator_console.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
+import 'package:bel_worker/src/compliance_watch.dart';
 import 'package:bel_worker/src/outbox_drain.dart';
 import 'package:bel_worker/src/reliability.dart';
 import 'package:bel_worker/src/seat_alerts.dart';
@@ -1450,6 +1451,312 @@ void main() {
       // The sentence that stops somebody travelling to a station for a coach
       // that filled while they were reading about it.
       expect(message.body, contains('Premier arrive'));
+    });
+  });
+  group('paperwork that lapses', () {
+    late ComplianceWatch watch;
+    late FakeNotificationGateway sent;
+    late OutboxDrain recording;
+
+    setUp(() {
+      watch = ComplianceWatch(db);
+      sent = FakeNotificationGateway();
+      recording = OutboxDrain(
+        db: db,
+        notifications: sent,
+        catalog: CatalogLoader.fromDirectory(
+          Platform.environment['BEL_I18N_DIR'] ??
+              'packages/bel_localization/i18n',
+        ),
+        timeZone: 'Africa/Brazzaville',
+      );
+    });
+
+    /// `watch()` is global by design — it reads every operator with a dated
+    /// document, including the ones other suites in this run left behind. So
+    /// the shared fixture operator is put back exactly as it was found,
+    /// rather than left blocked for whoever runs next.
+    tearDown(() async {
+      await seed.execute(
+        Sql.named('''
+          UPDATE operators
+             SET sales_blocked_at = NULL, sales_blocked_doc = NULL,
+                 status = CASE
+                   WHEN suspended_reason LIKE 'compliance.%'
+                   THEN 'active'::operator_status ELSE status END,
+                 suspended_at = CASE
+                   WHEN suspended_reason LIKE 'compliance.%'
+                   THEN NULL ELSE suspended_at END,
+                 suspended_reason = CASE
+                   WHEN suspended_reason LIKE 'compliance.%'
+                   THEN NULL ELSE suspended_reason END
+           WHERE id = @id
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, operatorId)},
+        ignoreRows: true,
+      );
+    });
+
+    /// A company of its own, so blocking it says nothing about anybody else's
+    /// departures.
+    Future<String> aCompany({String status = 'active'}) async {
+      final rows = await seed.execute(
+        Sql.named('''
+          INSERT INTO operators (code, legal_name, market_code, status)
+          VALUES (@code, @name, 'CG', @status::operator_status)
+          RETURNING id
+        '''),
+        parameters: {
+          'code': TypedValue(Type.text, unique('CW')),
+          'name': TypedValue(Type.text, 'Transports ${unique('C')}'),
+          'status': TypedValue(Type.text, status),
+        },
+      );
+      return rows.first.toColumnMap()['id'] as String;
+    }
+
+    Future<void> aDocument(
+      String company, {
+      required Duration expiresIn,
+      String docType = 'fleet_insurance',
+      bool verified = true,
+    }) => seed.execute(
+      Sql.named('''
+        INSERT INTO kyb_documents (operator_id, doc_type, storage_key,
+                                   expires_at, verified_at)
+        VALUES (@op, @type, @key,
+                now() + make_interval(secs => @secs),
+                CASE WHEN @verified THEN now() END)
+      '''),
+      parameters: {
+        'op': TypedValue(Type.uuid, company),
+        'type': TypedValue(Type.text, docType),
+        'key': TypedValue(Type.text, 'kyb/$company/$docType.jpg'),
+        'secs': TypedValue(Type.double, expiresIn.inSeconds.toDouble()),
+        'verified': TypedValue(Type.boolean, verified),
+      },
+      ignoreRows: true,
+    );
+
+    Future<String> anOwner(String company) async {
+      final user = await aTraveller();
+      await seed.execute(
+        Sql.named('''
+          INSERT INTO operator_staff (operator_id, user_id, roles, accepted_at)
+          VALUES (@op, @user, ARRAY['org_owner'], now())
+        '''),
+        parameters: {
+          'op': TypedValue(Type.uuid, company),
+          'user': TypedValue(Type.uuid, user),
+        },
+        ignoreRows: true,
+      );
+      return user;
+    }
+
+    Future<Map<String, Object?>> columnsOf(String company) async {
+      final rows = await seed.execute(
+        Sql.named('''
+          SELECT status::text AS status, sales_blocked_at, sales_blocked_doc,
+                 suspended_reason
+            FROM operators WHERE id = @id
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, company)},
+      );
+      return rows.first.toColumnMap();
+    }
+
+    Future<List<String>> auditActions(String company) async {
+      final rows = await seed.execute(
+        Sql.named('''
+          SELECT action FROM audit_log WHERE operator_id = @id
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, company)},
+      );
+      return [for (final r in rows) r.toColumnMap()['action'] as String];
+    }
+
+    Future<List<String>> noticesFor(String company) async {
+      final rows = await seed.execute(
+        Sql.named('''
+          SELECT dedupe_key FROM outbox
+           WHERE event_type = 'compliance.expiring'
+             AND aggregate_id = @id
+           ORDER BY id
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, company)},
+      );
+      return [for (final r in rows) r.toColumnMap()['dedupe_key'] as String];
+    }
+
+    test('a certificate two months out is mentioned exactly once', () async {
+      final company = await aCompany();
+      await aDocument(company, expiresIn: const Duration(days: 50));
+
+      await watch.watch();
+      await watch.watch();
+
+      final notices = await noticesFor(company);
+      expect(notices, hasLength(1));
+      expect(notices.single, endsWith(':notice60'));
+      // A reminder is a reminder. Nothing has been taken away.
+      expect((await columnsOf(company))['sales_blocked_at'], isNull);
+    });
+
+    test(
+      'the pass running every ten minutes is still one message a day',
+      () async {
+        final company = await aCompany();
+        await aDocument(company, expiresIn: const Duration(days: 3));
+
+        await watch.watch();
+        await watch.watch();
+        await watch.watch();
+
+        final notices = await noticesFor(company);
+        expect(notices, hasLength(1));
+        // Dated, because the last week is the one where a message a day is
+        // proportionate — tomorrow's key differs by exactly that date.
+        expect(notices.single, contains(':final:'));
+      },
+    );
+
+    test('an upload nobody has verified stops nothing', () async {
+      final company = await aCompany();
+      await aDocument(
+        company,
+        expiresIn: const Duration(days: -30),
+        verified: false,
+      );
+
+      await watch.watch();
+
+      expect((await columnsOf(company))['sales_blocked_at'], isNull);
+      expect(await noticesFor(company), isEmpty);
+    });
+
+    test(
+      'the day it lapses, sales stop and the trail says who stopped them',
+      () async {
+        final company = await aCompany();
+        await aDocument(company, expiresIn: const Duration(hours: -2));
+
+        await watch.watch();
+
+        final row = await columnsOf(company);
+        expect(row['sales_blocked_at'], isNotNull);
+        expect(row['sales_blocked_doc'], 'fleet_insurance');
+        // Blocked is not suspended: one is a switch this pass flips back by
+        // itself, the other has a reinstatement procedure and a human.
+        expect(row['status'], 'active');
+
+        final trail = await seed.execute(
+          Sql.named('''
+          SELECT actor_type, actor_id, reason FROM audit_log
+           WHERE operator_id = @id AND action = 'operator.sales_blocked'
+        '''),
+          parameters: {'id': TypedValue(Type.uuid, company)},
+        );
+        final audit = trail.single.toColumnMap();
+        expect(audit['actor_type'], 'system');
+        // No human decided this, and inventing one would make the trail lie.
+        expect(audit['actor_id'], isNull);
+        expect(audit['reason'], 'compliance.document_expired:fleet_insurance');
+      },
+    );
+
+    test(
+      'renewing it turns the sales back on, with nobody\'s approval',
+      () async {
+        final company = await aCompany();
+        await aDocument(company, expiresIn: const Duration(hours: -2));
+        await watch.watch();
+        expect((await columnsOf(company))['sales_blocked_at'], isNotNull);
+
+        // The renewed copy is a new row, not an edit: the lapsed one is the
+        // history of what happened, and losing it would lose the reason.
+        await aDocument(company, expiresIn: const Duration(days: 365));
+        await watch.watch();
+
+        final row = await columnsOf(company);
+        expect(row['sales_blocked_at'], isNull);
+        expect(row['sales_blocked_doc'], isNull);
+        expect(
+          await auditActions(company),
+          contains('operator.sales_unblocked'),
+        );
+      },
+    );
+
+    test(
+      'a week past expiry is a suspension, and it is not undone here',
+      () async {
+        final company = await aCompany();
+        await aDocument(company, expiresIn: const Duration(days: -9));
+
+        await watch.watch();
+
+        final row = await columnsOf(company);
+        expect(row['status'], 'suspended');
+        expect(
+          row['suspended_reason'],
+          'compliance.document_expired:fleet_insurance',
+        );
+        expect(row['sales_blocked_at'], isNotNull);
+
+        // Renewing now clears the block but leaves the suspension: reinstating
+        // is `operations` with a written reason, not a worker noticing a file.
+        await aDocument(company, expiresIn: const Duration(days: 365));
+        await watch.watch();
+
+        final after = await columnsOf(company);
+        expect(after['sales_blocked_at'], isNull);
+        expect(after['status'], 'suspended');
+      },
+    );
+
+    test('the message goes to the owner and names the certificate', () async {
+      final company = await aCompany();
+      await anOwner(company);
+      await aDocument(
+        company,
+        expiresIn: const Duration(days: 4),
+        docType: 'transport_licence',
+      );
+
+      await watch.watch();
+      await recording.drain();
+
+      final message = sent.sent.singleWhere(
+        (m) => m.eventId == 'compliance:$company:transport_licence:urgent',
+      );
+      // A sentence, from a key plus a document type — never the raw column.
+      expect(message.body, contains('licence de transport'));
+      expect(message.body, isNot(contains('transport_licence')));
+      expect(message.body, contains('console'));
+    });
+
+    test('a company with no owner on file is not a jammed queue', () async {
+      final company = await aCompany();
+      await aDocument(
+        company,
+        expiresIn: const Duration(days: 40),
+        docType: 'rccm',
+      );
+
+      await watch.watch();
+      await recording.drain();
+
+      // Nothing to send is not a failure. The row is marked delivered so the
+      // drain does not spend six attempts on an address that never existed.
+      final rows = await seed.execute(
+        Sql.named('''
+          SELECT delivered_at FROM outbox
+           WHERE event_type = 'compliance.expiring' AND aggregate_id = @id
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, company)},
+      );
+      expect(rows.single.toColumnMap()['delivered_at'], isNotNull);
     });
   });
 }

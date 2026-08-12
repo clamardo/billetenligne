@@ -137,6 +137,22 @@ final class ConsoleWorkspace {
   /// than not offering it.
   bool get canAskForProtection => agreements.any((a) => a.isLive);
 
+  /// Where the company's paperwork stands (`03-operator-lifecycle.md` §3.3).
+  ///
+  /// Loaded once at start and refreshed with the section, never on its own
+  /// screen: the ladder only works if it finds somebody who was not looking
+  /// for it. Null until the first load answers.
+  ComplianceDto? compliance;
+
+  /// Whether the shell should be carrying a banner. Thirty days is where §3.3
+  /// says the console starts saying so — before that a reminder has gone out
+  /// and a banner on every screen for two months is a banner people stop
+  /// reading by the time it matters.
+  bool get complianceWorthSaying => switch (compliance?.stage) {
+    'warned' || 'urgent' || 'blocked' || 'suspended' => true,
+    _ => false,
+  };
+
   /// The operator's storefront. Null until the vitrine section is opened —
   /// nothing else on the console needs it, and loading it on every start
   /// would be a request per morning for a screen most people open twice.
@@ -174,6 +190,10 @@ final class ConsoleWorkspace {
   Future<void> start() async {
     await _run(() async {
       _identity = await _gateway.identity();
+      // Before the section, and unconditionally. A company whose insurance
+      // lapses is told by the console they already had open — which is only
+      // true if this is not behind a tab.
+      compliance = await _gateway.compliance();
       await _loadSection();
     });
   }

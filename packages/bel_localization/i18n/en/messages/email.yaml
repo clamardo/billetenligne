@@ -29,3 +29,11 @@ email:
   # A subject that says what happened, not what is promised.
   seatAvailable:
     subject: "Seats are free again: {route} on {date}"
+  # A subject line carrying the date, because that is the one thing the reader
+  # needs in order to know whether to open it now.
+  complianceExpiring:
+    subject: "{document}: expires {date}"
+  complianceBlocked:
+    subject: "Sales stopped: {document} expired on {date}"
+  complianceSuspended:
+    subject: "{operator} suspended: {document} expired on {date}"

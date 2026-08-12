@@ -48,6 +48,15 @@ enum:
     vendor: "Ticket agent"
     conductor: "Conductor"
     viewer: "Viewer"
+  # What compliance watches (03-operator-lifecycle.md §3.3). `doc_type` is free
+  # text in the database, so an unknown key falls back to its own value rather
+  # than to a blank.
+  DocumentType:
+    transport_licence: "transport operating licence"
+    fleet_insurance: "fleet insurance certificate"
+    technical_inspection: "technical inspection certificate"
+    rccm: "trade register entry"
+    tax_id: "tax identifier"
 seat:
   class:
     standard: "Standard"

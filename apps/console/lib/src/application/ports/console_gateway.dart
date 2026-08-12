@@ -13,6 +13,10 @@ abstract interface class ConsoleGateway {
   /// never trusted as authority — every route re-checks server-side.
   Future<ConsoleIdentityDto> identity();
 
+  /// The expiry standing behind the banner. Cheap and unconditional: two
+  /// dates and a document type, on a screen the operator already opened.
+  Future<ComplianceDto> compliance();
+
   Future<List<LayoutDto>> layouts();
 
   Future<LayoutDto> saveLayout({

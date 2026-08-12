@@ -48,6 +48,16 @@ enum:
     vendor: "Agent guichet"
     conductor: "Contrôleur"
     viewer: "Consultation"
+  # Les pieces que la conformite surveille (03-operator-lifecycle.md §3.3).
+  # `doc_type` est du texte libre en base — le ministere renomme un formulaire
+  # et ce serait sinon une migration — donc une cle inconnue retombe sur sa
+  # propre valeur plutot que sur du vide.
+  DocumentType:
+    transport_licence: "licence de transport"
+    fleet_insurance: "attestation d'assurance"
+    technical_inspection: "visite technique"
+    rccm: "registre du commerce"
+    tax_id: "identifiant fiscal"
 seat:
   class:
     standard: "Standard"

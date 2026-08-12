@@ -268,12 +268,20 @@ final class PostgresSeatInventory implements SeatInventory {
   ) async {
     final rows = await tx.execute(
       Sql.named('''
-        SELECT status::text AS status,
-               departs_at <= now() AS has_left,
-               sales_close_at IS NOT NULL AND sales_close_at <= now()
-                 AS sales_closed
-          FROM departures
-         WHERE id = @id
+        SELECT d.status::text AS status,
+               d.departs_at <= now() AS has_left,
+               d.sales_close_at IS NOT NULL AND d.sales_close_at <= now()
+                 AS sales_closed,
+               -- LEFT, and it matters: the public policy on `operators` only
+               -- exposes active ones, so a suspended operator's row is not
+               -- missing from the table — it is invisible to this session.
+               -- A missing row and a blocked one are the same refusal here,
+               -- and an inner join would have made the departure itself look
+               -- like it had ceased to exist.
+               (o.id IS NULL OR o.sales_blocked_at IS NOT NULL) AS blocked
+          FROM departures d
+          LEFT JOIN operators o ON o.id = d.operator_id
+         WHERE d.id = @id
       '''),
       parameters: {'id': TypedValue(Type.uuid, departureId)},
     );
@@ -299,6 +307,12 @@ final class PostgresSeatInventory implements SeatInventory {
     // no record of.
     if ((r['sales_closed'] as bool?) ?? false) {
       return const DepartureNotSellable(DepartureNotSellable.salesClosed);
+    }
+    // Checked last, and deliberately: an operator whose licence lapsed this
+    // morning is still refused, but a traveller looking at a cancelled coach
+    // is told it was cancelled rather than told about somebody's paperwork.
+    if ((r['blocked'] as bool?) ?? false) {
+      return const DepartureNotSellable(DepartureNotSellable.operatorBlocked);
     }
 
     return null;

@@ -2,6 +2,13 @@
 # than a database's — "departure" not "materialisation", "coach" not
 # "vehicle".
 console:
+  # The compliance banner (03-operator-lifecycle.md §3.3). It appears at
+  # thirty days and cannot be dismissed: it is not about work that just
+  # finished, but about a date after which sales stop.
+  compliance:
+    expiring: "Your {document} expires in {days} day(s). Upload the renewed copy in the console — after that date, new ticket sales stop automatically."
+    blocked: "Your {document} has expired. New ticket sales are stopped. Tickets already sold stay valid and your departures run — upload the renewed copy to start selling again."
+    suspended: "Account suspended: {document} expired more than a week ago. Departures already sold still run. Upload the document and contact us to be reinstated."
   nav:
     today: "Today"
     counter: "Counter"

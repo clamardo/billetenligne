@@ -98,7 +98,13 @@ final class PostgresStorefronts implements Storefronts {
       _db.transaction(const DbScope.anonymous(), (tx) async {
         final rows = await tx.execute(
           Sql.named(
-            'SELECT $_columns FROM operators o WHERE lower(o.code) = @code',
+            // The anonymous scope's policy already hides everyone who is not
+            // active; the block is the case that is still active and still
+            // must not be advertised. A storefront inviting somebody to book
+            // from a company whose insurance lapsed is worse than a dead
+            // link (03-operator-lifecycle.md §3.3).
+            'SELECT $_columns FROM operators o '
+            'WHERE lower(o.code) = @code AND o.sales_blocked_at IS NULL',
           ),
           parameters: {'code': code.trim().toLowerCase()},
         );

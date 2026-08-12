@@ -1,5 +1,6 @@
 import 'package:bel_design/bel_design.dart';
 import 'package:bel_client/bel_client.dart';
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:flutter/material.dart';
 
 import '../../application/console_workspace.dart';
@@ -94,6 +95,21 @@ final class ConsoleShell extends StatelessWidget {
                 // information about work that already finished; interrupting
                 // somebody to acknowledge a success is how a till gets slow.
                 if (workspace.busy) const LinearProgressIndicator(minHeight: 2),
+                // Above the transient banners and never dismissible, because
+                // it is not about work that just happened — it is about work
+                // that has to happen before a date. Sixty days of warning is
+                // the difference between renewing a certificate and losing a
+                // Friday's sales.
+                if (workspace.complianceWorthSaying)
+                  _Banner(
+                    text: _compliance(context, workspace.compliance!),
+                    tone: workspace.compliance!.salesBlocked
+                        ? kilo.color.dangerSoft
+                        : kilo.color.warningSoft,
+                    foreground: workspace.compliance!.salesBlocked
+                        ? kilo.color.danger
+                        : kilo.color.warning,
+                  ),
                 if (workspace.notice != null)
                   _Banner(
                     text: _notice(context, workspace.notice!),
@@ -121,6 +137,25 @@ final class ConsoleShell extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// The banner's sentence. Composed here from a catalog key and the server's
+  /// facts — the server sends a document type, a stage and a number of days,
+  /// never a sentence (ADR-0008).
+  static String _compliance(BuildContext context, ComplianceDto c) {
+    final worst = c.documents.isEmpty ? null : c.documents.first;
+    final params = {
+      'document': context.t(
+        'enum.DocumentType.${c.blockedDoc ?? worst?.docType ?? ''}',
+      ),
+      'days': '${worst?.daysLeft ?? 0}',
+    };
+
+    return switch (c.stage) {
+      'suspended' => context.t('console.compliance.suspended', params),
+      'blocked' => context.t('console.compliance.blocked', params),
+      _ => context.t('console.compliance.expiring', params),
+    };
   }
 
   /// Only the sections this person can actually use.

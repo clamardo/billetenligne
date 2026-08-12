@@ -53,3 +53,13 @@ sms:
     body: "{seats} place(s) de nouveau en vente: {operator} {route} le {date} a {time}. Premier arrive, premier servi. Reservez dans BilletEnLigne."
   protected:
     body: "{operator} vous prend en charge. {route} le {date} a {time}, siege {seat}. Meme billet, aucun frais. Ref {reference}."
+  # Conformite (03-operator-lifecycle.md §3.3). Adresses a l'operateur, pas au
+  # voyageur, et toujours au directeur : c'est lui qui peut renouveler une
+  # piece. Chaque message dit ce qui se passera ensuite — personne ne doit
+  # decouvrir l'arret des ventes le jour ou il tombe.
+  complianceExpiring:
+    body: "BilletEnLigne: votre {document} expire le {date} ({days} j). Mettez-la a jour dans la console, sinon la vente de billets s'arretera."
+  complianceBlocked:
+    body: "BilletEnLigne: {document} expiree le {date}. La vente est arretee, les billets deja vendus restent valables. Mettez la piece a jour."
+  complianceSuspended:
+    body: "BilletEnLigne: {operator} suspendu, {document} expiree depuis le {date}. Vos departs vendus sont assures. Contactez-nous."

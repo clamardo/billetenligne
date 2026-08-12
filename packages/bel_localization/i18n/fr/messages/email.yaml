@@ -29,3 +29,11 @@ email:
   # Un sujet qui dit ce qui s'est passe, pas ce qui est promis.
   seatAvailable:
     subject: "Des places se liberent: {route} le {date}"
+  # Un sujet qui donne la date, parce que c'est la seule information dont le
+  # destinataire a besoin pour savoir s'il doit ouvrir maintenant.
+  complianceExpiring:
+    subject: "{document} : expiration le {date}"
+  complianceBlocked:
+    subject: "Vente arrêtée : {document} expirée le {date}"
+  complianceSuspended:
+    subject: "{operator} suspendu : {document} expirée depuis le {date}"

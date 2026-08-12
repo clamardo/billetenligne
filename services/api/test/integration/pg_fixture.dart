@@ -180,22 +180,49 @@ final class PgFixture {
     return rows.first.toColumnMap()['id'] as String;
   }
 
+  /// [verified] defaults to true, because an unverified upload is invisible
+  /// to the expiry ladder and a fixture whose documents were all invisible
+  /// would make every compliance assertion pass for the wrong reason.
   Future<void> kybDocument({
     required String operatorId,
     required String docType,
     DateTime? expiresAt,
+    bool verified = true,
+    String? rejectedReason,
   }) async {
     await _seed.execute(
       Sql.named('''
         INSERT INTO kyb_documents (operator_id, doc_type, storage_key,
-                                   expires_at)
-        VALUES (@operator, @type, @key, @expires)
+                                   expires_at, verified_at, rejected_reason)
+        VALUES (@operator, @type, @key, @expires,
+                CASE WHEN @verified THEN now() END, @rejected)
       '''),
       parameters: {
         'operator': TypedValue(Type.uuid, operatorId),
         'type': TypedValue(Type.text, docType),
         'key': TypedValue(Type.text, 'kyb/$operatorId/$docType.jpg'),
         'expires': TypedValue(Type.timestampTz, expiresAt),
+        'verified': TypedValue(Type.boolean, verified),
+        'rejected': TypedValue(Type.text, rejectedReason),
+      },
+    );
+  }
+
+  /// Sets or clears the sales block the compliance pass owns, so a test can
+  /// assert what a *blocked* operator's search and checkout do without having
+  /// to run the worker first.
+  Future<void> blockSales(String operatorId, {String? doc}) async {
+    await _seed.execute(
+      Sql.named('''
+        UPDATE operators
+           SET sales_blocked_at = CASE WHEN @doc::text IS NULL THEN NULL
+                                       ELSE now() END,
+               sales_blocked_doc = @doc
+         WHERE id = @id
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, operatorId),
+        'doc': TypedValue(Type.text, doc),
       },
     );
   }

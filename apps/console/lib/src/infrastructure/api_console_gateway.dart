@@ -19,6 +19,9 @@ final class ApiConsoleGateway implements ConsoleGateway {
   Future<ConsoleIdentityDto> identity() => _client.consoleIdentity();
 
   @override
+  Future<ComplianceDto> compliance() => _client.compliance();
+
+  @override
   Future<List<LayoutDto>> layouts() => _client.layouts();
 
   @override

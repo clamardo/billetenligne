@@ -431,6 +431,15 @@ final class BelApiClient {
   Future<ConsoleIdentityDto> consoleIdentity() async =>
       ConsoleIdentityDto.fromJson(await _get('/console/v1/me'));
 
+  /// How long this operator's paperwork has left
+  /// (`03-operator-lifecycle.md` §3.3).
+  ///
+  /// Read on every console start rather than on a compliance screen, because
+  /// there is no compliance screen: the whole point is that it finds the
+  /// person, in the console they already had open, before the sales stop.
+  Future<ComplianceDto> compliance() async =>
+      ComplianceDto.fromJson(await _get('/console/v1/compliance'));
+
   Future<List<LayoutDto>> layouts() async => Wire.readList(
     (await _get('/console/v1/fleet/layouts'))['items'],
     LayoutDto.fromJson,

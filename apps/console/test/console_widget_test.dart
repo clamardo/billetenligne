@@ -52,6 +52,15 @@ final class _ScriptedConsole implements ConsoleGateway {
     );
   }
 
+  /// Nothing dated by default. A test that wants the banner sets this.
+  ComplianceDto standing = const ComplianceDto(
+    operatorId: 'op-1',
+    stage: 'clear',
+  );
+
+  @override
+  Future<ComplianceDto> compliance() async => standing;
+
   @override
   Future<List<LayoutDto>> layouts() async => layoutList;
 
@@ -749,6 +758,73 @@ void main() {
       // The console renders nothing until it knows the capabilities, so this
       // is the one screen that must never be empty.
       expect(find.textContaining('Réessayer'), findsWidgets);
+    });
+  });
+
+  group('the paperwork banner', () {
+    ComplianceDto standing(String stage, {String? blockedDoc, int days = 12}) =>
+        ComplianceDto(
+          operatorId: 'op-1',
+          stage: stage,
+          blockedDoc: blockedDoc,
+          salesBlockedAt: blockedDoc == null ? null : DateTime.utc(2026, 4, 2),
+          documents: [
+            ComplianceDocDto(
+              docType: 'fleet_insurance',
+              expiresAt: DateTime.utc(2026, 4, 1),
+              stage: stage,
+              daysLeft: days,
+            ),
+          ],
+        );
+
+    testWidgets('sixty days out, the console says nothing', (tester) async {
+      // A banner on every screen for two months is a banner people have
+      // stopped reading by the time it matters. The reminder went by SMS.
+      await pump(
+        tester,
+        _ScriptedConsole(capabilities: const ['booking.read'])
+          ..standing = standing('noticed', days: 55),
+      );
+
+      expect(find.textContaining('assurance'), findsNothing);
+    });
+
+    testWidgets('a month out, it names the certificate and the days', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        _ScriptedConsole(capabilities: const ['booking.read'])
+          ..standing = standing('warned', days: 21),
+      );
+
+      expect(find.textContaining("attestation d'assurance"), findsOneWidget);
+      expect(find.textContaining('21 jour'), findsOneWidget);
+    });
+
+    testWidgets('once it has lapsed, it says what still works', (tester) async {
+      await pump(
+        tester,
+        _ScriptedConsole(capabilities: const ['booking.read'])
+          ..standing = standing('blocked', blockedDoc: 'fleet_insurance'),
+      );
+
+      // The sentence an operator needs first: their passengers are not
+      // stranded and their coaches still leave. Only the selling stopped.
+      expect(find.textContaining('restent valables'), findsOneWidget);
+    });
+
+    testWidgets('a vendor sees it too', (tester) async {
+      // No capability gates this. A banner only the director can see is a
+      // banner that appears the week after they went on leave.
+      await pump(
+        tester,
+        _ScriptedConsole(capabilities: const ['booking.sell'])
+          ..standing = standing('blocked', blockedDoc: 'fleet_insurance'),
+      );
+
+      expect(find.textContaining('restent valables'), findsOneWidget);
     });
   });
 

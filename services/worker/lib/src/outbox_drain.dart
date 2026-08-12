@@ -663,6 +663,84 @@ final class OutboxDrain {
           eventId: 'seat.available:$alertId',
         );
 
+      case 'compliance.expiring':
+        final operatorId = payload['operatorId'];
+        final docType = payload['docType'];
+        final stage = payload['stage'];
+        if (operatorId is! String || docType is! String || stage is! String) {
+          return null;
+        }
+
+        // The **owner**, not whoever uploaded the certificate. A licence that
+        // lapses is a company problem, and the person who can renew it is the
+        // one who signed the agreement — a reminder to a dispatcher is a
+        // reminder nobody acts on. Earliest accepted owner, so a company with
+        // two gets one message rather than none.
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT u.phone_e164, u.email, u.language,
+                   o.trading_name, o.legal_name,
+                   to_char(k.expires_at AT TIME ZONE @tz, 'DD/MM/YYYY')
+                     AS expires_on
+              FROM operators o
+              JOIN operator_staff s ON s.operator_id = o.id
+                                   AND s.revoked_at IS NULL
+                                   AND 'org_owner' = ANY (s.roles)
+              JOIN user_accounts u ON u.id = s.user_id
+              LEFT JOIN LATERAL (
+                SELECT expires_at FROM kyb_documents
+                 WHERE operator_id = o.id AND doc_type = @doc
+                   AND expires_at IS NOT NULL
+                   AND verified_at IS NOT NULL
+                   AND rejected_reason IS NULL
+                 ORDER BY expires_at DESC LIMIT 1
+              ) k ON TRUE
+             WHERE o.id = @id
+             ORDER BY s.invited_at
+             LIMIT 1
+          '''),
+          parameters: {
+            'id': TypedValue(Type.uuid, operatorId),
+            'doc': TypedValue(Type.text, docType),
+            'tz': TypedValue(Type.text, timeZone),
+          },
+        );
+
+        if (rows.isEmpty) return null;
+        final c = rows.first.toColumnMap();
+
+        final phone = c['phone_e164'] as String?;
+        final email = c['email'] as String?;
+        final to = phone ?? email;
+        if (to == null) return null;
+
+        final t = CatalogTranslator(_catalog, c['language'] as String? ?? 'fr');
+        final params = <String, Object?>{
+          'operator': c['trading_name'] ?? c['legal_name'] ?? '',
+          // A key, not the raw column: `transport_licence` is a database
+          // value and "licence de transport" is a sentence (ADR-0008).
+          'document': t.enumLabel('DocumentType', docType),
+          'date': c['expires_on'] ?? '',
+          'days': '${payload['daysLeft'] ?? 0}',
+        };
+
+        // The stage chooses the sentence, and the sentences differ in kind
+        // rather than in tone: a reminder asks, a block reports that sales
+        // have stopped, a suspension reports that the account has.
+        final key = switch (stage) {
+          'blocked' => 'complianceBlocked',
+          'suspended' => 'complianceSuspended',
+          _ => 'complianceExpiring',
+        };
+
+        return OutboundMessage(
+          channel: phone != null ? SignInChannel.phone : SignInChannel.email,
+          to: to,
+          subject: phone != null ? null : t('email.$key.subject', params),
+          body: t('sms.$key.body', params),
+          eventId: 'compliance:$operatorId:$docType:$stage',
+        );
+
       default:
         // An event type nobody handles is marked delivered rather than
         // retried forever. It is a deploy-order artefact — a producer shipped

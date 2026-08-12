@@ -40,6 +40,7 @@ import 'application/ports/notification_gateway.dart';
 import 'application/ports/seat_alerts.dart';
 import 'application/ports/seat_inventory.dart';
 import 'application/ports/object_store.dart';
+import 'application/ports/compliance_desk.dart';
 import 'application/ports/storefronts.dart';
 import 'application/ports/user_directory.dart';
 import 'application/pay_for_booking.dart';
@@ -79,6 +80,7 @@ import 'infrastructure/postgres/postgres_idempotency_store.dart';
 import 'infrastructure/postgres/postgres_seat_alerts.dart';
 import 'infrastructure/postgres/postgres_seat_inventory.dart';
 import 'infrastructure/postgres/postgres_second_factors.dart';
+import 'infrastructure/postgres/postgres_compliance_desk.dart';
 import 'infrastructure/postgres/postgres_storefronts.dart';
 import 'middleware/idempotency.dart';
 import 'ports/auth_gateway.dart';
@@ -114,6 +116,7 @@ final class Services {
     required this.storefronts,
     required this.applications,
     required this.seatAlerts,
+    required this.compliance,
     required this.storage,
     required this.payments,
     required this.payForBooking,
@@ -204,6 +207,12 @@ final class Services {
   /// that is the whole situation — so the console's middleware would refuse
   /// them before a handler ran.
   final OperatorApplications applications;
+
+  /// The expiry calendar, read by two surfaces: the operator's own console
+  /// banner and our compliance screen. Read-only — the pass sets the block,
+  /// and an endpoint that could clear it would be an operator clearing its
+  /// own (03-operator-lifecycle.md §3.3).
+  final ComplianceDesk compliance;
 
   /// Who is waiting for a seat on a coach that is full.
   ///
@@ -361,6 +370,7 @@ final class Services {
       storefronts: PostgresStorefronts(db),
       applications: PostgresOperatorApplications(db),
       seatAlerts: PostgresSeatAlerts(db),
+      compliance: PostgresComplianceDesk(db),
       // Falls back to the in-memory store rather than refusing to start. A
       // deployment with a database and no storage account is a real state —
       // it is every deployment on the day before the storage account is
@@ -554,6 +564,7 @@ final class Services {
       storefronts: MemoryStorefronts.demo(),
       applications: MemoryOperatorApplications(clock: clock),
       seatAlerts: const NoSeatAlerts(),
+      compliance: const NoComplianceDesk(),
       storage: MemoryObjectStore(),
       payments: memoryPayments,
       payForBooking: PayForBooking(

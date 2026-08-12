@@ -52,3 +52,13 @@ sms:
   # that can happen to one without warning — so the message leads with it.
   protected:
     body: "{operator} is taking you. {route} on {date} at {time}, seat {seat}. Same ticket, no charge. Ref {reference}."
+  # Compliance (03-operator-lifecycle.md §3.3). Addressed to the operator, not
+  # the traveller, and always to the owner — they are the one who can renew a
+  # certificate. Each message says what happens next: nobody should discover
+  # that sales stopped on the day they stop.
+  complianceExpiring:
+    body: "BilletEnLigne: your {document} expires on {date} (in {days} days). Upload the renewed copy in the console, or ticket sales stop."
+  complianceBlocked:
+    body: "BilletEnLigne: {document} expired on {date}. New sales are stopped; tickets already sold stay valid. Upload the renewed copy."
+  complianceSuspended:
+    body: "BilletEnLigne: {operator} is suspended, {document} expired on {date}. Departures already sold still run. Contact us."
