@@ -150,6 +150,10 @@ class _AdminShellState extends State<AdminShell> {
   static List<AdminSection> _visibleSections(AdminWorkspace w) => [
     if (w.can('platform.operator.review')) AdminSection.queue,
     if (w.can('platform.operator.review')) AdminSection.operators,
+    // The same authority that reviews an application. Compliance is that job
+    // on a slower clock, and splitting it into its own capability would mean
+    // the person who approved a company cannot see when its licence runs out.
+    if (w.can('platform.operator.review')) AdminSection.compliance,
     if (w.can('platform.payment.reconcile')) AdminSection.payments,
     // Reading the queue needs finance.read; moving anything on it needs
     // payout.approve. Our own analyst can answer "has Océan du Nord been
@@ -164,6 +168,7 @@ class _AdminShellState extends State<AdminShell> {
   static IconData _icon(AdminSection s) => switch (s) {
     AdminSection.queue => Icons.inbox,
     AdminSection.operators => Icons.apartment,
+    AdminSection.compliance => Icons.event_available_outlined,
     AdminSection.payments => Icons.help_outline,
     AdminSection.payouts => Icons.account_balance,
     AdminSection.funnel => Icons.filter_alt_outlined,
@@ -172,6 +177,7 @@ class _AdminShellState extends State<AdminShell> {
   static String _labelKey(AdminSection s) => switch (s) {
     AdminSection.queue => 'admin.nav.queue',
     AdminSection.operators => 'admin.nav.operators',
+    AdminSection.compliance => 'admin.nav.compliance',
     AdminSection.payments => 'admin.nav.payments',
     AdminSection.payouts => 'admin.nav.payouts',
     AdminSection.funnel => 'admin.nav.funnel',

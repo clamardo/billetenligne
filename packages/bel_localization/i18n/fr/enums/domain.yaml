@@ -52,6 +52,14 @@ enum:
   # `doc_type` est du texte libre en base — le ministere renomme un formulaire
   # et ce serait sinon une migration — donc une cle inconnue retombe sur sa
   # propre valeur plutot que sur du vide.
+  # Les barreaux de l'échelle d'expiration (03-operator-lifecycle.md §3.3).
+  ExpiryStage:
+    clear: "À jour"
+    noticed: "Échéance à 2 mois"
+    warned: "Échéance à 1 mois"
+    urgent: "Dernière semaine"
+    blocked: "Vente arrêtée"
+    suspended: "Suspendu"
   DocumentType:
     transport_licence: "licence de transport"
     fleet_insurance: "attestation d'assurance"

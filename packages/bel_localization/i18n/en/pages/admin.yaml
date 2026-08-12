@@ -5,6 +5,7 @@ admin:
   nav:
     queue: "Applications"
     operators: "Operators"
+    compliance: "Compliance"
     payments: "Payments"
     payouts: "Payouts"
     funnel: "Funnel"
@@ -183,3 +184,17 @@ admin:
     payout.approved: "Statement approved: {a1}. The money has not gone yet."
     payout.released: "{a1} sent. Reference {a2}."
     payout.needsReference: "Enter the transfer reference before sending."
+  # The Compliance screen (03-operator-lifecycle.md §6). A calendar, not a
+  # queue: nothing here arrived because somebody submitted it, and the
+  # deadline lands whether or not this tab was opened — the worker stops the
+  # sales on its own. What this screen is for is the fortnight before that.
+  compliance:
+    title: "Compliance"
+    subtitle: "{count} operator(s) with a document coming due."
+    window: "{days} days"
+    open: "Open the file"
+    blocked: "Sales stopped: {document} expired."
+    remainingDays: "in {days} d"
+    lapsedDays: "expired {days} d ago"
+    emptyTitle: "Nothing to chase"
+    emptyBody: "No document falls due inside this window. Widen it to look further ahead."

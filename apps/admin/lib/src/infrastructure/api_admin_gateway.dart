@@ -66,6 +66,12 @@ final class ApiAdminGateway implements AdminGateway {
   }) => _client.funnel(reason: reason, days: days, operatorId: operatorId);
 
   @override
+  Future<List<ComplianceDto>> compliance({
+    required String reason,
+    int withinDays = 60,
+  }) => _client.complianceCalendar(reason: reason, withinDays: withinDays);
+
+  @override
   Future<List<PayoutRunDto>> payouts({required String reason}) =>
       _client.payoutQueue(reason: reason);
 

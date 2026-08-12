@@ -6,6 +6,7 @@ admin:
   nav:
     queue: "Dossiers"
     operators: "Compagnies"
+    compliance: "Conformité"
     payments: "Paiements"
     payouts: "Versements"
     funnel: "Parcours"
@@ -184,3 +185,17 @@ admin:
     payout.approved: "Relevé approuvé : {a1}. L'argent n'est pas encore parti."
     payout.released: "{a1} envoyés. Référence {a2}."
     payout.needsReference: "Indiquez la référence du virement avant d'envoyer."
+  # L'écran Conformité (03-operator-lifecycle.md §6). Un calendrier, pas une
+  # file : rien n'y arrive parce que quelqu'un a déposé un dossier, et
+  # l'échéance tombe que l'onglet ait été ouvert ou non — le worker arrête les
+  # ventes tout seul. Ce que cet écran sert, c'est la quinzaine d'avant.
+  compliance:
+    title: "Conformité"
+    subtitle: "{count} compagnie(s) dont une pièce arrive à échéance."
+    window: "{days} jours"
+    open: "Ouvrir le dossier"
+    blocked: "Vente arrêtée : {document} expirée."
+    remainingDays: "dans {days} j"
+    lapsedDays: "expirée depuis {days} j"
+    emptyTitle: "Rien à relancer"
+    emptyBody: "Aucune pièce n'arrive à échéance dans cette fenêtre. Élargissez-la pour voir plus loin."

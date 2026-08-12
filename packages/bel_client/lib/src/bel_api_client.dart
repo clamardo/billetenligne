@@ -899,6 +899,24 @@ final class BelApiClient {
     ),
   );
 
+  /// The expiry calendar across every operator, worst first
+  /// (`03-operator-lifecycle.md` §6, "Conformité").
+  ///
+  /// [withinDays] widens the window. Already-lapsed documents are always
+  /// included: a calendar that only looked forward would drop an operator off
+  /// the screen at the moment they became the reason for a phone call.
+  Future<List<ComplianceDto>> complianceCalendar({
+    String? reason,
+    int withinDays = 60,
+  }) async => Wire.readList(
+    (await _get(
+      '/admin/v1/compliance?days=$withinDays',
+      reason: reason,
+    ))['items'],
+    ComplianceDto.fromJson,
+    field: 'items',
+  );
+
   /// The platform's payout queue: prepared and not yet paid, oldest first.
   Future<List<PayoutRunDto>> payoutQueue({String? reason}) async =>
       Wire.readList(

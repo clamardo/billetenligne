@@ -52,6 +52,12 @@ abstract interface class AdminGateway {
   });
 
   /// The payout queue: prepared and not yet paid, oldest first.
+  /// Every operator with paperwork inside the window, worst first.
+  Future<List<ComplianceDto>> compliance({
+    required String reason,
+    int withinDays,
+  });
+
   Future<List<PayoutRunDto>> payouts({required String reason});
 
   Future<PayoutRunDto> preparePayout({

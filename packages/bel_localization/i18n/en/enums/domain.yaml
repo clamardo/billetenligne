@@ -51,6 +51,14 @@ enum:
   # What compliance watches (03-operator-lifecycle.md §3.3). `doc_type` is free
   # text in the database, so an unknown key falls back to its own value rather
   # than to a blank.
+  # The rungs of the expiry ladder (03-operator-lifecycle.md §3.3).
+  ExpiryStage:
+    clear: "Up to date"
+    noticed: "Due in 2 months"
+    warned: "Due in 1 month"
+    urgent: "Final week"
+    blocked: "Sales stopped"
+    suspended: "Suspended"
   DocumentType:
     transport_licence: "transport operating licence"
     fleet_insurance: "fleet insurance certificate"

@@ -14,10 +14,15 @@ import 'ports/admin_gateway.dart';
 /// automatically third — a queue that is empty on a good day and is the only
 /// thing that matters on a bad one.
 ///
+/// Conformité sits with the roster because it is the same job on a slower
+/// clock: an expiry calendar is a queue whose items are dated months out and
+/// whose deadline arrives whether or not anybody worked it
+/// (`03-operator-lifecycle.md` §3.3, §6).
+///
 /// The funnel comes last because it is the only section nobody has to act on:
 /// it is read on a Monday morning, or when a queue above it has been busier
 /// than it should be and somebody wants to know since when.
-enum AdminSection { queue, operators, payments, payouts, funnel }
+enum AdminSection { queue, operators, compliance, payments, payouts, funnel }
 
 /// Everything the back office has loaded, and what it is doing.
 ///
@@ -75,6 +80,11 @@ final class AdminWorkspace {
   Set<String> get filter => _filter;
 
   List<AdminOperatorDto> operators = const [];
+
+  /// Every operator whose paperwork runs out inside the window, worst first.
+  /// The T−7 rung of the ladder raises a row here, and the pass that stops an
+  /// operator selling is the same object this list is drawn from.
+  List<ComplianceDto> compliance = const [];
   List<UnresolvedPaymentDto> payments = const [];
 
   /// Everything prepared and not yet paid, across every operator.
@@ -92,6 +102,18 @@ final class AdminWorkspace {
 
   void showFunnelDays(int days) {
     _funnelDays = days;
+    _emit();
+    unawaited(refresh());
+  }
+
+  /// How far ahead the calendar looks. Sixty days, which is where the first
+  /// reminder goes out — anything nearer than that has already been said to
+  /// the operator, and this screen is for the ones somebody has to chase.
+  var _complianceDays = 60;
+  int get complianceDays => _complianceDays;
+
+  void showComplianceDays(int days) {
+    _complianceDays = days;
     _emit();
     unawaited(refresh());
   }
@@ -148,6 +170,11 @@ final class AdminWorkspace {
         operators = await _gateway.operators(
           statuses: _filter,
           reason: _reason,
+        );
+      case AdminSection.compliance:
+        compliance = await _gateway.compliance(
+          reason: _reason,
+          withinDays: _complianceDays,
         );
       case AdminSection.payments:
         payments = await _gateway.unresolvedPayments(reason: _reason);

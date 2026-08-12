@@ -100,6 +100,18 @@ final class _ScriptedAdmin implements AdminGateway {
     return funnelResult;
   }
 
+  /// Nothing dated by default. A test that wants the calendar sets this.
+  List<ComplianceDto> calendar = const [];
+
+  @override
+  Future<List<ComplianceDto>> compliance({
+    required String reason,
+    int withinDays = 60,
+  }) async {
+    calls.add('compliance:$withinDays:$reason');
+    return calendar;
+  }
+
   @override
   Future<List<PayoutRunDto>> payouts({required String reason}) async {
     calls.add('payouts:$reason');
@@ -532,6 +544,101 @@ void main() {
       gateway.calls,
       contains('commission:op-1:750:dossier complet, RCCM vérifié'),
     );
+  });
+
+  group('the compliance calendar', () {
+    ComplianceDto standing({
+      required String stage,
+      String name = 'Trans Bony Voyages',
+      String? blockedDoc,
+      int days = 12,
+    }) => ComplianceDto(
+      operatorId: 'op-7',
+      operatorName: name,
+      stage: stage,
+      blockedDoc: blockedDoc,
+      salesBlockedAt: blockedDoc == null ? null : DateTime.utc(2026, 4, 2),
+      documents: [
+        ComplianceDocDto(
+          docType: 'fleet_insurance',
+          expiresAt: DateTime.utc(2026, 4, 1),
+          stage: stage,
+          daysLeft: days,
+        ),
+      ],
+    );
+
+    testWidgets('a row names the company, the paper and the days', (
+      tester,
+    ) async {
+      final gateway = _ScriptedAdmin(
+        capabilities: const ['platform.operator.review'],
+      )..calendar = [standing(stage: 'urgent', days: 5)];
+
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(AdminSection.compliance);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Trans Bony Voyages'), findsOneWidget);
+      expect(find.text("attestation d'assurance"), findsOneWidget);
+      expect(find.text('dans 5 j'), findsOneWidget);
+      expect(find.text('Dernière semaine'), findsOneWidget);
+    });
+
+    testWidgets('what has already lapsed says so, not "in −3 days"', (
+      tester,
+    ) async {
+      final gateway =
+          _ScriptedAdmin(capabilities: const ['platform.operator.review'])
+            ..calendar = [
+              standing(
+                stage: 'blocked',
+                blockedDoc: 'fleet_insurance',
+                days: -3,
+              ),
+            ];
+
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(AdminSection.compliance);
+      await tester.pumpAndSettle();
+
+      // Signed on the wire, and read on both sides of zero: "expired 3 days
+      // ago" is a phone call and "in 3 days" is a diary note.
+      expect(find.text('expirée depuis 3 j'), findsOneWidget);
+      expect(
+        find.textContaining("Vente arrêtée : attestation d'assurance"),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('widening the window is a fresh read', (tester) async {
+      final gateway = _ScriptedAdmin(
+        capabilities: const ['platform.operator.review'],
+      );
+
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(AdminSection.compliance);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('365 jours'));
+      await tester.pumpAndSettle();
+
+      // The window is the server's filter, not the screen's: a calendar that
+      // filtered a list it had already fetched would show sixty days of rows
+      // whatever the chip said.
+      expect(gateway.calls, contains('compliance:365:'));
+    });
+
+    testWidgets('an empty calendar is an answer, not a blank', (tester) async {
+      final workspace = await pump(
+        tester,
+        _ScriptedAdmin(capabilities: const ['platform.operator.review']),
+      );
+      workspace.openSection(AdminSection.compliance);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rien à relancer'), findsOneWidget);
+    });
   });
 
   group('the payout queue', () {
