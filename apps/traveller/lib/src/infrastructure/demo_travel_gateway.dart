@@ -18,6 +18,12 @@ final class DemoTravelGateway implements TravelGateway {
   }
 
   final DateTime _now;
+
+  /// How many rows a demo page holds. Small, so paging is actually visible on
+  /// a fresh clone: a demo that returned everything in one page would leave
+  /// the "load more" path unexercised by every screen that runs on it.
+  static const demoPageSize = 4;
+
   final _departures = <String, DepartureSummaryDto>{};
   final _seats = <String, List<SeatDto>>{};
   final _holds = <String, HoldDto>{};
@@ -35,18 +41,23 @@ final class DemoTravelGateway implements TravelGateway {
       ('op-mvt', 'Mavita Transport', 'indigo'),
     ];
 
-    for (var i = 0; i < 4; i++) {
+    // Nine, not four: a road this busy is the ordinary case on
+    // Brazzaville–Pointe-Noire, and a demo that fits in one page leaves the
+    // paging every screen depends on unexercised on a fresh clone.
+    const coaches = 9;
+
+    for (var i = 0; i < coaches; i++) {
       final (operatorId, name, hue) = operators[i % operators.length];
       final departsAt = DateTime.utc(
         _now.year,
         _now.month,
         _now.day,
-      ).add(Duration(days: 1, hours: 6 + i * 4));
+      ).add(Duration(days: 1, hours: 6, minutes: i * 90));
 
       final id = 'demo-dep-${i + 1}';
-      // The last one is nearly full, so "almost full" and "sold out" are both
+      // One of them is nearly full, so "almost full" and "sold out" are both
       // reachable without waiting for real traffic.
-      final taken = i == 3 ? 50 : i * 6;
+      final taken = i == 3 ? 50 : (i * 6) % 48;
 
       _departures[id] = DepartureSummaryDto(
         id: id,
@@ -57,15 +68,15 @@ final class DemoTravelGateway implements TravelGateway {
         destinationCity: 'PNR',
         departsAt: departsAt,
         arrivesAt: departsAt.add(const Duration(hours: 8)),
-        fare: Money.xaf(12000 + i * 1500),
+        fare: Money.xaf(12000 + (i % 4) * 1500),
         serviceFee: Market.current.serviceFee,
         seatsAvailable: 52 - taken,
         capacity: 52,
         seatSelectionEnabled: true,
         operatorAccentHue: hue,
         amenities: const ['wifi', 'usb', 'ac'],
-        onTimeRate: 88 - i * 3,
-        // Two of the four leave from the other side of town, so the demo
+        onTimeRate: 88 - (i % 4) * 3,
+        // Half of them leave from the other side of town, so the demo
         // shows the case the label exists for. A fixture where every coach
         // leaves from the same yard would draw nothing and prove nothing.
         originStation: StationDto(
@@ -86,7 +97,7 @@ final class DemoTravelGateway implements TravelGateway {
               status: ((row - 1) * 4 + 'ABCD'.indexOf(col)) < taken
                   ? SeatStatusDto.sold
                   : SeatStatusDto.available,
-              fare: Money.xaf(12000 + i * 1500),
+              fare: Money.xaf(12000 + (i % 4) * 1500),
             ),
       ];
     }
@@ -108,18 +119,50 @@ final class DemoTravelGateway implements TravelGateway {
   }
 
   @override
-  Future<List<DepartureSummaryDto>> search(SearchDeparturesQuery query) async {
+  Future<TripPageDto> search(SearchDeparturesQuery query) async {
     await Future<void>.delayed(latency);
 
     if (query.originCity == query.destinationCity) {
       throw const ServerRefused(400, ApiError(code: ErrorCode.badRequest));
     }
 
-    return _departures.values
-        .where((d) => d.originCity == query.originCity)
-        .where((d) => d.destinationCity == query.destinationCity)
-        .toList()
-      ..sort((a, b) => a.departsAt.compareTo(b.departsAt));
+    final all =
+        _departures.values
+            .where((d) => d.originCity == query.originCity)
+            .where((d) => d.destinationCity == query.destinationCity)
+            .toList()
+          ..sort((a, b) {
+            final byTime = a.departsAt.compareTo(b.departsAt);
+            return byTime != 0 ? byTime : a.id.compareTo(b.id);
+          });
+
+    // Pages the same way the server does, keyset and all. A demo gateway that
+    // answered everything at once would hide the paging from every screen
+    // that runs on it — which is every screen on a fresh clone.
+    final size = query.limit ?? demoPageSize;
+    final after = query.cursor == null
+        ? null
+        : SearchCursor.decode(query.cursor!);
+    final rest = after == null
+        ? all
+        : all.where((d) {
+            final byTime = d.departsAt.compareTo(after.departsAt);
+            return byTime > 0 || (byTime == 0 && d.id.compareTo(after.id) > 0);
+          }).toList();
+
+    final page = rest.take(size).toList();
+    final more = rest.length > size;
+
+    return TripPageDto(
+      items: page,
+      nextCursor: more && page.isNotEmpty
+          ? SearchCursor(
+              departsAt: page.last.departsAt,
+              id: page.last.id,
+            ).encode()
+          : null,
+      query: query.toQuery(),
+    );
   }
 
   @override

@@ -273,7 +273,7 @@ void main() {
             ),
           );
 
-      expect(trips, isEmpty);
+      expect(trips.items, isEmpty);
       expect(transport.requests, hasLength(2));
     });
 

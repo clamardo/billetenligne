@@ -91,11 +91,22 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                AND (d.sales_close_at IS NULL OR d.sales_close_at > now())
                AND (@operator::uuid IS NULL OR d.operator_id = @operator::uuid)
                AND (@mode::text IS NULL OR d.mode = @mode::text)
+               -- Everything strictly after the last row of the previous
+               -- page. A row comparison rather than two ORs, so the index on
+               -- `(departs_at, id)` is usable and the tie between two
+               -- companies running the same 06:00 is broken the same way the
+               -- ORDER BY breaks it.
+               AND (@afterAt::timestamptz IS NULL
+                    OR (d.departs_at, d.id)
+                       > (@afterAt::timestamptz, @afterId::uuid))
              GROUP BY d.id, o.trading_name, o.legal_name, o.accent_hue,
                       o.logo_asset, o.on_time_rate, r.origin_city,
                       r.destination_city, os.id, ds.id
-             ORDER BY d.departs_at
-             LIMIT 100
+             -- The id is part of the order, not decoration: without it two
+             -- coaches leaving at the same minute have no defined order, and
+             -- a keyset cursor over an undefined order skips rows.
+             ORDER BY d.departs_at, d.id
+             LIMIT @limit
           '''),
           parameters: {
             'from': TypedValue(Type.text, query.originCity),
@@ -104,6 +115,9 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
             'date': TypedValue(Type.text, _isoDate(query.localDate)),
             'operator': TypedValue(Type.uuid, query.operatorId),
             'mode': TypedValue(Type.text, query.mode),
+            'afterAt': TypedValue(Type.timestampTz, query.after?.departsAt),
+            'afterId': TypedValue(Type.uuid, query.after?.id),
+            'limit': TypedValue(Type.integer, query.limit),
           },
         );
 

@@ -19,7 +19,7 @@ final class ApiTravelGateway implements TravelGateway {
   Future<List<CityDto>> cities() => _client.cities();
 
   @override
-  Future<List<DepartureSummaryDto>> search(SearchDeparturesQuery query) =>
+  Future<TripPageDto> search(SearchDeparturesQuery query) =>
       _client.searchTrips(query);
 
   @override

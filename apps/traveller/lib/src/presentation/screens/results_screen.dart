@@ -22,7 +22,10 @@ final class ResultsScreen extends StatelessWidget {
     required this.onSelect,
     required this.onBack,
     this.stale = false,
+    this.hasMore = false,
+    this.loadingMore = false,
     this.onRefresh,
+    this.onLoadMore,
     this.onTryTomorrow,
     super.key,
   });
@@ -37,7 +40,22 @@ final class ResultsScreen extends StatelessWidget {
   /// are a lie.
   final bool stale;
 
+  /// Whether the server said there is another page. Told rather than guessed
+  /// from a full list, so the last page ends cleanly instead of with a
+  /// spinner that never resolves.
+  final bool hasMore;
+
+  final bool loadingMore;
+
   final Future<void> Function()? onRefresh;
+
+  /// Asked for when the traveller reaches the end of what has loaded.
+  ///
+  /// Scroll-triggered rather than a button: on this market's connections the
+  /// second page takes a moment, and a traveller who has to find and press
+  /// something to see the 14:00 mostly does not.
+  final VoidCallback? onLoadMore;
+
   final VoidCallback? onTryTomorrow;
 
   @override
@@ -58,9 +76,14 @@ final class ResultsScreen extends StatelessWidget {
           )
         : ListView.separated(
             padding: EdgeInsets.all(kilo.space.s4),
-            itemCount: departures.length,
+            // One extra row when there is more: the foot of the list, which
+            // is both the "still loading" line and the thing whose being
+            // built means the traveller has scrolled far enough to want it.
+            itemCount: departures.length + (hasMore ? 1 : 0),
             separatorBuilder: (_, _) => SizedBox(height: kilo.space.s3),
             itemBuilder: (context, index) {
+              if (index == departures.length) return _foot(context);
+
               final d = departures[index];
               return KTripCard(
                 departureTime: Format.time(d.departsAt),
@@ -113,10 +136,17 @@ final class ResultsScreen extends StatelessWidget {
               style: kilo.text.h3,
             ),
             Text(
-              context.t('travel.results.subtitle', {
-                'date': Format.shortDate(query.date, locale: locale),
-                'count': departures.length,
-              }),
+              // "and more" until the list is complete. A count that grows as
+              // somebody scrolls is a count that was wrong when they read it.
+              context.t(
+                hasMore
+                    ? 'travel.results.subtitleMore'
+                    : 'travel.results.subtitle',
+                {
+                  'date': Format.shortDate(query.date, locale: locale),
+                  'count': departures.length,
+                },
+              ),
               style: kilo.text.caption.copyWith(
                 color: kilo.color.contentSecondary,
               ),
@@ -134,6 +164,34 @@ final class ResultsScreen extends StatelessWidget {
                 ),
               )
             : _refreshable(list),
+      ),
+    );
+  }
+
+  /// The end of the list, and the trigger for the next page.
+  ///
+  /// Asking from `itemBuilder` rather than from a scroll listener: the
+  /// framework builds this row exactly when it is about to come into view,
+  /// which is the question a scroll listener is trying to answer with
+  /// arithmetic.
+  Widget _foot(BuildContext context) {
+    final kilo = context.kilo;
+
+    // After the frame, never during it: asking for the next page from inside
+    // a build emits a step, which rebuilds this widget, which is the error
+    // Flutter refuses at exactly the right moment.
+    if (!loadingMore && onLoadMore != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => onLoadMore!());
+    }
+
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: kilo.space.s5),
+      child: Center(
+        child: SizedBox(
+          height: 24,
+          width: 24,
+          child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
       ),
     );
   }

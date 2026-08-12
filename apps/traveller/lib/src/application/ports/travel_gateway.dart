@@ -16,7 +16,12 @@ abstract interface class TravelGateway {
   /// screen cannot render a picker without it.
   Future<List<CityDto>> cities();
 
-  Future<List<DepartureSummaryDto>> search(SearchDeparturesQuery query);
+  /// One page of departures, and where the next one starts.
+  ///
+  /// A page rather than a list because the results screen has to know whether
+  /// to keep loading: a full page is not evidence of another one, and a
+  /// spinner at the bottom of a complete list is a screen that never settles.
+  Future<TripPageDto> search(SearchDeparturesQuery query);
 
   Future<SeatMapDto> seatMap(String departureId);
 

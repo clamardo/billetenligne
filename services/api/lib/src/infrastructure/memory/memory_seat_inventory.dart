@@ -326,20 +326,33 @@ final class MemoryDepartureCatalogue implements DepartureCatalogue {
   Future<List<DepartureRow>> search(DepartureQuery query) async {
     final now = _clock.now();
 
-    final matches = _inventory.departures.where((d) {
-      if (d.originCity != query.originCity) return false;
-      if (d.destinationCity != query.destinationCity) return false;
-      if (d.status == 'cancelled') return false;
-      if (!d.departsAt.isAfter(now)) return false;
-      if (query.operatorId != null && d.operatorId != query.operatorId) {
-        return false;
-      }
-      if (query.mode != null && d.mode != query.mode) return false;
-      return _isSameLocalDay(d.departsAt, query.localDate);
-    }).toList()..sort((a, b) => a.departsAt.compareTo(b.departsAt));
+    final matches =
+        _inventory.departures.where((d) {
+          if (d.originCity != query.originCity) return false;
+          if (d.destinationCity != query.destinationCity) return false;
+          if (d.status == 'cancelled') return false;
+          if (!d.departsAt.isAfter(now)) return false;
+          if (query.operatorId != null && d.operatorId != query.operatorId) {
+            return false;
+          }
+          if (query.mode != null && d.mode != query.mode) return false;
+          if (query.after case final after?) {
+            // The same strict ordering the SQL uses, and it has to be the same:
+            // a fake that paged differently would let a bug through that only
+            // ever shows up against Postgres.
+            final byTime = d.departsAt.compareTo(after.departsAt);
+            if (byTime < 0 || (byTime == 0 && d.id.compareTo(after.id) <= 0)) {
+              return false;
+            }
+          }
+          return _isSameLocalDay(d.departsAt, query.localDate);
+        }).toList()..sort((a, b) {
+          final byTime = a.departsAt.compareTo(b.departsAt);
+          return byTime != 0 ? byTime : a.id.compareTo(b.id);
+        });
 
     return [
-      for (final d in matches)
+      for (final d in matches.take(query.limit))
         DepartureRow(
           id: d.id,
           operatorId: d.operatorId,

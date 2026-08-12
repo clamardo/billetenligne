@@ -1264,6 +1264,92 @@ void main() {
     });
   });
 
+  group('paging the results', () {
+    // Pagination. A cursor is the server's own bookmark handed back to it,
+    // and the only thing a client may do with it is return it.
+    test('a cursor survives the round trip it was built for', () {
+      final cursor = SearchCursor(
+        departsAt: DateTime.utc(2026, 8, 15, 6, 30),
+        id: 'dep-1',
+      );
+
+      final back = SearchCursor.decode(cursor.encode());
+      expect(back.departsAt, DateTime.utc(2026, 8, 15, 6, 30));
+      expect(back.id, 'dep-1');
+    });
+
+    test('a cursor carries the row as well as the minute', () {
+      // Two companies scheduling the 06:00 on the same road is the ordinary
+      // case here. A cursor holding only the instant drops one of them.
+      final a = SearchCursor(
+        departsAt: DateTime.utc(2026, 8, 15, 6),
+        id: 'dep-a',
+      ).encode();
+      final b = SearchCursor(
+        departsAt: DateTime.utc(2026, 8, 15, 6),
+        id: 'dep-b',
+      ).encode();
+
+      expect(a, isNot(b));
+    });
+
+    test('a cursor nobody minted is refused, not ignored', () {
+      // Falling back to the first page is how a client scrolls forever
+      // without ever noticing it is reading the same rows.
+      expect(
+        () => SearchCursor.decode('not-a-cursor'),
+        throwsA(isA<WireFormatException>()),
+      );
+      expect(
+        () => SearchCursor.decode(''),
+        throwsA(isA<WireFormatException>()),
+      );
+    });
+
+    test('a cursor is safe in a query string', () {
+      final encoded = SearchCursor(
+        departsAt: DateTime.utc(2026, 8, 15, 6),
+        id: 'dep-1',
+      ).encode();
+
+      // Base64url and unpadded: `+`, `/` and `=` all mean something else in a
+      // URL, and a cursor that had to be escaped would be one every client
+      // has to remember to escape.
+      expect(encoded, matches(RegExp(r'^[A-Za-z0-9_-]+$')));
+    });
+
+    test('a page says whether there is another one', () {
+      const page = TripPageDto(items: [], nextCursor: 'abc');
+      expect(page.hasMore, isTrue);
+      expect(TripPageDto.fromJson(page.toJson()).nextCursor, 'abc');
+
+      // The last page says nothing rather than saying false: absent is what
+      // a client that predates paging already reads as "no more".
+      const last = TripPageDto(items: []);
+      expect(last.hasMore, isFalse);
+      expect(last.toJson().containsKey('nextCursor'), isFalse);
+    });
+
+    test('the search query carries the page it is asking for', () {
+      final first = SearchDeparturesQuery(
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        date: DateTime.utc(2026, 8, 15),
+        passengers: 2,
+      );
+
+      expect(first.toQuery().containsKey('cursor'), isFalse);
+
+      final next = first.nextPage('abc');
+      // Everything else is carried across: a second page of a different
+      // search is not a second page.
+      expect(next.originCity, 'BZV');
+      expect(next.passengers, 2);
+      expect(next.toQuery()['cursor'], 'abc');
+      expect(SearchDeparturesQuery.fromQuery(next.toQuery()).cursor, 'abc');
+    });
+  });
+
   group('the yard', () {
     test('a terminal survives the round trip, directions included', () {
       const sent = StationDto(

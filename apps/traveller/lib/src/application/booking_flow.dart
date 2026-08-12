@@ -37,7 +37,12 @@ final class Searching extends BookingStep {
 }
 
 final class ResultsReady extends BookingStep {
-  const ResultsReady(this.departures, {this.stale = false});
+  const ResultsReady(
+    this.departures, {
+    this.stale = false,
+    this.hasMore = false,
+    this.loadingMore = false,
+  });
 
   final List<DepartureSummaryDto> departures;
 
@@ -45,6 +50,15 @@ final class ResultsReady extends BookingStep {
   /// request. Rendered with a banner: stale times are useful, silently stale
   /// times are a lie.
   final bool stale;
+
+  /// Whether the server said there is another page. Told, never inferred from
+  /// a full list — a spinner under a complete list is a screen that never
+  /// finishes loading.
+  final bool hasMore;
+
+  /// A page is on its way. Only ever true underneath rows that are already
+  /// on screen, so the list never disappears to fetch its own continuation.
+  final bool loadingMore;
 }
 
 final class LoadingSeatMap extends BookingStep {
@@ -196,6 +210,11 @@ final class BookingFlow {
   Stream<BookingStep> get steps => _steps.stream;
 
   List<DepartureSummaryDto> _lastResults = const [];
+
+  /// Where the next page starts, or null when the list is complete. Held here
+  /// rather than on the step so a stale-results emission cannot lose it.
+  String? _nextCursor;
+
   String? _attemptKey;
 
   List<CityDto> _cities = const [];
@@ -246,12 +265,14 @@ final class BookingFlow {
 
   Future<void> search(SearchDeparturesQuery query) async {
     _lastQuery = query;
+    _nextCursor = null;
     _emit(const Searching());
 
     try {
-      final results = await _gateway.search(query);
-      _lastResults = results;
-      _emit(ResultsReady(results));
+      final page = await _gateway.search(query);
+      _lastResults = page.items;
+      _nextCursor = page.nextCursor;
+      _emit(ResultsReady(_lastResults, hasMore: page.hasMore));
     } on ApiFailure catch (failure) {
       // Signal dropped mid-search. Showing what we had a minute ago, clearly
       // marked as old, beats an empty screen — the 06:00 has not moved.
@@ -260,6 +281,38 @@ final class BookingFlow {
       } else {
         _emit(StepFailed(failure));
       }
+    }
+  }
+
+  /// The next page, appended.
+  ///
+  /// **A failure here is not a failure of the screen.** The rows already
+  /// loaded are the ones the traveller is reading; throwing them away because
+  /// the continuation did not arrive would be losing a search to a lost
+  /// packet. It goes quiet instead and the same tap tries again.
+  Future<void> searchMore() async {
+    final current = _step;
+    final cursor = _nextCursor;
+    final query = _lastQuery;
+    if (current is! ResultsReady || cursor == null || query == null) return;
+    if (current.loadingMore) return;
+
+    _emit(
+      ResultsReady(
+        current.departures,
+        stale: current.stale,
+        hasMore: true,
+        loadingMore: true,
+      ),
+    );
+
+    try {
+      final page = await _gateway.search(query.nextPage(cursor));
+      _lastResults = [..._lastResults, ...page.items];
+      _nextCursor = page.nextCursor;
+      _emit(ResultsReady(_lastResults, hasMore: page.hasMore));
+    } on ApiFailure catch (_) {
+      _emit(ResultsReady(_lastResults, hasMore: true));
     }
   }
 

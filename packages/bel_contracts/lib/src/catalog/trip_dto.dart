@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:bel_domain/bel_domain.dart';
 
 import '../json/json_codec.dart';
@@ -147,6 +149,8 @@ final class SearchDeparturesQuery {
     this.passengers = 1,
     this.operatorId,
     this.mode,
+    this.cursor,
+    this.limit,
   });
 
   final String originCity;
@@ -161,6 +165,19 @@ final class SearchDeparturesQuery {
   final String? operatorId;
   final String? mode;
 
+  /// Where the previous page stopped, opaque to the client.
+  ///
+  /// Absent means the first page. It is deliberately not a page *number*:
+  /// departures are created and cancelled while somebody is scrolling, and an
+  /// offset silently skips or repeats a coach every time the list underneath
+  /// it moves. See [SearchCursor].
+  final String? cursor;
+
+  /// How many rows to answer with. Null takes the server's own default, and
+  /// the server clamps it — a page size is a query parameter, and "give me
+  /// ten thousand" is a slow query anybody can ask for by typing.
+  final int? limit;
+
   Map<String, String> toQuery() => {
     'from': originCity,
     'to': destinationCity,
@@ -168,6 +185,8 @@ final class SearchDeparturesQuery {
     'passengers': '$passengers',
     if (operatorId != null) 'operator': operatorId!,
     if (mode != null) 'mode': mode!,
+    if (cursor != null) 'cursor': cursor!,
+    if (limit != null) 'limit': '$limit',
   };
 
   factory SearchDeparturesQuery.fromQuery(Map<String, String> q) =>
@@ -182,10 +201,129 @@ final class SearchDeparturesQuery {
         passengers: int.tryParse(q['passengers'] ?? '1') ?? 1,
         operatorId: q['operator'],
         mode: q['mode'],
+        cursor: q['cursor'],
+        limit: q['limit'] == null ? null : int.tryParse(q['limit']!),
       );
+
+  /// The same search, from where this page stopped.
+  SearchDeparturesQuery nextPage(String cursor) => SearchDeparturesQuery(
+    originCity: originCity,
+    destinationCity: destinationCity,
+    date: date,
+    passengers: passengers,
+    operatorId: operatorId,
+    mode: mode,
+    cursor: cursor,
+    limit: limit,
+  );
 
   static String _isoDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
+}
+
+/// Where a page of search results stopped.
+///
+/// **A keyset, not an offset.** Departures are created, cancelled and sold out
+/// while somebody is scrolling a results list on a slow connection, and
+/// `OFFSET 20` on a list that gained a row silently repeats a coach and loses
+/// another. A cursor that names the last row — when it leaves, and which one
+/// it was — cannot: the next page is everything strictly after that point,
+/// whatever happened in between.
+///
+/// The pair is needed, not just the time: two companies scheduling the 06:00
+/// on the same road is the ordinary case, not the exception, and a cursor
+/// carrying only the instant would drop one of them.
+///
+/// **Opaque to the client.** It is encoded rather than sent as two fields so
+/// that a client cannot construct one — the moment a handset builds its own
+/// cursor, the ordering becomes a shared contract instead of a server
+/// decision, and it can never be changed again.
+final class SearchCursor {
+  const SearchCursor({required this.departsAt, required this.id});
+
+  /// The instant the last row on the previous page leaves.
+  final DateTime departsAt;
+
+  /// That row's departure id, which breaks the tie.
+  final String id;
+
+  /// Base64url, unpadded — it travels in a query string.
+  String encode() => base64Url
+      .encode(utf8.encode('${departsAt.toUtc().microsecondsSinceEpoch}.$id'))
+      .replaceAll('=', '');
+
+  /// Throws [WireFormatException] on anything malformed.
+  ///
+  /// A refusal, rather than falling back to the first page: a client that
+  /// silently gets page one back when it asked for page five scrolls forever
+  /// and never notices.
+  factory SearchCursor.decode(String raw) {
+    try {
+      final padded = raw.padRight((raw.length + 3) ~/ 4 * 4, '=');
+      final text = utf8.decode(base64Url.decode(padded));
+      final dot = text.indexOf('.');
+      if (dot <= 0 || dot == text.length - 1) {
+        throw const WireFormatException('cursor', 'malformed');
+      }
+      final micros = int.parse(text.substring(0, dot));
+      return SearchCursor(
+        departsAt: DateTime.fromMicrosecondsSinceEpoch(micros, isUtc: true),
+        id: text.substring(dot + 1),
+      );
+    } on WireFormatException {
+      rethrow;
+    } on Object {
+      throw const WireFormatException('cursor', 'malformed');
+    }
+  }
+}
+
+/// One page of search results, on the wire.
+///
+/// The list was already wrapped in an object — a bare JSON array leaves
+/// nowhere to put anything that is about the page rather than about a row —
+/// and this is the type that had been implied by hand at both ends. Written
+/// down once, so the server that builds it and the client that reads it
+/// cannot disagree about a field name (ADR-0004).
+final class TripPageDto {
+  const TripPageDto({
+    required this.items,
+    this.nextCursor,
+    this.query = const {},
+  });
+
+  final List<DepartureSummaryDto> items;
+
+  /// Where the next page starts, or null when this is the last one.
+  final String? nextCursor;
+
+  /// The search this answers, echoed back.
+  ///
+  /// A client rendering a stale response can tell which day it is looking at
+  /// — a real bug on a slow connection, where two searches are in flight and
+  /// the second answers first.
+  final Map<String, String> query;
+
+  bool get hasMore => nextCursor != null;
+
+  Map<String, Object?> toJson() => {
+    'items': [for (final d in items) d.toJson()],
+    if (nextCursor != null) 'nextCursor': nextCursor,
+    'query': query,
+  };
+
+  factory TripPageDto.fromJson(Map<String, Object?> json) => TripPageDto(
+    items: Wire.readList(
+      json['items'],
+      DepartureSummaryDto.fromJson,
+      field: 'items',
+    ),
+    nextCursor: json['nextCursor'] as String?,
+    query: {
+      for (final e in (json['query'] as Map? ?? const {}).entries)
+        '${e.key}': '${e.value}',
+    },
+  );
 }

@@ -10,6 +10,8 @@ final class DepartureQuery {
     this.passengers = 1,
     this.operatorId,
     this.mode,
+    this.after,
+    this.limit = 100,
   });
 
   final String originCity;
@@ -25,6 +27,17 @@ final class DepartureQuery {
   final int passengers;
   final String? operatorId;
   final String? mode;
+
+  /// Everything strictly after this row, in `(departs_at, id)` order.
+  ///
+  /// Null is the first page. A keyset rather than an offset, for the reason
+  /// `SearchCursor` gives: the list underneath a scrolling traveller moves.
+  final SearchCursor? after;
+
+  /// How many rows to read. The caller asks for one more than it means to
+  /// return, which is how it learns whether there is another page without a
+  /// second `COUNT(*)` over the same joins.
+  final int limit;
 }
 
 /// One sellable departure, straight off the read model.

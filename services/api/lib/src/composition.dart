@@ -404,16 +404,33 @@ final class Services {
     Map<String, String>? environment,
   }) {
     final market = marketCatalog(environment).defaultMarket;
+
+    // Tomorrow morning, anchored to a calendar day rather than to "now plus
+    // twenty-four hours". A demo seeded from the current instant puts its
+    // coaches on either side of midnight depending on what time the process
+    // started, and a search for tomorrow then finds one of them.
+    final today = DateTime.utc(
+      clock.now().year,
+      clock.now().month,
+      clock.now().day,
+    );
+
     final inventory = MemorySeatInventory(
       clock: clock,
       departures:
           departures ??
           [
-            MemoryDeparture.coach(
-              id: 'dep-demo-0001',
-              operatorId: 'op-demo',
-              departsAt: clock.now().add(const Duration(days: 1)),
-            ),
+            // Three coaches rather than one, on the same road and the same
+            // day. One row cannot show a results list, a sold-out row or a
+            // second page, and those are three of the states most likely to
+            // ship broken because nobody ever saw them in development.
+            for (var i = 0; i < 3; i++)
+              MemoryDeparture.coach(
+                id: 'dep-demo-000${i + 1}',
+                operatorId: 'op-demo',
+                operatorName: i == 1 ? 'Trans Bony Voyages' : 'Ocean du Nord',
+                departsAt: today.add(Duration(days: 1, hours: 6 + i * 3)),
+              ),
           ],
     );
 

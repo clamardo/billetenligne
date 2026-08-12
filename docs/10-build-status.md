@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-12 · after commit *A card, on somebody else's page*
+**Updated:** 2026-08-12 · after commit *A hundred and first departure*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -102,8 +102,9 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Where a coach leaves from** | ✅ done | `06-fleet-and-routes.md`. A departure names the terminal it boards at and the one it arrives at; the console keeps the catalogue on the same screen as the roads. **A station belongs to exactly one operator** — the nullable `operator_id` made a shared yard invisible to every company sharing it, since the tenant policy is false for NULL. **A coach cannot leave from a rival's terminal**, by composite FK rather than a WHERE clause. The yard is captured onto the departure like the seat layout, a closed yard is deactivated rather than deleted, and the search row names it only when the list offers a choice. 2 Postgres · 3 contract · 4 console · 1 traveller · 1 design test, one migration, 2 schema guarantees |
 | **The passenger who missed their coach** | ✅ done | `06-fleet-and-routes.md`, and the transfer the stations slice made tellable. Two numbers on the refund policy — how long a missed ticket keeps value, what the transfer costs — stamped by the same `(id, version)` pair as the refund bands. **Both default to zero, which means not offered**: honouring a missed ticket is a commercial promise no platform should make on a company's behalf. **The list crosses routes, not companies**, matched on the city pair, so the 09:30 from the other terminal is offered and a rival's coach never is. A **counter screen by design** — the quote is re-taken under the lock, a paid transfer names the till it was paid into, a free one names none. 7 domain · 7 contract · 7 Postgres · 8 smoke · 5 console tests, one migration, 2 schema guarantees |
 | **Card via PSP, for the diaspora** | ✅ done | `04-payments.md`, ADR-0005 and ADR-0006, and the first rail that **leaves the app**. The port asks the rail `pushesToHandset` rather than switching on its id, so the branch appears once instead of as a list of rail ids nobody remembers to extend. **The card number never touches this system** — the traveller finishes on the processor's hosted page, which moves the whole PCI surface to the PSP. **No operator collection account, and there cannot be one**: a card settles into the processor's merchant account and reaches the operator through the ordinary payout run, so the option carries no number and the tile says what it does instead of showing a merchant account that does not exist. The one query deciding whether a rail may be offered learned the difference **without loosening anything for wallets**. The page is **stored, not held in memory**, and comes back on every poll including the ones the state machine refuses — an app killed mid-checkout must be offered the same page, not a second transaction. The return URL is a **hint, never authority**: anybody can type one, and the capture is settled by re-querying like every other rail. Two CHECK constraints keep the shapes apart — a push rail has a wallet, a checkout rail has a page. **No merchant account exists yet**, so the adapter targets the shape every hosted checkout in the region shares and a sandbox rail in the same file walks the funnel end to end. 6 unit · 5 Postgres · 8 traveller-app · 4 contract · 10 smoke · 2 schema guarantees, one migration |
+| **Search pagination** | ✅ done | The hard `LIMIT 100` is gone, and with it the quiet failure it hid: the hundred-and-first coach on a busy road simply did not exist. A **keyset cursor**, not an offset — the list underneath a scrolling traveller moves, and `OFFSET 20` over a list that gained a row repeats one coach and loses another. The cursor names **when the last row leaves and which one it was**, because two companies scheduling the 06:00 on the same road is the ordinary case, and the same pair is the `ORDER BY` so the assumed ordering and the produced one are one thing. **Opaque and server-minted**, and a cursor nobody minted is refused rather than answered with page one. The server reads one row more than a page, which is the whole answer to "is there another?". The app asks when the foot of the list is built and **keeps its rows when a page fails to arrive**; the header says "et plus" until the list is complete. 6 use-case · 4 Postgres · 7 traveller-app · 2 widget · 6 contract · 6 smoke tests |
 
-Eleven items of it are built, out of order and deliberately. The follower page is
+Twelve items of it are built, out of order and deliberately. The follower page is
 what makes a disruption reach the person who would otherwise phone the agency,
 and that machinery shipped in Phase 2. Self-service cancellation is the other
 half of the refund path the counter already had, and every piece it needed —
@@ -119,7 +120,9 @@ signing certificate, a Mac, a merchant account, money that is actually
 somebody's. Offline is built: a ticket bought yesterday renders in a tunnel
 today. So is the card rail, against a sandbox — the funnel is walkable end to
 end and the day a PSP contract exists it is two environment variables and a
-line of YAML. `09-roadmap.md` has the remaining
+line of YAML. The first item of **Phase 4** is built too: search is paged,
+which is the difference between a service that works on one road and one that
+works on a hundred. `09-roadmap.md` has the remaining
 Phase 1 work in **dependency order**. With both consoles rendered, the vitrine complete, TOTP in front of
 both back offices, object storage built, the section builder shipped and
 refunds executing end to end, the sales horizon extending itself and an
@@ -259,21 +262,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 491 tests
+         packages/bel_contracts packages/bel_crypto     # 497 tests
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
-dart test services/api -x integration -x storage        # 220 tests
+dart test services/api -x integration -x storage        # 226 tests
 cd packages/bel_design     && flutter test  # 67 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
-cd apps/traveller && flutter test        # 193 app tests, incl. real SQLite
+cd apps/traveller && flutter test        # 202 app tests, incl. real SQLite
 cd apps/console   && flutter test        # 100 console tests
 cd apps/admin     && flutter test        # 28 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
 dart run tool/check_layers.dart          # the onion rule, 358 files
 ./infra/migrations/check.sh              # 35 schema guarantees
-./tool/integration.sh                    # 348 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 317 checks, incl. the Dart client
+./tool/integration.sh                    # 352 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 323 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -282,8 +285,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,165 tests in total**, plus 317 smoke checks, 35 executed schema guarantees,
-348 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,186 tests in total**, plus 323 smoke checks, 35 executed schema guarantees,
+352 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -302,6 +305,63 @@ figure here has been re-measured from a clean tree.
 ---
 
 ## What the last push changed, and what it cost
+
+**A hundred and first departure** — search stops ending at a number nobody
+chose.
+
+`LIMIT 100` had been in the search query since the first migration. It is fine
+for one road on one day and it stops being fine the moment the console can
+create a hundred departures — and the failure is the quiet kind: the
+hundred-and-first coach simply does not exist, and nothing anywhere says so.
+
+**A keyset, not an offset.** Departures are created, cancelled and sold out
+while somebody is scrolling, and on this market's connections a page takes long
+enough for that to happen. `OFFSET 20` over a list that gained a row above it
+repeats one coach and loses another; a cursor naming the last row handed over
+cannot, because the next page is everything strictly after that point whatever
+happened in between. There is an integration test that withdraws a coach from
+page one and proves the next page still starts where it said it would.
+
+**The cursor carries the row, not just the minute.** Two companies scheduling
+the 06:00 on the same road is the ordinary case here, not a contrivance, and a
+cursor keyed on the instant alone swallows one of them for good. The pair
+`(departs_at, id)` is also the `ORDER BY`, so the ordering the cursor assumes
+and the ordering the query produces are the same thing rather than two things
+that agree today.
+
+**Opaque and server-minted.** The moment a handset can construct a cursor, the
+ordering becomes a contract with every installed app instead of a decision the
+server can revisit. And a cursor nobody minted is **refused**, not answered
+with page one: a client that silently receives the first page when it asked for
+the fifth scrolls forever and never notices.
+
+**One row more than a page.** That extra row is the entire answer to "is there
+another page?", for the cost of a row rather than a second `COUNT(*)` over the
+same four joins. The client is told; it never infers from a full page, which is
+what puts a spinner under a complete list that never resolves.
+
+**The app asks when the foot of the list is built**, which is exactly when it
+is about to come into view — the question a scroll listener tries to answer
+with arithmetic. It asks after the frame, not during it, and **a page that
+fails to arrive keeps the rows already on screen**: losing a search to one
+dropped packet is the failure this market punishes hardest. The header says
+"et plus" until the list is complete, because a count that grows while somebody
+reads it was wrong when they read it.
+
+The demo gateway pages too, four at a time over nine coaches, and the in-memory
+API composition now seeds three departures instead of one. A fake that answers
+everything at once leaves the paging unexercised on every screen that runs on
+it, which is every screen on a fresh clone — and one row cannot show a results
+list, a sold-out row or a second page.
+
+What it cost: 6 use-case tests, 4 against real Postgres, 7 traveller-app flow
+tests, 2 widget tests that scroll, 6 contract round trips and 6 smoke checks.
+`searchTrips` now answers a `TripPageDto` rather than a bare list, which is the
+type both ends had been building by hand.
+
+---
+
+## What the card push changed, and what it cost
 
 **A card, on somebody else's page** — the first rail that leaves the app.
 

@@ -26,6 +26,19 @@ final class UnreasonablePassengerCount extends SearchFailure {
   Map<String, Object?> get params => {'requested': requested, 'max': max};
 }
 
+/// A cursor a client could not have got from us.
+///
+/// Refused rather than treated as "start again", because a client that asks
+/// for page five and silently receives page one scrolls forever and nobody
+/// finds out.
+final class UnreadableCursor extends SearchFailure {
+  const UnreadableCursor();
+  @override
+  String get code => ErrorCode.badRequest;
+  @override
+  Map<String, Object?> get params => const {'field': 'cursor'};
+}
+
 /// Searching more than a year out is a typo, not a plan. Refused with a code
 /// rather than an empty list, because "no results" and "you typed 2027 by
 /// accident" should not look identical to a traveller.
@@ -50,12 +63,29 @@ final class DateOutOfRange extends SearchFailure {
 ///   * **Sold-out departures are returned, not filtered.** Seeing "complet" on
 ///     the 06:00 is how a traveller learns to book earlier next time. Hiding
 ///     it just makes the service look empty.
+/// One page of results, and where the next one starts.
+///
+/// A class rather than a bare list because "there is more" is a fact the
+/// screen needs and cannot derive: a full page is not evidence of another one,
+/// and a client that guessed would show a spinner at the bottom of every
+/// complete list.
+final class SearchPage {
+  const SearchPage({required this.departures, this.nextCursor});
+
+  final List<DepartureSummaryDto> departures;
+
+  /// Null when this is the last page. Opaque; it goes back out as `cursor`.
+  final String? nextCursor;
+}
+
 final class SearchDepartures {
   const SearchDepartures({
     required DepartureCatalogue catalogue,
     this.market = Market.current,
     this.maxPassengers = 6,
     this.horizon = const Duration(days: 365),
+    this.pageSize = 20,
+    this.maxPageSize = 100,
   }) : _catalogue = catalogue;
 
   final DepartureCatalogue _catalogue;
@@ -63,7 +93,19 @@ final class SearchDepartures {
   final int maxPassengers;
   final Duration horizon;
 
-  Future<Result<List<DepartureSummaryDto>, SearchFailure>> call(
+  /// How many rows a page holds when the client does not say.
+  ///
+  /// Twenty rather than a hundred: a results list on 2G is paid for by the
+  /// byte, and the traveller who wants the 06:00 has already found it by row
+  /// three. The rest arrives when they scroll.
+  final int pageSize;
+
+  /// The most anybody may ask for. Clamped rather than trusted — the page
+  /// size is a query parameter, and a thousand rows is a slow query somebody
+  /// can ask for by typing.
+  final int maxPageSize;
+
+  Future<Result<SearchPage, SearchFailure>> call(
     SearchDeparturesQuery query, {
     required DateTime now,
   }) async {
@@ -78,6 +120,15 @@ final class SearchDepartures {
       return Err(DateOutOfRange(query.date));
     }
 
+    final SearchCursor? after;
+    try {
+      after = query.cursor == null ? null : SearchCursor.decode(query.cursor!);
+    } on WireFormatException {
+      return const Err(UnreadableCursor());
+    }
+
+    final size = (query.limit ?? pageSize).clamp(1, maxPageSize);
+
     final rows = await _catalogue.search(
       DepartureQuery(
         originCity: from,
@@ -86,10 +137,30 @@ final class SearchDepartures {
         passengers: query.passengers,
         operatorId: query.operatorId,
         mode: query.mode,
+        after: after,
+        // One more than a page. The extra row is never returned — it is the
+        // whole answer to "is there another page?", and it costs one row
+        // rather than a second query over the same joins.
+        limit: size + 1,
       ),
     );
 
-    return Ok([for (final row in rows) _toDto(row)]);
+    final hasMore = rows.length > size;
+    final page = hasMore ? rows.take(size).toList() : rows;
+
+    return Ok(
+      SearchPage(
+        departures: [for (final row in page) _toDto(row)],
+        // Named from the last row actually returned, so the next page begins
+        // exactly where this one stopped whatever happens in between.
+        nextCursor: hasMore && page.isNotEmpty
+            ? SearchCursor(
+                departsAt: page.last.departsAt,
+                id: page.last.id,
+              ).encode()
+            : null,
+      ),
+    );
   }
 
   DepartureSummaryDto _toDto(DepartureRow row) => DepartureSummaryDto(

@@ -393,4 +393,139 @@ void main() {
       );
     });
   });
+
+  group('one page at a time', () {
+    /// Four coaches on the same road, minutes apart, on a day of their own —
+    /// so the paging assertions count these and not whatever every other
+    /// suite in this run happened to schedule.
+    Future<({DateTime date, List<String> ids})> aDayOfCoaches() async {
+      final offset = const Duration(days: 40);
+      final ids = <String>[];
+      for (var i = 0; i < 4; i++) {
+        ids.add(
+          await fixture.departure(
+            seatLabels: const ['1A'],
+            fromNow: offset + Duration(minutes: i),
+          ),
+        );
+      }
+      return (date: await fixture.localDateIn(offset), ids: ids);
+    }
+
+    test('a page is the size it was asked for, and no more', () async {
+      final day = await aDayOfCoaches();
+
+      final rows = await catalogue.search(
+        DepartureQuery(
+          originCity: 'BZV',
+          destinationCity: 'PNR',
+          localDate: day.date,
+          limit: 2,
+        ),
+      );
+
+      expect(rows, hasLength(2));
+    });
+
+    test('the cursor resumes exactly after the row it names', () async {
+      final day = await aDayOfCoaches();
+
+      final first = await catalogue.search(
+        DepartureQuery(
+          originCity: 'BZV',
+          destinationCity: 'PNR',
+          localDate: day.date,
+          limit: 2,
+        ),
+      );
+
+      final second = await catalogue.search(
+        DepartureQuery(
+          originCity: 'BZV',
+          destinationCity: 'PNR',
+          localDate: day.date,
+          limit: 2,
+          after: SearchCursor(
+            departsAt: first.last.departsAt,
+            id: first.last.id,
+          ),
+        ),
+      );
+
+      // Strictly after: the row the cursor names must not come back, which is
+      // the difference between `>` and `>=` and one duplicated coach per page.
+      expect(second.map((d) => d.id), isNot(contains(first.last.id)));
+      expect(
+        first
+            .map((d) => d.id)
+            .toSet()
+            .intersection(second.map((d) => d.id).toSet()),
+        isEmpty,
+      );
+    });
+
+    test('two coaches at the same minute are both reachable', () async {
+      // The tie the id breaks. Two companies scheduling the 06:00 on the same
+      // road is the ordinary case here, and a cursor keyed on the instant
+      // alone would swallow one of them for good.
+      final offset = const Duration(days: 41);
+      final twins = [
+        await fixture.departure(seatLabels: const ['1A'], fromNow: offset),
+        await fixture.departure(seatLabels: const ['1A'], fromNow: offset),
+      ];
+      // Truly the same instant, not merely the same minute: `now() +
+      // interval` gives each row its own microsecond, and a tie that is not
+      // a tie proves nothing about the tie-break.
+      await fixture.sameInstant(departure: twins.first, other: twins.last);
+      final date = await fixture.localDateIn(offset);
+
+      final first = await catalogue.search(
+        DepartureQuery(
+          originCity: 'BZV',
+          destinationCity: 'PNR',
+          localDate: date,
+          limit: 1,
+        ),
+      );
+      final second = await catalogue.search(
+        DepartureQuery(
+          originCity: 'BZV',
+          destinationCity: 'PNR',
+          localDate: date,
+          limit: 1,
+          after: SearchCursor(
+            departsAt: first.single.departsAt,
+            id: first.single.id,
+          ),
+        ),
+      );
+
+      expect(first.single.departsAt, second.single.departsAt);
+      expect({first.single.id, second.single.id}, twins.toSet());
+    });
+
+    test('paging the whole day sees every coach once', () async {
+      final day = await aDayOfCoaches();
+      final seen = <String>[];
+
+      SearchCursor? after;
+      for (var guard = 0; guard < 10; guard++) {
+        final rows = await catalogue.search(
+          DepartureQuery(
+            originCity: 'BZV',
+            destinationCity: 'PNR',
+            localDate: day.date,
+            limit: 3,
+            after: after,
+          ),
+        );
+        if (rows.isEmpty) break;
+        seen.addAll(rows.map((d) => d.id));
+        after = SearchCursor(departsAt: rows.last.departsAt, id: rows.last.id);
+      }
+
+      expect(seen.toSet(), containsAll(day.ids));
+      expect(seen.length, seen.toSet().length, reason: 'no coach twice');
+    });
+  });
 }

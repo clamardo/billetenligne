@@ -28,6 +28,9 @@ travel:
   results:
     title: "{from} → {to}"
     subtitle: "{date} · {count} départs"
+    # Tant que la liste n'est pas complète, le compte serait faux : on dit
+    # « et plus », jamais un chiffre qui grandit en défilant.
+    subtitleMore: "{date} · {count} départs et plus"
     searching: "Recherche des départs…"
     emptyTitle: "Aucun départ ce jour-là"
     emptyBody: "Essayez le lendemain, ou une autre compagnie."

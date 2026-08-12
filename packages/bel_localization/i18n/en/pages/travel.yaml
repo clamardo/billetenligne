@@ -28,6 +28,7 @@ travel:
   results:
     title: "{from} → {to}"
     subtitle: "{date} · {count} departures"
+    subtitleMore: "{date} · {count} departures and more"
     searching: "Looking for departures…"
     emptyTitle: "No departures that day"
     emptyBody: "Try the next day, or another operator."

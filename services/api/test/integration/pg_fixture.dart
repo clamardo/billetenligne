@@ -1442,6 +1442,31 @@ final class PgFixture {
   /// it here would mean the test and the query agree because they share a bug,
   /// which is the classic way a timezone test passes while the feature is
   /// broken.
+  /// Puts [other] on exactly the same instant as [departure].
+  ///
+  /// `now() + interval` gives every row its own microsecond, so two coaches
+  /// seeded a line apart are never truly simultaneous — and simultaneous is
+  /// the case a keyset cursor has to break with the id. Two companies
+  /// scheduling the 06:00 on the same road is the ordinary case here, not a
+  /// contrivance.
+  Future<void> sameInstant({
+    required String departure,
+    required String other,
+  }) async {
+    await _seed.execute(
+      Sql.named('''
+        UPDATE departures d
+           SET departs_at = src.departs_at, arrives_at = src.arrives_at
+          FROM departures src
+         WHERE src.id = @src AND d.id = @dst
+      '''),
+      parameters: {
+        'src': TypedValue(Type.uuid, departure),
+        'dst': TypedValue(Type.uuid, other),
+      },
+    );
+  }
+
   Future<DateTime> localDateIn(Duration offset) async {
     final rows = await _seed.execute(
       Sql.named('''

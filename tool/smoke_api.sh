@@ -259,6 +259,34 @@ check "search is cacheable" "yes" \
   "$(curl -sD - -o /dev/null "$TRIPS" | tr -d '\r' \
      | grep -qi '^cache-control: public' && echo yes || echo no)"
 
+# Pagination. The list is answered a page at a time, and the cursor is the
+# server's own bookmark handed back to it — a client cannot build one, which
+# is what keeps the ordering a server decision rather than a shared contract.
+page1="$(curl -s "$TRIPS&limit=1")"
+check "a page is the size it was asked for" "yes" \
+  "$(grep -o '"id":"dep-demo-[0-9]*"' <<<"$page1" | wc -l | grep -q '^1$' \
+     && echo yes || echo no)"
+check "and says where the next one starts" "yes" \
+  "$(grep -q '"nextCursor"' <<<"$page1" && echo yes || echo no)"
+
+cursor="$(sed 's/.*"nextCursor":"\([^"]*\)".*/\1/' <<<"$page1")"
+page2="$(curl -s "$TRIPS&limit=1&cursor=$cursor")"
+first_id="$(sed 's/.*"id":"\([^"]*\)".*/\1/' <<<"$page1")"
+check "the next page does not repeat the last row" "yes" \
+  "$(grep -q "\"id\":\"$first_id\"" <<<"$page2" && echo no || echo yes)"
+check "and it is not empty" "yes" \
+  "$(grep -q '"id":"dep-demo-' <<<"$page2" && echo yes || echo no)"
+
+# The whole day fits in one page by default, so the last page says nothing
+# rather than offering a cursor that leads nowhere.
+check "a complete list offers no cursor" "yes" \
+  "$(grep -q '"nextCursor"' <<<"$trips" && echo no || echo yes)"
+
+# Silently starting again is how a client scrolls forever reading the same
+# rows and nobody finds out.
+check "a cursor nobody minted is 400, not page one" "400" \
+  "$(status "$TRIPS&cursor=not-a-real-cursor")"
+
 check "same city both ends is 400" "400" \
   "$(status "$BASE/public/v1/trips?from=BZV&to=BZV&date=$TOMORROW")"
 check "a missing date is 400" "400" \

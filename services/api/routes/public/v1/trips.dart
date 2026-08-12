@@ -36,13 +36,16 @@ Future<Response> onRequest(RequestContext context) async {
 
   return switch (result) {
     Ok(:final value) => Response.json(
-      body: {
-        'items': [for (final d in value) d.toJson()],
-        // Echoed back so a client rendering a stale response can tell which
-        // day it is looking at — a real bug on a slow connection where two
-        // searches are in flight and the second answers first.
-        'query': query.toQuery(),
-      },
+      // The DTO rather than a hand-built map: the client reads this shape
+      // through the same type, so a renamed field breaks at compile time
+      // instead of at a traveller's search screen.
+      body: TripPageDto(
+        items: value.departures,
+        // Absent on the last page, which is what makes "there is more" a fact
+        // the screen is told rather than one it guesses from a full page.
+        nextCursor: value.nextCursor,
+        query: query.toQuery(),
+      ).toJson(),
       headers: {
         BelHeaders.traceId: trace,
         HttpHeaders.cacheControlHeader: 'public, max-age=60',

@@ -242,13 +242,20 @@ final class ApiConsoleGateway implements ConsoleGateway {
     required String originCity,
     required String destinationCity,
     required DateTime date,
-  }) => _client.searchTrips(
-    SearchDeparturesQuery(
-      originCity: originCity,
-      destinationCity: destinationCity,
-      date: date,
-    ),
-  );
+  }) async {
+    // The rescue picker wants one screenful of candidates, not the whole
+    // day: a dispatcher choosing a coach to move stranded passengers onto is
+    // reading the next few departures, and paging here would be a second
+    // control on a screen that is already an emergency.
+    final page = await _client.searchTrips(
+      SearchDeparturesQuery(
+        originCity: originCity,
+        destinationCity: destinationCity,
+        date: date,
+      ),
+    );
+    return page.items;
+  }
 
   @override
   Future<RebookingAppliedDto> rebookOnto({

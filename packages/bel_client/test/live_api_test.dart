@@ -51,9 +51,13 @@ void main() {
         date: DateTime.now().toUtc().add(const Duration(days: 1)),
       ),
     );
-    expect(trips, isNotEmpty, reason: 'the demo departure should be on sale');
+    expect(
+      trips.items,
+      isNotEmpty,
+      reason: 'the demo departure should be on sale',
+    );
 
-    final departure = trips.first;
+    final departure = trips.items.first;
     // Money survived the wire as minor units rather than becoming a float.
     expect(departure.serviceFee.minor, 300);
     expect(departure.total.minor, departure.fare.minor + 300);
@@ -94,7 +98,7 @@ void main() {
         date: DateTime.now().toUtc().add(const Duration(days: 1)),
       ),
     );
-    final departure = trips.first;
+    final departure = trips.items.first;
     final map = await client.seatMap(departure.id);
     final free = map.seats.lastWhere((s) => s.isSelectable);
 
@@ -127,7 +131,7 @@ void main() {
         date: DateTime.now().toUtc().add(const Duration(days: 1)),
       ),
     );
-    final departure = trips.first;
+    final departure = trips.items.first;
     final map = await client.seatMap(departure.id);
     final free = map.seats.where((s) => s.isSelectable).elementAt(2);
 

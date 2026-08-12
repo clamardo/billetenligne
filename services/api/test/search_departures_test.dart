@@ -77,13 +77,19 @@ void main() {
 
       final results = (await search(query(), now: now)).valueOrNull!;
 
-      expect(results.map((d) => d.id), ['dep-morning', 'dep-evening']);
+      expect(results.departures.map((d) => d.id), [
+        'dep-morning',
+        'dep-evening',
+      ]);
     });
 
     test('adds the service fee once, from the market', () async {
       final (search, _) = build();
 
-      final first = (await search(query(), now: now)).valueOrNull!.first;
+      final first = (await search(
+        query(),
+        now: now,
+      )).valueOrNull!.departures.first;
 
       // The database has no business knowing what Congo charges. Adding a
       // second country must not mean editing SQL.
@@ -97,7 +103,10 @@ void main() {
 
       final results = (await search(query(), now: now)).valueOrNull!;
 
-      expect(results.map((d) => d.id), isNot(contains('dep-departed')));
+      expect(
+        results.departures.map((d) => d.id),
+        isNot(contains('dep-departed')),
+      );
     });
 
     test('a cancelled departure is not a result', () async {
@@ -105,7 +114,10 @@ void main() {
 
       final results = (await search(query(), now: now)).valueOrNull!;
 
-      expect(results.map((d) => d.id), isNot(contains('dep-cancelled')));
+      expect(
+        results.departures.map((d) => d.id),
+        isNot(contains('dep-cancelled')),
+      );
     });
 
     test('another route is not a result', () async {
@@ -113,7 +125,10 @@ void main() {
 
       final results = (await search(query(), now: now)).valueOrNull!;
 
-      expect(results.map((d) => d.id), isNot(contains('dep-other-route')));
+      expect(
+        results.departures.map((d) => d.id),
+        isNot(contains('dep-other-route')),
+      );
     });
 
     test('filters by operator when asked', () async {
@@ -124,7 +139,7 @@ void main() {
         now: now,
       )).valueOrNull!;
 
-      expect(results.map((d) => d.id), ['dep-evening']);
+      expect(results.departures.map((d) => d.id), ['dep-evening']);
     });
   });
 
@@ -132,13 +147,19 @@ void main() {
     test('drops as seats are held', () async {
       final (search, inventory) = build();
 
-      final before = (await search(query(), now: now)).valueOrNull!.first;
+      final before = (await search(
+        query(),
+        now: now,
+      )).valueOrNull!.departures.first;
 
       await inventory.claim(
         SeatClaimFixture.forSeats(['1A', '1B'], departureId: 'dep-morning'),
       );
 
-      final after = (await search(query(), now: now)).valueOrNull!.first;
+      final after = (await search(
+        query(),
+        now: now,
+      )).valueOrNull!.departures.first;
 
       expect(after.seatsAvailable, before.seatsAvailable - 2);
     });
@@ -167,8 +188,8 @@ void main() {
 
       // Seeing "complet" on the 06:00 is how a traveller learns to book
       // earlier. Hiding it makes the service look empty instead.
-      expect(results, hasLength(1));
-      expect(results.first.isSoldOut, isTrue);
+      expect(results.departures, hasLength(1));
+      expect(results.departures.first.isSoldOut, isTrue);
     });
   });
 
@@ -238,6 +259,134 @@ void main() {
       // An empty seat map and a departure that does not exist mean very
       // different things to a client deciding what to render.
       expect(await catalogue.seatMap('nope'), isNull);
+    });
+  });
+
+  group('one page at a time', () {
+    /// Eight coaches on the hour, so the page boundaries land somewhere
+    /// checkable rather than on the edge of the fixture.
+    (SearchDepartures, MemorySeatInventory) manyCoaches({
+      int size = 3,
+      Set<String> without = const {},
+    }) {
+      final inventory = MemorySeatInventory(
+        clock: clock,
+        departures: [
+          for (var i = 0; i < 8; i++)
+            if (!without.contains('dep-${i.toString().padLeft(2, '0')}'))
+              MemoryDeparture.coach(
+                id: 'dep-${i.toString().padLeft(2, '0')}',
+                operatorId: 'op-odn',
+                departsAt: now.add(Duration(hours: 2 + i)),
+              ),
+        ],
+      );
+      return (
+        SearchDepartures(
+          catalogue: MemoryDepartureCatalogue(inventory, clock: clock),
+          pageSize: size,
+        ),
+        inventory,
+      );
+    }
+
+    test('answers a page, and says there is more', () async {
+      final (search, _) = manyCoaches();
+
+      final page = (await search(query(), now: now)).valueOrNull!;
+
+      expect(page.departures.map((d) => d.id), ['dep-00', 'dep-01', 'dep-02']);
+      // Told, not inferred. A full page is not evidence of another one.
+      expect(page.nextCursor, isNotNull);
+    });
+
+    test('the next page starts exactly where the last one stopped', () async {
+      final (search, _) = manyCoaches();
+
+      final first = (await search(query(), now: now)).valueOrNull!;
+      final second = (await search(
+        query().nextPage(first.nextCursor!),
+        now: now,
+      )).valueOrNull!;
+
+      expect(second.departures.map((d) => d.id), [
+        'dep-03',
+        'dep-04',
+        'dep-05',
+      ]);
+      // No overlap and no gap — the two things an offset gets wrong the
+      // moment the list underneath moves.
+      expect(
+        {
+          ...first.departures.map((d) => d.id),
+        }.intersection({...second.departures.map((d) => d.id)}),
+        isEmpty,
+      );
+    });
+
+    test('the last page says so by saying nothing', () async {
+      final (search, _) = manyCoaches();
+
+      var page = (await search(query(), now: now)).valueOrNull!;
+      final seen = <String>[...page.departures.map((d) => d.id)];
+      var guard = 0;
+      while (page.nextCursor != null && guard++ < 10) {
+        page = (await search(
+          query().nextPage(page.nextCursor!),
+          now: now,
+        )).valueOrNull!;
+        seen.addAll(page.departures.map((d) => d.id));
+      }
+
+      expect(page.nextCursor, isNull);
+      expect(seen, hasLength(8));
+      expect(seen.toSet(), hasLength(8), reason: 'no coach twice');
+    });
+
+    test('a coach withdrawn mid-scroll costs no other coach its row', () async {
+      final (first_search, _) = manyCoaches();
+      final first = (await first_search(query(), now: now)).valueOrNull!;
+
+      // dep-01 goes off sale while the traveller is reading page one — the
+      // row an OFFSET would have counted. A keyset asks for everything after
+      // dep-02 instead, so nothing above it can shift the answer.
+      final (later, _) = manyCoaches(without: {'dep-01'});
+      final second = (await later(
+        query().nextPage(first.nextCursor!),
+        now: now,
+      )).valueOrNull!;
+
+      expect(second.departures.first.id, 'dep-03');
+    });
+
+    test('a page size is clamped, not obeyed', () async {
+      final (search, _) = manyCoaches();
+
+      // "Give me ten thousand rows" is a slow query anybody can ask for by
+      // typing it into a URL.
+      final page = (await search(
+        SearchDeparturesQuery(
+          originCity: 'BZV',
+          destinationCity: 'PNR',
+          date: today,
+          limit: 100000,
+        ),
+        now: now,
+      )).valueOrNull!;
+
+      expect(page.departures, hasLength(8));
+      expect(page.nextCursor, isNull);
+    });
+
+    test('a cursor nobody minted is a refusal, not page one', () async {
+      final (search, _) = manyCoaches();
+
+      final result = await search(query().nextPage('nonsense'), now: now);
+
+      // Silently starting again is how a client scrolls forever reading the
+      // same three coaches.
+      expect(result.isOk, isFalse);
+      expect((result as Err).failure, isA<UnreadableCursor>());
     });
   });
 }

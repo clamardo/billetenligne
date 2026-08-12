@@ -51,11 +51,32 @@ final class _ScriptedGateway implements TravelGateway {
     ];
   }
 
+  /// Extra pages, handed out in order as cursors come back. Empty means the
+  /// first page is the whole list — which is what most of these tests want.
+  final searchPages = <List<DepartureSummaryDto>>[];
+
+  /// Every cursor the flow sent, in order. A page asked for twice is the bug
+  /// an infinite list makes easiest to write.
+  final cursors = <String?>[];
+
   @override
-  Future<List<DepartureSummaryDto>> search(SearchDeparturesQuery query) async {
+  Future<TripPageDto> search(SearchDeparturesQuery query) async {
     searches++;
+    cursors.add(query.cursor);
     if (searchFailure != null) throw searchFailure!;
-    return searchResult ?? const [];
+
+    if (query.cursor == null) {
+      return TripPageDto(
+        items: searchResult ?? const [],
+        nextCursor: searchPages.isEmpty ? null : 'page-1',
+      );
+    }
+
+    final index = int.parse(query.cursor!.split('-').last) - 1;
+    return TripPageDto(
+      items: searchPages[index],
+      nextCursor: index + 1 < searchPages.length ? 'page-${index + 2}' : null,
+    );
   }
 
   @override
@@ -613,6 +634,104 @@ void main() {
       // The server answered, and the answer was "your request is wrong".
       // Showing yesterday's coaches would hide a bug the traveller can fix.
       expect(flow.step, isA<StepFailed>());
+    });
+  });
+
+  group('more of the same search', () {
+    _ScriptedGateway paged() =>
+        _ScriptedGateway(searchResult: [_departure()])
+          ..searchPages.addAll([
+            [_departure(id: 'dep-2')],
+            [_departure(id: 'dep-3')],
+          ]);
+
+    test('the first page says there is another', () async {
+      final flow = BookingFlow(gateway: paged(), isSignedIn: () => true);
+
+      await flow.search(_query);
+
+      final step = flow.step as ResultsReady;
+      expect(step.hasMore, isTrue);
+      expect(step.loadingMore, isFalse);
+    });
+
+    test('the next page is appended, never swapped in', () async {
+      final flow = BookingFlow(gateway: paged(), isSignedIn: () => true);
+
+      await flow.search(_query);
+      await flow.searchMore();
+
+      // Somebody is reading row one while row four loads. Replacing the list
+      // would move the thing under their thumb.
+      final step = flow.step as ResultsReady;
+      expect(step.departures.map((d) => d.id), ['dep-1', 'dep-2']);
+      expect(step.hasMore, isTrue);
+    });
+
+    test('the last page ends the list rather than spinning', () async {
+      final flow = BookingFlow(gateway: paged(), isSignedIn: () => true);
+
+      await flow.search(_query);
+      await flow.searchMore();
+      await flow.searchMore();
+
+      final step = flow.step as ResultsReady;
+      expect(step.departures, hasLength(3));
+      expect(step.hasMore, isFalse);
+    });
+
+    test('a page already on its way is not asked for twice', () async {
+      final gateway = paged();
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.search(_query);
+      // Two rebuilds of the same foot row, which is what a scrolling list
+      // does. One request, or the second page arrives twice.
+      final both = Future.wait([flow.searchMore(), flow.searchMore()]);
+      await both;
+
+      expect(gateway.cursors, [null, 'page-1']);
+      expect((flow.step as ResultsReady).departures, hasLength(2));
+    });
+
+    test('a new search forgets where the old one had got to', () async {
+      final gateway = paged();
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.search(_query);
+      await flow.searchMore();
+      await flow.search(_query);
+
+      // Page two of yesterday's search is not page two of this one.
+      expect(gateway.cursors.last, isNull);
+      expect((flow.step as ResultsReady).departures, hasLength(1));
+    });
+
+    test('a lost page keeps the rows already read', () async {
+      final gateway = paged();
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.search(_query);
+      gateway.searchFailure = const NetworkUnreachable();
+      await flow.searchMore();
+
+      // The rows on screen are what the traveller is reading. Losing them to
+      // a failed continuation would lose a search to one dropped packet.
+      final step = flow.step as ResultsReady;
+      expect(step.departures, hasLength(1));
+      expect(step.loadingMore, isFalse);
+      // And the offer to try again is still there.
+      expect(step.hasMore, isTrue);
+    });
+
+    test('there is nothing more to ask for on a complete list', () async {
+      final gateway = _ScriptedGateway(searchResult: [_departure()]);
+      final flow = BookingFlow(gateway: gateway, isSignedIn: () => true);
+
+      await flow.search(_query);
+      await flow.searchMore();
+
+      expect(gateway.searches, 1);
     });
   });
 

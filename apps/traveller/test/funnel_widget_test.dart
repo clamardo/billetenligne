@@ -1,5 +1,6 @@
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_localization/bel_localization.dart';
+import 'package:bel_design/bel_design.dart';
 import 'package:bel_traveller/src/application/booking_flow.dart';
 import 'package:bel_traveller/src/application/payment_flow.dart';
 import 'package:bel_traveller/src/application/sign_in_flow.dart';
@@ -139,6 +140,42 @@ void main() {
       // than three taps away on a confirmation screen.
       expect(find.textContaining('Gare de Mikalou'), findsWidgets);
       expect(find.textContaining('Gare de Kinsoundi'), findsWidgets);
+    });
+  });
+
+  group('more results', () {
+    testWidgets('a partial list never states a count it will outgrow', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await searchBzvToPnr(tester);
+
+      // Nine coaches, four to a page. "9 départs" here would be a number that
+      // was wrong at the moment somebody read it.
+      expect(find.textContaining('et plus'), findsOneWidget);
+    });
+
+    testWidgets('scrolling reaches coaches the first page did not hold', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await searchBzvToPnr(tester);
+
+      expect(
+        tester.widgetList(find.byType(KTripCard)),
+        hasLength(lessThanOrEqualTo(DemoTravelGateway.demoPageSize)),
+      );
+
+      for (var i = 0; i < 4; i++) {
+        await tester.drag(find.byType(ListView).last, const Offset(0, -1200));
+        await tester.pumpAndSettle();
+      }
+
+      // Nobody pressed anything: reaching the foot of the list is the whole
+      // gesture, which is what it has to be on a connection where the second
+      // page takes a moment.
+      expect(find.textContaining('et plus'), findsNothing);
+      expect(find.textContaining('9 départs'), findsOneWidget);
     });
   });
 

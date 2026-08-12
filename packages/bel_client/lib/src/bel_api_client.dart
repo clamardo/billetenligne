@@ -63,16 +63,14 @@ final class BelApiClient {
 
   // ── Catalogue ─────────────────────────────────────────────────────────────
 
-  /// Departures for a route on a local calendar day.
-  Future<List<DepartureSummaryDto>> searchTrips(
-    SearchDeparturesQuery query,
-  ) async {
+  /// Departures for a route on a local calendar day, one page at a time.
+  ///
+  /// The page carries where the next one starts. Pass it back on
+  /// `query.nextPage(cursor)` — the cursor is opaque and a client that tried
+  /// to build one would be asserting an ordering only the server decides.
+  Future<TripPageDto> searchTrips(SearchDeparturesQuery query) async {
     final body = await _get('/public/v1/trips', query: query.toQuery());
-    return Wire.readList(
-      body['items'],
-      DepartureSummaryDto.fromJson,
-      field: 'items',
-    );
+    return TripPageDto.fromJson(body);
   }
 
   /// The layout and the live availability, in one response.

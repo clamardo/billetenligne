@@ -206,25 +206,34 @@ class _FunnelState extends State<_Funnel> {
         body: KStateView(KLoading(context.t('travel.results.searching'))),
       ),
 
-      ResultsReady(:final departures, :final stale) => ResultsScreen(
-        query: _flow.lastQuery!,
-        departures: departures,
-        stale: stale,
-        onSelect: _flow.openSeatMap,
-        onBack: _flow.reset,
-        onRefresh: () => _flow.search(_flow.lastQuery!),
-        onTryTomorrow: () {
-          final was = _flow.lastQuery!;
-          _flow.search(
-            SearchDeparturesQuery(
-              originCity: was.originCity,
-              destinationCity: was.destinationCity,
-              date: was.date.add(const Duration(days: 1)),
-              passengers: was.passengers,
-            ),
-          );
-        },
-      ),
+      ResultsReady(
+        :final departures,
+        :final stale,
+        :final hasMore,
+        :final loadingMore,
+      ) =>
+        ResultsScreen(
+          query: _flow.lastQuery!,
+          departures: departures,
+          stale: stale,
+          hasMore: hasMore,
+          loadingMore: loadingMore,
+          onSelect: _flow.openSeatMap,
+          onBack: _flow.reset,
+          onLoadMore: () => unawaited(_flow.searchMore()),
+          onRefresh: () => _flow.search(_flow.lastQuery!),
+          onTryTomorrow: () {
+            final was = _flow.lastQuery!;
+            _flow.search(
+              SearchDeparturesQuery(
+                originCity: was.originCity,
+                destinationCity: was.destinationCity,
+                date: was.date.add(const Duration(days: 1)),
+                passengers: was.passengers,
+              ),
+            );
+          },
+        ),
 
       LoadingSeatMap() => Scaffold(
         appBar: AppBar(leading: BackButton(onPressed: _backToResults)),
