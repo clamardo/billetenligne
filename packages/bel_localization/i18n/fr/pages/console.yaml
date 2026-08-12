@@ -249,6 +249,20 @@ console:
     minutes: "Minutes"
     active: "Active"
     inactive: "Inactive"
+    editRoute: "Modifier cette ligne"
+    # Les arrêts intermédiaires. Le temps est compté DEPUIS LE DÉPART, pas
+    # depuis l'arrêt précédent : c'est le chiffre qui figure déjà sur la
+    # fiche horaire, l'autre oblige à faire un calcul avant de savoir si ce
+    # qu'on a tapé est juste.
+    stops: "Arrêts intermédiaires"
+    stopsHelp: "Les villes traversées, en minutes après le départ. Décochez « montée » pour une gare où l'on ne fait que déposer. La vente entre deux arrêts n'est pas encore ouverte : ces arrêts s'affichent, ils ne se vendent pas."
+    addStop: "Ajouter un arrêt"
+    removeStop: "Retirer cet arrêt"
+    stopOffset: "Min. après le départ"
+    allowsBoarding: "Montée autorisée"
+    allowsAlighting: "Descente autorisée"
+    boardingOnly: "montée seule"
+    alightingOnly: "descente seule"
     # Les gares. Sur le même écran que les lignes, parce que c'est la même
     # décision : une compagnie qui ouvre Dolisie doit dire de quel portail on
     # part avant le premier billet.

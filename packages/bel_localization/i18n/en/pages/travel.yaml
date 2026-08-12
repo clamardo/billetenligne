@@ -38,6 +38,11 @@ travel:
     scarce: "Almost full"
     # 08-disruption.md §6. Shown only when the server sends a figure: with too
     # little history behind it, nothing at all.
+    # The towns on the road. "via", never "stops serving": the coach passes
+    # through, it does not yet sell a seat between two of them, and wording
+    # that suggested otherwise would leave somebody at a roadside with a
+    # ticket nobody can sell them.
+    via: "via {cities}"
     onTime: "{rate}% on time"
     offlineTitle: "No signal"
     offlineBody: "The times below are from your last connection."

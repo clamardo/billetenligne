@@ -63,6 +63,7 @@ final class DepartureRow {
     this.operatorLogoAsset,
     this.onTimeRate,
     this.amenities = const [],
+    this.via = const [],
     this.trackingTier,
     this.originStation,
     this.destinationStation,
@@ -85,6 +86,11 @@ final class DepartureRow {
 
   final int capacity;
   final bool seatSelectionEnabled;
+
+  /// The towns the coach passes through, in order. Empty for most roads
+  /// here, and empty is a road with no stops rather than a road we know
+  /// nothing about — an operator describes the road or does not open it.
+  final List<String> via;
   final String? operatorAccentHue;
   final String? operatorLogoAsset;
   final int? onTimeRate;

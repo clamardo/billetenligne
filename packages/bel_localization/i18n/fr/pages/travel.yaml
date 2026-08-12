@@ -40,6 +40,11 @@ travel:
     scarce: "Presque complet"
     # 08-disruption.md §6. Affiché seulement quand le serveur envoie un
     # chiffre : sans historique suffisant, rien du tout.
+    # Les villes traversees. « via », jamais « arrets desservis » : le car
+    # passe, il ne vend pas encore de place entre deux de ces villes, et une
+    # formulation qui le laisserait croire ferait attendre quelqu'un au bord
+    # de la route avec un billet que personne ne peut lui vendre.
+    via: "via {cities}"
     onTime: "{rate} % à l'heure"
     offlineTitle: "Pas de réseau"
     offlineBody: "Les horaires ci-dessous datent de votre dernière connexion."

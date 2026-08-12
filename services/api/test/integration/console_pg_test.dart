@@ -481,4 +481,161 @@ void main() {
     expect(board.single.held, 0);
     expect(board.single.available, board.single.capacity);
   });
+
+  group('the road between two cities', () {
+    Itinerary road(List<RouteStop> stops, {int duration = 450}) => Itinerary.of(
+      stops,
+      originCity: 'BZV',
+      destinationCity: 'PNR',
+      durationMinutes: duration,
+    ).valueOrNull!;
+
+    Future<RouteSummary> save(Itinerary? stops, {String? id, String? code}) =>
+        console
+            .saveRoute(
+              operatorId: operatorId,
+              code: code ?? unique('RS'),
+              originCity: 'BZV',
+              destinationCity: 'PNR',
+              durationMinutes: 450,
+              id: id,
+              stops: stops,
+            )
+            .then((r) => r!);
+
+    test('a road with no stops is a road', () async {
+      // Most of them are. Making the ordinary case the awkward one would be
+      // a schema nobody uses.
+      final saved = await save(null);
+      expect(saved.stops, isEmpty);
+    });
+
+    test('stops come back in the order the road runs them', () async {
+      final saved = await save(
+        road(const [
+          RouteStop(cityCode: 'DOL', offsetMinutes: 315),
+          RouteStop(cityCode: 'OYO', offsetMinutes: 70),
+        ]),
+      );
+
+      // Sorted by time on the way in, and `sequence` is what the read orders
+      // by — so the order the operator described is the order every later
+      // query sees, whatever order they typed it in.
+      expect(saved.stops.map((s) => s.cityCode), ['OYO', 'DOL']);
+      expect(saved.stops.map((s) => s.offsetMinutes), [70, 315]);
+    });
+
+    test('the list survives a round trip through the routes read', () async {
+      final code = unique('RS');
+      await save(
+        road(const [RouteStop(cityCode: 'DOL', offsetMinutes: 315)]),
+        code: code,
+      );
+
+      final read = (await console.routes(
+        operatorId,
+      )).firstWhere((r) => r.code == code);
+
+      expect(read.stops.single.cityCode, 'DOL');
+      expect(read.stops.single.offsetMinutes, 315);
+    });
+
+    test('saving replaces the road rather than adding to it', () async {
+      // A route form is a whole description of a road. Merging would leave a
+      // stop the operator deleted still standing on the timetable.
+      final first = await save(
+        road(const [
+          RouteStop(cityCode: 'DOL', offsetMinutes: 315),
+          RouteStop(cityCode: 'OYO', offsetMinutes: 70),
+        ]),
+      );
+
+      final again = await console.saveRoute(
+        operatorId: operatorId,
+        code: first.code,
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        durationMinutes: 450,
+        id: first.id,
+        stops: road(const [RouteStop(cityCode: 'DOL', offsetMinutes: 300)]),
+      );
+
+      expect(again!.stops.map((s) => s.cityCode), ['DOL']);
+      expect(again.stops.single.offsetMinutes, 300);
+    });
+
+    test('an empty list is how the last stop is removed', () async {
+      final first = await save(
+        road(const [RouteStop(cityCode: 'DOL', offsetMinutes: 315)]),
+      );
+
+      final emptied = await console.saveRoute(
+        operatorId: operatorId,
+        code: first.code,
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        durationMinutes: 450,
+        id: first.id,
+        stops: Itinerary.empty,
+      );
+
+      expect(emptied!.stops, isEmpty);
+    });
+
+    test('omitting the stops leaves the road alone', () async {
+      // A caller that predates stops — the timetable screen saving a
+      // duration, say — must not be able to erase a road by not mentioning
+      // it.
+      final first = await save(
+        road(const [RouteStop(cityCode: 'DOL', offsetMinutes: 315)]),
+      );
+
+      final untouched = await console.saveRoute(
+        operatorId: operatorId,
+        code: first.code,
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        durationMinutes: 460,
+      );
+
+      expect(untouched!.stops.single.cityCode, 'DOL');
+    });
+
+    test('a stop can name one of this operator’s yards', () async {
+      final yard = await fixture.station('DOL', 'Gare de Dolisie');
+
+      final saved = await save(
+        road([
+          RouteStop(
+            cityCode: 'DOL',
+            offsetMinutes: 315,
+            stationId: yard,
+            allowsBoarding: false,
+          ),
+        ]),
+      );
+
+      expect(saved.stops.single.stationId, yard);
+      // Resolved by the adapter, in the same query, rather than by a request
+      // per stop.
+      expect(saved.stopStationNames[yard], 'Gare de Dolisie');
+      // The detail every naive model gets wrong: set down only.
+      expect(saved.stops.single.allowsBoarding, isFalse);
+      expect(saved.stops.single.allowsAlighting, isTrue);
+    });
+
+    test('another company cannot read this road', () async {
+      final code = unique('RS');
+      await save(
+        road(const [RouteStop(cityCode: 'DOL', offsetMinutes: 315)]),
+        code: code,
+      );
+
+      final theirs = await console.routes(await fixture.secondOperator());
+
+      // The stops ride on the route's own tenant policy, so this is the
+      // policy answering rather than a WHERE clause.
+      expect(theirs.map((r) => r.code), isNot(contains(code)));
+    });
+  });
 }

@@ -1355,3 +1355,89 @@ BEGIN
   RAISE NOTICE 'OK  an alert is asked once, withdrawn freely, and read by nobody else';
 END
 $$;
+
+-- ── The towns on the road ─────────────────────────────────────────────────────
+--
+-- `route_stops` has existed since migration 0001 and nothing had ever written
+-- to it. Now the console does, so the boundary is worth executing rather than
+-- assuming:
+--
+--   * a traveller reads the stops — they are on the search row — and writes
+--     none, because a road is the operator's description of their own service;
+--   * a company reads its own road's stops and not a competitor's, which is
+--     the policy inherited through the route rather than a WHERE clause;
+--   * `sequence` is unique per road, because a segment will be a pair of
+--     positions in that sequence and two stops at position 2 have no order.
+DO $$
+DECLARE
+  road  UUID := 'aaaaaaaa-0000-0000-0000-000000000001';
+  other UUID := 'aaaaaaaa-0000-0000-0000-000000000002';
+  seen  INT;
+BEGIN
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+
+  INSERT INTO cities (code, market_code, name_fr, name_en)
+  VALUES ('DOL', 'CG', 'Dolisie', 'Dolisie')
+  ON CONFLICT (code) DO NOTHING;
+
+  INSERT INTO route_stops (route_id, city_code, sequence, offset_minutes)
+  VALUES (road, 'DOL', 1, 315);
+
+  -- Two stops cannot share a position. The whole point of the column is that
+  -- it can be compared.
+  BEGIN
+    INSERT INTO route_stops (route_id, city_code, sequence, offset_minutes)
+    VALUES (road, 'BZV', 1, 100);
+    RAISE EXCEPTION 'FAIL: two stops share one position on one road';
+  EXCEPTION WHEN unique_violation THEN
+    NULL; -- expected
+  END;
+
+  -- The competitor's own road, so the isolation check below has something to
+  -- fail to see.
+  INSERT INTO route_stops (route_id, city_code, sequence, offset_minutes)
+  VALUES (other, 'DOL', 1, 320);
+
+  RESET ROLE;
+  PERFORM set_config('app.platform', 'off', true);
+
+  -- ── The traveller ──
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+
+  SELECT count(*) INTO seen FROM route_stops WHERE route_id = road;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: a traveller cannot read the towns on the road';
+  END IF;
+
+  BEGIN
+    INSERT INTO route_stops (route_id, city_code, sequence, offset_minutes)
+    VALUES (road, 'PNR', 9, 400);
+    RAISE EXCEPTION 'FAIL: a traveller added a stop to somebody''s road';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  RESET ROLE;
+  PERFORM set_config('app.public', 'off', true);
+
+  -- ── The competitor ──
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.tenant_id',
+                     '11111111-1111-1111-1111-111111111111', true);
+
+  SELECT count(*) INTO seen FROM route_stops WHERE route_id = other;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: one company reads another company''s road';
+  END IF;
+
+  SELECT count(*) INTO seen FROM route_stops WHERE route_id = road;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: a company cannot read its own road';
+  END IF;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  a road is read by everyone, described by its operator alone';
+END
+$$;

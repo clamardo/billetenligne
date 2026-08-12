@@ -248,6 +248,20 @@ console:
     minutes: "Minutes"
     active: "Active"
     inactive: "Inactive"
+    editRoute: "Edit this route"
+    # Intermediate stops. The time is counted FROM THE DEPARTURE, not from
+    # the previous stop: that is the figure already on the timetable a
+    # dispatcher holds, and the other one is arithmetic they have to do
+    # before they can tell whether what they typed is right.
+    stops: "Intermediate stops"
+    stopsHelp: "The towns on the road, in minutes after departure. Untick \"boarding\" for a yard where people are only set down. Selling between two stops is not open yet: these stops are shown, not sold."
+    addStop: "Add a stop"
+    removeStop: "Remove this stop"
+    stopOffset: "Min. after departure"
+    allowsBoarding: "Boarding allowed"
+    allowsAlighting: "Alighting allowed"
+    boardingOnly: "boarding only"
+    alightingOnly: "set down only"
     # The yards. On the same screen as the roads, because it is the same
     # decision: a company opening Dolisie has to say which gate it leaves
     # from before the first ticket is printed.

@@ -85,6 +85,10 @@ final class DemoTravelGateway implements TravelGateway {
         operatorAccentHue: hue,
         amenities: const ['wifi', 'usb', 'ac'],
         onTimeRate: 88 - (i % 4) * 3,
+        // Two of the demo coaches take the long road. A fixture where every
+        // coach is direct leaves the one line that matters undrawn on a
+        // fresh clone.
+        via: i % 3 == 0 ? const ['DLS'] : const [],
         // Half of them leave from the other side of town, so the demo
         // shows the case the label exists for. A fixture where every coach
         // leaves from the same yard would draw nothing and prove nothing.

@@ -29,6 +29,7 @@ final class ResultsScreen extends StatelessWidget {
     this.onTryTomorrow,
     this.onWatch,
     this.watching = const <String>{},
+    this.cityNames = const {},
     super.key,
   });
 
@@ -70,6 +71,12 @@ final class ResultsScreen extends StatelessWidget {
   /// offer: asking twice is asking once on the server, and a button that
   /// re-offers something already done reads as one that did nothing.
   final Set<String> watching;
+
+  /// Code to name — `DLS` to *Dolisie*. The server sends the towns a coach
+  /// passes through as codes, because it already sent this client the city
+  /// catalogue and a server that sent names would be sending prose in
+  /// whichever language the row was written in (ADR-0008).
+  final Map<String, String> cityNames;
 
   @override
   Widget build(BuildContext context) {
@@ -128,6 +135,16 @@ final class ResultsScreen extends StatelessWidget {
                 // would otherwise print the same line on every row, and a
                 // label that is always there is a label nobody reads.
                 boardingLabel: _boardingLabel(departures, d),
+                // The towns on the road, and worded as a road rather than as
+                // an offer: this is still a Brazzaville–Pointe-Noire ticket,
+                // and buying a seat to one of these towns is not built.
+                viaLabel: d.via.isEmpty
+                    ? null
+                    : context.t('travel.results.via', {
+                        'cities': [
+                          for (final code in d.via) cityNames[code] ?? code,
+                        ].join(' · '),
+                      }),
                 onTap: () => onSelect(d),
               );
 

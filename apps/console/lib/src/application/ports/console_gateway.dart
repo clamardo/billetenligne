@@ -144,11 +144,17 @@ abstract interface class ConsoleGateway {
 
   Future<List<RouteDto>> routes();
 
+  /// Opens a road, or changes one.
+  ///
+  /// [stops] replaces the road's intermediate stops. Null leaves them as they
+  /// are; an empty list is how the last one is removed.
   Future<RouteDto> saveRoute({
     required String code,
     required String originCity,
     required String destinationCity,
     required int durationMinutes,
+    String? id,
+    List<RouteStopDto>? stops,
   });
 
   Future<List<CityDto>> cities();

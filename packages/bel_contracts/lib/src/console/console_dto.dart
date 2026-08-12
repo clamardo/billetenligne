@@ -124,6 +124,80 @@ final class VehicleDto {
   );
 }
 
+/// One place a coach touches between its two endpoints.
+///
+/// `offsetMinutes` is measured from the departure rather than from the
+/// previous stop, because that is the number on the timetable a dispatcher
+/// already has: *Dolisie, cinq heures quinze* is a fact about the journey,
+/// while "two hours ten after Madingou" is arithmetic somebody has to do
+/// before they can tell whether it is right.
+///
+/// The two flags are the detail every naive model gets wrong: a yard people
+/// are only ever set down at must not be offerable as a place to get on.
+final class RouteStopDto {
+  const RouteStopDto({
+    required this.cityCode,
+    required this.offsetMinutes,
+    this.stationId,
+    this.stationName,
+    this.allowsBoarding = true,
+    this.allowsAlighting = true,
+  });
+
+  final String cityCode;
+  final int offsetMinutes;
+
+  /// Which yard, when the operator has named one. Optional in a way the
+  /// endpoints are not — a coach that pauses at a roadside town may have no
+  /// terminal there, and inventing one puts an address on a ticket nobody
+  /// can find.
+  final String? stationId;
+
+  /// Resolved for reading. Sent by the server, ignored on the way up: a
+  /// client that could rename a station by writing this field would be
+  /// editing the catalogue through a route form.
+  final String? stationName;
+
+  final bool allowsBoarding;
+  final bool allowsAlighting;
+
+  RouteStop toDomain() => RouteStop(
+    cityCode: cityCode,
+    offsetMinutes: offsetMinutes,
+    stationId: stationId,
+    allowsBoarding: allowsBoarding,
+    allowsAlighting: allowsAlighting,
+  );
+
+  Map<String, Object?> toJson() => Wire.compact({
+    'cityCode': cityCode,
+    'offsetMinutes': offsetMinutes,
+    'stationId': stationId,
+    'stationName': stationName,
+    'allowsBoarding': allowsBoarding,
+    'allowsAlighting': allowsAlighting,
+  });
+
+  factory RouteStopDto.fromJson(Map<String, Object?> json) => RouteStopDto(
+    cityCode: Wire.requireString(json['cityCode'], 'cityCode'),
+    offsetMinutes: Wire.requireInt(json['offsetMinutes'], 'offsetMinutes'),
+    stationId: json['stationId'] as String?,
+    stationName: json['stationName'] as String?,
+    allowsBoarding: json['allowsBoarding'] != false,
+    allowsAlighting: json['allowsAlighting'] != false,
+  );
+
+  factory RouteStopDto.fromDomain(RouteStop stop, {String? stationName}) =>
+      RouteStopDto(
+        cityCode: stop.cityCode,
+        offsetMinutes: stop.offsetMinutes,
+        stationId: stop.stationId,
+        stationName: stationName,
+        allowsBoarding: stop.allowsBoarding,
+        allowsAlighting: stop.allowsAlighting,
+      );
+}
+
 final class RouteDto {
   const RouteDto({
     required this.id,
@@ -132,6 +206,7 @@ final class RouteDto {
     required this.destinationCity,
     required this.durationMinutes,
     required this.active,
+    this.stops = const [],
   });
 
   final String id;
@@ -140,6 +215,11 @@ final class RouteDto {
   final String destinationCity;
   final int durationMinutes;
   final bool active;
+
+  /// In order, from the first one after the origin. Empty is the ordinary
+  /// case and not an absence of data — most roads in this market are two
+  /// cities and a road between them.
+  final List<RouteStopDto> stops;
 
   factory RouteDto.fromJson(Map<String, Object?> json) => RouteDto(
     id: Wire.requireString(json['id'], 'id'),
@@ -154,6 +234,11 @@ final class RouteDto {
       'durationMinutes',
     ),
     active: json['active'] != false,
+    stops: Wire.readList(
+      json['stops'] ?? const [],
+      RouteStopDto.fromJson,
+      field: 'stops',
+    ),
   );
 }
 

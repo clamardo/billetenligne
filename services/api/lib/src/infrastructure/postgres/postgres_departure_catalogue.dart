@@ -66,6 +66,15 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                    d.seat_selection_enabled,
                    d.mode,
                    d.amenities,
+                   -- Where the coach stops on the way. A correlated
+                   -- subquery on `d.route_id` rather than a join, because a
+                   -- join to a one-to-many multiplies the seat count this
+                   -- statement is also computing — and `route_id` is
+                   -- functionally dependent on the grouped primary key,
+                   -- which `r.id` is not.
+                   (SELECT array_agg(rs.city_code ORDER BY rs.sequence)
+                      FROM route_stops rs
+                     WHERE rs.route_id = d.route_id) AS via,
                    COUNT(s.seat_label) FILTER (
                      WHERE s.state = 'available'
                         OR (s.state = 'held' AND s.held_until <= now())
@@ -144,6 +153,10 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
       operatorAccentHue: r['accent_hue'] as String?,
       operatorLogoAsset: r['logo_asset'] as String?,
       amenities: (r['amenities'] as List?)?.cast<String>() ?? const [],
+      // Empty for most roads in this market, which is why it is a list and
+      // not a nullable one: "no stops" and "we do not know the stops" are
+      // the same thing here, and a road is described or it is not.
+      via: (r['via'] as List?)?.cast<String>() ?? const [],
       // Null below the sample floor, and null is drawn as nothing rather than
       // as a zero: an operator nobody has data about must not read as the
       // worst one on the screen.

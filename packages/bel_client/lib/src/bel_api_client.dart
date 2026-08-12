@@ -669,6 +669,7 @@ final class BelApiClient {
     required int durationMinutes,
     String? id,
     int? distanceKm,
+    List<RouteStopDto>? stops,
   }) async => RouteDto.fromJson(
     await _postJson('/console/v1/routes', {
       'code': code,
@@ -677,6 +678,10 @@ final class BelApiClient {
       'durationMinutes': durationMinutes,
       if (id != null) 'id': id,
       if (distanceKm != null) 'distanceKm': distanceKm,
+      // Sent only when the caller means to describe the road. Absent leaves
+      // the stops alone; an empty list erases them, which is how the last
+      // one is removed.
+      if (stops != null) 'stops': [for (final stop in stops) stop.toJson()],
     }),
   );
 

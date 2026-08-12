@@ -29,6 +29,7 @@ export 'src/ticketing/rotating_code.dart';
 export 'src/ticketing/ticket_payload.dart';
 export 'src/ticketing/verification.dart';
 export 'src/catalog/transport_mode.dart';
+export 'src/catalog/itinerary.dart';
 export 'src/catalog/recurrence.dart';
 export 'src/catalog/seat_layout.dart';
 export 'src/policy/refund_policy.dart';

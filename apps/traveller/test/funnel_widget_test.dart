@@ -131,6 +131,21 @@ void main() {
       expect(find.textContaining("à l'heure"), findsWidgets);
     });
 
+    testWidgets('a coach that takes the long road says which way', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await searchBzvToPnr(tester);
+
+      // Named, not coded: the client already holds the city catalogue for its
+      // own search form, so a server sending names would be sending prose in
+      // whichever language the row was written in.
+      expect(find.textContaining('via Dolisie'), findsWidgets);
+      // And it is a road, not an offer — buying a seat to Dolisie on this
+      // coach is not built, and the wording must not suggest it is.
+      expect(find.textContaining('arrêt'), findsNothing);
+    });
+
     testWidgets('the yard is on the row when the yards differ', (tester) async {
       await pumpApp(tester);
       await searchBzvToPnr(tester);

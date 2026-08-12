@@ -631,12 +631,16 @@ final class ConsoleWorkspace {
     required String originCity,
     required String destinationCity,
     required int durationMinutes,
+    String? id,
+    List<RouteStopDto>? stops,
   }) => _run(() async {
     await _gateway.saveRoute(
       code: code,
       originCity: originCity,
       destinationCity: destinationCity,
       durationMinutes: durationMinutes,
+      id: id,
+      stops: stops,
     );
     _notice = 'route.saved|$code';
     await _loadSection();

@@ -221,6 +221,7 @@ class _FunnelState extends State<_Funnel> {
           hasMore: hasMore,
           loadingMore: loadingMore,
           watching: watching,
+          cityNames: {for (final c in _flow.cities) c.code: c.name},
           onSelect: _flow.openSeatMap,
           // A full coach is not a dead end. It is the one row on this screen
           // where the only useful thing left to offer is "tell me if it

@@ -1626,6 +1626,151 @@ void main() {
       expect(WatchSeatsRequest.fromJson(request.toJson()).seatsWanted, 4);
     });
   });
+
+  group('the road between two cities', () {
+    test('a stop survives the round trip, flags and all', () {
+      const sent = RouteStopDto(
+        cityCode: 'DLS',
+        offsetMinutes: 315,
+        stationId: 'st-1',
+        stationName: 'Gare de Dolisie',
+        allowsBoarding: false,
+      );
+
+      final back = RouteStopDto.fromJson(sent.toJson());
+
+      expect(back.cityCode, 'DLS');
+      expect(back.offsetMinutes, 315);
+      expect(back.stationId, 'st-1');
+      expect(back.stationName, 'Gare de Dolisie');
+      expect(back.allowsBoarding, isFalse);
+      expect(back.allowsAlighting, isTrue);
+    });
+
+    test('a stop with no yard omits it rather than sending an empty one', () {
+      // A coach that pauses at a roadside town may have no terminal there.
+      // Inventing one puts an address on a ticket nobody can find.
+      final json = const RouteStopDto(
+        cityCode: 'KKL',
+        offsetMinutes: 70,
+      ).toJson();
+
+      expect(json.containsKey('stationId'), isFalse);
+      expect(json.containsKey('stationName'), isFalse);
+    });
+
+    test('both flags default to true, which is what a stop usually is', () {
+      final back = RouteStopDto.fromJson(const {
+        'cityCode': 'MAD',
+        'offsetMinutes': 180,
+      });
+
+      expect(back.allowsBoarding, isTrue);
+      expect(back.allowsAlighting, isTrue);
+    });
+
+    test('a road with no stops reads as a road, not as missing data', () {
+      // Most roads in this market are two towns and the tarmac between them.
+      // A server that predates stops answers without the field, and that
+      // answer has to mean "no stops" rather than throwing.
+      final route = RouteDto.fromJson(const {
+        'id': 'r-1',
+        'code': 'BZV-PNR',
+        'originCity': 'BZV',
+        'destinationCity': 'PNR',
+        'durationMinutes': 450,
+        'active': true,
+      });
+
+      expect(route.stops, isEmpty);
+    });
+
+    test('a road carries its stops in the order the server sent them', () {
+      final route = RouteDto.fromJson({
+        'id': 'r-1',
+        'code': 'BZV-PNR',
+        'originCity': 'BZV',
+        'destinationCity': 'PNR',
+        'durationMinutes': 450,
+        'active': true,
+        'stops': [
+          const RouteStopDto(cityCode: 'KKL', offsetMinutes: 70).toJson(),
+          const RouteStopDto(cityCode: 'DLS', offsetMinutes: 315).toJson(),
+        ],
+      });
+
+      // Order is not presentation here: a segment is a pair of positions in
+      // this list, and a client that re-sorted would be re-deciding the road.
+      expect(route.stops.map((s) => s.cityCode), ['KKL', 'DLS']);
+    });
+
+    test('the domain sees the stop the wire carried', () {
+      const sent = RouteStopDto(
+        cityCode: 'NKY',
+        offsetMinutes: 360,
+        allowsBoarding: false,
+      );
+
+      final road = Itinerary.of(
+        [sent.toDomain()],
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        durationMinutes: 450,
+      ).valueOrNull!;
+
+      expect(road.stops.single.allowsBoarding, isFalse);
+      expect(road.pointsFor(origin: 'BZV', destination: 'PNR'), [
+        'BZV',
+        'NKY',
+        'PNR',
+      ]);
+    });
+
+    test('a departure names the towns it passes as codes, never as prose', () {
+      // The client already holds the city catalogue for its own search form.
+      // A server sending names would be sending prose, in whichever language
+      // the row happened to be written in (ADR-0008).
+      final sent = DepartureSummaryDto(
+        id: 'd-1',
+        operatorId: 'op-1',
+        operatorName: 'Ocean du Nord',
+        mode: 'bus',
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        departsAt: DateTime.utc(2026, 8, 15, 6),
+        arrivesAt: DateTime.utc(2026, 8, 15, 13, 30),
+        fare: const Money.xaf(12000),
+        serviceFee: const Money.xaf(300),
+        seatsAvailable: 12,
+        capacity: 52,
+        seatSelectionEnabled: true,
+        via: const ['KKL', 'DLS'],
+      );
+
+      final back = DepartureSummaryDto.fromJson(sent.toJson());
+      expect(back.via, ['KKL', 'DLS']);
+    });
+
+    test('a direct coach omits the field rather than sending an empty one', () {
+      final json = DepartureSummaryDto(
+        id: 'd-2',
+        operatorId: 'op-1',
+        operatorName: 'Ocean du Nord',
+        mode: 'bus',
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        departsAt: DateTime.utc(2026, 8, 15, 6),
+        arrivesAt: DateTime.utc(2026, 8, 15, 13, 30),
+        fare: const Money.xaf(12000),
+        serviceFee: const Money.xaf(300),
+        seatsAvailable: 12,
+        capacity: 52,
+        seatSelectionEnabled: true,
+      ).toJson();
+
+      expect(json.containsKey('via'), isFalse);
+    });
+  });
 }
 
 /// Reads the string constants declared on [ErrorCode] straight from source,

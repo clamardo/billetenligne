@@ -60,6 +60,8 @@ final class RouteSummary {
     required this.destinationCity,
     required this.durationMinutes,
     required this.active,
+    this.stops = const [],
+    this.stopStationNames = const {},
   });
 
   final String id;
@@ -68,6 +70,15 @@ final class RouteSummary {
   final String destinationCity;
   final int durationMinutes;
   final bool active;
+
+  /// Where the coach stops on the way, in order. Empty for most roads in this
+  /// market, which is why it is defaulted rather than required.
+  final List<RouteStop> stops;
+
+  /// Station id to name, for the stops that named a yard. Resolved by the
+  /// adapter rather than by the handler, because it is one join and the
+  /// alternative is a request per stop.
+  final Map<String, String> stopStationNames;
 }
 
 /// A place a coach actually leaves from.
@@ -247,6 +258,12 @@ abstract interface class OperatorConsole {
 
   Future<List<RouteSummary>> routes(String operatorId);
 
+  /// Opens a route, or changes one.
+  ///
+  /// [stops] **replaces** the road's stops rather than merging into them: a
+  /// route form is a whole description of a road, and a merge would leave a
+  /// stop an operator deleted still on the timetable. Passing null leaves
+  /// them alone, which is what every caller that predates stops does.
   Future<RouteSummary?> saveRoute({
     required String operatorId,
     required String code,
@@ -255,6 +272,7 @@ abstract interface class OperatorConsole {
     required int durationMinutes,
     String? id,
     int? distanceKm,
+    Itinerary? stops,
   });
 
   /// Every terminal this operator uses, closed ones included: the console

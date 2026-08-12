@@ -66,6 +66,7 @@ final class UnavailableOperatorConsole implements OperatorConsole {
     required int durationMinutes,
     String? id,
     int? distanceKm,
+    Itinerary? stops,
   }) async => _refuse();
 
   @override

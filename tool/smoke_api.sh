@@ -942,6 +942,66 @@ check "there is no way to delete a station" "405" \
   "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
      "$BASE/console/v1/stations" -H "$OP_AUTH")"
 
+# ── A road, and the towns on it ─────────────────────────────────────────────
+#
+# `route_stops` had existed since the first migration with nothing writing to
+# it. Now the route form does, and the half a socket can prove is the half
+# above the database: an itinerary that could not be honoured never reaches
+# it, and the refusal names the reason rather than the table.
+#
+# The fakes composition has no console, so a well-formed road answers 503 —
+# past validation, dead at the database — exactly as a station does.
+echo
+echo "── roads"
+
+route_post() {
+  curl -s -X POST "$BASE/console/v1/routes" \
+    -H "$OP_AUTH" -H 'Content-Type: application/json' -d "$1"
+}
+route_status() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/console/v1/routes" \
+    -H "$OP_AUTH" -H 'Content-Type: application/json' -d "$1"
+}
+
+road='"code":"BZV-PNR","originCity":"BZV","destinationCity":"PNR","durationMinutes":450'
+
+check "roads are closed to anonymous" "401" \
+  "$(status "$BASE/console/v1/routes")"
+check "a road with no stops gets past validation" "503" \
+  "$(route_status "{$road}")"
+
+# Two stops at the same minute cannot be ordered, and an order is exactly what
+# a segment will be a pair of positions in.
+check "two stops at the same minute are refused" "400" \
+  "$(route_status "{$road,\"stops\":[{\"cityCode\":\"DOL\",\"offsetMinutes\":180},{\"cityCode\":\"OYO\",\"offsetMinutes\":180}]}")"
+
+# The refusal is the domain's own reason, not a generic 400 about a field
+# called "stops" — the console has to be able to say which town is wrong.
+after_arrival="$(route_post "{$road,\"stops\":[{\"cityCode\":\"DOL\",\"offsetMinutes\":900}]}")"
+check "a stop after the arrival names itself" "yes" \
+  "$(grep -q '"code":"route.invalid_itinerary"' <<<"$after_arrival" \
+     && echo yes || echo no)"
+check "and says which town, and why" "yes" \
+  "$(grep -q '"reason":"after_arrival"' <<<"$after_arrival" \
+     && grep -q '"city":"DOL"' <<<"$after_arrival" && echo yes || echo no)"
+
+check "a stop at one of the endpoints is refused" "400" \
+  "$(route_status "{$road,\"stops\":[{\"cityCode\":\"BZV\",\"offsetMinutes\":60}]}")"
+check "the same town twice is refused" "400" \
+  "$(route_status "{$road,\"stops\":[{\"cityCode\":\"DOL\",\"offsetMinutes\":100},{\"cityCode\":\"DOL\",\"offsetMinutes\":300}]}")"
+
+# A stop nobody may get on or off at is a place the coach slows down. Storing
+# it would put a row on a timetable no ticket can ever name.
+check "a stop serving nobody is refused" "400" \
+  "$(route_status "{$road,\"stops\":[{\"cityCode\":\"DOL\",\"offsetMinutes\":315,\"allowsBoarding\":false,\"allowsAlighting\":false}]}")"
+
+# Set down only is a legitimate road, and the one the flags exist for.
+check "a set-down-only stop gets past validation" "503" \
+  "$(route_status "{$road,\"stops\":[{\"cityCode\":\"DOL\",\"offsetMinutes\":315,\"allowsBoarding\":false}]}")"
+
+check "a stops field that is not a list is refused" "400" \
+  "$(route_status "{$road,\"stops\":\"DOL\"}")"
+
 # ── Refund policies refuse what would be unenforceable ──────────────────────
 #
 # ADR-0015 rule 1 is the rule most systems get wrong: a booking is judged by

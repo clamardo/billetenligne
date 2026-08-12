@@ -181,6 +181,7 @@ final class SearchDepartures {
     operatorLogoAsset: row.operatorLogoAsset,
     onTimeRate: row.onTimeRate,
     amenities: row.amenities,
+    via: row.via,
     trackingTier: row.trackingTier,
     originStation: _station(row.originStation),
     destinationStation: _station(row.destinationStation),

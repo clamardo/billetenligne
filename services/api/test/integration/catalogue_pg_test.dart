@@ -528,4 +528,66 @@ void main() {
       expect(seen.length, seen.toSet().length, reason: 'no coach twice');
     });
   });
+
+  group('the towns on the road', () {
+    test('a direct coach names none', () async {
+      // Most roads in this market are two towns and the tarmac between them.
+      // Empty here is a road with no stops, not a road we know nothing about.
+      final departureId = await fixture.departure(
+        seatLabels: const ['1A'],
+        fromNow: const Duration(hours: 9),
+      );
+
+      final row = (await catalogue.search(
+        query(date: await fixture.localDateIn(const Duration(hours: 9))),
+      )).firstWhere((d) => d.id == departureId);
+
+      expect(row.via, isEmpty);
+    });
+
+    test('a coach with stops names them, in the order it runs them', () async {
+      final road = await fixture.route(code: 'VIA-BZV-PNR', destination: 'PNR');
+      await fixture.stopsOn(road, const [
+        (city: 'OYO', offsetMinutes: 70),
+        (city: 'DOL', offsetMinutes: 315),
+      ]);
+
+      final departureId = await fixture.departure(
+        seatLabels: const ['1A'],
+        fromNow: const Duration(hours: 10),
+        onRoute: road,
+      );
+
+      final row = (await catalogue.search(
+        query(date: await fixture.localDateIn(const Duration(hours: 10))),
+      )).firstWhere((d) => d.id == departureId);
+
+      expect(row.via, ['OYO', 'DOL']);
+    });
+
+    test('naming the towns does not disturb the seat count', () async {
+      // The stops are a correlated subquery rather than a join, and this is
+      // the reason: a join to a one-to-many multiplies the rows the same
+      // statement is counting seats over, so two stops would have made every
+      // coach look three times as full.
+      final road = await fixture.route(code: 'VIA-COUNT', destination: 'PNR');
+      await fixture.stopsOn(road, const [
+        (city: 'OYO', offsetMinutes: 70),
+        (city: 'DOL', offsetMinutes: 315),
+      ]);
+
+      final departureId = await fixture.departure(
+        seatLabels: const ['1A', '1B', '1C'],
+        fromNow: const Duration(hours: 11),
+        onRoute: road,
+      );
+
+      final row = (await catalogue.search(
+        query(date: await fixture.localDateIn(const Duration(hours: 11))),
+      )).firstWhere((d) => d.id == departureId);
+
+      expect(row.seatsAvailable, 3);
+      expect(row.capacity, 3);
+    });
+  });
 }

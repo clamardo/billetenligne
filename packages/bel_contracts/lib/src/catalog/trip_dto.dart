@@ -28,6 +28,7 @@ final class DepartureSummaryDto {
     this.operatorLogoAsset,
     this.onTimeRate,
     this.amenities = const [],
+    this.via = const [],
     this.trackingTier,
     this.originStation,
     this.destinationStation,
@@ -68,6 +69,17 @@ final class DepartureSummaryDto {
 
   final List<String> amenities;
 
+  /// The towns this coach passes through, in order, as city codes.
+  ///
+  /// Codes rather than names, because the client already holds the city
+  /// catalogue for its own search form and a server that sent names would be
+  /// sending prose (ADR-0008) — and the wrong prose, in whichever language
+  /// the row was written in.
+  ///
+  /// **Passing through is not the same as stopping to sell**: these are the
+  /// towns on the road, and buying a seat between two of them is not built.
+  final List<String> via;
+
   /// `gps`, `checkpoint` or `schedule` (ADR-0014). Absent means no tracking.
   final String? trackingTier;
 
@@ -100,6 +112,7 @@ final class DepartureSummaryDto {
     'operatorLogoAsset': operatorLogoAsset,
     'onTimeRate': onTimeRate,
     'amenities': amenities.isEmpty ? null : amenities,
+    'via': via.isEmpty ? null : via,
     'trackingTier': trackingTier,
     'originStation': originStation?.toJson(),
     'destinationStation': destinationStation?.toJson(),
@@ -130,6 +143,7 @@ final class DepartureSummaryDto {
         operatorLogoAsset: json['operatorLogoAsset'] as String?,
         onTimeRate: json['onTimeRate'] as int?,
         amenities: (json['amenities'] as List?)?.cast<String>() ?? const [],
+        via: (json['via'] as List?)?.cast<String>() ?? const [],
         trackingTier: json['trackingTier'] as String?,
         originStation: _station(json['originStation']),
         destinationStation: _station(json['destinationStation']),

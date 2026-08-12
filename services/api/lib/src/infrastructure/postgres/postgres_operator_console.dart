@@ -257,18 +257,76 @@ final class PostgresOperatorConsole implements OperatorConsole {
           parameters: {'operator': TypedValue(Type.uuid, operatorId)},
         );
 
+        if (rows.isEmpty) return const [];
+
+        // One query for every road's stops rather than one per road. A
+        // company with thirty routes is a company whose console would
+        // otherwise open with thirty round trips.
+        final stops = await _stopsFor(tx, [
+          for (final row in rows) row.toColumnMap()['id'].toString(),
+        ]);
+
         return [
           for (final row in rows)
-            RouteSummary(
-              id: row.toColumnMap()['id'].toString(),
-              code: row.toColumnMap()['code'] as String,
-              originCity: row.toColumnMap()['origin_city'] as String,
-              destinationCity: row.toColumnMap()['destination_city'] as String,
-              durationMinutes: row.toColumnMap()['duration_minutes'] as int,
-              active: row.toColumnMap()['active'] as bool,
-            ),
+            () {
+              final map = row.toColumnMap();
+              final id = map['id'].toString();
+              final found = stops[id] ?? const <_Stop>[];
+              return RouteSummary(
+                id: id,
+                code: map['code'] as String,
+                originCity: map['origin_city'] as String,
+                destinationCity: map['destination_city'] as String,
+                durationMinutes: map['duration_minutes'] as int,
+                active: map['active'] as bool,
+                stops: [for (final s in found) s.stop],
+                stopStationNames: {
+                  for (final s in found)
+                    if (s.stop.stationId != null && s.stationName != null)
+                      s.stop.stationId!: s.stationName!,
+                },
+              );
+            }(),
         ];
       });
+
+  /// The stops of several roads at once, in order, with their yards' names.
+  Future<Map<String, List<_Stop>>> _stopsFor(
+    TxSession tx,
+    List<String> routeIds,
+  ) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT rs.route_id, rs.city_code, rs.offset_minutes, rs.station_id,
+               rs.allows_boarding, rs.allows_alighting, st.name AS station_name
+          FROM route_stops rs
+          LEFT JOIN stations st ON st.id = rs.station_id
+         WHERE rs.route_id = ANY(@ids::uuid[])
+         ORDER BY rs.route_id, rs.sequence
+      '''),
+      parameters: {'ids': TypedValue(Type.textArray, routeIds)},
+    );
+
+    final byRoute = <String, List<_Stop>>{};
+    for (final row in rows) {
+      final map = row.toColumnMap();
+      byRoute
+          .putIfAbsent(map['route_id'].toString(), () => [])
+          .add(
+            _Stop(
+              stop: RouteStop(
+                cityCode: map['city_code'] as String,
+                offsetMinutes: map['offset_minutes'] as int,
+                stationId: map['station_id']?.toString(),
+                allowsBoarding: map['allows_boarding'] as bool,
+                allowsAlighting: map['allows_alighting'] as bool,
+              ),
+              stationName: map['station_name'] as String?,
+            ),
+          );
+    }
+    return byRoute;
+  }
 
   @override
   Future<RouteSummary?> saveRoute({
@@ -279,6 +337,7 @@ final class PostgresOperatorConsole implements OperatorConsole {
     required int durationMinutes,
     String? id,
     int? distanceKm,
+    Itinerary? stops,
   }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
     if (originCity == destinationCity) return null;
 
@@ -309,13 +368,64 @@ final class PostgresOperatorConsole implements OperatorConsole {
     );
 
     final row = rows.first.toColumnMap();
+    final routeId = row['id'].toString();
+
+    // Replaced wholesale, in the same transaction as the road itself. A route
+    // form is a whole description of a road: merging would leave a stop the
+    // operator deleted still standing on the timetable, and a delete-then-
+    // insert in two transactions is a moment when the road has no stops at
+    // all while somebody is reading it.
+    if (stops != null) {
+      await tx.execute(
+        Sql.named('DELETE FROM route_stops WHERE route_id = @route'),
+        parameters: {'route': TypedValue(Type.uuid, routeId)},
+        ignoreRows: true,
+      );
+
+      var sequence = 0;
+      for (final stop in stops.stops) {
+        sequence++;
+        await tx.execute(
+          Sql.named('''
+            INSERT INTO route_stops
+              (route_id, city_code, station_id, sequence, offset_minutes,
+               allows_boarding, allows_alighting)
+            VALUES (@route, @city, @station, @sequence, @offset,
+                    @boarding, @alighting)
+          '''),
+          parameters: {
+            'route': TypedValue(Type.uuid, routeId),
+            'city': TypedValue(Type.text, stop.cityCode),
+            'station': TypedValue(Type.uuid, stop.stationId),
+            // Assigned here, never accepted from a client: the sequence is
+            // what a segment will be a pair of indices into, and a list that
+            // numbers itself is a list that can be numbered wrong.
+            'sequence': TypedValue(Type.integer, sequence),
+            'offset': TypedValue(Type.integer, stop.offsetMinutes),
+            'boarding': TypedValue(Type.boolean, stop.allowsBoarding),
+            'alighting': TypedValue(Type.boolean, stop.allowsAlighting),
+          },
+          ignoreRows: true,
+        );
+      }
+    }
+
+    final saved = await _stopsFor(tx, [routeId]);
+    final found = saved[routeId] ?? const <_Stop>[];
+
     return RouteSummary(
-      id: row['id'].toString(),
+      id: routeId,
       code: row['code'] as String,
       originCity: row['origin_city'] as String,
       destinationCity: row['destination_city'] as String,
       durationMinutes: row['duration_minutes'] as int,
       active: row['active'] as bool,
+      stops: [for (final s in found) s.stop],
+      stopStationNames: {
+        for (final s in found)
+          if (s.stop.stationId != null && s.stationName != null)
+            s.stop.stationId!: s.stationName!,
+      },
     );
   });
 
@@ -1593,4 +1703,11 @@ final class PostgresOperatorConsole implements OperatorConsole {
       blocked: {for (final b in (p['blocked'] as List?) ?? const []) '$b'},
     );
   }
+}
+
+/// One stop plus the name of the yard it named, straight off the join.
+final class _Stop {
+  const _Stop({required this.stop, this.stationName});
+  final RouteStop stop;
+  final String? stationName;
 }

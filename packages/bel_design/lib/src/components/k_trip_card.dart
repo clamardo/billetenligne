@@ -31,6 +31,7 @@ final class KTripCard extends StatelessWidget {
     this.amenities = const [],
     this.reliabilityLabel,
     this.boardingLabel,
+    this.viaLabel,
     super.key,
   });
 
@@ -67,6 +68,17 @@ final class KTripCard extends StatelessWidget {
   /// single terminal repeating its name on every result is noise — and
   /// impossible to miss on the rows where it is the fact that matters.
   final String? boardingLabel;
+
+  /// The towns this coach passes through, already worded and joined by the
+  /// caller — *« via Kinkala · Dolisie »*. Null on the great majority of
+  /// rows, and null draws nothing: a direct road has no stops to list, and a
+  /// line that says so on every row is a line nobody reads on the day it
+  /// matters.
+  ///
+  /// It is not an offer. Passing through a town is not the same as selling a
+  /// seat to it, and the wording the caller passes has to keep that
+  /// difference — the row is still a Brazzaville–Pointe-Noire ticket.
+  final String? viaLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -139,6 +151,28 @@ final class KTripCard extends StatelessWidget {
                   // clause of the operator row: somebody comparing two
                   // coaches that leave from different yards is making a
                   // journey decision, not reading a label.
+                  if (viaLabel != null) ...[
+                    SizedBox(height: kilo.space.s1),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.alt_route,
+                          size: 13,
+                          color: kilo.color.contentMuted,
+                        ),
+                        SizedBox(width: kilo.space.s1),
+                        Expanded(
+                          child: Text(
+                            viaLabel!,
+                            style: kilo.text.bodySm.copyWith(
+                              color: kilo.color.contentSecondary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   if (boardingLabel != null) ...[
                     SizedBox(height: kilo.space.s1),
                     Row(

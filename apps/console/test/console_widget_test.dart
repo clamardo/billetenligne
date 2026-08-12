@@ -260,21 +260,30 @@ final class _ScriptedConsole implements ConsoleGateway {
   @override
   Future<List<RouteDto>> routes() async => routeList;
 
+  /// The stops of the last road saved, so a test can assert what the form
+  /// actually sent rather than what it drew.
+  List<RouteStopDto>? savedStops;
+
+  @override
   @override
   Future<RouteDto> saveRoute({
     required String code,
     required String originCity,
     required String destinationCity,
     required int durationMinutes,
+    String? id,
+    List<RouteStopDto>? stops,
   }) async {
     saved.add('route:$code');
+    savedStops = stops;
     return RouteDto(
-      id: 'r-1',
+      id: id ?? 'r-1',
       code: code,
       originCity: originCity,
       destinationCity: destinationCity,
       durationMinutes: durationMinutes,
       active: true,
+      stops: stops ?? const [],
     );
   }
 
@@ -1328,6 +1337,122 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(gateway.saved, contains('station:BZV:Gare de Kinsoundi:true'));
+    });
+  });
+
+  group('the towns on the road', () {
+    _ScriptedConsole roads({List<RouteStopDto> stops = const []}) =>
+        _ScriptedConsole(capabilities: const ['booking.read', 'route.manage'])
+          ..routeList = [
+            RouteDto(
+              id: 'r-1',
+              code: 'BZV-PNR',
+              originCity: 'BZV',
+              destinationCity: 'PNR',
+              durationMinutes: 450,
+              active: true,
+              stops: stops,
+            ),
+          ];
+
+    testWidgets('a direct road draws no itinerary line at all', (tester) async {
+      // Most roads here are two towns and the tarmac between them. A line
+      // printed on every row is a line nobody reads on the row that has one.
+      await pump(tester, roads());
+      await tester.tap(find.text('Lignes'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Dolisie'), findsNothing);
+    });
+
+    testWidgets('a road with stops shows them, with their times', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        roads(stops: const [RouteStopDto(cityCode: 'PNR', offsetMinutes: 315)]),
+      );
+      await tester.tap(find.text('Lignes'));
+      await tester.pumpAndSettle();
+
+      // Named, and timed from the departure — which is the figure on the
+      // timetable a dispatcher already holds.
+      expect(find.textContaining('Pointe-Noire (5 h 15)'), findsOneWidget);
+    });
+
+    testWidgets('set down only says so on the row', (tester) async {
+      // The detail every naive model gets wrong, and the one an operator
+      // notices immediately. It is on the row rather than inside the dialog
+      // because that is where somebody would spot it being wrong.
+      await pump(
+        tester,
+        roads(
+          stops: const [
+            RouteStopDto(
+              cityCode: 'PNR',
+              offsetMinutes: 360,
+              allowsBoarding: false,
+            ),
+          ],
+        ),
+      );
+      await tester.tap(find.text('Lignes'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('descente seule'), findsOneWidget);
+    });
+
+    testWidgets('adding a stop sends it with the road', (tester) async {
+      final gateway = roads();
+      await pump(tester, gateway);
+      await tester.tap(find.text('Lignes'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Modifier cette ligne'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Ajouter un arrêt'));
+      await tester.pumpAndSettle();
+
+      // KField draws its label as a sibling of the field, not inside it, so
+      // the field is found through the label's own card rather than by text.
+      await tester.enterText(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Min. après le départ'),
+            matching: find.byType(KField),
+          ),
+          matching: find.byType(TextField),
+        ),
+        '315',
+      );
+      await tester.tap(find.text('Enregistrer'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.savedStops, hasLength(1));
+      expect(gateway.savedStops!.single.offsetMinutes, 315);
+    });
+
+    testWidgets('removing the last stop still sends a list', (tester) async {
+      // An empty list is how a stop is deleted. Omitting the field would
+      // leave the road as it was, so the one screen that can remove a stop
+      // would be unable to.
+      final gateway = roads(
+        stops: const [RouteStopDto(cityCode: 'PNR', offsetMinutes: 315)],
+      );
+      await pump(tester, gateway);
+      await tester.tap(find.text('Lignes'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Modifier cette ligne'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Retirer cet arrêt'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Enregistrer'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.savedStops, isEmpty);
     });
   });
 

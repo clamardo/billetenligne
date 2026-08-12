@@ -732,6 +732,41 @@ final class PgFixture {
     );
   }
 
+  /// Puts stops on a road, replacing whatever was there.
+  ///
+  /// Written through the seed connection rather than through the console,
+  /// because the catalogue suite is about what a **traveller** can read and
+  /// standing up a console adapter to arrange it would make a read test
+  /// depend on a write path it never exercises.
+  Future<void> stopsOn(
+    String routeId,
+    List<({String city, int offsetMinutes})> stops,
+  ) async {
+    await _seed.execute(
+      Sql.named('DELETE FROM route_stops WHERE route_id = @route'),
+      parameters: {'route': TypedValue(Type.uuid, routeId)},
+      ignoreRows: true,
+    );
+    var sequence = 0;
+    for (final stop in stops) {
+      sequence++;
+      await _seed.execute(
+        Sql.named("""
+          INSERT INTO route_stops
+            (route_id, city_code, sequence, offset_minutes)
+          VALUES (@route, @city, @sequence, @offset)
+        """),
+        parameters: {
+          'route': TypedValue(Type.uuid, routeId),
+          'city': TypedValue(Type.text, stop.city),
+          'sequence': TypedValue(Type.integer, sequence),
+          'offset': TypedValue(Type.integer, stop.offsetMinutes),
+        },
+        ignoreRows: true,
+      );
+    }
+  }
+
   /// A second road for this operator, so "a different route is a different
   /// journey" can be tested against a route that actually exists.
   Future<String> route({

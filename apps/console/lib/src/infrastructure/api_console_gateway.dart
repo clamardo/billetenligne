@@ -116,11 +116,15 @@ final class ApiConsoleGateway implements ConsoleGateway {
     required String originCity,
     required String destinationCity,
     required int durationMinutes,
+    String? id,
+    List<RouteStopDto>? stops,
   }) => _client.saveRoute(
     code: code,
     originCity: originCity,
     destinationCity: destinationCity,
     durationMinutes: durationMinutes,
+    id: id,
+    stops: stops,
   );
 
   @override
