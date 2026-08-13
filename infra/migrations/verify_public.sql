@@ -1730,3 +1730,152 @@ BEGIN
   RAISE NOTICE 'OK  an open call reaches the road it names, and its terms are nobody''s to edit';
 END
 $$;
+
+-- ── 23. A seat is sold in pieces, and never twice ──────────────────────────
+--
+-- ADR-0025. The claim the whole segment model rests on is that two people
+-- cannot buy the same piece of the same seat — and it is a claim about
+-- *concurrency*, so it is made to Postgres as an exclusion constraint rather
+-- than to a reviewer as a handler. Executed here, along with the other half:
+-- `seats.state` is derived from occupancy and gains `partial`, so every
+-- reader that has not been taught about segments fails closed.
+DO $$
+DECLARE
+  ocean UUID := '11111111-1111-1111-1111-111111111111';
+  aline UUID := '55555555-5555-5555-5555-555555555551';
+  serge UUID := '55555555-5555-5555-5555-555555555552';
+  dep   UUID := 'cccccccc-0000-0000-0000-0000000000c1';
+  h1    UUID := 'dddddddd-0000-0000-0000-0000000000c1';
+  h2    UUID := 'dddddddd-0000-0000-0000-0000000000c2';
+  seen  TEXT;
+BEGIN
+  -- A road with one town on it: three positions, two legs, `[0,2)`.
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  INSERT INTO departures
+    (id, operator_id, route_id, seat_layout_id, departs_at, arrives_at,
+     capacity, fare_minor, currency, road_span)
+  VALUES (dep, ocean, 'aaaaaaaa-0000-0000-0000-000000000001',
+          'bbbbbbbb-0000-0000-0000-000000000001',
+          now() + INTERVAL '3 days', now() + INTERVAL '3 days 8 hours',
+          4, 12000, 'XAF', '[0,2)');
+
+  INSERT INTO seats (departure_id, seat_label, operator_id, section_code,
+                     fare_minor, currency)
+  VALUES (dep, '1A', ocean, 'STD', 12000, 'XAF');
+
+  INSERT INTO holds (id, operator_id, departure_id, user_id, seat_labels,
+                     expires_at, idempotency_key)
+  VALUES (h1, ocean, dep, aline, ARRAY['1A'],
+          now() + INTERVAL '15 minutes', 'seg-aline'),
+         (h2, ocean, dep, serge, ARRAY['1A'],
+          now() + INTERVAL '15 minutes', 'seg-serge');
+
+  RESET ROLE;
+
+  -- ── Aline takes the first leg ──
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.user_id', aline::text, true);
+
+  INSERT INTO seat_occupancy
+    (departure_id, seat_label, operator_id, span, hold_id, held_until)
+  VALUES (dep, '1A', ocean, '[0,1)', h1, now() + INTERVAL '15 minutes');
+
+  -- Half the road is taken, so the seat is neither free nor gone. A reader
+  -- filtering on `state = 'available'` now excludes it, which is the whole
+  -- point: an old reader must fail closed, never open.
+  SELECT state::text INTO seen FROM seats
+   WHERE departure_id = dep AND seat_label = '1A';
+  IF seen <> 'partial' THEN
+    RAISE EXCEPTION 'FAIL: a half-sold seat reads as %', seen;
+  END IF;
+
+  -- ── Serge cannot have the same leg ──
+  PERFORM set_config('app.user_id', serge::text, true);
+  BEGIN
+    INSERT INTO seat_occupancy
+      (departure_id, seat_label, operator_id, span, hold_id, held_until)
+    VALUES (dep, '1A', ocean, '[0,1)', h2, now() + INTERVAL '15 minutes');
+    RAISE EXCEPTION 'FAIL: the same piece of one seat was sold twice';
+  EXCEPTION WHEN exclusion_violation THEN
+    NULL; -- expected: Postgres refused it, not a handler
+  END;
+
+  -- Nor a range that merely overlaps it. This is the case a naive equality
+  -- check misses, and the reason the constraint is `&&` rather than `=`.
+  BEGIN
+    INSERT INTO seat_occupancy
+      (departure_id, seat_label, operator_id, span, hold_id, held_until)
+    VALUES (dep, '1A', ocean, '[0,2)', h2, now() + INTERVAL '15 minutes');
+    RAISE EXCEPTION 'FAIL: an overlapping span was accepted';
+  EXCEPTION WHEN exclusion_violation THEN
+    NULL; -- expected
+  END;
+
+  -- ── But he may have the second, which is the feature ──
+  --
+  -- Half-open ranges: Aline alights at the town and Serge boards there, and
+  -- `[0,1)` and `[1,2)` share nothing. A closed range would have them
+  -- fighting over a stop neither of them occupies.
+  INSERT INTO seat_occupancy
+    (departure_id, seat_label, operator_id, span, hold_id, held_until)
+  VALUES (dep, '1A', ocean, '[1,2)', h2, now() + INTERVAL '15 minutes');
+
+  SELECT state::text INTO seen FROM seats
+   WHERE departure_id = dep AND seat_label = '1A';
+  IF seen <> 'held' THEN
+    RAISE EXCEPTION 'FAIL: a seat covered end to end reads as %', seen;
+  END IF;
+
+  -- ── And nobody takes a piece of a seat in somebody else's name ──
+  --
+  -- The authority is the hold, so the policy asks about the hold. Aline
+  -- releasing her own leg is her business; releasing Serge's is not.
+  PERFORM set_config('app.user_id', aline::text, true);
+  DELETE FROM seat_occupancy WHERE hold_id = h2;
+
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  SELECT count(*)::text INTO seen FROM seat_occupancy WHERE hold_id = h2;
+  IF seen <> '1' THEN
+    RAISE EXCEPTION 'FAIL: a traveller released somebody else''s leg';
+  END IF;
+
+  -- ── Giving it all back leaves the seat free, without anybody saying so ──
+  DELETE FROM seat_occupancy WHERE departure_id = dep;
+
+  SELECT state::text INTO seen FROM seats
+   WHERE departure_id = dep AND seat_label = '1A';
+  IF seen <> 'available' THEN
+    RAISE EXCEPTION 'FAIL: an emptied seat reads as %', seen;
+  END IF;
+
+  -- ── And the road itself is not rewritable after the sale ──
+  --
+  -- `bel_app` held a table-wide UPDATE on `departures`, so a column REVOKE
+  -- would have been decorative — the grant list is the control (0032), and
+  -- this is the assertion that it actually is one.
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', ocean::text, true);
+
+  BEGIN
+    UPDATE departures SET road_span = '[0,1)' WHERE id = dep;
+    RAISE EXCEPTION 'FAIL: an operator rewrote the road a ticket was sold on';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  -- What it may still write: the ordinary shape of a departure.
+  UPDATE departures SET capacity = 4 WHERE id = dep;
+
+  RESET ROLE;
+  PERFORM set_config('app.public', 'off', true);
+  PERFORM set_config('app.platform', 'off', true);
+  RAISE NOTICE 'OK  a seat is sold in pieces, never twice, and says so itself';
+END
+$$;
