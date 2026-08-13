@@ -883,6 +883,43 @@ check "the storefront is cacheable" "yes" \
 check "the vitrine editor is closed to anonymous" "401" \
   "$(status "$BASE/console/v1/vitrine")"
 
+# ── The storefront as a page ────────────────────────────────────────────────
+#
+# `blt.cg/o/ODN` is the address on the poster, and the reader who matters most
+# is the crawler building the WhatsApp preview card. It runs no JavaScript, so
+# everything it needs has to be in the first response — which is exactly what
+# a socket can prove and a widget test cannot.
+page="$(curl -s "$BASE/o/ODN")"
+check "the storefront has a page, not only JSON" "200" \
+  "$(status "$BASE/o/ODN")"
+check "it is served as HTML" "yes" \
+  "$(curl -sD - -o /dev/null "$BASE/o/ODN" | tr -d '\r' \
+     | grep -qi '^content-type: text/html' && echo yes || echo no)"
+check "the company is in the markup, not fetched afterwards" "yes" \
+  "$(grep -q '<h1>' <<<"$page" && echo yes || echo no)"
+check "and so is the preview card a group chat renders" "yes" \
+  "$(grep -q 'property="og:title"' <<<"$page" && echo yes || echo no)"
+# The opposite of the follower page, and deliberately: a shop window search
+# engines cannot see is a shop window facing a wall.
+check "a shop window is indexable" "yes" \
+  "$(grep -q 'content="index,follow"' <<<"$page" && echo yes || echo no)"
+check "the page reads English when asked" "yes" \
+  "$(curl -s "$BASE/o/ODN?lang=en" | grep -q 'lang="en"' && echo yes || echo no)"
+check "a code off a poster is matched case-insensitively" "200" \
+  "$(status "$BASE/o/odn")"
+# A page rather than a JSON error: somebody who mistyped a poster is holding a
+# phone, not a debugger, and they can still search for their coach.
+check "an unknown storefront is a page that says so" "404" \
+  "$(status "$BASE/o/NOPE")"
+check "and that page is not left in a search index" "yes" \
+  "$(curl -s "$BASE/o/NOPE" | grep -q 'content="noindex,nofollow"' \
+     && echo yes || echo no)"
+check "nobody frames somebody else's storefront" "yes" \
+  "$(curl -sD - -o /dev/null "$BASE/o/ODN" | tr -d '\r' \
+     | grep -qi '^x-frame-options: DENY' && echo yes || echo no)"
+check "POST is not a way to edit a storefront" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/o/ODN")"
+
 # ── Brand assets ────────────────────────────────────────────────────────────
 #
 # The fakes composition has no object store, so what a socket can prove here is

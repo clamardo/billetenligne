@@ -1,0 +1,18 @@
+# The public storefront (`blt.cg/o/<code>`): the page a company puts on its
+# poster, in its WhatsApp bio and on the windscreen of its coaches. Rendered
+# whole on the server, because it exists to be shared — a WhatsApp preview
+# runs no JavaScript, and a storefront that arrives as a bare link is one
+# nobody opens.
+storefront:
+  title: "{operator} — coach tickets"
+  tagline: "Book your seat, pay by mobile money, board with your phone."
+  routes: "Where we go"
+  from: "from {price}"
+  next: "Next departure {when}"
+  noneToday: "No departures scheduled yet"
+  book: "See departures"
+  empty: "This company has not published a timetable yet."
+  unknown: "This storefront does not exist"
+  unknownBody: "The link may have been copied wrong, or the company no longer sells on BilletEnLigne. You can still search for your coach by destination."
+  search: "Find a coach"
+  operated: "Departures operated by {operator}. Booking and payment by BilletEnLigne."

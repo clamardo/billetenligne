@@ -342,6 +342,15 @@ These are true today and each one is a decision, not an oversight.
    `SELECT count(*) FROM operators` on that surface is still zero. No
    implementation that joins the table can satisfy both.
 
+0d. **The vitrine had no address.** `GET /public/v1/operators/{code}` has
+   answered with the accent, the pattern, the logo, the cover, the lines and
+   the fares since the vitrine shipped, and nothing rendered it — so an
+   operator pressed save on a screen called *votre vitrine* and had nowhere to
+   send anybody. `blt.cg/o/<code>` is now a page, rendered whole on the server
+   because it exists to be shared and the crawler building the WhatsApp
+   preview card runs no JavaScript. Indexable, unlike the follower page and
+   for the opposite reason. 20 tests, 11 smoke checks.
+
 0c. **`.env.example` described a system that did not exist.** Seven variables
    nothing has ever read: a ticket signing key and key id the issuer ignores
    in favour of a compiled-in development seed, a maps key, a payments
@@ -395,7 +404,7 @@ cd apps/console   && flutter test        # 125 console tests
 cd apps/admin     && flutter test        # 35 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 47 scanner tests, incl. a manifest off the wire
-dart run tool/check_layers.dart          # the onion rule, 426 files
+dart run tool/check_layers.dart          # the onion rule, 427 files
 ./infra/migrations/check.sh              # 45 schema guarantees
 ./tool/integration.sh                    # 515 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 445 checks, incl. the Dart client
@@ -436,7 +445,7 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,474 tests in total**, plus 454 smoke checks, 47 executed schema guarantees,
+**1,494 tests in total**, plus 465 smoke checks, 47 executed schema guarantees,
 515 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs

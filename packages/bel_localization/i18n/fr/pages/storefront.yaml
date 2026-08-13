@@ -1,0 +1,28 @@
+# La vitrine publique (`blt.cg/o/<code>`) : la page qu'une compagnie met sur
+# son affiche, dans sa bio WhatsApp et sur le pare-brise de ses cars. Elle est
+# rendue sur le serveur, en entier, parce qu'elle est faite pour être partagée
+# — un aperçu WhatsApp n'exécute pas de JavaScript, et une vitrine qui arrive
+# en lien nu est une vitrine que personne n'ouvre.
+storefront:
+  title: "{operator} — billets de car"
+  # Ce que la page promet, en une phrase, sous le nom de la compagnie.
+  tagline: "Réservez votre place, payez par mobile money, montez avec votre téléphone."
+  routes: "Nos destinations"
+  from: "à partir de {price}"
+  next: "Prochain départ {when}"
+  noneToday: "Aucun départ programmé pour l'instant"
+  # Le bouton de chaque ligne. Il ouvre la recherche déjà remplie, plutôt que
+  # la page d'accueil : quelqu'un qui a cliqué « Brazzaville → Dolisie » a déjà
+  # dit où il va.
+  book: "Voir les départs"
+  empty: "Cette compagnie n'a pas encore publié d'horaires."
+  # Un code qui ne correspond à rien, ou une compagnie qui ne vend plus. Les
+  # deux disent la même chose : il n'y a rien à voir ici, et le voyageur peut
+  # quand même chercher son car ailleurs sur BilletEnLigne.
+  unknown: "Cette vitrine n'existe pas"
+  unknownBody: "Le lien est peut-être mal recopié, ou la compagnie ne vend plus sur BilletEnLigne. Vous pouvez chercher votre car par destination."
+  search: "Chercher un car"
+  # La ligne de bas de page. Elle dit qui vend et qui encaisse, parce que la
+  # vitrine porte les couleurs de la compagnie et qu'on ne doit jamais croire
+  # que BilletEnLigne est la compagnie.
+  operated: "Départs assurés par {operator}. Réservation et paiement par BilletEnLigne."

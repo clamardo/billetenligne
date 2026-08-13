@@ -36,7 +36,7 @@ push, including the gaps.
 | `bel_design` — Kilo tokens, components, contrast gates | ✅ 69 tests |
 | `bel_backoffice` · `bel_secure_store` — shared sign-in, Keychain/Keystore | ✅ 16 tests |
 | `bel_client` — typed API client, retries, idempotency | ✅ 41 tests |
-| `services/api` — three surfaces, middleware, every route | ✅ 271 tests + 454 smoke checks |
+| `services/api` — three surfaces, middleware, every route | ✅ 291 tests + 465 smoke checks |
 | `services/worker` — outbox, payments, refunds, sweeps, compliance | ✅ 74 tests on real Postgres |
 | Database — schema, RLS, ledger, public sales boundary | ✅ 45 guarantees verified |
 | Everything against real Postgres | ✅ 515 integration tests |
@@ -50,13 +50,13 @@ push, including the gaps.
 
 ```bash
 dart test packages/bel_domain                   # 2 s, no containers
-dart run tool/check_layers.dart                 # onion dependency rule, 426 files
+dart run tool/check_layers.dart                 # onion dependency rule, 427 files
 ./infra/migrations/check.sh                     # 47 schema guarantees (needs Docker)
 ./tool/integration.sh                           # 515 tests on real Postgres
 ./tool/smoke_api.sh                             # 445 checks, incl. the Dart client
 ```
 
-**1,474 tests in total**, plus the smoke checks, the schema guarantees, the
+**1,494 tests in total**, plus the smoke checks, the schema guarantees, the
 integration suite and 10 tests against real Azurite. The full command list is
 in [`docs/10-build-status.md`](docs/10-build-status.md).
 
