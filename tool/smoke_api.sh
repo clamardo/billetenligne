@@ -1951,6 +1951,27 @@ check "GET is not a way to swap a coach" "405" \
   "$(status -H "$OP_AUTH" "$BASE/console/v1/departures/$DEP/rescue")"
 
 echo
+echo "── the coach a conductor is looking for"
+
+# A second list rather than a filter on the dispatcher's board, because the
+# board is read under `booking.read` and a conductor has only `boarding.scan`.
+# What this proves on a socket is exactly that separation.
+check "an anonymous device sees no coaches" "401" \
+  "$(status "$BASE/console/v1/boarding?date=2026-08-20")"
+check "a traveller sees none either" "403" \
+  "$(status -H "$AUTH" "$BASE/console/v1/boarding?date=2026-08-20")"
+check "a conductor's request gets past the gate" "503" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/boarding?date=2026-08-20")"
+check "a day nobody named is refused" "400" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/boarding")"
+check "and so is one nobody can parse" "400" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/boarding?date=tomorrow")"
+check "POST is not a way to list coaches" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/boarding" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d '{}')"
+
+echo
 echo "── the departure a scanner pins"
 
 # One download in the yard, and then the door works with the radio off
@@ -2320,8 +2341,19 @@ for _ in $(seq 1 20); do
 done
 
 check "a malformed file does not serve stale rails" "no" "$broken_up"
-check "and says which currency it could not read" "yes" \
-  "$(grep -q 'unknown currency ZWL' /tmp/bel-smoke-broken.log && echo yes || echo no)"
+
+# Wait for the refusal to be *written*, not merely for the health probe to
+# have given up. A cold start slower than the probe loop used to fail this
+# check while passing the one above it — a red run that said nothing was
+# wrong with the server and everything was wrong with the timing.
+said_why="no"
+for _ in $(seq 1 40); do
+  if grep -q 'unknown currency ZWL' /tmp/bel-smoke-broken.log 2>/dev/null; then
+    said_why="yes"; break
+  fi
+  sleep 0.25
+done
+check "and says which currency it could not read" "yes" "$said_why"
 
 kill "$config_pid" 2>/dev/null || true
 wait "$config_pid" 2>/dev/null || true

@@ -283,8 +283,8 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 593 tests
-dart test packages/bel_client                           # 40 tests
+         packages/bel_contracts packages/bel_crypto     # 595 tests
+dart test packages/bel_client                           # 41 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 263 tests
 cd packages/bel_design     && flutter test  # 67 component and contrast tests
@@ -294,10 +294,10 @@ cd apps/console   && flutter test        # 125 console tests
 cd apps/admin     && flutter test        # 35 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 25 scanner tests, incl. the verdict screen
-dart run tool/check_layers.dart          # the onion rule, 404 files
+dart run tool/check_layers.dart          # the onion rule, 405 files
 ./infra/migrations/check.sh              # 44 schema guarantees
-./tool/integration.sh                    # 491 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 439 checks, incl. the Dart client
+./tool/integration.sh                    # 493 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 445 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -317,8 +317,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,388 tests in total**, plus 439 smoke checks, 44 executed schema guarantees,
-491 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,391 tests in total**, plus 445 smoke checks, 44 executed schema guarantees,
+493 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.

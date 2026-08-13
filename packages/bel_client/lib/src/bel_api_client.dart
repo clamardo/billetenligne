@@ -1033,6 +1033,22 @@ final class BelApiClient {
         await _get('/console/v1/departures/$departureId/manifest'),
       );
 
+  /// The coaches a conductor could be boarding today (ADR-0022).
+  ///
+  /// A different list from the dispatcher's board and behind a different
+  /// capability: `boarding.scan` rather than `booking.read`, so a conductor's
+  /// handset can find its coach without being able to read the day's takings.
+  Future<List<BoardingDepartureDto>> boardingDay(DateTime localDate) async {
+    final body = await _get(
+      '/console/v1/boarding',
+      query: {'date': _isoDate(localDate)},
+    );
+    return [
+      for (final row in (body['departures'] as List? ?? const []))
+        BoardingDepartureDto.fromJson(row as Map<String, Object?>),
+    ];
+  }
+
   /// The one request a scanner makes, in the yard, before the door opens
   /// (ADR-0022). Everything after it is a local decision.
   Future<BoardingManifestDto> pinForBoarding(String departureId) async =>

@@ -613,6 +613,86 @@ void main() {
       );
     });
 
+    // ADR-0022. The conductor's own list, and the point of it is what is *not*
+    // on it: a conductor holds `boarding.scan` and nothing else, so the
+    // dispatcher's board — held seats, load factors, the day's shape — is not
+    // theirs to read.
+    test(
+      'the day lists coaches, with the count the manifest will hold',
+      () async {
+        final departureId = await fixture.departure(
+          seatLabels: const ['19A', '19B'],
+          onRoute: roadId,
+        );
+        final console = PostgresOperatorConsole(
+          db,
+          timeZone: PgFixture.timeZone,
+        );
+
+        Future<BookingRecord> buy(String seat) async {
+          final claimed = await hold(
+            departureId: departureId,
+            seatLabels: [seat],
+            userId: userId,
+            idempotencyKey: key(),
+          );
+          final booking = await reserve(
+            holdId: claimed.valueOrNull!.id,
+            userId: userId,
+            passengers: [PassengerDto(fullName: 'Aline M.', seatLabel: seat)],
+          );
+          final record = booking.valueOrNull!;
+          await bookings.captureCash(
+            bookingId: record.id,
+            operatorId: PgFixture.operatorId,
+            stationId: stationId,
+            soldByUserId: null,
+            posting: Postings.cashSale(
+              operatorId: PgFixture.operatorId,
+              stationId: stationId,
+              fare: record.fare,
+              serviceFee: record.serviceFee,
+            ).valueOrNull!,
+          );
+          return record;
+        }
+
+        await buy('19A');
+        final refunded = await buy('19B');
+        await fixture.voidTicketsOf(refunded.id);
+
+        // The market's own day, not UTC's: the fixture coach leaves in eight
+        // hours, and at some hours of the night those are two different dates.
+        final day = await console.boardingDay(
+          operatorId: PgFixture.operatorId,
+          localDate: _localDay(await fixture.departsAt(departureId)),
+        );
+
+        final row = day.firstWhere((d) => d.id == departureId);
+        // The voided one is not expected at the door, so the row and the
+        // scanner's own counter agree before anybody scans anything.
+        expect(row.expected, 1);
+        expect(row.capacity, 2);
+        expect(row.originCity, isNotEmpty);
+      },
+    );
+
+    test("another company's coaches are not on it", () async {
+      final console = PostgresOperatorConsole(db, timeZone: PgFixture.timeZone);
+      final departureId = await fixture.departure(
+        seatLabels: const ['20A'],
+        onRoute: roadId,
+      );
+      await fixture.secondOperator();
+
+      final day = await console.boardingDay(
+        operatorId: PgFixture.secondOperatorId,
+        localDate: _localDay(await fixture.departsAt(departureId)),
+      );
+
+      expect(day.where((d) => d.id == departureId), isEmpty);
+    });
+
     test('what the door did comes back, once, whatever the retries', () async {
       final departureId = await fixture.departure(
         seatLabels: const ['17A', '17B'],
@@ -848,4 +928,11 @@ void main() {
       },
     );
   });
+}
+
+/// Brazzaville is UTC+1 and does not observe daylight saving, so the market's
+/// calendar day is the UTC instant shifted by an hour.
+DateTime _localDay(DateTime utc) {
+  final local = utc.toUtc().add(const Duration(hours: 1));
+  return DateTime.utc(local.year, local.month, local.day);
 }

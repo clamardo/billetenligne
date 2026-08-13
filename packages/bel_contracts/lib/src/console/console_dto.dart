@@ -565,6 +565,70 @@ final class BoardingTicketDto {
 /// Downloaded once, on whatever signal there is, and then the door works with
 /// the radio switched off: the verdict is a signature check against [keys], a
 /// lookup in [tickets] and the device's own redemption log.
+/// One coach on the conductor's list (ADR-0022).
+///
+/// Deliberately not the dispatcher's board row: no held seats, no load factor,
+/// no passenger names. A conductor in a yard at half past five asks one
+/// question — *which of these is my coach?* — and this answers that.
+final class BoardingDepartureDto {
+  const BoardingDepartureDto({
+    required this.id,
+    required this.routeCode,
+    required this.originCity,
+    required this.destinationCity,
+    required this.departsAt,
+    required this.expected,
+    required this.capacity,
+    required this.status,
+    this.stationName,
+  });
+
+  final String id;
+  final String routeCode;
+  final String originCity;
+  final String destinationCity;
+  final DateTime departsAt;
+
+  /// Tickets that are not voided — the number the manifest will hold, so this
+  /// row and the scanner's own counter agree before anybody scans anything.
+  final int expected;
+  final int capacity;
+  final String status;
+
+  /// The yard, when the operator has named one. Null prints nothing rather
+  /// than a placeholder: a conductor sent to the wrong gate is worse off than
+  /// one told nothing.
+  final String? stationName;
+
+  Map<String, Object?> toJson() => Wire.compact({
+    'id': id,
+    'routeCode': routeCode,
+    'originCity': originCity,
+    'destinationCity': destinationCity,
+    'departsAt': Wire.instant(departsAt),
+    'expected': expected,
+    'capacity': capacity,
+    'status': status,
+    'stationName': stationName,
+  });
+
+  factory BoardingDepartureDto.fromJson(Map<String, Object?> json) =>
+      BoardingDepartureDto(
+        id: Wire.requireString(json['id'], 'id'),
+        routeCode: Wire.requireString(json['routeCode'], 'routeCode'),
+        originCity: Wire.requireString(json['originCity'], 'originCity'),
+        destinationCity: Wire.requireString(
+          json['destinationCity'],
+          'destinationCity',
+        ),
+        departsAt: Wire.readInstant(json['departsAt'], field: 'departsAt'),
+        expected: Wire.requireInt(json['expected'], 'expected'),
+        capacity: Wire.requireInt(json['capacity'], 'capacity'),
+        status: Wire.requireString(json['status'], 'status'),
+        stationName: json['stationName'] as String?,
+      );
+}
+
 final class BoardingManifestDto {
   const BoardingManifestDto({
     required this.departureId,

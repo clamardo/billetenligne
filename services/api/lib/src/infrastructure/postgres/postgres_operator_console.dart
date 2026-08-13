@@ -1090,6 +1090,56 @@ final class PostgresOperatorConsole implements OperatorConsole {
   });
 
   @override
+  Future<List<BoardingDeparture>> boardingDay({
+    required String operatorId,
+    required DateTime localDate,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // A LOCAL calendar day, like the dispatcher's board: "coaches on the 15th"
+    // is a local question, and a UTC comparison puts the 06:00 on the wrong
+    // day. The zone is the market's, applied by Postgres — Dart has no zone
+    // database and this is the one place a one-hour error strands somebody.
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT d.id, d.departs_at, d.capacity, d.status::text AS status,
+               r.code AS route_code, r.origin_city, r.destination_city,
+               s.name AS station_name,
+               (SELECT count(*)::int FROM tickets t
+                 WHERE t.departure_id = d.id AND t.voided_at IS NULL)
+                 AS expected
+          FROM departures d
+          JOIN routes r ON r.id = d.route_id
+          LEFT JOIN stations s ON s.id = d.origin_station_id
+         WHERE d.operator_id = @operator
+           AND (d.departs_at AT TIME ZONE @tz)::date = @day::date
+         ORDER BY d.departs_at
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'day': TypedValue(Type.date, localDate),
+        'tz': TypedValue(Type.text, timeZone),
+      },
+    );
+
+    return [
+      for (final row in rows)
+        () {
+          final r = row.toColumnMap();
+          return BoardingDeparture(
+            id: r['id'].toString(),
+            routeCode: r['route_code']! as String,
+            originCity: r['origin_city']! as String,
+            destinationCity: r['destination_city']! as String,
+            departsAt: r['departs_at']! as DateTime,
+            expected: r['expected']! as int,
+            capacity: r['capacity']! as int,
+            stationName: r['station_name'] as String?,
+            status: r['status']! as String,
+          );
+        }(),
+    ];
+  });
+
+  @override
   Future<BoardingManifestData?> boardingManifest({
     required String operatorId,
     required String departureId,

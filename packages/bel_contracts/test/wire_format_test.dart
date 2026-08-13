@@ -2292,6 +2292,43 @@ void main() {
       expect(back.unknown, isEmpty);
     });
 
+    // ADR-0022. The conductor's row, and the point of it is what is missing.
+    test('a conductor row names the coach and not the takings', () {
+      final row = BoardingDepartureDto.fromJson(
+        jsonDecode(
+              '{"id":"dep-1","routeCode":"BZV-PNR","originCity":"BZV",'
+              '"destinationCity":"PNR","departsAt":"2026-08-20T05:00:00.000Z",'
+              '"expected":41,"capacity":49,"status":"scheduled",'
+              '"stationName":"Gare de Mikalou"}',
+            )
+            as Map<String, Object?>,
+      );
+
+      expect(row.expected, 41);
+      expect(row.capacity, 49);
+      expect(row.stationName, 'Gare de Mikalou');
+      // No held seats, no load factor, no passenger names: those are the
+      // dispatcher's questions, on a screen read under a capability a
+      // conductor does not hold.
+      expect(row.toJson().keys, isNot(contains('held')));
+      expect(row.toJson().keys, isNot(contains('sold')));
+    });
+
+    // A yard nobody named prints nothing rather than a placeholder.
+    test('a coach with no yard named carries no yard', () {
+      final row = BoardingDepartureDto.fromJson(
+        jsonDecode(
+              '{"id":"dep-1","routeCode":"BZV-PNR","originCity":"BZV",'
+              '"destinationCity":"PNR","departsAt":"2026-08-20T05:00:00.000Z",'
+              '"expected":0,"capacity":49,"status":"scheduled"}',
+            )
+            as Map<String, Object?>,
+      );
+
+      expect(row.stationName, isNull);
+      expect(row.toJson().containsKey('stationName'), isFalse);
+    });
+
     // ADR-0026. The answer the counter gets back when it sends a ticket.
     test('a sent ticket link carries an address and never a link', () {
       final back = TicketLinkSentDto.fromJson(

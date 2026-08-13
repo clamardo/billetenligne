@@ -218,6 +218,40 @@ final class Manifest {
   int get boarded => rows.where((r) => r.boarded).length;
 }
 
+/// A coach a conductor could board, on the list they pick theirs from.
+///
+/// Route, hour, yard and how many people are expected. No money, no held
+/// seats, no passenger names: those are the dispatcher's questions, and this
+/// list is read on the device most likely to be left on a seat.
+final class BoardingDeparture {
+  const BoardingDeparture({
+    required this.id,
+    required this.routeCode,
+    required this.originCity,
+    required this.destinationCity,
+    required this.departsAt,
+    required this.expected,
+    required this.capacity,
+    this.stationName,
+    this.status = 'scheduled',
+  });
+
+  final String id;
+  final String routeCode;
+  final String originCity;
+  final String destinationCity;
+  final DateTime departsAt;
+
+  /// Tickets that are not voided — what the manifest will hold, so the count
+  /// on this row and the count on the scanner agree.
+  final int expected;
+  final int capacity;
+
+  /// The yard it leaves from, when the operator has named one.
+  final String? stationName;
+  final String status;
+}
+
 /// The pinned departure a scanner boards from (ADR-0022).
 ///
 /// Downloaded once, in the yard, on whatever signal there is. After that the
@@ -472,6 +506,19 @@ abstract interface class OperatorConsole {
   Future<BoardingManifestData?> boardingManifest({
     required String operatorId,
     required String departureId,
+  });
+
+  /// The coaches a conductor might be boarding today (ADR-0022).
+  ///
+  /// **Not the dispatcher's board.** That one carries held seats, load factors
+  /// and the whole day's shape, and it is read under `booking.read` — which a
+  /// conductor does not have, deliberately: the narrowest role that can still
+  /// do the job is the one whose handset going missing costs the least. This
+  /// answers the one question a conductor has in a yard at half past five —
+  /// *which of these is my coach?* — and nothing else.
+  Future<List<BoardingDeparture>> boardingDay({
+    required String operatorId,
+    required DateTime localDate,
   });
 
   // ── Terms ─────────────────────────────────────────────────────────────────

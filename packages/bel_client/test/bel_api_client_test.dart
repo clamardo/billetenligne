@@ -217,6 +217,30 @@ void main() {
       expect(pinned.voided, ['BEL-3RT9P1/3A']);
     });
 
+    // A different list from the dispatcher's board, behind a different
+    // capability, so a conductor's handset can find its coach without being
+    // able to read the day's takings.
+    test('a conductor asks for the day, in the market calendar', () async {
+      final transport = _ScriptedClient([
+        (
+          200,
+          '{"departures":[{"id":"dep-1","routeCode":"BZV-PNR",'
+              '"originCity":"BZV","destinationCity":"PNR",'
+              '"departsAt":"2026-08-20T05:00:00.000Z","expected":41,'
+              '"capacity":49,"status":"scheduled"}]}',
+        ),
+      ]);
+
+      final day = await clientFor(
+        transport,
+        token: 'tok',
+      ).boardingDay(DateTime.utc(2026, 8, 20));
+
+      expect(transport.requests.single.url.path, '/console/v1/boarding');
+      expect(transport.requests.single.url.query, 'date=2026-08-20');
+      expect(day.single.expected, 41);
+    });
+
     test('empties a boarding outbox and hears which rows landed', () async {
       final transport = _ScriptedClient([
         (200, '{"recorded":["BEL-7QK4M2/14A"],"unknown":["BEL-NOBODY/1A"]}'),
