@@ -887,6 +887,7 @@ final class PgFixture {
     String routeId,
     List<({String city, int offsetMinutes})> stops, {
     Set<String> setDownOnly = const {},
+    Map<String, String> stationByCity = const {},
   }) async {
     await _seed.execute(
       Sql.named('DELETE FROM route_stops WHERE route_id = @route'),
@@ -899,8 +900,9 @@ final class PgFixture {
       await _seed.execute(
         Sql.named("""
           INSERT INTO route_stops
-            (route_id, city_code, sequence, offset_minutes, allows_boarding)
-          VALUES (@route, @city, @sequence, @offset, @boards)
+            (route_id, city_code, sequence, offset_minutes, allows_boarding,
+             station_id)
+          VALUES (@route, @city, @sequence, @offset, @boards, @station)
         """),
         parameters: {
           'route': TypedValue(Type.uuid, routeId),
@@ -908,6 +910,7 @@ final class PgFixture {
           'sequence': TypedValue(Type.integer, sequence),
           'offset': TypedValue(Type.integer, stop.offsetMinutes),
           'boards': TypedValue(Type.boolean, !setDownOnly.contains(stop.city)),
+          'station': TypedValue(Type.uuid, stationByCity[stop.city]),
         },
         ignoreRows: true,
       );

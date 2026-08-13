@@ -428,6 +428,104 @@ void main() {
     });
   });
 
+  group('the ticket names the journey somebody bought', () {
+    /// A ticket that says BZV → PNR, 06:00, to somebody who boards at Dolisie
+    /// at nine is a ticket they cannot use to find their coach — and the one
+    /// they show a conductor at the roadside to argue with.
+    test('a leg is drawn with its own towns, times and terminal', () async {
+      final road = await fixture.route(
+        code: 'TICKET-LEG',
+        origin: 'BZV',
+        destination: 'OYO',
+      );
+      final yard = await fixture.station('DOL', 'Gare de Dolisie');
+      await fixture.stopsOn(
+        road,
+        const [(city: 'DOL', offsetMinutes: 180)],
+        stationByCity: {'DOL': yard},
+      );
+      await fixture.priceSegment(
+        road,
+        fromPosition: 1,
+        toPosition: 2,
+        fareMinor: 5500,
+      );
+      final departureId = await fixture.departure(
+        seatLabels: const ['12A'],
+        onRoute: road,
+      );
+      final coachLeaves = await fixture.departsAt(departureId);
+
+      final claimed = await hold(
+        departureId: departureId,
+        seatLabels: const ['12A'],
+        userId: userId,
+        idempotencyKey: key(),
+        fromCity: 'DOL',
+        toCity: 'OYO',
+      );
+      final booked = await reserve(
+        holdId: claimed.valueOrNull!.id,
+        userId: userId,
+        passengers: [
+          const PassengerDto(fullName: 'Aline M.', seatLabel: '12A'),
+        ],
+      );
+
+      final trip = booked.valueOrNull!.trip;
+      expect(trip.originCity, 'DOL');
+      expect(trip.destinationCity, 'OYO');
+      // Three hours after the coach left Brazzaville, which is the figure the
+      // operator typed on the road and the one a delay moves along with it.
+      expect(
+        trip.departsAt.difference(coachLeaves),
+        const Duration(minutes: 180),
+      );
+      // The terminus is still the terminus: the coach arrives when it
+      // arrives, and this passenger is on it until then.
+      expect(trip.arrivesAt.difference(coachLeaves), const Duration(hours: 8));
+      // And the yard is the one in Dolisie, not the one the coach left from.
+      expect(trip.originStation?.name, 'Gare de Dolisie');
+    });
+
+    test('a whole-road booking reads exactly as it always did', () async {
+      final road = await fixture.route(
+        code: 'TICKET-WHOLE',
+        origin: 'BZV',
+        destination: 'OYO',
+      );
+      await fixture.stopsOn(road, const [(city: 'DOL', offsetMinutes: 180)]);
+      final departureId = await fixture.departure(
+        seatLabels: const ['13A'],
+        onRoute: road,
+      );
+      final coachLeaves = await fixture.departsAt(departureId);
+
+      final claimed = await hold(
+        departureId: departureId,
+        seatLabels: const ['13A'],
+        userId: userId,
+        idempotencyKey: key(),
+      );
+      final booked = await reserve(
+        holdId: claimed.valueOrNull!.id,
+        userId: userId,
+        passengers: [
+          const PassengerDto(fullName: 'Aline M.', seatLabel: '13A'),
+        ],
+      );
+
+      // The road has a stop on it now, and a booking that bought the whole
+      // road is still a journey between its two ends at the hour it leaves.
+      // The commonest sale takes the new path, so this is the test that says
+      // the new path did not move it.
+      final trip = booked.valueOrNull!.trip;
+      expect(trip.originCity, 'BZV');
+      expect(trip.destinationCity, 'OYO');
+      expect(trip.departsAt, coachLeaves);
+    });
+  });
+
   group("the conductor's list names the leg", () {
     /// A manifest that says only "PNR" beside every seat is the reason a
     /// conductor lets a coach leave Dolisie half empty: 11A got off there and

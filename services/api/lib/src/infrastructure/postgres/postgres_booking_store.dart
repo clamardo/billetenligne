@@ -202,7 +202,7 @@ final class PostgresBookingStore implements BookingStore {
       fare: fare,
       serviceFee: serviceFee,
       total: total,
-      trip: await _trip(tx, departureId),
+      trip: await _trip(tx, departureId, roadSpan: roadSpan),
       createdAt: bookingRow['created_at'] as DateTime,
       paymentCode: bookingRow['payment_code'] as String?,
       paymentDeadline: bookingRow['payment_deadline'] as DateTime?,
@@ -265,7 +265,8 @@ final class PostgresBookingStore implements BookingStore {
            AND state = 'pending_payment'
         RETURNING id, ref, departure_id, hold_id, fare_minor,
                   service_fee_minor, total_minor,
-                  currency::text AS currency, state::text AS state
+                  currency::text AS currency, state::text AS state,
+                  road_span::text AS road_span
       '''),
       parameters: {
         'booking': TypedValue(Type.uuid, bookingId),
@@ -302,7 +303,11 @@ final class PostgresBookingStore implements BookingStore {
     );
 
     final seats = await _readBookingSeats(tx, bookingId, currency);
-    final trip = await _trip(tx, departureId);
+    final trip = await _trip(
+      tx,
+      departureId,
+      roadSpan: row['road_span'] as String?,
+    );
 
     final signed = await _issuer.issue(
       bookingRef: ref,
@@ -420,7 +425,8 @@ final class PostgresBookingStore implements BookingStore {
         SELECT id, ref, departure_id, state::text AS state, fare_minor,
                service_fee_minor,
                total_minor, currency::text AS currency, payment_code,
-               payment_deadline, created_at, involuntary_change
+               payment_deadline, created_at, involuntary_change,
+               road_span::text AS road_span
           FROM bookings
          WHERE payment_code = @code
            AND operator_id = @operator
@@ -446,7 +452,8 @@ final class PostgresBookingStore implements BookingStore {
         SELECT id, ref, departure_id, state::text AS state, fare_minor,
                service_fee_minor,
                total_minor, currency::text AS currency, payment_code,
-               payment_deadline, created_at, involuntary_change
+               payment_deadline, created_at, involuntary_change,
+               road_span::text AS road_span
           FROM bookings WHERE id = @id AND operator_id = @operator
       '''),
       parameters: {
@@ -466,7 +473,8 @@ final class PostgresBookingStore implements BookingStore {
             SELECT id, ref, operator_id, departure_id, state::text AS state,
                    fare_minor,
                    service_fee_minor, total_minor, currency::text AS currency, payment_code,
-                   payment_deadline, created_at, involuntary_change
+                   payment_deadline, created_at, involuntary_change,
+               road_span::text AS road_span
               FROM bookings
              WHERE purchaser_user_id = app_user_id()
              ORDER BY created_at DESC
@@ -505,7 +513,11 @@ final class PostgresBookingStore implements BookingStore {
       fare: Money(row['fare_minor'] as int, currency),
       serviceFee: Money(row['service_fee_minor'] as int, currency),
       total: Money(row['total_minor'] as int, currency),
-      trip: await _trip(tx, row['departure_id'].toString()),
+      trip: await _trip(
+        tx,
+        row['departure_id'].toString(),
+        roadSpan: row['road_span'] as String?,
+      ),
       createdAt: row['created_at'] as DateTime,
       paymentCode: row['payment_code'] as String?,
       paymentDeadline: row['payment_deadline'] as DateTime?,
@@ -668,11 +680,56 @@ final class PostgresBookingStore implements BookingStore {
 
   /// One join for the whole journey, because this is a read a traveller makes
   /// while standing in a queue and a second round trip on 2G is eight seconds.
-  Future<TripSummary> _trip(TxSession tx, String departureId) async {
+  ///
+  /// [roadSpan] is the piece of the road this booking bought (ADR-0025). The
+  /// ticket then names **the journey somebody paid for** rather than the road
+  /// the coach runs: a traveller boarding at Dolisie has a ticket that says
+  /// Dolisie, at the hour the coach reaches Dolisie, and a screenshot of it
+  /// held up at six in the morning in Brazzaville is visibly the wrong thing.
+  /// Null — a whole-road booking, which is every booking on a road with no
+  /// priced legs — reads exactly as it always did.
+  Future<TripSummary> _trip(
+    TxSession tx,
+    String departureId, {
+    String? roadSpan,
+  }) async {
     final rows = await tx.execute(
       Sql.named('''
-        SELECT d.departs_at, d.arrives_at,
-               r.code AS route_code, r.origin_city, r.destination_city,
+        WITH road AS (
+          -- The road as this departure was put on sale with it: the origin,
+          -- the stops in their order, and the terminus. The two ends are not
+          -- rows in `route_stops`, so they are added here — and they carry
+          -- the departure's own stations, which a stop carries its own.
+          SELECT 0 AS position, r.origin_city AS city,
+                 d.origin_station_id AS station_id, 0 AS offset_minutes
+            FROM departures d JOIN routes r ON r.id = d.route_id
+           WHERE d.id = @id
+           UNION ALL
+          SELECT rs.sequence, rs.city_code, rs.station_id, rs.offset_minutes
+            FROM departures d
+            JOIN route_stops rs ON rs.route_id = d.route_id
+           WHERE d.id = @id
+           UNION ALL
+          SELECT 1 + (SELECT count(*)::int FROM route_stops x
+                       WHERE x.route_id = d.route_id),
+                 r.destination_city, d.destination_station_id,
+                 (EXTRACT(EPOCH FROM (d.arrives_at - d.departs_at)) / 60)::int
+            FROM departures d JOIN routes r ON r.id = d.route_id
+           WHERE d.id = @id
+        )
+        SELECT
+               -- Minutes from the departure, which is how a timetable is
+               -- written here and what the whole road already means: a delay
+               -- moves `departs_at`, and every stop on it moves with it.
+               d.departs_at + make_interval(mins => COALESCE(bp.offset_minutes, 0))
+                 AS departs_at,
+               CASE WHEN ap.position IS NULL THEN d.arrives_at
+                    ELSE d.departs_at
+                         + make_interval(mins => ap.offset_minutes) END
+                 AS arrives_at,
+               r.code AS route_code,
+               COALESCE(bp.city, r.origin_city) AS origin_city,
+               COALESCE(ap.city, r.destination_city) AS destination_city,
                o.code AS operator_code, o.legal_name AS operator_name,
                os.id AS origin_station_id, os.name AS origin_station,
                os.boarding_notes AS origin_notes,
@@ -682,11 +739,24 @@ final class PostgresBookingStore implements BookingStore {
           FROM departures d
           JOIN routes r ON r.id = d.route_id
           JOIN operators o ON o.id = d.operator_id
-          LEFT JOIN stations os ON os.id = d.origin_station_id
-          LEFT JOIN stations ds ON ds.id = d.destination_station_id
+          LEFT JOIN road bp ON bp.position = lower(@span::int4range)
+          LEFT JOIN road ap ON ap.position = upper(@span::int4range)
+          -- A stop with no station named is a roadside, and saying nothing is
+          -- the honest answer. Falling back to the terminal the coach left
+          -- from would print a yard in Brazzaville on a ticket from Dolisie.
+          LEFT JOIN stations os
+                 ON os.id = CASE WHEN bp.position IS NULL
+                                 THEN d.origin_station_id ELSE bp.station_id END
+          LEFT JOIN stations ds
+                 ON ds.id = CASE WHEN ap.position IS NULL
+                                 THEN d.destination_station_id
+                                 ELSE ap.station_id END
          WHERE d.id = @id
       '''),
-      parameters: {'id': TypedValue(Type.uuid, departureId)},
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'span': TypedValue(Type.text, roadSpan),
+      },
     );
 
     final row = rows.first.toColumnMap();
