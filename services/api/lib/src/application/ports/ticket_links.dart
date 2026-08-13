@@ -59,10 +59,16 @@ final class LinkedSeat {
     required this.seatLabel,
     required this.passengerName,
     required this.payload,
+    this.voided = false,
   });
 
   final String seatLabel;
   final String passengerName;
+
+  /// A seat that was refunded or moved. **Kept and marked, never dropped** —
+  /// a page that quietly shows two seats where the customer bought three is a
+  /// person counting their family at a coach door wondering what happened.
+  final bool voided;
 
   /// The signed QR string (ADR-0007). Static — it cannot rotate on a page or
   /// in an inbox, which is written down in ADR-0026 rather than glossed: the
@@ -83,6 +89,8 @@ final class LinkedTicket {
     required this.departsAt,
     required this.arrivesAt,
     required this.status,
+    required this.stationName,
+    required this.stationNotes,
     required this.seats,
     required this.channel,
     required this.expiresAt,
@@ -101,6 +109,12 @@ final class LinkedTicket {
   final DateTime departsAt;
   final DateTime arrivesAt;
   final String status;
+
+  /// The yard they board at, and the company's own directions to it, or null
+  /// when nobody named one — which on a roadside stop is the honest answer
+  /// (`06-fleet-and-routes.md`).
+  final String? stationName;
+  final String? stationNotes;
 
   final List<LinkedSeat> seats;
 

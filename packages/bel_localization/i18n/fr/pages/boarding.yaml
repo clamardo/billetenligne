@@ -1,0 +1,27 @@
+# La page du billet (ADR-0026) : une page web ouverte par quelqu'un qui a
+# acheté au guichet, qui n'a pas l'application, et qui est devant la porte du
+# car. Elle est rendue entièrement par le serveur, code QR compris — un
+# deuxième aller-retour réseau à cet endroit-là, c'est une deuxième occasion
+# d'échouer.
+boardingPass:
+  title: "Votre billet"
+  headline: "{origin} → {destination}"
+  operator: "avec {operator}"
+  reference: "Référence"
+  departure: "Départ"
+  arrival: "Arrivée"
+  station: "Gare de départ"
+  seat: "Siège {seat}"
+  passenger: "Passager"
+  # Le conducteur scanne, et un siège n'embarque qu'une fois : c'est ce qui
+  # protège un billet transféré à l'avance, pas la rotation du code.
+  instructions: "Présentez ce code au conducteur. Chaque siège n'embarque qu'une seule fois."
+  # Dit une fois, en haut, parce que la personne qui lit cette page n'a
+  # peut-être plus de réseau à cinq heures du matin.
+  offline: "Gardez le message que vous avez reçu : le billet s'y trouve aussi. Cette page a besoin d'une connexion."
+  voided: "Ce billet a été annulé — il n'embarque pas."
+  cancelled: "Ce départ a été annulé par la compagnie."
+  expires: "Ce lien reste valable jusqu'au {date}."
+  gone: "Ce lien n'est plus valable"
+  goneBody: "Il a été retiré, ou le voyage est terminé. Demandez-en un nouveau à l'agence qui vous a vendu le billet."
+  cta: "Retrouvez vos voyages dans l'application BilletEnLigne"

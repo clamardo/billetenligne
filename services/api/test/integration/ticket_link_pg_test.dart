@@ -199,6 +199,44 @@ void main() {
       expect(opened.channel, 'email');
     });
 
+    // The address is the fact an agency's telephone line repeats more than
+    // any other: which of the company's three yards to stand in at half past
+    // five in the morning.
+    test("the yard is on it, with the company's own directions", () async {
+      final booking = await aPaidBooking();
+      final departureId = await fixture.departureOf(booking.id);
+      await fixture.rows(
+        "UPDATE stations SET boarding_notes = 'Portail vert' "
+        "WHERE id = '$stationId'",
+      );
+      await fixture.rows(
+        "UPDATE departures SET origin_station_id = '$stationId' "
+        "WHERE id = '$departureId'",
+      );
+      final token = await mintFor(booking.id);
+
+      final opened = await links.open(token: token, now: now);
+
+      expect(opened!.stationName, 'Agence Lien');
+      expect(opened.stationNotes, 'Portail vert');
+    });
+
+    // A family of three whose middle ticket was refunded must not find a page
+    // with two seats on it and no explanation.
+    test('a cancelled seat comes back marked, not missing', () async {
+      final booking = await aPaidBooking();
+      final token = await mintFor(booking.id);
+      await fixture.rows(
+        'UPDATE tickets SET voided_at = now() '
+        "WHERE booking_id = '${booking.id}'",
+      );
+
+      final opened = await links.open(token: token, now: now);
+
+      expect(opened!.seats.single.seatLabel, '1A');
+      expect(opened.seats.single.voided, isTrue);
+    });
+
     test('opening it is counted, so a traveller can see it arrived', () async {
       final booking = await aPaidBooking();
       final token = await mintFor(booking.id);

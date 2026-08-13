@@ -129,17 +129,19 @@ final class PostgresTicketLinks implements TicketLinks {
           departsAt: head['departs_at']! as DateTime,
           arrivesAt: head['arrives_at']! as DateTime,
           status: head['status']! as String,
+          stationName: head['station_name'] as String?,
+          stationNotes: head['station_notes'] as String?,
           channel: head['channel']! as String,
           expiresAt: expiresAt,
           seats: [
             for (final row in rows)
-              if (row.toColumnMap()['payload'] != null &&
-                  row.toColumnMap()['voided'] != true)
+              if (row.toColumnMap()['payload'] != null)
                 LinkedSeat(
                   seatLabel: row.toColumnMap()['seat_label']! as String,
                   passengerName:
                       row.toColumnMap()['passenger_name'] as String? ?? '',
                   payload: row.toColumnMap()['payload']! as String,
+                  voided: row.toColumnMap()['voided'] == true,
                 ),
           ],
         );

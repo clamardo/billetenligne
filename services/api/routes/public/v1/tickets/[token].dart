@@ -61,6 +61,8 @@ Future<Response> onRequest(RequestContext context, String token) async {
       'departsAt': Wire.instant(ticket.departsAt),
       'arrivesAt': Wire.instant(ticket.arrivesAt),
       'status': ticket.status,
+      'stationName': ticket.stationName,
+      'stationNotes': ticket.stationNotes,
       'channel': ticket.channel,
       'expiresAt': Wire.instant(ticket.expiresAt),
       'seats': [
@@ -69,6 +71,7 @@ Future<Response> onRequest(RequestContext context, String token) async {
             'seatLabel': seat.seatLabel,
             'passengerName': seat.passengerName,
             'qr': seat.payload,
+            'voided': seat.voided,
           },
       ],
     },

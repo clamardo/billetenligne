@@ -1504,6 +1504,40 @@ check "a ticket is read, never written" "405" \
      "$BASE/public/v1/tickets/nobody-ever-issued-this" \
      -H 'Content-Type: application/json' -d '{}')"
 
+# And the page, which is the surface the walk-in actually opens. Off
+# `/public/v1` because a human reads this URL out; `/b/` and not `/t/` because
+# a follower link deliberately shows no seat and this one is the seat.
+gone="$(curl -s "$BASE/b/nobody-ever-issued-this")"
+check "a dead link still renders a page, not a stack trace" "404" \
+  "$(status "$BASE/b/nobody-ever-issued-this")"
+check "it is HTML, not JSON" "yes" \
+  "$(curl -s -o /dev/null -w '%{content_type}' "$BASE/b/abc" \
+     | grep -q 'text/html' && echo yes || echo no)"
+check "and it says so kindly, in words from the catalog" "yes" \
+  "$(grep -q "Ce lien n'est plus valable" <<<"$gone" && echo yes || echo no)"
+check "English renders from the same catalog" "yes" \
+  "$(curl -s "$BASE/b/abc?lang=en" | grep -q 'This link no longer works' \
+     && echo yes || echo no)"
+# No fetch and no polling: a boarding pass is read once, at the worst moment,
+# and a second round trip there is a second chance to fail.
+check "the page carries no script at all" "yes" \
+  "$(grep -q '<script' <<<"$gone" && echo no || echo yes)"
+# A boarding pass is exactly the thing somebody would wrap in an ad page, and
+# the referrer of this URL *is* the credential.
+check "the page refuses to be framed" "DENY" \
+  "$(curl -s -D - -o /dev/null "$BASE/b/abc" \
+     | tr -d '\r' | awk -F': ' 'tolower($1)=="x-frame-options"{print $2}')"
+check "and leaks no referrer" "no-referrer" \
+  "$(curl -s -D - -o /dev/null "$BASE/b/abc" \
+     | tr -d '\r' | awk -F': ' 'tolower($1)=="referrer-policy"{print $2}')"
+check "a ticket page is never shared-cached" "yes" \
+  "$(curl -s -D - -o /dev/null "$BASE/b/abc" | tr -d '\r' \
+     | awk -F': ' 'tolower($1)=="cache-control"{print $2}' \
+     | grep -q 'no-store' && echo yes || echo no)"
+check "the page is read, never posted to" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/b/abc" \
+     -H 'Content-Type: application/json' -d '{}')"
+
 # ── Cancelling, by the traveller ────────────────────────────────────────────
 #
 # `01-feature-spec.md` §8.2. What a socket proves here that a unit test cannot:

@@ -1,0 +1,22 @@
+# The ticket page (ADR-0026): a web page opened by somebody who bought at a
+# counter, does not have the app, and is standing at the coach door. It is
+# rendered entirely by the server, QR included — a second network round trip
+# at that spot is a second chance to fail.
+boardingPass:
+  title: "Your ticket"
+  headline: "{origin} → {destination}"
+  operator: "with {operator}"
+  reference: "Reference"
+  departure: "Departure"
+  arrival: "Arrival"
+  station: "Boarding terminal"
+  seat: "Seat {seat}"
+  passenger: "Passenger"
+  instructions: "Show this code to the conductor. Each seat boards exactly once."
+  offline: "Keep the message you were sent: the ticket is in it too. This page needs a connection."
+  voided: "This ticket was cancelled — it does not board."
+  cancelled: "This departure was cancelled by the company."
+  expires: "This link works until {date}."
+  gone: "This link no longer works"
+  goneBody: "It was withdrawn, or the trip is over. Ask the agency that sold you the ticket for a new one."
+  cta: "Find your trips in the BilletEnLigne app"
