@@ -31,11 +31,14 @@ Future<void> main() async {
 
   final session = BelSession(
     firebase: FirebaseIdentityClient(config: _firebaseConfig()),
-    // In memory, like the traveller app and for the same reason: secure
-    // storage is a platform-channel dependency neither app carries yet. On
-    // web the honest equivalent would be a same-site cookie set by the
-    // server, which is a slice of its own — so today a console session ends
-    // when the tab closes, and that is stated rather than discovered.
+    // In memory, and deliberately still so now that the handset apps use the
+    // Keychain and the Keystore (`bel_secure_store`). **That package has a
+    // web implementation and it is not secure storage**: it puts an AES key
+    // in `localStorage` next to the value it encrypts, which is obfuscation
+    // wearing the word *secure*. On web the honest equivalent is a same-site
+    // cookie set by the server, which is a slice of its own — so today a
+    // console session ends when the tab closes, and that is stated rather
+    // than dressed up.
     store: MemorySessionStore(),
   );
 

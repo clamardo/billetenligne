@@ -41,7 +41,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Double-entry ledger** | ✅ done | Chart of accounts in the domain; balance proven by the `ledger_txn_balances` view |
 | **Ticket issue** | ✅ done | Issued inside the capture transaction, Ed25519-signed, under 300 bytes |
 | Ticket delivery to the app | ✅ done | Issued, queued for SMS by the outbox, and rendered in the app: QR, live 30-second code, one ticket per seat |
-| Boarding scanner (standalone app) | ✅ done | Camera, five verdicts, offline, debug simulator. **The manifest it pins now exists on the server**: `GET /console/v1/departures/{id}/boarding`, behind `boarding.scan` — the passengers, their rotating secrets, the ticket-signing public keys and every ticket voided since it was signed, in one download made in the yard. Keys ship with it rather than compiled into the app, so one can be rotated without a store release. No phone numbers: the dispatcher's manifest has them because somebody in an office rings a passenger, and a conductor's handset is the most easily lost device the company owns. **And the redemptions come back**: `POST /console/v1/departures/{id}/redemptions` empties the device's outbox — a batch, idempotent, first-scan-wins, stamped with **the device's clock** rather than ours, because the hour a boarding synced is evidence of nothing. The answer names what landed and what this coach has never heard of, and both leave the outbox: a ticket that is not on this departure will not start being on it, and a handset that retries forever is flat by eleven. **And the device is on the other end.** A conductor signs in through the shared back-office screen, second factor included — a conductor is operator staff, and ADR-0013 has no *small* tier. Then today's coaches, one tap, and the door. The pin turns base64 secrets and public keys into bytes and stamps `pinnedAt` with the **device's** clock, since *how long ago did this handset hear* is not a question a server clock can answer. The wire also exposed a bug the fixture had hidden: Ed25519 verification is async and the verdict is deliberately sync, and the demo prepared every signature when it built them — so against a real coach, where the device has never seen the traveller's signature until the camera reads it, **every genuine ticket would have read as forged**. A `SignaturePreparer` port now does the async half on the one payload just decoded, and a test fails without it. The outbox empties on a tap, never on a scan; both `recorded` and `unknown` leave it; a failed send changes nothing about who boarded; and leaving a coach with rows queued asks first, because they live in memory. The demo path makes the same three calls, so all of it runs on a fresh clone with no server. **And the queue survives being killed.** The redemption log was a `Map`, which quietly broke the promise: Android kills a backgrounded camera app under memory pressure — what a ten-minute boarding on a cheap handset produces — and the boardings went with it. It is now one SQLite table on the handset, with **first-scan-wins as the primary key** rather than a rule somebody remembered, scoped per departure because the same 14A boards on two runs in a day. A relaunch re-pins and the counter comes back with it. A stranded queue is sent the moment the day's list arrives, since arriving is proof of a network. Opening the file is tried, never required. Still in memory, and the same gap the other two apps carry: the session and the device id, so sign-in is once per launch |
+| Boarding scanner (standalone app) | ✅ done | Camera, five verdicts, offline, debug simulator. **The manifest it pins now exists on the server**: `GET /console/v1/departures/{id}/boarding`, behind `boarding.scan` — the passengers, their rotating secrets, the ticket-signing public keys and every ticket voided since it was signed, in one download made in the yard. Keys ship with it rather than compiled into the app, so one can be rotated without a store release. No phone numbers: the dispatcher's manifest has them because somebody in an office rings a passenger, and a conductor's handset is the most easily lost device the company owns. **And the redemptions come back**: `POST /console/v1/departures/{id}/redemptions` empties the device's outbox — a batch, idempotent, first-scan-wins, stamped with **the device's clock** rather than ours, because the hour a boarding synced is evidence of nothing. The answer names what landed and what this coach has never heard of, and both leave the outbox: a ticket that is not on this departure will not start being on it, and a handset that retries forever is flat by eleven. **And the device is on the other end.** A conductor signs in through the shared back-office screen, second factor included — a conductor is operator staff, and ADR-0013 has no *small* tier. Then today's coaches, one tap, and the door. The pin turns base64 secrets and public keys into bytes and stamps `pinnedAt` with the **device's** clock, since *how long ago did this handset hear* is not a question a server clock can answer. The wire also exposed a bug the fixture had hidden: Ed25519 verification is async and the verdict is deliberately sync, and the demo prepared every signature when it built them — so against a real coach, where the device has never seen the traveller's signature until the camera reads it, **every genuine ticket would have read as forged**. A `SignaturePreparer` port now does the async half on the one payload just decoded, and a test fails without it. The outbox empties on a tap, never on a scan; both `recorded` and `unknown` leave it; a failed send changes nothing about who boarded; and leaving a coach with rows queued asks first, because they live in memory. The demo path makes the same three calls, so all of it runs on a fresh clone with no server. **And the queue survives being killed.** The redemption log was a `Map`, which quietly broke the promise: Android kills a backgrounded camera app under memory pressure — what a ten-minute boarding on a cheap handset produces — and the boardings went with it. It is now one SQLite table on the handset, with **first-scan-wins as the primary key** rather than a rule somebody remembered, scoped per departure because the same 14A boards on two runs in a day. A relaunch re-pins and the counter comes back with it. A stranded queue is sent the moment the day's list arrives, since arriving is proof of a network. Opening the file is tried, never required. The session survives a kill too now (`bel_secure_store`), so what is left in memory is the device id alone: `BEL_DEVICE_ID` names a provisioned handset, and without one it is unique per launch |
 | **Traveller app — browse and hold** | ✅ done | Onboardingless search → results → seat map → hold → release. 45 tests |
 | **Identity — sign in with an emailed code** | ✅ done | Challenge → Firebase custom token → ID token. Server, client and app. ADR-0024 |
 | **TOTP on both back-office surfaces** | ✅ done | RFC 6238, proved against the RFC's own Appendix B vectors. Travellers are never asked; staff with nothing enrolled sign in and land on the enrolment screen and nowhere else. Replay refused by a conditional `UPDATE` on `last_window`, and three simultaneous identical codes produce one sign-in. Shared by both apps via `bel_backoffice`. 22 unit · 15 vector · 17 integration · 10 widget tests |
@@ -186,12 +186,17 @@ These are true today and each one is a decision, not an oversight.
    will not approach it. It becomes a real gap the moment the console can
    create a hundred departures, and it is a silent truncation until then —
    which is exactly the kind of cap worth writing down rather than discovering.
-4. **The refresh token is not persisted.** `BelSession` takes a `SessionStore`
-   and the app hands it `MemorySessionStore`, so a session ends when the app
-   is killed. The Keychain and the Android Keystore (ADR-0013) are a
-   platform-channel dependency this app does not carry yet. Named in
-   `main.dart` rather than hidden behind a default, because "you sign in again
-   every launch" should be visible to a reviewer rather than discovered.
+4. **The refresh token is persisted on a handset, and deliberately not on
+   web.** The traveller app and the scanner hand `BelSession` a
+   `SecureSessionStore` — the iOS Keychain and Keystore-backed
+   `EncryptedSharedPreferences` on Android (ADR-0013) — so a session survives
+   the app being killed. The console and the admin app still hand it
+   `MemorySessionStore`, and that is a decision rather than a leftover: the
+   same package has a web implementation that puts an AES key in
+   `localStorage` beside the value it encrypts, which is obfuscation wearing
+   the word *secure*. The honest web equivalent is a same-site cookie set by
+   the server, which is a slice of its own — so a back-office session still
+   ends when the tab closes.
 5. **Phone sign-in is plumbed and switched off.** The channel is a column, an
    enum and a switch; `sms.otp.body` is already in the catalog and already
    under the 160-character gate. What is missing is a provisioned ACS sender
@@ -289,12 +294,13 @@ rm -rf services/api/build                               # see below — it matte
 dart test services/api -x integration -x storage        # 263 tests
 cd packages/bel_design     && flutter test  # 67 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
+cd packages/bel_secure_store && flutter test # 5 Keychain and Keystore tests
 cd apps/traveller && flutter test        # 230 app tests, incl. real SQLite
 cd apps/console   && flutter test        # 125 console tests
 cd apps/admin     && flutter test        # 35 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 47 scanner tests, incl. a manifest off the wire
-dart run tool/check_layers.dart          # the onion rule, 411 files
+dart run tool/check_layers.dart          # the onion rule, 414 files
 ./infra/migrations/check.sh              # 44 schema guarantees
 ./tool/integration.sh                    # 493 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 445 checks, incl. the Dart client
@@ -317,7 +323,7 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,413 tests in total**, plus 445 smoke checks, 44 executed schema guarantees,
+**1,418 tests in total**, plus 445 smoke checks, 44 executed schema guarantees,
 493 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
@@ -584,10 +590,9 @@ cache is allowed to make and a source of truth is not.
 What it cost: 6 tests against a real SQLite, 7 flow tests, one port, one
 adapter, three dependencies — `sqlite3`, `sqlite3_flutter_libs` and
 `path_provider`, the app's first platform channels. The debug APK builds with
-the engine linked in. What it did not build: **the refresh token is still not
-persisted**, so a returning traveller still signs in again — that one needs
-the Keychain and the Android Keystore, and it is a different dependency from
-this one.
+the engine linked in. What it did not build: **the refresh token**, which is a
+different dependency and has since been built — `bel_secure_store`, the
+Keychain and the Keystore, one package rather than a copy per app.
 
 ---
 

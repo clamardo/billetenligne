@@ -26,10 +26,11 @@ Future<void> main() async {
 
   final session = BelSession(
     firebase: FirebaseIdentityClient(config: _firebaseConfig()),
-    // In memory, like the other two surfaces. On web the honest equivalent
-    // is a same-site cookie set by the server, which is a slice of its own —
-    // so today a back-office session ends when the tab closes. For this
-    // surface that is closer to a feature than a gap.
+    // In memory, like the console and for the same reason: on web the honest
+    // equivalent is a same-site cookie set by the server, and a `localStorage`
+    // key beside a `localStorage` value is not the Keystore whatever the
+    // package is called. So a back-office session ends when the tab closes.
+    // For this surface that is closer to a feature than a gap.
     store: MemorySessionStore(),
   );
 

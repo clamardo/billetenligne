@@ -1,0 +1,27 @@
+name: bel_secure_store
+description: >-
+  Where a refresh token lives between launches on a handset: the iOS Keychain
+  and the Android Keystore (ADR-0013). One implementation, because two
+  implementations of one security control is two chances for one of them to be
+  wrong.
+publish_to: none
+version: 0.1.0
+resolution: workspace
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  bel_client: ^0.1.0
+  # The only way to reach the Keychain and the Keystore from Dart. Both are
+  # platform APIs; there is no pure-Dart equivalent and a file in the app's
+  # sandbox is not one — it is readable by anything on a rooted handset.
+  flutter_secure_storage: ^9.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0

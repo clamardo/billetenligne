@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:bel_client/bel_client.dart';
+import 'package:bel_secure_store/bel_secure_store.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -55,13 +56,12 @@ Future<void> main() async {
   } else {
     final session = BelSession(
       firebase: FirebaseIdentityClient(config: _firebaseConfig()),
-      // In memory for now. The refresh token belongs in the Keychain and the
-      // Android Keystore (ADR-0013), which is a platform-channel dependency
-      // this app does not carry yet — so today a session lasts until the app
-      // is killed. Named here rather than hidden behind a default, because
-      // "you have to sign in again every launch" is a thing a reviewer should
-      // see rather than discover.
-      store: MemorySessionStore(),
+      // The Keychain on iOS, the Android Keystore on Android (ADR-0013).
+      // A refresh token is a ninety-day credential and these handsets are
+      // shared, resold and rooted; shared preferences would put it in a file
+      // any other app on one can read. Every failure inside it is "not signed
+      // in" rather than a crash, because the Keystore genuinely loses keys.
+      store: const SecureSessionStore(),
     );
 
     final client = BelApiClient(

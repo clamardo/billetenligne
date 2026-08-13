@@ -22,6 +22,8 @@ dependencies:
   bel_design: ^0.1.0
   bel_domain: ^0.1.0
   bel_localization: ^0.1.0
+  # The Keychain and the Android Keystore (ADR-0013).
+  bel_secure_store: ^0.1.0
   # Where the boarding log lives between launches. `sqlite3` and hand-written
   # SQL rather than an ORM — the same choice this repository makes against
   # Postgres, and there is one table here. `sqlite3_flutter_libs` ships the

@@ -4,6 +4,7 @@ import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_crypto/bel_crypto.dart';
 import 'package:bel_design/bel_design.dart';
 import 'package:bel_domain/bel_domain.dart';
+import 'package:bel_secure_store/bel_secure_store.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:flutter/material.dart';
 
@@ -64,11 +65,11 @@ Future<void> main() async {
 
   final session = BelSession(
     firebase: FirebaseIdentityClient(config: _firebaseConfig()),
-    // In memory, like the console and the traveller app: the Keychain and the
-    // Android Keystore are a platform-channel dependency none of the three
-    // carries yet (ADR-0013). A conductor therefore signs in once per launch,
-    // which is stated here rather than discovered in a yard.
-    store: MemorySessionStore(),
+    // The Keychain and the Android Keystore, shared with the traveller app
+    // (ADR-0013). It matters more here than anywhere: a conductor signs in in
+    // a yard at half past five, and a session that ended when the app was
+    // killed is a sign-in at the coach door with a queue behind it.
+    store: const SecureSessionStore(),
   );
 
   final client = BelApiClient(

@@ -10,6 +10,7 @@ workspace:
   - packages/bel_crypto
   - packages/bel_client
   - packages/bel_backoffice
+  - packages/bel_secure_store
   - services/api
   - services/worker
   - apps/admin
