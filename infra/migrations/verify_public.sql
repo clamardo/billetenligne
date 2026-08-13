@@ -2226,3 +2226,104 @@ BEGIN
   RAISE NOTICE 'OK  a ticket link is a hash, and nobody may walk the table';
 END
 $$;
+
+-- ── 27. A link hands over a counter's account, never a person's ────────────
+--
+-- ADR-0026. The claim is what turns a walk-in into somebody with an account:
+-- the guichet creates an unverified account from the number a vendor types,
+-- and whoever proves they hold the address the ticket was sent to takes the
+-- booking.
+--
+-- The rule that makes it safe is executed here rather than trusted: an account
+-- somebody has actually signed in to is a person, and a link is not enough to
+-- take their booking away from them.
+DO $$
+DECLARE
+  ocean  UUID := '11111111-1111-1111-1111-111111111111';
+  aline  UUID := '55555555-5555-5555-5555-555555555551';
+  dep    UUID := 'cccccccc-0000-0000-0000-0000000000f2';
+  bkg    UUID := 'bbbbbbbb-0000-0000-0000-0000000000f2';
+  till   UUID;
+  walkin UUID;
+  taker  UUID;
+  got    TEXT;
+BEGIN
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  SELECT id INTO till FROM stations WHERE operator_id = ocean LIMIT 1;
+
+  -- The account a counter sale creates: reachable, and never proved.
+  INSERT INTO user_accounts (phone_e164, full_name)
+  VALUES ('+242069000777', 'Walk-in')
+  RETURNING id INTO walkin;
+
+  INSERT INTO departures (id, operator_id, route_id, seat_layout_id,
+                          departs_at, arrives_at, capacity, fare_minor,
+                          currency, status, road_span)
+  SELECT dep, ocean, r.id, l.id,
+         now() + INTERVAL '6 hours', now() + INTERVAL '14 hours',
+         49, 12000, 'XAF', 'scheduled', int4range(0, 1)
+    FROM routes r, seat_layouts l
+   WHERE r.operator_id = ocean AND l.operator_id = ocean
+   LIMIT 1;
+
+  INSERT INTO bookings (id, ref, operator_id, departure_id, purchaser_user_id,
+                        state, fare_minor, service_fee_minor, total_minor,
+                        currency, channel, station_id, payment_method, paid_at,
+                        confirmed_at)
+  VALUES (bkg, 'LNK002', ocean, dep, walkin, 'confirmed',
+          12000, 500, 12500, 'XAF', 'agency', till, 'cash', now(), now());
+
+  INSERT INTO ticket_links (booking_id, operator_id, token_hash, channel,
+                            sent_to, expires_at)
+  VALUES (bkg, ocean, 'hash-of-a-claim', 'phone', '+242069000777',
+          now() + INTERVAL '2 days');
+
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.user_id', aline::text, true);
+
+  -- Where a code may be sent, to somebody with no session at all.
+  SELECT sent_to INTO got FROM ticket_link_destination('hash-of-a-claim');
+  IF got IS DISTINCT FROM '+242069000777' THEN
+    RAISE EXCEPTION 'FAIL: a link holder could not be sent a code (%)',
+      COALESCE(got, 'nothing');
+  END IF;
+
+  -- And the booking changes hands, once somebody has proved the address.
+  SELECT claim_by_link('hash-of-a-claim', aline) INTO got;
+  IF got IS DISTINCT FROM 'LNK002' THEN
+    RAISE EXCEPTION 'FAIL: an unverified counter account was not handed over';
+  END IF;
+
+  -- Claiming twice is claiming once.
+  SELECT claim_by_link('hash-of-a-claim', aline) INTO got;
+  IF got IS DISTINCT FROM 'LNK002' THEN
+    RAISE EXCEPTION 'FAIL: a second claim was not idempotent';
+  END IF;
+
+  -- Now it belongs to a verified person. A link must not move it again.
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.public', 'off', true);
+  PERFORM set_config('app.platform', 'on', true);
+  UPDATE user_accounts SET phone_verified_at = now() WHERE id = aline;
+
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.user_id', walkin::text, true);
+
+  SELECT claim_by_link('hash-of-a-claim', walkin) INTO got;
+  IF got IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL: a link took a booking off somebody who holds it';
+  END IF;
+
+  RESET ROLE;
+  PERFORM set_config('app.public', 'off', true);
+  PERFORM set_config('app.platform', 'off', true);
+  RAISE NOTICE 'OK  a link hands over a counter account, never a person''s';
+END
+$$;

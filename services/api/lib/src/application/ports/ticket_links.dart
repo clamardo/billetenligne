@@ -53,6 +53,19 @@ final class QueuedTicketLink {
   final String sentTo;
 }
 
+/// Where a link was delivered, and what it points at.
+final class LinkDestination {
+  const LinkDestination({
+    required this.bookingId,
+    required this.channel,
+    required this.sentTo,
+  });
+
+  final String bookingId;
+  final String channel;
+  final String sentTo;
+}
+
 /// One seat on a linked ticket.
 final class LinkedSeat {
   const LinkedSeat({
@@ -154,6 +167,29 @@ abstract interface class TicketLinks {
   /// **same** answer. Telling whoever holds a dead link that it was once real
   /// is a conversation the traveller did not ask to start.
   Future<LinkedTicket?> open({required String token, required DateTime now});
+
+  /// Where a step-up code may be sent, for a link that is still live.
+  ///
+  /// **The caller never supplies an address.** The one on the link is the one
+  /// the ticket was delivered to, frozen at mint time — a traveller who later
+  /// changes their email must not find that an old link now sends codes
+  /// somewhere new, and an endpoint that accepted a destination would be an
+  /// open relay with our domain on it.
+  ///
+  /// Null for a token that is unknown, revoked or expired: the same one
+  /// answer [open] gives.
+  Future<LinkDestination?> destinationFor(String token);
+
+  /// Hands the booking to the account that just proved it holds the address.
+  ///
+  /// This is the line in ADR-0026 worth the most: it is how a walk-in becomes
+  /// somebody with an account, without anybody selling them anything.
+  ///
+  /// Idempotent, and refused when the booking is already held by an account
+  /// somebody has actually signed in to — the guichet's unverified account is
+  /// what this is for, and a link is not enough to take a real person's
+  /// booking away from them. Returns the reference it claimed, or null.
+  Future<String?> claim({required String token, required String userId});
 
   /// Kills every live link on a booking. Idempotent.
   Future<Result<void, LinkRefusal>> revoke({

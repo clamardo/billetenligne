@@ -302,4 +302,104 @@ void main() {
       expect(visible, 0);
     });
   });
+
+  // ── Seeing is not changing ────────────────────────────────────────────────
+  //
+  // ADR-0026. The token opens a ticket and nothing else. Changing one takes a
+  // code, and the code goes where the ticket already went.
+  group('the holder proves it is them', () {
+    test('the code may only go where the link went', () async {
+      final booking = await aPaidBooking();
+      final token = await mintFor(booking.id);
+
+      final destination = await links.destinationFor(token);
+
+      expect(destination!.sentTo, 'walkin@example.cg');
+      expect(destination.channel, 'email');
+      expect(destination.bookingId, booking.id);
+    });
+
+    test('a dead link has nowhere to send anything', () async {
+      final booking = await aPaidBooking();
+      final token = await mintFor(booking.id);
+
+      expect(await links.destinationFor('not-a-token'), isNull);
+
+      await links.revoke(
+        operatorId: PgFixture.operatorId,
+        bookingRef: booking.ref,
+        now: now,
+      );
+      expect(await links.destinationFor(token), isNull);
+    });
+
+    // Asking for a code is not reading a ticket, and a tally that moved on it
+    // would make the open count a lie.
+    test('asking where to send is not an open', () async {
+      final booking = await aPaidBooking();
+      final token = await mintFor(booking.id);
+
+      await links.destinationFor(token);
+      await links.destinationFor(token);
+
+      final rows = await fixture.rows(
+        "SELECT opens FROM ticket_links WHERE booking_id = '${booking.id}'",
+      );
+      expect(rows.single['opens'], 0);
+    });
+
+    // The highest-value line in the feature: a walk-in becomes somebody with
+    // an account, without anybody selling them anything.
+    test('the counter unverified account hands the booking over', () async {
+      final booking = await aPaidBooking();
+      final token = await mintFor(booking.id);
+      final claimant = await fixture.traveller('claim1', name: 'Aline M.');
+
+      final claimed = await links.claim(token: token, userId: claimant);
+
+      expect(claimed, booking.ref);
+      final rows = await fixture.rows(
+        "SELECT purchaser_user_id FROM bookings WHERE id = '${booking.id}'",
+      );
+      expect(rows.single['purchaser_user_id'].toString(), claimant);
+    });
+
+    test('claiming twice is claiming once', () async {
+      final booking = await aPaidBooking();
+      final token = await mintFor(booking.id);
+      final claimant = await fixture.traveller('claim2');
+
+      expect(await links.claim(token: token, userId: claimant), booking.ref);
+      expect(await links.claim(token: token, userId: claimant), booking.ref);
+    });
+
+    // An account somebody has actually signed in to belongs to a person, and
+    // a link is not enough to take their booking away from them.
+    test('a booking somebody has proved they hold is not taken', () async {
+      final booking = await aPaidBooking();
+      final token = await mintFor(booking.id);
+      await fixture.rows(
+        'UPDATE user_accounts SET phone_verified_at = now() '
+        "WHERE id = (SELECT purchaser_user_id FROM bookings "
+        "WHERE id = '${booking.id}')",
+      );
+      final stranger = await fixture.traveller('claim3');
+
+      expect(await links.claim(token: token, userId: stranger), isNull);
+    });
+
+    test('a dead link claims nothing', () async {
+      final booking = await aPaidBooking();
+      final token = await mintFor(booking.id);
+      final claimant = await fixture.traveller('claim4');
+
+      await links.revoke(
+        operatorId: PgFixture.operatorId,
+        bookingRef: booking.ref,
+        now: now,
+      );
+
+      expect(await links.claim(token: token, userId: claimant), isNull);
+    });
+  });
 }

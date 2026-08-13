@@ -1538,6 +1538,36 @@ check "the page is read, never posted to" "405" \
   "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/b/abc" \
      -H 'Content-Type: application/json' -d '{}')"
 
+# Seeing is not changing. The token opens a ticket; moving money takes a code,
+# and the code goes where the ticket already went — there is no field on this
+# request that could say otherwise, which is what keeps it from being an open
+# relay with our domain on it.
+check "asking for a code needs no account" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/tickets/nobody-ever-issued-this/step-up")"
+check "and a dead token is asked for nothing" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/tickets/abc/step-up" -H "$AUTH")"
+check "there is no way to GET a step-up" "405" \
+  "$(status "$BASE/public/v1/tickets/abc/step-up")"
+# There is no `sendTo` here, and a body that supplies one changes nothing.
+check "a supplied address is not a destination" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/tickets/abc/step-up" \
+     -H 'Content-Type: application/json' \
+     -d '{"sendTo":"attacker@example.com"}')"
+
+# The claim: the one endpoint under /tickets that is not anonymous, because
+# there is no account to hand the booking to until somebody has one.
+check "claiming a booking is closed to anonymous" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/tickets/abc/claim")"
+check "and a dead token claims nothing" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/tickets/abc/claim" -H "$AUTH")"
+check "there is no way to GET a claim" "405" \
+  "$(status -H "$AUTH" "$BASE/public/v1/tickets/abc/claim")"
+
 # ── Cancelling, by the traveller ────────────────────────────────────────────
 #
 # `01-feature-spec.md` §8.2. What a socket proves here that a unit test cannot:

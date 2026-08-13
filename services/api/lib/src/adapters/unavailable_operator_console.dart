@@ -403,6 +403,15 @@ final class TicketLinksRequireDatabase implements TicketLinks {
   }) async => null;
 
   @override
+  Future<LinkDestination?> destinationFor(String token) async => null;
+
+  @override
+  Future<String?> claim({
+    required String token,
+    required String userId,
+  }) async => null;
+
+  @override
   Future<Result<void, LinkRefusal>> revoke({
     required String operatorId,
     required String bookingRef,

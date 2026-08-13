@@ -148,6 +148,36 @@ final class PostgresTicketLinks implements TicketLinks {
       });
 
   @override
+  Future<LinkDestination?> destinationFor(String token) =>
+      _db.transaction(const DbScope.anonymous(), (tx) async {
+        final rows = await tx.execute(
+          Sql.named('SELECT * FROM ticket_link_destination(@hash)'),
+          parameters: {'hash': TypedValue(Type.text, hashOf(token))},
+        );
+        if (rows.isEmpty) return null;
+
+        final row = rows.first.toColumnMap();
+        return LinkDestination(
+          bookingId: row['booking_id'].toString(),
+          channel: row['channel']! as String,
+          sentTo: row['sent_to']! as String,
+        );
+      });
+
+  @override
+  Future<String?> claim({required String token, required String userId}) =>
+      _db.transaction(DbScope.traveller(userId), (tx) async {
+        final rows = await tx.execute(
+          Sql.named('SELECT claim_by_link(@hash, @user) AS ref'),
+          parameters: {
+            'hash': TypedValue(Type.text, hashOf(token)),
+            'user': TypedValue(Type.uuid, userId),
+          },
+        );
+        return rows.first.toColumnMap()['ref'] as String?;
+      });
+
+  @override
   Future<Result<void, LinkRefusal>> revoke({
     required String operatorId,
     required String bookingRef,
