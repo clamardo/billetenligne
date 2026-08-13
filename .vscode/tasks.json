@@ -102,7 +102,7 @@
       "label": "android: emulator",
       "detail": "Starts an AVD and waits for it to finish booting.",
       "type": "shell",
-      "command": "flutter emulators --launch ${input:avd} >/dev/null 2>&1 & adb wait-for-device; until [ \"$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r')\" = 1 ]; do sleep 2; done; echo 'emulator ready'",
+      "command": "flutter emulators --launch ${input:avd} || { echo 'no such AVD — run: flutter emulators'; exit 1; }; adb wait-for-device; until [ \"$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r')\" = 1 ]; do sleep 2; done; echo 'emulator ready'",
       "options": { "cwd": "${workspaceFolder}" },
       "presentation": { "reveal": "always", "panel": "dedicated" },
       "problemMatcher": []
@@ -150,7 +150,7 @@
       "id": "avd",
       "type": "promptString",
       "description": "AVD name (flutter emulators lists them)",
-      "default": "Pixel_7_API_34"
+      "default": "pixel"
     }
   ]
 }
