@@ -3,6 +3,7 @@ import 'package:bel_domain/bel_domain.dart';
 import '../application/ports/disruption_desk.dart';
 import '../application/ports/payout_desk.dart';
 import '../application/ports/operator_console.dart';
+import '../application/ports/ticket_links.dart';
 import '../application/ports/platform_console.dart';
 
 /// What the console surface resolves to when there is no database.
@@ -373,5 +374,38 @@ final class UnavailablePayouts implements PayoutDesk {
     required String runId,
     String? operatorId,
     String? actorUserId,
+  }) async => throw const ConsoleRequiresDatabase();
+}
+
+/// The fakes composition, which has no database to mint a link out of
+/// (ADR-0026).
+///
+/// [open] answers null rather than throwing: a link cannot exist in this
+/// composition, and "no such link" is the honest answer to somebody holding
+/// one — the same answer a revoked or expired token gets.
+final class TicketLinksRequireDatabase implements TicketLinks {
+  const TicketLinksRequireDatabase();
+
+  @override
+  Future<Result<QueuedTicketLink, LinkRefusal>> queueSend({
+    required String operatorId,
+    required String bookingRef,
+    required String channel,
+    required String? sendTo,
+    required String? byUserId,
+    required DateTime now,
+  }) async => throw const ConsoleRequiresDatabase();
+
+  @override
+  Future<LinkedTicket?> open({
+    required String token,
+    required DateTime now,
+  }) async => null;
+
+  @override
+  Future<Result<void, LinkRefusal>> revoke({
+    required String operatorId,
+    required String bookingRef,
+    required DateTime now,
   }) async => throw const ConsoleRequiresDatabase();
 }

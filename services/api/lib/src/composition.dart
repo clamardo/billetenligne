@@ -30,6 +30,7 @@ import 'application/ports/protection_desk.dart';
 import 'application/ports/passenger_choices.dart';
 import 'application/ports/reschedule_desk.dart';
 import 'application/ports/self_cancellation.dart';
+import 'application/ports/ticket_links.dart';
 import 'application/ports/trip_sharing.dart';
 import 'application/ports/operator_console.dart';
 import 'application/ports/payment_gateway.dart';
@@ -74,6 +75,7 @@ import 'infrastructure/postgres/postgres_protection.dart';
 import 'infrastructure/postgres/postgres_passenger_choices.dart';
 import 'infrastructure/postgres/postgres_reschedules.dart';
 import 'infrastructure/postgres/postgres_self_cancellation.dart';
+import 'infrastructure/postgres/postgres_ticket_links.dart';
 import 'infrastructure/postgres/postgres_trip_sharing.dart';
 import 'infrastructure/postgres/postgres_operator_console.dart';
 import 'infrastructure/postgres/postgres_operator_directory.dart';
@@ -114,6 +116,7 @@ final class Services {
     required this.protection,
     required this.choices,
     required this.sharing,
+    required this.ticketLinks,
     required this.cancellations,
     required this.reschedules,
     required this.platform,
@@ -197,6 +200,11 @@ final class Services {
 
   /// Sharing a trip with somebody who is not a customer (ADR-0014 §2).
   final TripSharing sharing;
+
+  /// The ticket a walk-in can reach without an app (ADR-0026). On the same
+  /// `Services` as everything else because both ends of it — the vendor
+  /// queueing a send and a stranger opening the link — are routes.
+  final TicketLinks ticketLinks;
 
   /// The traveller cancelling their own booking (§8.2). Separate from the
   /// console's refund because the actor is, and because the common case here
@@ -383,6 +391,10 @@ final class Services {
       sharing: PostgresTripSharing(
         db,
         shareBase: Uri.parse(env['BEL__SHAREBASEURL'] ?? 'https://blt.cg'),
+      ),
+      ticketLinks: PostgresTicketLinks(
+        db,
+        linkBase: Uri.parse(env['BEL__SHAREBASEURL'] ?? 'https://blt.cg'),
       ),
       cancellations: PostgresSelfCancellation(db),
       reschedules: reschedules,
@@ -594,6 +606,7 @@ final class Services {
       protection: const UnavailableProtection(),
       choices: const NoChoices(),
       sharing: const NoTripSharing(),
+      ticketLinks: const TicketLinksRequireDatabase(),
       cancellations: const NoSelfCancellation(),
       reschedules: const NoReschedules(),
       platform: const UnavailablePlatformConsole(),

@@ -11,6 +11,7 @@ import 'package:bel_api/src/infrastructure/postgres/postgres_operator_console.da
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_worker/src/compliance_watch.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_ticket_links.dart';
 import 'package:bel_worker/src/outbox_drain.dart';
 import 'package:bel_worker/src/reliability.dart';
 import 'package:bel_worker/src/seat_alerts.dart';
@@ -695,6 +696,125 @@ void main() {
       expect(first.affected, greaterThanOrEqualTo(1));
       // Nothing erodes trust like two conflicting messages about one payment.
       expect(second.affected, 0);
+    });
+
+    test('a ticket link is minted by the drain and sent once', () async {
+      // ADR-0026. The token is minted *here*, in the transaction that
+      // composes the message — so what is in the queue row is an address and
+      // a booking id, and the plaintext link exists in the message and in a
+      // hash. A queue full of working links into people's tickets is exactly
+      // what this shape avoids.
+      final sent = FakeNotificationGateway();
+      final recording = OutboxDrain(
+        db: db,
+        notifications: sent,
+        catalog: CatalogLoader.fromDirectory(
+          Platform.environment['BEL_I18N_DIR'] ??
+              'packages/bel_localization/i18n',
+        ),
+        timeZone: 'Africa/Brazzaville',
+        links: PostgresTicketLinks(db, linkBase: Uri.parse('https://blt.cg')),
+      );
+
+      final bookingId = await aConfirmedBooking();
+      await seed.execute(
+        Sql.named('''
+          INSERT INTO outbox (aggregate, aggregate_id, event_type, payload,
+                              dedupe_key)
+          VALUES ('booking', @id, 'ticket.link',
+                  jsonb_build_object('bookingId', @id::text,
+                                     'channel', 'email',
+                                     'sentTo', 'walkin@example.cg'),
+                  @dedupe)
+        '''),
+        parameters: {
+          'id': TypedValue(Type.uuid, bookingId),
+          'dedupe': TypedValue(Type.text, unique('link')),
+        },
+        ignoreRows: true,
+      );
+
+      await recording.drain();
+
+      expect(sent.last.to, 'walkin@example.cg');
+      expect(sent.last.body, contains('https://blt.cg/b/'));
+
+      final stored = await seed.execute(
+        Sql.named('''
+          SELECT token_hash, channel, sent_to, expires_at
+            FROM ticket_links WHERE booking_id = @id AND revoked_at IS NULL
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, bookingId)},
+      );
+      final link = stored.single.toColumnMap();
+
+      // The token is in the message and nowhere else: what the table holds is
+      // a SHA-256 of it, so a dump is not a set of working links.
+      final token = RegExp(
+        r'https://blt\.cg/b/([A-Za-z0-9_-]+)',
+      ).firstMatch(sent.last.body)!.group(1)!;
+      expect(link['token_hash'], isNot(contains(token)));
+      expect(link['token_hash'], PostgresTicketLinks.hashOf(token));
+      expect(link['sent_to'], 'walkin@example.cg');
+
+      // And the queue row itself carries no token — it was written before one
+      // existed.
+      final queued = await seed.execute(
+        Sql.named('''
+          SELECT payload::text AS payload FROM outbox
+           WHERE event_type = 'ticket.link' AND aggregate_id = @id
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, bookingId)},
+      );
+      expect(queued.single.toColumnMap()['payload'], isNot(contains(token)));
+    });
+
+    test('sending it again replaces the link rather than adding one', () async {
+      final sent = FakeNotificationGateway();
+      final recording = OutboxDrain(
+        db: db,
+        notifications: sent,
+        catalog: CatalogLoader.fromDirectory(
+          Platform.environment['BEL_I18N_DIR'] ??
+              'packages/bel_localization/i18n',
+        ),
+        timeZone: 'Africa/Brazzaville',
+      );
+
+      final bookingId = await aConfirmedBooking();
+      Future<void> queueLink() => seed.execute(
+        Sql.named('''
+          INSERT INTO outbox (aggregate, aggregate_id, event_type, payload,
+                              dedupe_key)
+          VALUES ('booking', @id, 'ticket.link',
+                  jsonb_build_object('bookingId', @id::text,
+                                     'channel', 'email',
+                                     'sentTo', 'walkin@example.cg'),
+                  @dedupe)
+        '''),
+        parameters: {
+          'id': TypedValue(Type.uuid, bookingId),
+          'dedupe': TypedValue(Type.text, unique('link')),
+        },
+        ignoreRows: true,
+      );
+
+      await queueLink();
+      await recording.drain();
+      await queueLink();
+      await recording.drain();
+
+      // "Je ne l'ai pas reçu" is the commonest thing a customer says, so the
+      // button has to work twice — and leave one live link, because two are
+      // two things to revoke and they were told about one.
+      final live = await seed.execute(
+        Sql.named('''
+          SELECT count(*) AS n FROM ticket_links
+           WHERE booking_id = @id AND revoked_at IS NULL
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, bookingId)},
+      );
+      expect(live.first.toColumnMap()['n'], 1);
     });
 
     test('an event nobody handles is retired, not retried forever', () async {

@@ -26,6 +26,22 @@ email:
 
       Your ticket is in the BilletEnLigne app. Show the QR code to the
       conductor — it works with no network.
+  # The ticket, by link (ADR-0026). For the person who bought at a counter and
+  # has no app: the link opens the ticket, the QR is on it, and it stays valid
+  # until the day after the journey.
+  ticketLink:
+    subject: "Your ticket {reference} — {route}"
+    body: |
+      Your ticket is ready.
+
+      {route} on {date} at {time}, seat {seat}.
+      Reference {reference}.
+
+      Open your ticket here:
+      {url}
+
+      Show the QR code to the conductor. The link stays valid until the day
+      after your journey — keep this message.
   # A subject that says what happened, not what is promised.
   seatAvailable:
     subject: "Seats are free again: {route} on {date}"

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:bel_api/src/application/ports/notification_gateway.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_ticket_links.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
@@ -34,14 +35,22 @@ final class OutboxDrain {
     required NotificationGateway notifications,
     required TranslationCatalog catalog,
     required this.timeZone,
+    PostgresTicketLinks? links,
     this.maxAttempts = 6,
   }) : _db = db,
        _notifications = notifications,
-       _catalog = catalog;
+       _catalog = catalog,
+       _links = links ?? PostgresTicketLinks(db);
 
   final Database _db;
   final NotificationGateway _notifications;
   final TranslationCatalog _catalog;
+
+  /// Mints the ticket links this drain sends (ADR-0026). On the drain rather
+  /// than behind the port because minting is a write inside *this*
+  /// transaction: the row and the message that carries the token commit
+  /// together or neither does.
+  final PostgresTicketLinks _links;
 
   /// Six attempts over about an hour of backoff. Past that a message is not
   /// arriving, and a queue that retries forever is a queue that hides a dead
@@ -202,6 +211,88 @@ final class OutboxDrain {
           // Matches the dedupe key the writer used, so a message composed by
           // two drains is still one message.
           eventId: 'booking.confirmed:$bookingId',
+        );
+
+      case 'ticket.link':
+        // The one place a ticket-link token is ever minted (ADR-0026). It is
+        // here, and not in the request that asked for it, so the plaintext
+        // exists in the message below and in a SHA-256 hash — never in a
+        // queue row somebody reads a week later.
+        //
+        // A retry after a failed send mints a new one and revokes the last,
+        // which is correct: the previous token was never delivered.
+        final bookingId = payload['bookingId'];
+        final channel = payload['channel'];
+        final sentTo = payload['sentTo'];
+        if (bookingId is! String || channel is! String || sentTo is! String) {
+          return null;
+        }
+
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT b.ref, u.language,
+                   r.origin_city, r.destination_city,
+                   to_char(d.departs_at AT TIME ZONE @tz, 'DD/MM')
+                     AS departs_date,
+                   to_char(d.departs_at AT TIME ZONE @tz, 'HH24"h"MI')
+                     AS departs_time,
+                   (SELECT string_agg(bs.seat_label, ', '
+                                      ORDER BY bs.seat_label)
+                      FROM booking_seats bs WHERE bs.booking_id = b.id)
+                     AS seats
+              FROM bookings b
+              JOIN departures d ON d.id = b.departure_id
+              JOIN routes r ON r.id = d.route_id
+              LEFT JOIN user_accounts u ON u.id = b.purchaser_user_id
+             WHERE b.id = @id AND b.state = 'confirmed'
+          '''),
+          parameters: {
+            'id': TypedValue(Type.uuid, bookingId),
+            'tz': TypedValue(Type.text, timeZone),
+          },
+        );
+
+        // Cancelled between the vendor asking and the drain running. Nothing
+        // to send, and nothing wrong: marked delivered so it stops retrying.
+        if (rows.isEmpty) return null;
+        final l = rows.first.toColumnMap();
+
+        final minted = await _links.mintInto(
+          tx,
+          bookingId: bookingId,
+          channel: channel,
+          sentTo: sentTo,
+          byUserId: payload['byUserId'] as String?,
+        );
+        if (minted == null) return null;
+
+        final tr = CatalogTranslator(
+          _catalog,
+          l['language'] as String? ?? 'fr',
+        );
+        final linkParams = <String, Object?>{
+          'route': '${l['origin_city']}–${l['destination_city']}',
+          'date': l['departs_date'],
+          'time': l['departs_time'],
+          'seat': l['seats'] ?? '',
+          'reference': 'BEL-${l['ref']}',
+          'url': _links.urlFor(minted.token).toString(),
+        };
+
+        return OutboundMessage(
+          channel: channel == 'phone'
+              ? SignInChannel.phone
+              : SignInChannel.email,
+          to: sentTo,
+          subject: channel == 'phone'
+              ? null
+              : tr('email.ticketLink.subject', linkParams),
+          body: channel == 'phone'
+              ? tr('sms.ticketLink.body', linkParams)
+              : tr('email.ticketLink.body', linkParams),
+          // No dedupe key: every press of "send it again" is a customer
+          // saying they did not get the last one, and the outbox row already
+          // carries its own uniqueness.
         );
 
       case 'disruption.declared':

@@ -26,6 +26,22 @@ email:
 
       Votre billet est dans l'application BilletEnLigne. Présentez le code QR
       au contrôleur — il fonctionne sans réseau.
+  # Le billet, par lien (ADR-0026). Pour la personne qui a achete au guichet
+  # et qui n'a pas l'application : le lien ouvre le billet, le QR est dedans,
+  # et il reste valable jusqu'au lendemain du voyage.
+  ticketLink:
+    subject: "Votre billet {reference} — {route}"
+    body: |
+      Votre billet est prêt.
+
+      {route} le {date} à {time}, siège {seat}.
+      Référence {reference}.
+
+      Ouvrez votre billet ici :
+      {url}
+
+      Présentez le code QR au contrôleur. Le lien reste valable jusqu'au
+      lendemain du voyage — gardez ce message.
   # Un sujet qui dit ce qui s'est passe, pas ce qui est promis.
   seatAvailable:
     subject: "Des places se liberent: {route} le {date}"

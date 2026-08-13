@@ -1439,6 +1439,71 @@ check "there is no way to PUT a share" "405" \
   "$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
      "$BASE/public/v1/bookings/BEL-ABC123/share" -H "$AUTH")"
 
+# ── The ticket you can always get to ────────────────────────────────────────
+#
+# ADR-0026. Two endpoints, and what a socket proves about them is exactly what
+# a unit test cannot: that the ticket page is reachable with no session at all,
+# and that the thing which mints a link is not.
+#
+# The fakes composition has no database, so a request that IS well formed
+# answers 503. That is the assertion, not a limitation — 503 means the request
+# got past authority and validation and died at the storage, and 400/401/403
+# mean it never got that far.
+link_post() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST \
+    "$BASE/console/v1/bookings/$1/ticket-link" -H "$2" \
+    -H 'Content-Type: application/json' -d "$3"
+}
+
+check "minting a ticket link is closed to anonymous" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/bookings/ABC123/ticket-link" \
+     -H 'Content-Type: application/json' -d '{"channel":"email"}')"
+# The traveller's own token reaches the console surface and is refused by
+# capability, not by a 404 that would say the route is not there.
+check "a traveller cannot mint one from the console" "403" \
+  "$(link_post ABC123 "$AUTH" '{"channel":"email"}')"
+check "a channel nobody can send on is refused" "400" \
+  "$(link_post ABC123 "$OP_AUTH" '{"channel":"pigeon"}')"
+check "a body with no channel is refused" "400" \
+  "$(link_post ABC123 "$OP_AUTH" '{}')"
+check "a body that is not JSON is refused" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/bookings/ABC123/ticket-link" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d 'not json')"
+# Six characters is an enumeration, not a reference — refused before it can be
+# looked up.
+check "a malformed reference never reaches the store" "404" \
+  "$(link_post not-a-ref "$OP_AUTH" '{"channel":"email"}')"
+check "an email send gets past validation" "503" \
+  "$(link_post ABC123 "$OP_AUTH" '{"channel":"email"}')"
+check "so does a phone one, where a sender exists" "503" \
+  "$(link_post ABC123 "$OP_AUTH" '{"channel":"phone"}')"
+# Ten seconds is what a vendor has when a customer says they forwarded it to
+# the wrong person, so revoking is one verb on the same URL.
+check "revoking is the same URL under DELETE" "503" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+     "$BASE/console/v1/bookings/ABC123/ticket-link" -H "$OP_AUTH")"
+check "there is no way to PUT a ticket link" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+     "$BASE/console/v1/bookings/ABC123/ticket-link" -H "$OP_AUTH")"
+
+# The holder's half. No account, no header, no session — the walk-in at the
+# coach door is the whole point of the feature.
+check "a token nobody issued resolves to nothing" "404" \
+  "$(status "$BASE/public/v1/tickets/nobody-ever-issued-this")"
+check "opening a ticket needs no account" "404" \
+  "$(status -H 'Authorization: Bearer ' \
+     "$BASE/public/v1/tickets/nobody-ever-issued-this")"
+# A revoked link, an expired one and a token that never existed answer the
+# same way, so a dead link says nothing about whether it was ever real.
+check "and a reference is not a token" "404" \
+  "$(status "$BASE/public/v1/tickets/ABC123")"
+check "a ticket is read, never written" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/public/v1/tickets/nobody-ever-issued-this" \
+     -H 'Content-Type: application/json' -d '{}')"
+
 # ── Cancelling, by the traveller ────────────────────────────────────────────
 #
 # `01-feature-spec.md` §8.2. What a socket proves here that a unit test cannot:

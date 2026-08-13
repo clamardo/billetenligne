@@ -569,6 +569,14 @@ final class PgFixture {
   /// second row: a sale that released and re-took its own seat would still
   /// leave the state reading `sold`, and would have let somebody else in
   /// between the two statements.
+  /// A read through the seed connection, for a claim about a row rather than
+  /// about a behaviour — "the token is not in the table" is that kind of
+  /// claim, and going through an adapter to make it would prove the adapter.
+  Future<List<Map<String, Object?>>> rows(String sql) async {
+    final result = await _seed.execute(sql);
+    return [for (final row in result) row.toColumnMap()];
+  }
+
   Future<List<Map<String, Object?>>> occupancyOn(
     String departureId,
     String label,

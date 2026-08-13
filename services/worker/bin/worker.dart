@@ -4,6 +4,7 @@ import 'package:bel_api/src/adapters/acs_notification_gateway.dart';
 import 'package:bel_api/src/adapters/logging_notification_gateway.dart';
 import 'package:bel_api/src/application/ports/notification_gateway.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_ticket_links.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_api/src/composition.dart';
 import 'package:bel_worker/src/compliance_watch.dart';
@@ -88,6 +89,15 @@ Future<int> main(List<String> args) async {
     // the host's: a container in Europe would otherwise tell a traveller in
     // Brazzaville that their 06:00 coach leaves at 05:00.
     timeZone: services.market.timeZone,
+    // Where a ticket link points (ADR-0026). The same environment variable
+    // the API reads for a trip share, because they are the same short domain
+    // and two settings for one host is how one of them goes stale.
+    links: PostgresTicketLinks(
+      db,
+      linkBase: Uri.parse(
+        Platform.environment['BEL__SHAREBASEURL'] ?? 'https://blt.cg',
+      ),
+    ),
   );
 
   final passes = <String, Future<SweepResult> Function()>{

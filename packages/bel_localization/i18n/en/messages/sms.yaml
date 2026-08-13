@@ -6,6 +6,9 @@ sms:
     body: "Your BilletEnLigne code is {code}. It expires in {minutes} minutes. Don't share it with anyone."
   paymentConfirmed:
     body: "Payment confirmed. {route} on {date} at {time}, seat {seat}. Ref {reference}. Ticket is in the BilletEnLigne app."
+  # The ticket, by link (ADR-0026).
+  ticketLink:
+    body: "Your ticket {route} on {date} at {time}. Open it here: {url}"
   paymentPending:
     body: "We're verifying your {operator} payment of {amount}. Your seat is held. Ref {reference}."
   paymentFailed:

@@ -2142,3 +2142,87 @@ BEGIN
   RAISE NOTICE 'OK  a hold''s quote is the server''s, not the traveller''s';
 END
 $$;
+
+-- ── 26. A ticket link is a hash, and nobody may walk the table ─────────────
+--
+-- ADR-0026. The link is the credential for seeing a ticket, so two properties
+-- have to hold at the same time: an anonymous holder can resolve *their* token
+-- into a ticket, and an anonymous caller cannot enumerate anybody else's.
+--
+-- Both come from the same decision — the reader is a SECURITY DEFINER function
+-- that takes a hash, and there is no policy on this table that an anonymous
+-- session satisfies. A SELECT policy would have been row-enumerable, which is
+-- a list of every live ticket in the country.
+DO $$
+DECLARE
+  ocean UUID := '11111111-1111-1111-1111-111111111111';
+  aline UUID := '55555555-5555-5555-5555-555555555551';
+  dep   UUID := 'cccccccc-0000-0000-0000-0000000000f1';
+  bkg   UUID := 'bbbbbbbb-0000-0000-0000-0000000000f1';
+  till  UUID;
+  seen  INTEGER;
+  ref   TEXT;
+BEGIN
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  -- A counter sale names its counter, because that is the drawer it
+  -- reconciles against (0008).
+  SELECT id INTO till FROM stations WHERE operator_id = ocean LIMIT 1;
+
+  INSERT INTO departures (id, operator_id, route_id, seat_layout_id,
+                          departs_at, arrives_at, capacity, fare_minor,
+                          currency, status, road_span)
+  SELECT dep, ocean, r.id, l.id,
+         now() + INTERVAL '6 hours', now() + INTERVAL '14 hours',
+         49, 12000, 'XAF', 'scheduled', int4range(0, 1)
+    FROM routes r, seat_layouts l
+   WHERE r.operator_id = ocean AND l.operator_id = ocean
+   LIMIT 1;
+
+  INSERT INTO bookings (id, ref, operator_id, departure_id, purchaser_user_id,
+                        state, fare_minor, service_fee_minor, total_minor,
+                        currency, channel, station_id, payment_method, paid_at,
+                        confirmed_at)
+  VALUES (bkg, 'LNK001', ocean, dep, aline, 'confirmed',
+          12000, 500, 12500, 'XAF', 'agency', till, 'cash', now(), now());
+
+  INSERT INTO ticket_links (booking_id, operator_id, token_hash, channel,
+                            sent_to, expires_at)
+  VALUES (bkg, ocean, 'hash-of-a-token', 'email', 'walkin@example.cg',
+          now() + INTERVAL '2 days');
+
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.user_id', '', true);
+
+  -- A stranger with no token sees nothing at all. Not "somebody else's row
+  -- filtered out" — nothing, including the fact that a row exists.
+  SELECT count(*) INTO seen FROM ticket_links;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: an anonymous caller listed % ticket links', seen;
+  END IF;
+
+  -- And the holder of the token resolves it, through the function, with no
+  -- session and no account.
+  SELECT booking_ref INTO ref FROM ticket_by_link('hash-of-a-token');
+  IF ref <> 'LNK001' THEN
+    RAISE EXCEPTION 'FAIL: a link holder could not open their own ticket (%)',
+      COALESCE(ref, 'nothing');
+  END IF;
+
+  -- A token nobody issued resolves to nothing, which is also what a revoked
+  -- and an expired one do — one answer, so a dead link says nothing about
+  -- whether it was ever real.
+  IF EXISTS (SELECT 1 FROM ticket_by_link('hash-of-nothing')) THEN
+    RAISE EXCEPTION 'FAIL: a token nobody issued opened a ticket';
+  END IF;
+
+  RESET ROLE;
+  PERFORM set_config('app.public', 'off', true);
+  PERFORM set_config('app.platform', 'off', true);
+  RAISE NOTICE 'OK  a ticket link is a hash, and nobody may walk the table';
+END
+$$;
