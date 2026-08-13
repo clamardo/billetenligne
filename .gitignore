@@ -13,9 +13,20 @@ infra/dev/firebase-data/data/*
 
 # Editors
 .idea/
-.vscode/
 *.swp
 .DS_Store
+
+# The debug configuration is shared, personal editor settings are not. A
+# launch config that every developer rewrites from a README is a launch config
+# that is wrong on somebody's machine on a Tuesday.
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# Dart Frog's generated route table. Written by `tool/frog_routes.sh` and by
+# `dart_frog dev`; committing generated code is committing something somebody
+# will edit by mistake.
+services/api/.dart_frog/
 
 # Copied from packages/bel_localization/i18n by tool/sync_i18n.sh. Generated,
 # not authored — and a committed copy is a copy somebody will edit by mistake.

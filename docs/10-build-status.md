@@ -316,13 +316,31 @@ dart run tool/check_layers.dart          # the onion rule, 414 files
 And to look at it rather than read about it, against the dev stack:
 
 ```bash
-docker compose -f infra/dev/docker-compose.yml up -d postgres
+docker compose -f infra/dev/docker-compose.yml up -d
+./tool/migrate.sh                                     # a fresh volume has roles and no schema
 ./tool/demo.sh                                        # five companies, and 20 people on coaches
+./tool/api_dev.sh                                     # the API on :8080, hot reload, no env to type
 dart run services/worker/bin/worker.dart onboarding   # approves Niari Express, flags the duplicate
 dart run services/worker/bin/worker.dart compliance   # stops Cars Lékana selling
 dart run services/worker/bin/worker.dart calls        # closes open calls nobody answered
 ./tool/demo.sh --purge                                # and it is gone again
 ```
+
+**In VS Code none of that is typed.** `.vscode/launch.json` holds named
+configurations for the API, the worker and each of the four apps, plus
+compounds that bring up a whole surface at once — the containers, the
+migrations, the demo world, the route table, the server, the drain and a
+handset, in that order, with breakpoints in all of them. Two of the
+compounds need no containers at all: the handset apps on their demo
+gateways, which is the configuration that works on an aeroplane.
+
+The API is launched as `services/api/.dart_frog/server.dart` rather than
+`build/bin/server.dart`, and that is the whole trick: `dart_frog build`
+copies the package into `build/`, so a breakpoint set in `lib/` never binds
+— the process is running a different file that merely has the same contents.
+The generated route table imports the real tree. `tool/frog_routes.sh`
+writes it without starting a server, because the CLI has no command that
+does.
 
 Remove `services/api/build` before counting: `dart_frog build` copies the
 whole workspace into it, and `dart test services/api` then runs every suite

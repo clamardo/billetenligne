@@ -1,0 +1,150 @@
+{
+  // Everything a local run needs, in the order it needs it.
+  //
+  // The chain is `dependsOn`, not documentation: a developer who launches the
+  // API gets the containers, the schema and the route table without knowing
+  // that any of the three exist. That is the whole point — the setup steps
+  // that live in a README are the setup steps somebody skips.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      // The `.env` a run reads. Copied from the committed example rather than
+      // generated, so the file a developer later pastes a real ACS string
+      // into is the same file the first run created — and it is gitignored,
+      // which is why it cannot simply be committed.
+      "label": "dev: env",
+      "type": "shell",
+      "command": "[ -f infra/dev/.env ] || cp infra/dev/.env.example infra/dev/.env",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "silent", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: stack up",
+      "detail": "Postgres, the Firebase Auth emulator, Azurite and Mailpit.",
+      "type": "shell",
+      "command": "docker compose -f infra/dev/docker-compose.yml up -d --wait",
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": "dev: env",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: stack down",
+      "type": "shell",
+      "command": "docker compose -f infra/dev/docker-compose.yml down",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      // Forward-only and safe to repeat. A fresh volume has the roles file and
+      // no schema at all, which used to surface as a 503 nobody could explain.
+      "label": "dev: migrate",
+      "type": "shell",
+      "command": "./tool/migrate.sh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": "dev: stack up",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: seed demo world",
+      "detail": "Operators, roads, coaches and people to look at. Re-running replaces.",
+      "type": "shell",
+      "command": "./tool/demo.sh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": "dev: migrate",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: purge demo world",
+      "type": "shell",
+      "command": "./tool/demo.sh --purge",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      // Dart Frog's route table is generated code. `dart_frog build` writes a
+      // *copy* of the package into build/, and a breakpoint in the sources
+      // never binds against a copy — so the debugger launches
+      // `.dart_frog/server.dart`, which imports the real tree, and this is
+      // what writes it.
+      "label": "api: routes",
+      "type": "shell",
+      "command": "./tool/frog_routes.sh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": "dev: migrate",
+      "presentation": { "reveal": "silent", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      // `bel_localization` is pure Dart, so it cannot declare Flutter assets,
+      // and Flutter refuses `..` in an asset path. The copy is gitignored and
+      // a freshness test fails the build when it drifts — so a fresh clone
+      // has no catalog until this runs, and every app config depends on it.
+      "label": "apps: i18n",
+      "type": "shell",
+      "command": "./tool/sync_i18n.sh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "silent", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "android: emulator",
+      "detail": "Starts an AVD and waits for it to finish booting.",
+      "type": "shell",
+      "command": "flutter emulators --launch ${input:avd} >/dev/null 2>&1 & adb wait-for-device; until [ \"$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r')\" = 1 ]; do sleep 2; done; echo 'emulator ready'",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "test: unit",
+      "type": "shell",
+      "command": "melos run test",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "test", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "test: integration (real Postgres)",
+      "type": "shell",
+      "command": "./tool/integration.sh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "test: smoke (real HTTP)",
+      "type": "shell",
+      "command": "./tool/smoke_api.sh",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "test: layers",
+      "detail": "The onion rule: dependencies point inward.",
+      "type": "shell",
+      "command": "dart run tool/check_layers.dart",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "avd",
+      "type": "promptString",
+      "description": "AVD name (flutter emulators lists them)",
+      "default": "Pixel_7_API_34"
+    }
+  ]
+}

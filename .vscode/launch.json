@@ -1,0 +1,201 @@
+{
+  // Run the whole product on one machine, with breakpoints.
+  //
+  // Nothing here needs a cloud account, a telco credential or a network: the
+  // stack is four containers, the payment rails are fakes that can produce
+  // every terminal state, and Firebase is the emulator on a `demo-` project
+  // (ADR-0020). The two handset apps additionally run with **no server at
+  // all** — the demo configurations below — which is how a screen gets
+  // reviewed by somebody who is not set up to run Postgres.
+  //
+  // Start with the compound **"Everything (API + worker + traveller)"**.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // The generated route table, not `build/` — see the "api: routes" task
+      // for why a breakpoint only binds against one of the two.
+      "name": "API",
+      "type": "dart",
+      "request": "launch",
+      "program": "${workspaceFolder}/services/api/.dart_frog/server.dart",
+      "cwd": "${workspaceFolder}/services/api",
+      "preLaunchTask": "api: routes",
+      "envFile": "${workspaceFolder}/infra/dev/.env",
+      "env": {
+        "PORT": "8080",
+        // Read from disk at composition time, and the API's working directory
+        // is its own package rather than the repo root.
+        "BEL_I18N_DIR": "${workspaceFolder}/packages/bel_localization/i18n"
+      }
+    },
+    {
+      // Every pass, once, then exit — the shape it deploys in. Run it whenever
+      // you want a queued message to actually be sent, a lapsed hold to be
+      // released, or a payment to be reconciled.
+      "name": "Worker — every pass",
+      "type": "dart",
+      "request": "launch",
+      "program": "${workspaceFolder}/services/worker/bin/worker.dart",
+      "cwd": "${workspaceFolder}/services/worker",
+      "preLaunchTask": "dev: migrate",
+      "envFile": "${workspaceFolder}/infra/dev/.env",
+      "env": {
+        "BEL_I18N_DIR": "${workspaceFolder}/packages/bel_localization/i18n"
+      }
+    },
+    {
+      // The drain alone. With no ACS connection string every message is
+      // written to this console, sign-in codes included — which is how you
+      // sign in locally.
+      "name": "Worker — outbox drain only",
+      "type": "dart",
+      "request": "launch",
+      "program": "${workspaceFolder}/services/worker/bin/worker.dart",
+      "cwd": "${workspaceFolder}/services/worker",
+      "args": ["outbox"],
+      "envFile": "${workspaceFolder}/infra/dev/.env",
+      "env": {
+        "BEL_I18N_DIR": "${workspaceFolder}/packages/bel_localization/i18n"
+      }
+    },
+    {
+      "name": "Traveller — demo data, no server",
+      "type": "dart",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/traveller/lib/main.dart",
+      "cwd": "${workspaceFolder}/apps/traveller",
+      "preLaunchTask": "apps: i18n"
+    },
+    {
+      "name": "Traveller — local API",
+      "type": "dart",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/traveller/lib/main.dart",
+      "cwd": "${workspaceFolder}/apps/traveller",
+      "preLaunchTask": "apps: i18n",
+      "toolArgs": [
+        "--dart-define=BEL_API_URL=http://localhost:8080",
+        "--dart-define=BEL_FIREBASE_EMULATOR=localhost:9099"
+      ]
+    },
+    {
+      // `10.0.2.2` is the host machine as seen from inside the Android
+      // emulator. `localhost` there is the emulator itself, which is the
+      // commonest hour lost in this loop.
+      "name": "Traveller — local API (Android emulator)",
+      "type": "dart",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/traveller/lib/main.dart",
+      "cwd": "${workspaceFolder}/apps/traveller",
+      "preLaunchTask": "apps: i18n",
+      "toolArgs": [
+        "--dart-define=BEL_API_URL=http://10.0.2.2:8080",
+        "--dart-define=BEL_FIREBASE_EMULATOR=10.0.2.2:9099"
+      ]
+    },
+    {
+      "name": "Scanner — signed demo departure, no server",
+      "type": "dart",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/scanner/lib/main.dart",
+      "cwd": "${workspaceFolder}/apps/scanner",
+      "preLaunchTask": "apps: i18n"
+    },
+    {
+      // A fixed device id, so the boarding log a killed app picks up again is
+      // the one this run wrote — and so two runs on one machine do not look
+      // like two conductors at one door.
+      "name": "Scanner — local API",
+      "type": "dart",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/scanner/lib/main.dart",
+      "cwd": "${workspaceFolder}/apps/scanner",
+      "preLaunchTask": "apps: i18n",
+      "toolArgs": [
+        "--dart-define=BEL_API_URL=http://localhost:8080",
+        "--dart-define=BEL_FIREBASE_EMULATOR=localhost:9099",
+        "--dart-define=BEL_DEVICE_ID=scanner-dev"
+      ]
+    },
+    {
+      "name": "Scanner — local API (Android emulator)",
+      "type": "dart",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/scanner/lib/main.dart",
+      "cwd": "${workspaceFolder}/apps/scanner",
+      "preLaunchTask": "apps: i18n",
+      "toolArgs": [
+        "--dart-define=BEL_API_URL=http://10.0.2.2:8080",
+        "--dart-define=BEL_FIREBASE_EMULATOR=10.0.2.2:9099",
+        "--dart-define=BEL_DEVICE_ID=scanner-dev"
+      ]
+    },
+    {
+      // The console and the back office have **no demo mode on purpose**: an
+      // operator surface that invents its own tenant teaches the opposite of
+      // what the surface is for. Both default to `localhost:8080` and the
+      // Auth emulator with no defines at all.
+      "name": "Console (Chrome)",
+      "type": "dart",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/console/lib/main.dart",
+      "cwd": "${workspaceFolder}/apps/console",
+      "preLaunchTask": "apps: i18n",
+      "deviceId": "chrome"
+    },
+    {
+      "name": "Admin back office (Chrome)",
+      "type": "dart",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/admin/lib/main.dart",
+      "cwd": "${workspaceFolder}/apps/admin",
+      "preLaunchTask": "apps: i18n",
+      "deviceId": "chrome"
+    }
+  ],
+  "compounds": [
+    {
+      // The one to press first. Containers, schema, route table, server,
+      // drain and a handset — in that order, from nothing.
+      "name": "Everything (API + worker + traveller)",
+      "configurations": [
+        "API",
+        "Worker — outbox drain only",
+        "Traveller — local API"
+      ],
+      "preLaunchTask": "dev: seed demo world",
+      "stopAll": true
+    },
+    {
+      "name": "Back office (API + worker + console + admin)",
+      "configurations": [
+        "API",
+        "Worker — outbox drain only",
+        "Console (Chrome)",
+        "Admin back office (Chrome)"
+      ],
+      "preLaunchTask": "dev: seed demo world",
+      "stopAll": true
+    },
+    {
+      "name": "The door (API + worker + scanner)",
+      "configurations": [
+        "API",
+        "Worker — outbox drain only",
+        "Scanner — local API"
+      ],
+      "preLaunchTask": "dev: seed demo world",
+      "stopAll": true
+    },
+    {
+      // No containers, no server, no schema: both handset apps on their demo
+      // gateways. This is the configuration that works on an aeroplane.
+      "name": "Demo only (traveller + scanner, no server)",
+      "configurations": [
+        "Traveller — demo data, no server",
+        "Scanner — signed demo departure, no server"
+      ],
+      "stopAll": true
+    }
+  ]
+}

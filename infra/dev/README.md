@@ -2,10 +2,19 @@
 
 ```bash
 cp .env.example .env
-docker compose up
+docker compose up -d
+../../tool/migrate.sh          # a fresh volume has roles and no schema
+../../tool/demo.sh             # a world to look at, optional
+../../tool/api_dev.sh          # the API on http://localhost:8080
 ```
 
 That is the whole setup. No cloud credentials, no network required (ADR-0020).
+
+**In VS Code, none of the above is typed.** `.vscode/launch.json` carries the
+whole thing: press **Everything (API + worker + traveller)** and the compose
+stack, the migrations, the demo world, the route table, the server, the drain
+and a handset come up in that order, with breakpoints in all of them. The
+tasks it chains are also individually runnable from *Run Task*.
 
 | Service | URL | Notes |
 |---|---|---|
@@ -20,6 +29,20 @@ That is the whole setup. No cloud credentials, no network required (ADR-0020).
 The Auth emulator does not send SMS. Any phone number accepts the code
 **`123456`**. Seeded personas are listed in [`seed/README.md`](seed/README.md), which also
 explains the demo world and how to remove it.
+
+## Running without any of this
+
+`docker compose up` is not required to look at the two handset apps. Both run
+on demo gateways with no server at all — a working funnel and a signed demo
+departure — which is the **Demo only** compound in `.vscode/launch.json`, or:
+
+```bash
+flutter run                # from apps/traveller or apps/scanner
+```
+
+The console and the back office have no such mode, and that is deliberate: an
+operator surface that invents its own tenant teaches the opposite of what the
+surface is for.
 
 ## Working on the domain only
 
