@@ -72,6 +72,12 @@
       "preLaunchTask": "apps: i18n"
     },
     {
+      // One config, right on every device. There used to be a second one
+      // saying `10.0.2.2` — the host machine as seen from inside the Android
+      // emulator, where `localhost` is the emulator itself and a request to
+      // it hangs rather than fails. Picking the wrong one of two configs
+      // presents as a spinner that never stops, so the app now resolves the
+      // host itself (`_reachable` in main.dart) and there is one to pick.
       "name": "Traveller — local API",
       "type": "dart",
       "request": "launch",
@@ -81,21 +87,6 @@
       "toolArgs": [
         "--dart-define=BEL_API_URL=http://localhost:8080",
         "--dart-define=BEL_FIREBASE_EMULATOR=localhost:9099"
-      ]
-    },
-    {
-      // `10.0.2.2` is the host machine as seen from inside the Android
-      // emulator. `localhost` there is the emulator itself, which is the
-      // commonest hour lost in this loop.
-      "name": "Traveller — local API (Android emulator)",
-      "type": "dart",
-      "request": "launch",
-      "program": "${workspaceFolder}/apps/traveller/lib/main.dart",
-      "cwd": "${workspaceFolder}/apps/traveller",
-      "preLaunchTask": "apps: i18n",
-      "toolArgs": [
-        "--dart-define=BEL_API_URL=http://10.0.2.2:8080",
-        "--dart-define=BEL_FIREBASE_EMULATOR=10.0.2.2:9099"
       ]
     },
     {
@@ -119,19 +110,6 @@
       "toolArgs": [
         "--dart-define=BEL_API_URL=http://localhost:8080",
         "--dart-define=BEL_FIREBASE_EMULATOR=localhost:9099",
-        "--dart-define=BEL_DEVICE_ID=scanner-dev"
-      ]
-    },
-    {
-      "name": "Scanner — local API (Android emulator)",
-      "type": "dart",
-      "request": "launch",
-      "program": "${workspaceFolder}/apps/scanner/lib/main.dart",
-      "cwd": "${workspaceFolder}/apps/scanner",
-      "preLaunchTask": "apps: i18n",
-      "toolArgs": [
-        "--dart-define=BEL_API_URL=http://10.0.2.2:8080",
-        "--dart-define=BEL_FIREBASE_EMULATOR=10.0.2.2:9099",
         "--dart-define=BEL_DEVICE_ID=scanner-dev"
       ]
     },

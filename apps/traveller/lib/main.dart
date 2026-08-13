@@ -45,7 +45,7 @@ Future<void> main() async {
 
   final catalog = await CatalogAssets.load();
   final language = _deviceLanguage();
-  const apiUrl = String.fromEnvironment('BEL_API_URL');
+  final apiUrl = _reachable(const String.fromEnvironment('BEL_API_URL'));
 
   final TravelGateway gateway;
   final IdentityGateway identity;
@@ -172,13 +172,39 @@ FirebaseClientConfig _firebaseConfig() {
   );
 
   if (emulator.isNotEmpty) {
-    return FirebaseClientConfig.emulator(projectId: projectId, host: emulator);
+    return FirebaseClientConfig.emulator(
+      projectId: projectId,
+      host: _reachable(emulator),
+    );
   }
 
   return const FirebaseClientConfig(
     apiKey: String.fromEnvironment('BEL_FIREBASE_API_KEY'),
     projectId: projectId,
   );
+}
+
+/// `localhost`, as seen from wherever this app is actually running.
+///
+/// On the Android emulator `localhost` is the *emulator*, and the machine that
+/// started it is `10.0.2.2`. Nothing listens on the emulator's own loopback,
+/// so a request there does not fail — it hangs until the socket times out,
+/// which presents as a spinner that never stops. That is a genuinely hard bug
+/// to read, and it cost this project an evening.
+///
+/// Rewriting it here rather than in the launch configuration means there is
+/// **one** way to point this app at a local server, and it is right whether
+/// the app is on the emulator, on a desktop build or in a test. A real device
+/// is untouched: it needs the machine's address on the network, which is
+/// neither of these names and so falls straight through.
+///
+/// Deployed builds never see this. `BEL_API_URL` is then a public hostname,
+/// and a URL that is not loopback is returned exactly as it was given.
+String _reachable(String value) {
+  if (!Platform.isAndroid || value.isEmpty) return value;
+  return value
+      .replaceAll('localhost', '10.0.2.2')
+      .replaceAll('127.0.0.1', '10.0.2.2');
 }
 
 /// The handset's language if we speak it, French otherwise.

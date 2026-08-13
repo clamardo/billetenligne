@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:bel_backoffice/bel_backoffice.dart';
 import 'package:bel_client/bel_client.dart';
 import 'package:bel_contracts/bel_contracts.dart';
@@ -38,7 +40,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final catalog = await CatalogAssets.load();
-  const apiUrl = String.fromEnvironment('BEL_API_URL');
+  final apiUrl = _reachable(const String.fromEnvironment('BEL_API_URL'));
 
   // Where the boarding log lives between launches. A failure to open it is
   // not a failure to start — the door still works, and the queue behaves as
@@ -106,6 +108,25 @@ String _deviceId() {
       '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
 }
 
+/// `localhost`, as seen from wherever this app is actually running.
+///
+/// On the Android emulator `localhost` is the *emulator*, and the machine that
+/// started it is `10.0.2.2`. Nothing listens on the emulator's own loopback,
+/// so a request there does not fail — it hangs until the socket times out,
+/// which presents as a spinner that never stops.
+///
+/// Rewriting it here rather than in the launch configuration means there is
+/// one way to point this app at a local server and it is right everywhere. A
+/// real handset is untouched: it needs the machine's address on the network,
+/// which is neither of these names. A deployed build never sees this, because
+/// `BEL_API_URL` is then a public hostname.
+String _reachable(String value) {
+  if (!Platform.isAndroid || value.isEmpty) return value;
+  return value
+      .replaceAll('localhost', '10.0.2.2')
+      .replaceAll('127.0.0.1', '10.0.2.2');
+}
+
 /// Which Firebase, and how to reach it. The API key is not a secret — it
 /// identifies a project rather than authorising anything.
 FirebaseClientConfig _firebaseConfig() {
@@ -116,7 +137,10 @@ FirebaseClientConfig _firebaseConfig() {
   );
 
   if (emulator.isNotEmpty) {
-    return FirebaseClientConfig.emulator(projectId: projectId, host: emulator);
+    return FirebaseClientConfig.emulator(
+      projectId: projectId,
+      host: _reachable(emulator),
+    );
   }
   return const FirebaseClientConfig(
     apiKey: String.fromEnvironment('BEL_FIREBASE_API_KEY'),
