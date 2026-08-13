@@ -99,6 +99,26 @@
       "problemMatcher": []
     },
     {
+      // No prompt and no AVD name written down, because a name in a committed
+      // file is right on one machine. If a device is already attached this
+      // does nothing at all — which is the common case, and the case where
+      // being asked to name an emulator is pure friction.
+      "label": "dev: device ready",
+      "detail": "Attaches an Android device, starting the first emulator if none is.",
+      "type": "shell",
+      "command": "if adb devices | grep -qw device; then echo 'device already attached'; exit 0; fi; avd=$(flutter emulators 2>/dev/null | awk -F' *• *' '/•/ && $1 != \"Id\" {print $1; exit}'); if [ -z \"$avd\" ]; then echo 'no AVD — create one: flutter emulators --create'; exit 1; fi; echo \"starting $avd\"; flutter emulators --launch \"$avd\"; adb wait-for-device; until [ \"$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')\" = 1 ]; do sleep 2; done; echo 'emulator ready'",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      // Everything the "Everything" compound needs before anything launches:
+      // containers, schema, the demo world, and a handset to run on.
+      "label": "dev: everything ready",
+      "dependsOn": ["dev: seed demo world", "dev: device ready"],
+      "problemMatcher": []
+    },
+    {
       "label": "android: emulator",
       "detail": "Starts an AVD and waits for it to finish booting.",
       "type": "shell",

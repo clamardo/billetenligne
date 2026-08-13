@@ -138,15 +138,35 @@
   ],
   "compounds": [
     {
-      // The one to press first. Containers, schema, route table, server,
-      // drain and a handset — in that order, from nothing.
-      "name": "Everything (API + worker + traveller)",
+      // The one to press first, and it means it: containers, schema, the demo
+      // world, a handset, then every surface this product has. Nothing to
+      // choose and nothing else to start.
+      //
+      // The traveller and the scanner share one emulator, so the second to
+      // launch comes up in front — both are installed, and the launcher
+      // switches between them.
+      "name": "Everything",
+      "configurations": [
+        "API",
+        "Worker — outbox drain only",
+        "Console (Chrome)",
+        "Admin back office (Chrome)",
+        "Traveller — local API",
+        "Scanner — local API"
+      ],
+      "preLaunchTask": "dev: everything ready",
+      "stopAll": true
+    },
+    {
+      // The narrower loop, for when the console and the back office are not
+      // what is being worked on.
+      "name": "Traveller loop (API + worker + traveller)",
       "configurations": [
         "API",
         "Worker — outbox drain only",
         "Traveller — local API"
       ],
-      "preLaunchTask": "dev: seed demo world",
+      "preLaunchTask": "dev: everything ready",
       "stopAll": true
     },
     {
