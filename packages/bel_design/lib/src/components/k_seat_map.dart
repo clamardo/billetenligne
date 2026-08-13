@@ -97,6 +97,7 @@ final class KSeatMap extends StatelessWidget {
     required this.onToggle,
     required this.labels,
     this.maxSelectable = 6,
+    this.editing = false,
     super.key,
   });
 
@@ -111,6 +112,17 @@ final class KSeatMap extends StatelessWidget {
   final void Function(KSeat seat) onToggle;
   final KSeatMapLabels labels;
   final int maxSelectable;
+
+  /// Whether every seat can be tapped, including the ones a traveller cannot
+  /// buy.
+  ///
+  /// False when somebody is choosing a seat, and that is not a detail: a
+  /// sold seat that answers a tap is a sold seat somebody believes they have
+  /// bought. True in the console's layout builder, where the thing being
+  /// edited is the coach rather than a booking — an operator who blocks 7C
+  /// has to be able to change their mind, and a blocked seat that refuses the
+  /// tap is a decision with no way back.
+  final bool editing;
 
   @override
   Widget build(BuildContext context) {
@@ -154,6 +166,7 @@ final class KSeatMap extends StatelessWidget {
                 selected: selected,
                 cell: cell,
                 onToggle: onToggle,
+                editing: editing,
               ),
             );
         }
@@ -217,6 +230,7 @@ class _SectionGrid extends StatelessWidget {
     required this.selected,
     required this.cell,
     required this.onToggle,
+    required this.editing,
   });
 
   final KSection section;
@@ -224,6 +238,7 @@ class _SectionGrid extends StatelessWidget {
   final Set<String> selected;
   final double cell;
   final void Function(KSeat) onToggle;
+  final bool editing;
 
   @override
   Widget build(BuildContext context) {
@@ -249,6 +264,7 @@ class _SectionGrid extends StatelessWidget {
                 size: cell,
                 isSelected: selected.contains(seat.label),
                 onTap: () => onToggle(seat),
+                editing: editing,
               ),
             ),
           );
@@ -280,14 +296,16 @@ class _SeatTile extends StatelessWidget {
     required this.size,
     required this.isSelected,
     required this.onTap,
+    this.editing = false,
   });
 
   final KSeat seat;
   final double size;
   final bool isSelected;
   final VoidCallback onTap;
+  final bool editing;
 
-  bool get _selectable => seat.state == KSeatState.available;
+  bool get _selectable => editing || seat.state == KSeatState.available;
 
   @override
   Widget build(BuildContext context) {

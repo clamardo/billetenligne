@@ -4,6 +4,7 @@ common:
   actions:
     save: "Save"
     copy: "Copy"
+    add: "Add"
     done: "Done"
     search: "Search"
     book: "Book"

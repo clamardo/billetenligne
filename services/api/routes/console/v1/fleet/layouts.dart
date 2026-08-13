@@ -211,18 +211,72 @@ Future<Response> onRequest(RequestContext context) async {
     );
   }
 
+  final features = _featuresFrom(body['features']);
+  if (features.invalid) return (layout: null, field: features.field);
+
   final layout = SeatLayout(
     version: 1,
     mode: body['mode'] == 'air' ? TransportMode.air : TransportMode.bus,
     sections: parsed,
+    features: features.value,
     blocked: {for (final b in (body['blocked'] as List? ?? const [])) '$b'},
   );
+
+  // A blocked seat that is not in the layout is not a harmless extra: it is a
+  // capacity the operator believes they blocked and did not, and it surfaces
+  // as a seat somebody buys on a coach with a wheel arch where it should be.
+  // Refused rather than dropped, because dropping it is the silent version.
+  final labels = layout.allSeatLabels().toSet();
+  for (final b in layout.blocked) {
+    if (!labels.contains(b)) return (layout: null, field: 'blocked');
+  }
 
   // A layout with no sellable seat is a departure nobody can book. Refusing it
   // here beats discovering it when a dispatcher publishes a timetable.
   if (layout.capacity < 1) return (layout: null, field: 'sections');
 
   return (layout: layout, field: null);
+}
+
+/// Doors, stairs and the lavatory, as the console draws them.
+///
+/// A closed set of types, because each one has a glyph on the traveller's seat
+/// map: a free-text type would render as a blank square on the one screen it
+/// exists for. Coordinates are bounded rather than merely non-negative — an
+/// operator's typo must not put a door at row four thousand and stretch every
+/// seat map that draws it.
+({List<LayoutFeature> value, bool invalid, String field}) _featuresFrom(
+  Object? raw,
+) {
+  if (raw == null) return (value: const [], invalid: false, field: '');
+  if (raw is! List) {
+    return (value: const [], invalid: true, field: 'features');
+  }
+
+  final out = <LayoutFeature>[];
+  for (var i = 0; i < raw.length; i++) {
+    final f = raw[i];
+    if (f is! Map) return (value: const [], invalid: true, field: 'features[$i]');
+
+    final type = LayoutFeatureType.values
+        .where((t) => t.name == f['type'])
+        .firstOrNull;
+    if (type == null) {
+      return (value: const [], invalid: true, field: 'features[$i].type');
+    }
+
+    final row = f['row'];
+    final col = f['col'];
+    if (row is! int || row < 0 || row > _maxRows) {
+      return (value: const [], invalid: true, field: 'features[$i].row');
+    }
+    if (col is! int || col < 0 || col > 10) {
+      return (value: const [], invalid: true, field: 'features[$i].col');
+    }
+
+    out.add(LayoutFeature(type, row: row, col: col));
+  }
+  return (value: out, invalid: false, field: '');
 }
 
 /// Two ways to price a section, and never both.

@@ -39,7 +39,7 @@ push, including the gaps.
 | `services/api` — three surfaces, middleware, every route | ✅ 263 tests + 445 smoke checks |
 | `services/worker` — outbox, payments, refunds, sweeps, compliance | ✅ 74 tests on real Postgres |
 | Database — schema, RLS, ledger, public sales boundary | ✅ 45 guarantees verified |
-| Everything against real Postgres | ✅ 505 integration tests |
+| Everything against real Postgres | ✅ 506 integration tests |
 | `apps/traveller` — search, seat map, pay, wallet, offline tickets | ✅ 230 tests |
 | `apps/scanner` — offline boarding, signed manifest, SQLite log | ✅ 47 tests |
 | `apps/console` — fleet, routes, timetables, refunds, payouts | ✅ 125 tests |
@@ -50,13 +50,13 @@ push, including the gaps.
 
 ```bash
 dart test packages/bel_domain                   # 2 s, no containers
-dart run tool/check_layers.dart                 # onion dependency rule, 414 files
+dart run tool/check_layers.dart                 # onion dependency rule, 421 files
 ./infra/migrations/check.sh                     # 45 schema guarantees (needs Docker)
-./tool/integration.sh                           # 505 tests on real Postgres
+./tool/integration.sh                           # 506 tests on real Postgres
 ./tool/smoke_api.sh                             # 445 checks, incl. the Dart client
 ```
 
-**1,427 tests in total**, plus the smoke checks, the schema guarantees, the
+**1,439 tests in total**, plus the smoke checks, the schema guarantees, the
 integration suite and 10 tests against real Azurite. The full command list is
 in [`docs/10-build-status.md`](docs/10-build-status.md).
 

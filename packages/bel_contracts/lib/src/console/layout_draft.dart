@@ -19,19 +19,38 @@ final class LayoutDraft {
     required this.name,
     this.mode = TransportMode.bus,
     this.sections = const [],
+    this.blocked = const {},
+    this.features = const [],
   });
 
   final String name;
   final TransportMode mode;
   final List<CabinSection> sections;
 
+  /// Seats that exist and are not for sale — a wheel arch under 7C, a seat
+  /// with no window an operator refuses to sell as one.
+  ///
+  /// **Not a shorter section.** The seat keeps its label, so the manifest, the
+  /// ticket and the conductor's count all still agree with the physical coach;
+  /// what changes is only whether it can be bought.
+  final Set<String> blocked;
+
+  /// Doors, stairs, the lavatory. Drawn on the seat map so a traveller
+  /// choosing 12A knows it is beside the WC before they pay rather than after.
+  final List<LayoutFeature> features;
+
   /// Whether the server would accept it. Asked *before* the request, so the
   /// save button is disabled with a reason rather than enabled into a 400.
   bool get isValid =>
       name.trim().isNotEmpty && layout.isValid && layout.capacity > 0;
 
-  SeatLayout get layout =>
-      SeatLayout(version: 1, mode: mode, sections: sections);
+  SeatLayout get layout => SeatLayout(
+    version: 1,
+    mode: mode,
+    sections: sections,
+    features: features,
+    blocked: blocked,
+  );
 
   /// What the operator is watching while they draw. Every keystroke changes
   /// it, which is the whole point of a builder over a form.
@@ -50,16 +69,27 @@ final class LayoutDraft {
     String? name,
     TransportMode? mode,
     List<CabinSection>? sections,
+    Set<String>? blocked,
+    List<LayoutFeature>? features,
   }) => LayoutDraft(
     name: name ?? this.name,
     mode: mode ?? this.mode,
     sections: sections ?? this.sections,
+    blocked: blocked ?? this.blocked,
+    features: features ?? this.features,
   );
 
   Map<String, Object?> toJson() => {
     'name': name.trim(),
     'mode': mode.name,
     'sections': [for (final s in sections) encodeSection(s)],
+    // Sorted, so two drafts describing the same coach produce the same bytes.
+    // A `Set` has no order, and an unordered list on the wire is a diff that
+    // reports a change nobody made.
+    'blocked': blocked.toList()..sort(),
+    'features': [
+      for (final f in features) {'type': f.type.name, 'row': f.row, 'col': f.col},
+    ],
   };
 
   /// One section, in the shape the route reads.

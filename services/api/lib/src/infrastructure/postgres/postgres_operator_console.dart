@@ -734,7 +734,7 @@ final class PostgresOperatorConsole implements OperatorConsole {
                r.duration_minutes,
                v.seat_layout_id, v.status AS vehicle_status,
                v.amenities, v.mode,
-               l.sections, l.blocked, l.capacity
+               l.sections, l.features, l.blocked, l.capacity
           FROM departure_patterns p
           JOIN routes r ON r.id = p.route_id
           LEFT JOIN vehicles v ON v.id = p.default_vehicle_id
@@ -2067,8 +2067,37 @@ final class PostgresOperatorConsole implements OperatorConsole {
         orElse: () => TransportMode.bus,
       ),
       sections: sections,
+      // Read back as well as written. A decoder that quietly returns a coach
+      // with no doors is a coach whose doors reappear only where somebody
+      // wrote a second decoder — which is the thing this method exists to
+      // prevent.
+      features: decodeFeatures(p['features']),
       blocked: {for (final b in (p['blocked'] as List?) ?? const []) '$b'},
     );
+  }
+
+  /// The fittings column → the domain's list. Unknown types are dropped
+  /// rather than thrown on: a layout drawn by a newer console must still be
+  /// sellable by an older server, and a glyph nobody can draw is not a reason
+  /// to refuse a departure.
+  static List<LayoutFeature> decodeFeatures(Object? raw) {
+    final decoded = raw is String ? jsonDecode(raw) : raw;
+    final out = <LayoutFeature>[];
+    for (final entry in (decoded as List? ?? const [])) {
+      final f = (entry as Map).cast<String, Object?>();
+      final type = LayoutFeatureType.values
+          .where((t) => t.name == f['type'])
+          .firstOrNull;
+      if (type == null) continue;
+      out.add(
+        LayoutFeature(
+          type,
+          row: f['row'] as int? ?? 0,
+          col: f['col'] as int? ?? 0,
+        ),
+      );
+    }
+    return out;
   }
 }
 

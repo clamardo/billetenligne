@@ -38,6 +38,15 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
   /// wrong one: the operator can see what a section is, and change it.
   final _sections = <_SectionEditor>[_SectionEditor()];
 
+  /// Seats that exist and are not for sale. Held by label rather than by
+  /// position, because a label is what the manifest, the ticket and the
+  /// conductor all say — and because inserting a row above a blocked seat
+  /// must move the block with it, which positions would not do.
+  final _blocked = <String>{};
+
+  /// Doors, stairs and the lavatory.
+  final _features = <LayoutFeature>[];
+
   @override
   void dispose() {
     _name.dispose();
@@ -62,7 +71,20 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
       sections.add(section);
       startRow += section.rows;
     }
-    return LayoutDraft(name: _name.text, mode: _mode, sections: sections);
+    // Blocks are kept even while the seat they name is gone — a row count
+    // being retyped from 10 to 1 to 12 must not silently drop the wheel arch
+    // somebody marked — so they are filtered to what currently exists here,
+    // at the edge, rather than deleted from the set.
+    final layout = SeatLayout(version: 1, mode: _mode, sections: sections);
+    final labels = layout.allSeatLabels().toSet();
+
+    return LayoutDraft(
+      name: _name.text,
+      mode: _mode,
+      sections: sections,
+      blocked: {for (final b in _blocked) if (labels.contains(b)) b},
+      features: List.unmodifiable(_features),
+    );
   }
 
   @override
@@ -209,6 +231,13 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
         SizedBox(height: kilo.space.s5),
 
         Text(context.t('console.fleet.builder.sections'), style: kilo.text.h2),
+        if (_movedBlocks) ...[
+          SizedBox(height: kilo.space.s2),
+          Text(
+            context.t('console.fleet.builder.reorderDroppedBlocks'),
+            style: kilo.text.caption.copyWith(color: kilo.color.danger),
+          ),
+        ],
         SizedBox(height: kilo.space.s3),
 
         for (var i = 0; i < _sections.length; i++)
@@ -224,6 +253,14 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
               onRemove: _sections.length == 1
                   ? null
                   : () => setState(() => _sections.removeAt(i).dispose()),
+              // Order is physical: section one is at the front. Getting VIP
+              // and standard the wrong way round meant deleting both and
+              // retyping them, which is how somebody loses a fare they had
+              // already set.
+              onMoveUp: i == 0 ? null : () => _move(i, i - 1),
+              onMoveDown: i == _sections.length - 1
+                  ? null
+                  : () => _move(i, i + 1),
               onChanged: () => setState(() {}),
             ),
           ),
@@ -242,6 +279,42 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
         ),
       ],
     );
+  }
+
+  /// Swaps two sections, and the blocks with them.
+  ///
+  /// **The labels move.** A block is held by label, and labels are computed
+  /// from a section's position — so moving VIP behind standard renames every
+  /// seat in both, and a block left on its old label would land on somebody
+  /// else's seat. Rather than remapping, which needs a rule for a section that
+  /// changed size in between, the blocks in the two sections are dropped and
+  /// the operator is told. Losing two taps is better than blocking the wrong
+  /// seat quietly.
+  void _move(int from, int to) => setState(() {
+    final blocksBefore = _blocked.length;
+    final section = _sections.removeAt(from);
+    _sections.insert(to, section);
+    _blocked.removeAll(_labelsIn(from));
+    _blocked.removeAll(_labelsIn(to));
+    _movedBlocks = blocksBefore != _blocked.length;
+  });
+
+  /// True when the last reorder dropped blocks, so the screen can say so once.
+  var _movedBlocks = false;
+
+  /// Every label the section at [i] currently owns.
+  Set<String> _labelsIn(int i) {
+    if (i < 0 || i >= _sections.length) return const {};
+    final section = _sections[i].toDomain(
+      startRow: _startRowOf(i),
+      numbering: _numbering,
+    );
+    if (section == null) return const {};
+    return SeatLayout(
+      version: 1,
+      mode: _mode,
+      sections: [section],
+    ).allSeatLabels().toSet();
   }
 
   /// Where section [i] begins, counting only the sections above it that can
@@ -272,7 +345,14 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
         // differently.
         Text(context.t('console.fleet.builder.preview'), style: kilo.text.h2),
         SizedBox(height: kilo.space.s3),
-        if (labels.isNotEmpty)
+        if (labels.isNotEmpty) ...[
+          Text(
+            context.t('console.fleet.builder.tapToBlock'),
+            style: kilo.text.caption.copyWith(
+              color: kilo.color.contentSecondary,
+            ),
+          ),
+          SizedBox(height: kilo.space.s2),
           KCard(
             child: KSeatMap(
               sections: [
@@ -286,11 +366,26 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
               ],
               seats: [
                 for (final label in labels)
-                  KSeat(label: label, state: KSeatState.available),
+                  KSeat(
+                    label: label,
+                    // The same drawing the traveller will see, which is the
+                    // point of previewing here at all: an operator who blocks
+                    // 7C sees exactly what somebody choosing a seat will.
+                    state: _blocked.contains(label)
+                        ? KSeatState.blocked
+                        : KSeatState.available,
+                  ),
               ],
               selected: const {},
-              // Nothing to select: this is a drawing of a coach, not a sale.
-              onToggle: (_) {},
+              // The coach is being drawn, not sold from: a blocked seat has to
+              // answer a tap or blocking one is a decision with no way back.
+              editing: true,
+              // Not a sale — a drawing. Tapping toggles whether the seat can
+              // ever be sold, which is why the map is here rather than a grid
+              // of checkboxes: the thing being edited is the coach.
+              onToggle: (seat) => setState(() {
+                if (!_blocked.remove(seat.label)) _blocked.add(seat.label);
+              }),
               labels: KSeatMapLabels(
                 front: context.t('travel.seatmap.front'),
                 free: context.t('travel.seatmap.free'),
@@ -299,6 +394,202 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
               ),
             ),
           ),
+          if (draft.blocked.isNotEmpty) ...[
+            SizedBox(height: kilo.space.s2),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    context.t('console.fleet.builder.blockedCount', {
+                      'count': draft.blocked.length,
+                    }),
+                    style: kilo.text.caption,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => setState(_blocked.clear),
+                  child: Text(
+                    context.t('console.fleet.builder.unblockAll'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          SizedBox(height: kilo.space.s5),
+          _featureEditor(context),
+        ],
+      ],
+    );
+  }
+
+  /// Doors, stairs and the lavatory.
+  ///
+  /// A list rather than a drag onto the map, and the reason is the map: a
+  /// door does not sit *on* a seat, it sits between two rows, and inventing a
+  /// drop target for a coordinate the seat map does not draw would be a
+  /// gesture that lies about where the thing ends up. Row and column are the
+  /// numbers the format actually stores, so what is typed is what is saved.
+  Widget _featureEditor(BuildContext context) {
+    final kilo = context.kilo;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(context.t('console.fleet.builder.features'), style: kilo.text.h2),
+        SizedBox(height: kilo.space.s2),
+        Text(
+          context.t('console.fleet.builder.featuresHint'),
+          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
+        ),
+        SizedBox(height: kilo.space.s3),
+
+        for (var i = 0; i < _features.length; i++)
+          Padding(
+            padding: EdgeInsets.only(bottom: kilo.space.s2),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    context.t('console.fleet.builder.featureAt', {
+                      'feature': context.t(
+                        'console.fleet.builder.featureTypes.'
+                        '${_features[i].type.name}',
+                      ),
+                      'row': _features[i].row,
+                      'col': _features[i].col,
+                    }),
+                    style: kilo.text.body,
+                  ),
+                ),
+                IconButton(
+                  tooltip: context.t('console.fleet.builder.removeFeature'),
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => setState(() => _features.removeAt(i)),
+                ),
+              ],
+            ),
+          ),
+
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: KButton(
+            label: context.t('console.fleet.builder.addFeature'),
+            fullWidth: false,
+            tone: KButtonTone.secondary,
+            icon: Icons.add,
+            // Eight is more than any coach in this market carries, and the
+            // cap is here rather than on the server alone so the control
+            // stops being offered rather than starting to refuse.
+            onPressed: _features.length >= 8 ? null : _addFeature,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _addFeature() async {
+    final added = await showDialog<LayoutFeature>(
+      context: context,
+      builder: (context) => const _FeatureDialog(),
+    );
+    if (added != null) setState(() => _features.add(added));
+  }
+}
+
+/// Where a door goes, asked once.
+///
+/// A dialog rather than three inline fields, because a half-typed coordinate
+/// in a list that redraws the preview on every keystroke puts a lavatory at
+/// row 1 while somebody is typing 12.
+class _FeatureDialog extends StatefulWidget {
+  const _FeatureDialog();
+
+  @override
+  State<_FeatureDialog> createState() => _FeatureDialogState();
+}
+
+class _FeatureDialogState extends State<_FeatureDialog> {
+  var _type = LayoutFeatureType.door;
+  final _row = TextEditingController(text: '1');
+  final _col = TextEditingController(text: '0');
+
+  @override
+  void dispose() {
+    _row.dispose();
+    _col.dispose();
+    super.dispose();
+  }
+
+  LayoutFeature? get _value {
+    final row = int.tryParse(_row.text.trim());
+    final col = int.tryParse(_col.text.trim());
+    if (row == null || row < 0 || row > 200) return null;
+    if (col == null || col < 0 || col > 10) return null;
+    return LayoutFeature(_type, row: row, col: col);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+
+    return AlertDialog(
+      title: Text(context.t('console.fleet.builder.addFeature')),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButtonFormField<LayoutFeatureType>(
+            initialValue: _type,
+            decoration: InputDecoration(
+              labelText: context.t('console.fleet.builder.featureType'),
+            ),
+            items: [
+              for (final t in LayoutFeatureType.values)
+                DropdownMenuItem(
+                  value: t,
+                  child: Text(
+                    context.t(
+                      'console.fleet.builder.featureTypes.${t.name}',
+                    ),
+                  ),
+                ),
+            ],
+            onChanged: (v) => setState(() => _type = v ?? _type),
+          ),
+          SizedBox(height: kilo.space.s3),
+          Row(
+            children: [
+              Expanded(
+                child: KField(
+                  label: context.t('console.fleet.builder.featureRow'),
+                  controller: _row,
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              SizedBox(width: kilo.space.s3),
+              Expanded(
+                child: KField(
+                  label: context.t('console.fleet.builder.featureCol'),
+                  controller: _col,
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(context.t('common.actions.cancel')),
+        ),
+        TextButton(
+          onPressed: _value == null
+              ? null
+              : () => Navigator.of(context).pop(_value),
+          child: Text(context.t('common.actions.add')),
+        ),
       ],
     );
   }
@@ -387,6 +678,8 @@ class _SectionCard extends StatelessWidget {
     required this.index,
     required this.startRow,
     required this.onRemove,
+    required this.onMoveUp,
+    required this.onMoveDown,
     required this.onChanged,
   });
 
@@ -394,6 +687,8 @@ class _SectionCard extends StatelessWidget {
   final int index;
   final int startRow;
   final VoidCallback? onRemove;
+  final VoidCallback? onMoveUp;
+  final VoidCallback? onMoveDown;
   final VoidCallback onChanged;
 
   @override
@@ -425,6 +720,16 @@ class _SectionCard extends StatelessWidget {
                 style: kilo.text.caption.copyWith(
                   color: kilo.color.contentSecondary,
                 ),
+              ),
+              IconButton(
+                tooltip: context.t('console.fleet.builder.moveUp'),
+                icon: const Icon(Icons.arrow_upward),
+                onPressed: onMoveUp,
+              ),
+              IconButton(
+                tooltip: context.t('console.fleet.builder.moveDown'),
+                icon: const Icon(Icons.arrow_downward),
+                onPressed: onMoveDown,
               ),
               if (onRemove != null)
                 IconButton(

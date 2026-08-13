@@ -4,6 +4,7 @@ common:
   actions:
     save: "Enregistrer"
     copy: "Copier"
+    add: "Ajouter"
     done: "Terminé"
     search: "Rechercher"
     book: "Réserver"

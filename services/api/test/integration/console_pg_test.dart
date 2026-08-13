@@ -371,6 +371,59 @@ void main() {
       // path (ADR-0017).
       expect(fares.values.toSet(), {10000, 15000});
     });
+
+    test('a condemned seat is never created, and never sold', () async {
+      // A wheel arch under 3C and a seat with no window at 7A. The layout
+      // still describes a forty-seat coach; two of them are not for sale.
+      final drawn = SeatLayout(
+        version: 1,
+        mode: TransportMode.bus,
+        sections: const [
+          CabinSection(
+            code: 'STD',
+            labelKey: 'seat.class.standard',
+            rows: 10,
+            abreast: '2+2',
+          ),
+        ],
+        features: const [LayoutFeature(LayoutFeatureType.door, row: 5, col: 2)],
+        blocked: const {'3C', '7A'},
+      );
+
+      final f = await fleet(layout: drawn);
+      final patternId = await pattern(vehicleId: f.vehicleId);
+
+      await console.materialise(
+        operatorId: operatorId,
+        patternId: patternId,
+        from: DateTime.utc(2028, 3, 5),
+        to: DateTime.utc(2028, 3, 5),
+      );
+
+      final board = await console.board(
+        operatorId: operatorId,
+        localDate: DateTime.utc(2028, 3, 5),
+      );
+
+      // Not a shorter coach: thirty-eight seat rows out of forty labels, and
+      // the two missing ones are the ones the operator pointed at. A blocked
+      // seat with a row is a seat somebody can hold (ADR-0012), which is the
+      // failure this asserts against.
+      expect(board.single.capacity, 38);
+      expect(await fixture.seatCount(board.single.id), 38);
+      final labels = (await fixture.seatFares(board.single.id)).keys.toSet();
+      expect(labels, isNot(contains('3C')));
+      expect(labels, isNot(contains('7A')));
+      expect(labels, contains('3D'));
+
+      // The door survives the column it was written to. It is drawn on the
+      // traveller's seat map, so a decoder that dropped it would only be
+      // noticed by somebody sitting next to a door they were not told about.
+      final listed = (await console.layouts(
+        operatorId,
+      )).firstWhere((l) => l.id == f.layoutId);
+      expect(listed.capacity, 38);
+    });
   });
 
   group('the manifest', () {

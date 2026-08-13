@@ -250,6 +250,35 @@ console:
       fareMultiplier: "Multiplicateur"
       fareSupplement: "Supplément ({currency})"
       preview: "Ce que verra le voyageur"
+      # Le plan est modifiable, pas seulement affiché. Il faut le dire : un
+      # dessin qui répond au doigt sans l'annoncer n'est découvert par
+      # personne.
+      tapToBlock: "Touchez un siège pour le condamner. Il garde son numéro et cesse d'être vendu."
+      blockedCount: "{count} siège(s) condamné(s)."
+      unblockAll: "Tout rétablir"
+      moveUp: "Déplacer vers l'avant"
+      moveDown: "Déplacer vers l'arrière"
+      # Les numéros de siège dépendent de la position de la section. Après un
+      # déplacement, un siège condamné garderait un numéro qui appartient
+      # désormais à un autre siège : mieux vaut le dire et le refaire.
+      reorderDroppedBlocks: "Les sièges condamnés des sections déplacées ont été rétablis : leurs numéros ont changé."
+      features: "Portes et équipements"
+      featuresHint: "Dessinés sur le plan du voyageur, pour qu'il sache ce qu'il y a à côté du siège avant de payer."
+      addFeature: "Ajouter un équipement"
+      removeFeature: "Retirer cet équipement"
+      featureType: "Équipement"
+      featureRow: "Rangée"
+      featureCol: "Colonne"
+      featureAt: "{feature} — rangée {row}, colonne {col}"
+      featureTypes:
+        door: "Porte"
+        wc: "Toilettes"
+        galley: "Office"
+        exit: "Issue de secours"
+        luggage: "Bagages"
+        driver: "Chauffeur"
+        cockpit: "Cockpit"
+        stairs: "Escalier"
       capacity: "{count} places"
       capacityEmpty: "Aucune place pour l'instant."
       invalidSection: "Cette section ne peut pas être dessinée. Vérifiez les rangées et les sièges de front."

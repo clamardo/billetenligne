@@ -53,7 +53,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Admin back office — API | ✅ done | `/admin/v1`: the queue, one operator's page, six lifecycle decisions, the negotiated commission. Every read and every write audited with actor and reason. 8 integration tests |
 | **Admin back office — the app** | ✅ done | Flutter web. The review queue, one operator's file with its documents and trail, six lifecycle decisions, the negotiated commission, and the reconciliation queue. The reason lives in the frame and no write happens without one. 15 tests |
 | **The vitrine** | ✅ done | Title, tagline, accent, header pattern and logo, with a live preview drawn by the real widgets — and the public storefront at `/public/v1/operators/{code}` |
-| **The seat-layout section builder** | ✅ done | The coach no preset fits, drawn section by section, with `KSeatMap` — the widget that sells the seat — redrawn on every keystroke. Start rows are computed, not typed. `Abreast` in the domain now parses to null instead of throwing, which turned three 500s into field-named 400s. 8 domain · 5 contract · 6 widget tests, and 15 smoke checks on a real socket |
+| **The seat-layout section builder** | ✅ done | The coach no preset fits, drawn section by section, with `KSeatMap` — the widget that sells the seat — redrawn on every keystroke. Start rows are computed, not typed. `Abreast` in the domain now parses to null instead of throwing, which turned three 500s into field-named 400s. Seats are taken out of service by touching them, doors and lavatories are placed, and sections reorder without being retyped. 8 domain · 9 contract · 14 widget tests, 1 on real Postgres, and 15 smoke checks on a real socket |
 | **Object storage** | ✅ done | `ObjectStore` port, Azure Blob adapter over REST, and an in-memory one. What we accept is sniffed from the bytes; 40 KB / 512 px for a logo, refused with the number to get under rather than downscaled. 10 tests against real Azurite (`tool/storage.sh`), which caught a SAS signature that was wrong under sv=2020-10-02 |
 | **Operator onboarding — the wizard** | ✅ done | Self-signup, §2.2. The application **is** the operator in its early lifecycle states, so the review queue, the audit trail and the six decisions all work unchanged. An applicant is a member of the public: INSERT on `operators` pinned by policy to `application_draft`, UPDATE granted on four columns, and the one transition they cause through a SECURITY DEFINER function that also writes the audit row. **Activation creates the `org_owner`** — the line that removes the phone call. Documents are declared, not photographed; the reason is a schema guarantee. 15 domain · 11 Postgres · 12 smoke · 7 console · 3 back-office tests |
 | **Refund policy wizard** | ✅ done | Operators answer questions; `RefundPolicy.describe()` writes the sentences, in both languages, from the same numbers the server executes (ADR-0015 rule 3). Policies are append-only **by grant** — a booking stores `(policy_id, version)` at sale time and is judged by that version forever. Bands in the wrong order are refused, because tiers match in order and a shortest-first list silently answers everything with its most generous rate |
@@ -256,16 +256,21 @@ These are true today and each one is a decision, not an oversight.
    chose — and the alternative was carrying an image decoder in an API process
    serving fourteen operators. It becomes a real gap when an operator arrives
    with a 2000 px logo they cannot re-export themselves.
-10. **The section builder edits sections, not cells.** Rows, abreast, class,
-   pitch and a per-section fare are all live, and the preview is the
-   traveller's own seat map. What is not built is the *gesture* half of
-   `06-fleet-and-routes.md` §3.3: tapping a cell to block it, placing a door
-   or a lavatory, reordering sections, undo/redo. The storage format carries
-   blocked seats and features already and everything downstream honours them,
-   so a layout that has them sells correctly — there is simply no way to draw
-   one in the console yet. Numbering is also chosen once for the whole layout
-   rather than per section, which the model allows and no operator has asked
-   for.
+10. ~~**The section builder edits sections, not cells.**~~ **Mostly closed.**
+   Tapping a seat on the preview takes it out of service and tapping it again
+   gives it back; doors, lavatories, galleys, exits, luggage, the driver, the
+   cockpit and stairs are placed by coordinate; sections move forward and back
+   without being retyped. Blocking is a *subtraction*, not a shorter section —
+   the seat keeps its label so the manifest, the ticket and the conductor's
+   count still agree with the physical coach, and no seat row is created for
+   it, which is what stops somebody holding one (ADR-0012). Reordering renames
+   every seat in both moved sections, so their blocks are dropped and the
+   operator is told rather than left with a block that landed on somebody
+   else's seat. **Still not built: undo/redo.** A block is one tap to reverse
+   and a fitting one button, so the missing case is the reorder that discards
+   blocks — which now announces itself instead of being silent. Numbering is
+   also chosen once for the whole layout rather than per section, which the
+   model allows and no operator has asked for.
 11. ~~**A ticket lives only in memory on the device.**~~ **Closed**, and so is
    its sibling on the scanner. The traveller app keeps its tickets in a
    SQLite vault and the scanner keeps its boarding log in one, so a cold
@@ -315,9 +320,9 @@ cd apps/console   && flutter test        # 125 console tests
 cd apps/admin     && flutter test        # 35 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 47 scanner tests, incl. a manifest off the wire
-dart run tool/check_layers.dart          # the onion rule, 414 files
+dart run tool/check_layers.dart          # the onion rule, 421 files
 ./infra/migrations/check.sh              # 45 schema guarantees
-./tool/integration.sh                    # 505 tests on real Postgres, incl. the worker
+./tool/integration.sh                    # 506 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 445 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
@@ -356,8 +361,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,427 tests in total**, plus 445 smoke checks, 45 executed schema guarantees,
-505 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,439 tests in total**, plus 445 smoke checks, 45 executed schema guarantees,
+506 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.

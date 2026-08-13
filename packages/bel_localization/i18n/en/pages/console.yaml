@@ -249,6 +249,34 @@ console:
       fareMultiplier: "Multiplier"
       fareSupplement: "Supplement ({currency})"
       preview: "What the traveller will see"
+      # The drawing is editable, not just shown. It has to say so: a diagram
+      # that answers a finger without announcing it is one nobody discovers.
+      tapToBlock: "Tap a seat to take it out of service. It keeps its number and stops being sold."
+      blockedCount: "{count} seat(s) out of service."
+      unblockAll: "Restore all"
+      moveUp: "Move towards the front"
+      moveDown: "Move towards the back"
+      # Seat numbers depend on where a section sits. After a move, a blocked
+      # seat would keep a number that now belongs to a different seat — better
+      # said out loud and redone.
+      reorderDroppedBlocks: "Seats taken out of service in the moved sections were restored: their numbers changed."
+      features: "Doors and fittings"
+      featuresHint: "Drawn on the traveller's map, so they know what is beside a seat before they pay."
+      addFeature: "Add a fitting"
+      removeFeature: "Remove this fitting"
+      featureType: "Fitting"
+      featureRow: "Row"
+      featureCol: "Column"
+      featureAt: "{feature} — row {row}, column {col}"
+      featureTypes:
+        door: "Door"
+        wc: "Lavatory"
+        galley: "Galley"
+        exit: "Emergency exit"
+        luggage: "Luggage"
+        driver: "Driver"
+        cockpit: "Cockpit"
+        stairs: "Stairs"
       capacity: "{count} seats"
       capacityEmpty: "No seats yet."
       invalidSection: "This section cannot be drawn. Check the rows and the seats abreast."

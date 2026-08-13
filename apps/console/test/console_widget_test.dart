@@ -2663,6 +2663,19 @@ void main() {
       return workspace;
     }
 
+    /// Taps something that may be below the fold.
+    ///
+    /// The builder is a long form with the preview under it, so on the
+    /// 800-pixel test surface half of these gestures are off-screen — and a
+    /// tap that misses does not fail, it warns and lands on whatever is
+    /// actually at that offset.
+    Future<void> tapVisible(WidgetTester tester, Finder finder) async {
+      await tester.ensureVisible(finder);
+      await tester.pumpAndSettle();
+      await tester.tap(finder);
+      await tester.pumpAndSettle();
+    }
+
     testWidgets('a coach is drawn, and the preview is the real seat map', (
       tester,
     ) async {
@@ -2797,6 +2810,215 @@ void main() {
 
       expect(gateway.drawn, isNull);
       expect(find.text('Plans de salle'), findsOneWidget);
+    });
+
+    testWidgets('a seat is taken out of service by touching it', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tester.enterText(fieldNamed('Nom du plan'), 'Car 60');
+      await tester.pumpAndSettle();
+
+      // The wheel arch under 3C. Touching the seat on the preview is the
+      // whole gesture — there is no list of seat numbers to find it in.
+      await tapVisible(tester, find.text('3C'));
+      expect(find.textContaining('1 siège(s) condamné(s)'), findsOneWidget);
+
+      // Touching it again is how somebody undoes a mistake, so a blocked
+      // seat has to keep answering. This is the case that made KSeatMap need
+      // an editing flag: on the selling screen a blocked seat is inert.
+      await tapVisible(tester, find.text('3C'));
+      expect(find.textContaining('siège(s) condamné(s)'), findsNothing);
+
+      await tapVisible(tester, find.text('3C'));
+      await tapVisible(tester, find.text('7A'));
+      await tapVisible(tester, find.widgetWithText(KButton, 'Enregistrer'));
+
+      // Sorted on the wire: a Set has no order, and an unordered list is a
+      // diff that reports a change nobody made.
+      expect(gateway.drawn!['blocked'], ['3C', '7A']);
+      // Blocked, not deleted. The capacity an operator watches is the seats
+      // that can be sold, and the coach still has forty places in it.
+      expect(gateway.saved, contains('draw:Car 60:38'));
+    });
+
+    testWidgets('every condemned seat can be given back at once', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tapVisible(tester, find.text('1A'));
+      await tapVisible(tester, find.text('1B'));
+      expect(find.textContaining('2 siège(s)'), findsOneWidget);
+
+      await tapVisible(tester, find.text('Tout rétablir'));
+
+      expect(find.textContaining('siège(s) condamné(s)'), findsNothing);
+      expect(find.text('40 places'), findsOneWidget);
+    });
+
+    testWidgets('a seat that stopped existing stops being blocked', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tester.enterText(fieldNamed('Nom du plan'), 'Car 61');
+      await tapVisible(tester, find.text('10D'));
+      expect(find.textContaining('1 siège(s)'), findsOneWidget);
+
+      // Shrinking the coach deletes row 10. The block on 10D would otherwise
+      // ride along to the server, which would refuse the whole layout for a
+      // seat the operator can no longer see to unblock.
+      await tester.enterText(fieldNamed('Rangées'), '8');
+      await tester.pumpAndSettle();
+
+      await tapVisible(tester, find.widgetWithText(KButton, 'Enregistrer'));
+
+      expect(gateway.drawn!['blocked'], isEmpty);
+      expect(gateway.saved, contains('draw:Car 61:32'));
+    });
+
+    testWidgets('a door is placed, and travels on the wire', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tester.enterText(fieldNamed('Nom du plan'), 'Car 62');
+      await tapVisible(tester, find.text('Ajouter un équipement'));
+
+      await tester.enterText(fieldNamed('Rangée'), '5');
+      await tester.enterText(fieldNamed('Colonne'), '2');
+      await tester.pumpAndSettle();
+      await tapVisible(tester, find.widgetWithText(TextButton, 'Ajouter'));
+
+      // Read back in the operator's words, not as `door@5,2`: the list is
+      // the only place they can check what they just placed.
+      expect(find.text('Porte — rangée 5, colonne 2'), findsOneWidget);
+
+      await tapVisible(tester, find.widgetWithText(KButton, 'Enregistrer'));
+
+      final features = gateway.drawn!['features']! as List;
+      expect(features, hasLength(1));
+      expect((features.first as Map)['type'], 'door');
+      expect((features.first as Map)['row'], 5);
+      expect((features.first as Map)['col'], 2);
+    });
+
+    testWidgets('a coordinate nobody could mean cannot be added', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tapVisible(tester, find.text('Ajouter un équipement'));
+
+      // Column 40 is off the side of any coach. The dialog refuses rather
+      // than the server, because a 400 arrives after the operator has
+      // stopped thinking about the door.
+      await tester.enterText(fieldNamed('Colonne'), '40');
+      await tester.pumpAndSettle();
+      final add = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Ajouter'),
+      );
+      expect(add.onPressed, isNull);
+
+      await tester.enterText(fieldNamed('Colonne'), '4');
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextButton>(find.widgetWithText(TextButton, 'Ajouter'))
+            .onPressed,
+        isNotNull,
+      );
+    });
+
+    testWidgets('a fitting is removed', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tester.enterText(fieldNamed('Nom du plan'), 'Car 63');
+      await tapVisible(tester, find.text('Ajouter un équipement'));
+      await tapVisible(tester, find.widgetWithText(TextButton, 'Ajouter'));
+      expect(find.textContaining('Porte —'), findsOneWidget);
+
+      await tapVisible(tester, find.byIcon(Icons.delete_outline).last);
+      expect(find.textContaining('Porte —'), findsNothing);
+
+      await tapVisible(tester, find.widgetWithText(KButton, 'Enregistrer'));
+      expect(gateway.drawn!['features'], isEmpty);
+    });
+
+    testWidgets('sections are reordered without being retyped', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tester.enterText(fieldNamed('Nom du plan'), 'Car 64');
+      await tapVisible(tester, find.text('Ajouter une section'));
+
+      await tester.enterText(fieldNamed('Sièges de front').last, '5');
+      await tester.enterText(fieldNamed('Rangées').last, '1');
+      await tester.pumpAndSettle();
+      expect(find.text('Commence à la rangée 11'), findsOneWidget);
+
+      // The bench belongs at the back and was typed second, so this is the
+      // other case: the operator drew them the wrong way round. Before this
+      // existed, fixing it meant deleting both and retyping the fares.
+      await tapVisible(tester, find.byTooltip('Déplacer vers l\'avant').last);
+
+      // The bench is now first, so it starts at row 1 and the ten-row
+      // section starts after it. The numbers are recomputed, not carried.
+      expect(find.text('Commence à la rangée 2'), findsOneWidget);
+      expect(find.text('45 places'), findsOneWidget);
+
+      await tapVisible(tester, find.widgetWithText(KButton, 'Enregistrer'));
+
+      final sections = gateway.drawn!['sections']! as List;
+      expect((sections.first as Map)['abreast'], '5');
+      expect((sections.first as Map)['startRow'], 1);
+      expect((sections.last as Map)['startRow'], 2);
+    });
+
+    testWidgets('reordering says out loud that it dropped the blocks', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tapVisible(tester, find.text('Ajouter une section'));
+      await tester.enterText(fieldNamed('Rangées').last, '2');
+      await tester.pumpAndSettle();
+
+      await tapVisible(tester, find.text('1A'));
+      expect(find.textContaining('1 siège(s)'), findsOneWidget);
+
+      // 1A after the move is a different physical seat. Silently keeping the
+      // label would condemn somebody else's seat, so the block goes and the
+      // operator is told rather than left to notice.
+      await tapVisible(tester, find.byTooltip('Déplacer vers l\'avant').last);
+
+      expect(find.textContaining('siège(s) condamné(s)'), findsNothing);
+      expect(find.textContaining('leurs numéros ont changé'), findsOneWidget);
     });
   });
 
