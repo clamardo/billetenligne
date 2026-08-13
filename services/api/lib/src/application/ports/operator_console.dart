@@ -182,6 +182,8 @@ final class ManifestRow {
     required this.boarded,
     this.passengerPhone,
     this.boardedAt,
+    this.boardsAt,
+    this.alightsAt,
   });
 
   final String seatLabel;
@@ -190,6 +192,11 @@ final class ManifestRow {
   final bool boarded;
   final String? passengerPhone;
   final DateTime? boardedAt;
+
+  /// The towns this passenger gets on and off at, when they bought a piece of
+  /// the road rather than all of it (ADR-0025). Null is the whole journey.
+  final String? boardsAt;
+  final String? alightsAt;
 }
 
 final class Manifest {

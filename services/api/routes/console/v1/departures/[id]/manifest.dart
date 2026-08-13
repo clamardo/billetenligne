@@ -63,6 +63,10 @@ Future<Response> onRequest(RequestContext context, String id) async {
             if (row.passengerPhone != null) 'phone': row.passengerPhone,
             if (row.boardedAt != null)
               'boardedAt': Wire.instant(row.boardedAt!),
+            // Only when they bought a piece of the road. Absent is the whole
+            // journey, which is every passenger on a road with no priced legs.
+            if (row.boardsAt != null) 'boardsAt': row.boardsAt,
+            if (row.alightsAt != null) 'alightsAt': row.alightsAt,
           },
       ],
     },

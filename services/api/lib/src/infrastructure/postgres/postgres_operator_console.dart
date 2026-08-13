@@ -1021,13 +1021,40 @@ final class PostgresOperatorConsole implements OperatorConsole {
     // arguing with somebody holding a phone at the roadside.
     final rows = await tx.execute(
       Sql.named('''
+        WITH road AS (
+          SELECT r.id AS route_id, 0 AS position, r.origin_city AS city
+            FROM routes r
+           UNION ALL
+          SELECT rs.route_id, rs.sequence, rs.city_code FROM route_stops rs
+           UNION ALL
+          SELECT r.id,
+                 1 + (SELECT count(*)::int FROM route_stops x
+                       WHERE x.route_id = r.id),
+                 r.destination_city
+            FROM routes r
+        )
         SELECT bs.seat_label, bs.passenger_name, bs.passenger_phone,
-               b.ref, red.scanned_at
+               b.ref, red.scanned_at,
+               -- Where this passenger gets on and off, and only when that
+               -- is a piece of the road rather than the whole of it
+               -- (ADR-0025). The header already names the road, so repeating
+               -- it on every row would bury the one line that matters: the
+               -- conductor's list is the one place somebody finds out that
+               -- 12A comes free at Dolisie.
+               CASE WHEN b.road_span <> d.road_span THEN fs.city END
+                 AS boards_at,
+               CASE WHEN b.road_span <> d.road_span THEN ts.city END
+                 AS alights_at
           FROM bookings b
+          JOIN departures d ON d.id = b.departure_id
           JOIN booking_seats bs ON bs.booking_id = b.id
           LEFT JOIN tickets t
                  ON t.booking_id = b.id AND t.seat_label = bs.seat_label
           LEFT JOIN redemptions red ON red.ticket_id = t.id
+          LEFT JOIN road fs ON fs.route_id = d.route_id
+                           AND fs.position = lower(b.road_span)
+          LEFT JOIN road ts ON ts.route_id = d.route_id
+                           AND ts.position = upper(b.road_span)
          WHERE b.departure_id = @id
            AND b.operator_id = @operator
            AND b.state = 'confirmed'
@@ -1055,6 +1082,8 @@ final class PostgresOperatorConsole implements OperatorConsole {
             bookingRef: row.toColumnMap()['ref'] as String,
             boarded: row.toColumnMap()['scanned_at'] != null,
             boardedAt: row.toColumnMap()['scanned_at'] as DateTime?,
+            boardsAt: row.toColumnMap()['boards_at'] as String?,
+            alightsAt: row.toColumnMap()['alights_at'] as String?,
           ),
       ],
     );

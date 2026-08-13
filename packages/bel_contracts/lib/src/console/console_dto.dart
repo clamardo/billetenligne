@@ -446,6 +446,8 @@ final class ManifestPassengerDto {
     required this.boarded,
     this.phone,
     this.boardedAt,
+    this.boardsAt,
+    this.alightsAt,
   });
 
   final String seatLabel;
@@ -454,6 +456,16 @@ final class ManifestPassengerDto {
   final bool boarded;
   final String? phone;
   final DateTime? boardedAt;
+
+  /// Where this passenger gets on and off, when it is not the whole road
+  /// (ADR-0025). City codes, resolved by the server from the positions the
+  /// booking was sold at — the conductor's list is the one place somebody
+  /// finds out that seat 12A is free again after Dolisie.
+  ///
+  /// Null on a whole journey, which is every booking on a road with no priced
+  /// legs, and is drawn as nothing rather than as the terminus repeated.
+  final String? boardsAt;
+  final String? alightsAt;
 
   factory ManifestPassengerDto.fromJson(
     Map<String, Object?> json,
@@ -464,6 +476,8 @@ final class ManifestPassengerDto {
     boarded: json['boarded'] == true,
     phone: json['phone'] as String?,
     boardedAt: Wire.readInstantOrNull(json['boardedAt'], field: 'boardedAt'),
+    boardsAt: json['boardsAt'] as String?,
+    alightsAt: json['alightsAt'] as String?,
   );
 }
 

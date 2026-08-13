@@ -395,6 +395,15 @@ final class _ScriptedConsole implements ConsoleGateway {
         bookingRef: 'BEL-7QK4M2',
         boarded: false,
       ),
+      // Somebody who bought a piece of the road and gets off at Dolisie.
+      ManifestPassengerDto(
+        seatLabel: '2B',
+        passengerName: 'Serge N.',
+        bookingRef: 'BEL-3RT9P1',
+        boarded: false,
+        boardsAt: 'BZV',
+        alightsAt: 'DOL',
+      ),
     ],
   );
 
@@ -963,6 +972,12 @@ void main() {
 
       expect(find.text('Aline M.'), findsOneWidget);
       expect(find.text('BEL-7QK4M2'), findsOneWidget);
+
+      // The second passenger bought a piece of the road, and the conductor
+      // has to know where they get off — otherwise the seat looks occupied
+      // all the way to the terminus and the leg beyond Dolisie goes unsold.
+      expect(find.text('Serge N.'), findsOneWidget);
+      expect(find.text('BEL-3RT9P1 \u00b7 BZV \u2192 DOL'), findsOneWidget);
     });
   });
 

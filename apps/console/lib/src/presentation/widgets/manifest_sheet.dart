@@ -87,7 +87,18 @@ final class ManifestSheet extends StatelessWidget {
                             child: Text(p.seatLabel, style: kilo.text.amountSm),
                           ),
                           title: Text(p.passengerName),
-                          subtitle: Text(p.bookingRef, style: kilo.text.code),
+                          // The leg beside the reference, and only when there
+                          // is one: a passenger who bought a piece of the road
+                          // gets off before the terminus, and the conductor
+                          // reading this list is the person who has to know
+                          // that seat comes free at Dolisie (ADR-0025).
+                          subtitle: Text(
+                            p.boardsAt == null
+                                ? p.bookingRef
+                                : '${p.bookingRef} · '
+                                      '${p.boardsAt} → ${p.alightsAt}',
+                            style: kilo.text.code,
+                          ),
                           trailing: Icon(
                             p.boarded
                                 ? Icons.check_circle

@@ -8,6 +8,7 @@ import 'package:bel_api/src/application/hold_seats.dart';
 import 'package:bel_api/src/application/reserve_booking.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_booking_store.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_operator_console.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_seat_inventory.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
@@ -425,5 +426,88 @@ void main() {
 
       expect(await fixture.seatStateOn(departureId, '6A'), 'available');
     });
+  });
+
+  group("the conductor's list names the leg", () {
+    /// A manifest that says only "PNR" beside every seat is the reason a
+    /// conductor lets a coach leave Dolisie half empty: 11A got off there and
+    /// nothing on the printed list said so. The row has to carry the leg, and
+    /// only the leg — a passenger riding the whole road is what the header
+    /// already says.
+    test(
+      'a piece of the road is drawn beside the seat, the whole road is not',
+      () async {
+        final road = await fixture.route(
+          code: 'MANIFEST-LEG',
+          origin: 'BZV',
+          destination: 'OYO',
+        );
+        await fixture.stopsOn(road, const [(city: 'DOL', offsetMinutes: 180)]);
+        await fixture.priceSegment(
+          road,
+          fromPosition: 1,
+          toPosition: 2,
+          fareMinor: 5500,
+        );
+        final departureId = await fixture.departure(
+          seatLabels: const ['11A', '11B'],
+          onRoute: road,
+        );
+
+        final console = PostgresOperatorConsole(
+          db,
+          timeZone: PgFixture.timeZone,
+        );
+
+        Future<void> buy(String seat, {String? from, String? to}) async {
+          final claimed = await hold(
+            departureId: departureId,
+            seatLabels: [seat],
+            userId: userId,
+            idempotencyKey: key(),
+            fromCity: from,
+            toCity: to,
+          );
+          final booking = await reserve(
+            holdId: claimed.valueOrNull!.id,
+            userId: userId,
+            passengers: [PassengerDto(fullName: 'Aline M.', seatLabel: seat)],
+          );
+          final record = booking.valueOrNull!;
+          await bookings.captureCash(
+            bookingId: record.id,
+            operatorId: PgFixture.operatorId,
+            stationId: stationId,
+            soldByUserId: null,
+            posting: Postings.cashSale(
+              operatorId: PgFixture.operatorId,
+              stationId: stationId,
+              fare: record.fare,
+              serviceFee: record.serviceFee,
+            ).valueOrNull!,
+          );
+        }
+
+        await buy('11A', from: 'DOL', to: 'OYO');
+        await buy('11B');
+
+        final manifest = await console.manifest(
+          operatorId: PgFixture.operatorId,
+          departureId: departureId,
+        );
+
+        final leg = manifest!.rows.firstWhere((r) => r.seatLabel == '11A');
+        expect(leg.boardsAt, 'DOL');
+        expect(leg.alightsAt, 'OYO');
+
+        // And the passenger who bought the whole road gets no leg at all,
+        // because the two towns on the row would be the two towns on the
+        // header and a list where every line is annotated is a list nobody
+        // reads the annotations on.
+        final whole = manifest.rows.firstWhere((r) => r.seatLabel == '11B');
+        expect(whole.boardsAt, isNull);
+        expect(whole.alightsAt, isNull);
+      },
+    );
   });
 }
