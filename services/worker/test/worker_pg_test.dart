@@ -8,6 +8,7 @@ import 'package:bel_api/src/adapters/logging_notification_gateway.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_disruptions.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_operator_console.dart';
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_worker/src/compliance_watch.dart';
@@ -941,6 +942,108 @@ void main() {
         parameters: {'id': TypedValue(Type.uuid, bookingId)},
       );
       expect(live.first.toColumnMap()['n'], 1);
+    });
+
+    test('a released payout emails the statement, as a file', () async {
+      // `04-payments.md` §6.2 asks for the statement to be sent as well as
+      // downloadable. The document travels, not a link: the accountant who
+      // files it holds no login at all.
+      final sent = FakeNotificationGateway();
+      final recording = OutboxDrain(
+        db: db,
+        notifications: sent,
+        catalog: CatalogLoader.fromDirectory(
+          Platform.environment['BEL_I18N_DIR'] ??
+              'packages/bel_localization/i18n',
+        ),
+        timeZone: 'Africa/Brazzaville',
+      );
+
+      final owner = await aTraveller();
+      await seed.execute(
+        Sql.named('''
+          UPDATE user_accounts SET email = @email WHERE id = @id
+        '''),
+        parameters: {
+          'id': TypedValue(Type.uuid, owner),
+          'email': TypedValue(Type.text, '${unique('compta')}@ocean.cg'),
+        },
+        ignoreRows: true,
+      );
+      await seed.execute(
+        Sql.named('''
+          INSERT INTO operator_staff (operator_id, user_id, roles, accepted_at)
+          VALUES (@op, @user, ARRAY['org_owner'], now())
+          ON CONFLICT DO NOTHING
+        '''),
+        parameters: {
+          'op': TypedValue(Type.uuid, operatorId),
+          'user': TypedValue(Type.uuid, owner),
+        },
+        ignoreRows: true,
+      );
+
+      final run = await seed.execute(
+        Sql.named('''
+          INSERT INTO payout_runs (operator_id, period_start, period_end,
+                                   currency, online_sales_count,
+                                   online_gross_minor, payable_minor,
+                                   tills_minor, net_minor, state, reference,
+                                   prepared_by, prepared_at, approved_by,
+                                   approved_at, paid_at, txn_id)
+          VALUES (@op, @from, @to, 'XAF', 12, 480000, 432000, 0, 432000,
+                  'paid', 'MTN-778812', @user, now(), @user, now(), now(),
+                  gen_random_uuid())
+          RETURNING id
+        '''),
+        parameters: {
+          'op': TypedValue(Type.uuid, operatorId),
+          'user': TypedValue(Type.uuid, owner),
+          'from': TypedValue(Type.timestampTz, DateTime.utc(2029, 3, 5)),
+          'to': TypedValue(Type.timestampTz, DateTime.utc(2029, 3, 12)),
+        },
+      );
+      final runId = run.first.toColumnMap()['id'] as String;
+
+      await seed.execute(
+        Sql.named('''
+          INSERT INTO outbox (aggregate, aggregate_id, event_type, payload,
+                              dedupe_key)
+          VALUES ('payout', @run, 'payout.released',
+                  jsonb_build_object('runId', @run::text), @dedupe)
+        '''),
+        parameters: {
+          'run': TypedValue(Type.uuid, runId),
+          'dedupe': TypedValue(Type.text, unique('payout')),
+        },
+        ignoreRows: true,
+      );
+
+      await recording.drain();
+
+      final message = sent.sent.singleWhere(
+        (m) => m.attachments.any((a) => a.contentType == 'application/pdf'),
+      );
+
+      // Email and only email. A text message saying a statement exists, to
+      // somebody who then cannot read it, is a second phone call rather than
+      // none.
+      expect(message.channel, SignInChannel.email);
+
+      // The period the document itself claims: half-open storage, so the last
+      // day covered is the day before `period_end`.
+      expect(message.subject, contains('11/03/2029'));
+      expect(message.subject, isNot(contains('12/03/2029')));
+      expect(message.body, contains('MTN-778812'));
+
+      final pdf = message.attachments.single;
+      // The same name the download carries, so one saved from the console and
+      // one saved from an inbox are not two files to open and compare.
+      expect(pdf.name, endsWith('.pdf'));
+      expect(pdf.name, contains('2029-03-05'));
+      // A real PDF, not a placeholder: every reader checks these five bytes
+      // before it renders anything.
+      expect(utf8.decode(pdf.bytes.take(5).toList()), '%PDF-');
     });
 
     test('an event nobody handles is retired, not retried forever', () async {

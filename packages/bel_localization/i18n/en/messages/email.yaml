@@ -56,5 +56,14 @@ email:
     subject: "Sales stopped: {document} expired on {date}"
   complianceSuspended:
     subject: "{operator} suspended: {document} expired on {date}"
+  payoutStatement:
+    subject: "Your payout statement for {period}"
+    body: |
+      Your payout of {amount} has been sent.
+
+      Period {period}. Reference {reference}.
+
+      The detailed statement is attached to this message as a PDF. It is also
+      in your console, under Payouts.
   operatorApproved:
     subject: "{operator} is live on BilletEnLigne"

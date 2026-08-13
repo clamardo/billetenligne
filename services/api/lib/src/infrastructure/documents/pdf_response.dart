@@ -43,7 +43,7 @@ Response statementResponse({
       HttpHeaders.contentTypeHeader: 'application/pdf',
       HttpHeaders.contentLengthHeader: '${bytes.length}',
       HttpHeaders.contentDisposition:
-          'attachment; filename="${_filename(run, operatorName)}"',
+          'attachment; filename="${statementFilename(run, operatorName)}"',
       HttpHeaders.cacheControlHeader: 'private, no-store',
       BelHeaders.traceId: trace,
     },
@@ -56,7 +56,7 @@ Response statementResponse({
 /// of the way and then arrives mangled through one proxy or one mail client,
 /// and the operator who cannot open the attachment is the one who most needs
 /// to.
-String _filename(PayoutRun run, String operatorName) {
+String statementFilename(PayoutRun run, String operatorName) {
   final slug = _slug(operatorName);
   final from = run.statement.from;
   final date =

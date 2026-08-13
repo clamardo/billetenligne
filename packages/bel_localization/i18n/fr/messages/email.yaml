@@ -56,5 +56,18 @@ email:
     subject: "Vente arrêtée : {document} expirée le {date}"
   complianceSuspended:
     subject: "{operator} suspendu : {document} expirée depuis le {date}"
+  # Le releve de versement (04-payments.md 6.2), envoye au moment ou l'argent
+  # part. Le document est en piece jointe : un e-mail qui renvoie vers la
+  # console est un e-mail qui oblige un comptable a se connecter, et il n'a pas
+  # de compte.
+  payoutStatement:
+    subject: "Votre relevé de versement du {period}"
+    body: |
+      Votre versement de {amount} est parti.
+
+      Période du {period}. Référence {reference}.
+
+      Le relevé détaillé est joint à ce message, au format PDF. Vous le
+      retrouvez aussi dans votre console, sous Versements.
   operatorApproved:
     subject: "{operator} est activé sur BilletEnLigne"

@@ -80,7 +80,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Production credentials | ⬜ not started | **Commercial, not engineering.** MTN and Airtel run against sandbox hosts; the card and Orange Money adapters run against no host at all, because neither a merchant account nor a merchant key exists for this market yet. Each is a contract and a set of secrets, not a line of code |
 | `indeterminate` reconciliation — API | ✅ done | The queue, joined to the booking, the operator and the traveller's number. Three exits: ask the rail again · captured · failed. 5 integration tests |
 | **`indeterminate` reconciliation — the screen** | ✅ done | In the back office. Longest-waiting first, everything needed to decide in the row, three exits — and captured/failed demand a sentence about *that* payment, which becomes the `payment_events` row |
-| **The statement as a document** | ✅ done | `04-payments.md` §6.2 asks for a PDF, and this is one — written by a hundred-line PDF writer rather than a layout engine, in the two standard fonts every reader has had since 1993, with the figures in Courier so a money column right-aligns by counting characters instead of by carrying a font-metrics table. Uncompressed: a statement is three kilobytes, and reading it with `strings` when somebody disputes what we sent is worth more than the bytes. **The commission rate is derived from these sales**, not read from the operator's row, because the row can be renegotiated and a document reprinting today's rate over last month's money is the kind of small dishonesty that ends a relationship. **Nothing is invented** — §6.2's mock shows change fees and dispute adjustments, neither is in the ledger, and a `0 FCFA` row for something we never compute is a more convincing lie than an absent one. The console downloads it through the authenticated client and hands it to the browser (a plain link sends no bearer token), and the back office serves **the same bytes from its own route**. Emailing it is **not** built: attachments are missing from the ACS adapter. 18 API unit · 4 Postgres · 4 client · 6 smoke · 3 console tests |
+| **The statement as a document** | ✅ done | `04-payments.md` §6.2 asks for a PDF, and this is one — written by a hundred-line PDF writer rather than a layout engine, in the two standard fonts every reader has had since 1993, with the figures in Courier so a money column right-aligns by counting characters instead of by carrying a font-metrics table. Uncompressed: a statement is three kilobytes, and reading it with `strings` when somebody disputes what we sent is worth more than the bytes. **The commission rate is derived from these sales**, not read from the operator's row, because the row can be renegotiated and a document reprinting today's rate over last month's money is the kind of small dishonesty that ends a relationship. **Nothing is invented** — §6.2's mock shows change fees and dispute adjustments, neither is in the ledger, and a `0 FCFA` row for something we never compute is a more convincing lie than an absent one. The console downloads it through the authenticated client and hands it to the browser (a plain link sends no bearer token), and the back office serves **the same bytes from its own route**. **Releasing a run now emails it too**, attached as the same PDF rather than as a link back to a login. 18 API unit · 5 Postgres · 4 client · 6 smoke · 3 console tests |
 | **IRROPS — declaring, and telling everybody** | ✅ done | The dispatcher declares one of six kinds and everything downstream is derived: the departure's new status, the exemption on every booking, one message per passenger. All of it in **one transaction** — bookings marked involuntary with no declaration behind them is a refund entitlement nobody can account for. A disruption is **public** (the follower of a shared trip link holds no account and is exactly the person who otherwise phones the agency), **not editable afterwards** by a column-level grant, and **one open per departure** by a partial unique index, so "what is happening to my coach?" has one answer. A short delay entitles nobody to anything — the threshold is an hour, it lives in the domain, and the console asks it rather than restating it. 16 domain · 6 contract · 12 Postgres · 5 worker · 7 smoke · 6 console · 2 traveller tests |
 | **IRROPS — the rescue coach** | ✅ done | Option ① of `08-disruption.md` §2.2: a different vehicle, the same journey. The seats are **remapped by the domain** — a passenger keeps their label only when the new coach has one of the same kind, because `1D` is a window on a 2+2 and the middle of the back block on a 2+3. Every ticket is **re-signed** in the same transaction as the new manifest, since the QR carries the seat (ADR-0007). A coach that cannot seat everybody is refused **with the number short**, so a dispatcher knows which coach to look for next. Holds with nothing behind them are released rather than slid onto a different seat under somebody who is looking at a seat map. The swap supersedes the breakdown that caused it. 9 domain · 2 contract · 6 Postgres · 5 smoke · 6 console tests |
 | **IRROPS — the rebooking wave** | ✅ done | Option ② of `08-disruption.md` §2.2: the passengers go on the operator's own next departure. **Every replacement seat is taken before a single old one is released** (§2.4) inside one transaction, so a paid passenger never exists without a seat. **Partial coverage is a success** — "18 / 42" is what a dispatcher acts on, and refusing anything short of everybody would mean the tool only works on the days it is not needed. A party moves whole or not at all, in the order people booked, which is the only rule that can be said out loud to whoever is left. No fare difference, ever, even onto a dearer departure (ADR-0016). 13 domain · 2 contract · 13 Postgres · 2 worker · 5 smoke · 3 console tests |
@@ -153,9 +153,7 @@ lived: the re-accommodation plan, payout runs and the `config/markets.yaml`
 loader are all built, as is the whole of option ③ — the protection agreement,
 the movement under it, and the open call for operators who never had an
 agreement to begin with — and option ⑤, the passenger's own choice. What is
-left there is a telco's sandbox becoming production credentials, and an
-attachment on the ACS email adapter so a statement can be sent as well as
-downloaded.
+left there is a telco's sandbox becoming production credentials.
 
 ---
 
@@ -270,15 +268,13 @@ These are true today and each one is a decision, not an oversight.
    is pure Dart — the API imports it — so it cannot declare Flutter assets,
    and Flutter refuses `..` in asset paths. `tool/sync_i18n.sh` copies it and
    `i18n_freshness_test` fails the build if a copy drifts.
-13. **A statement can be downloaded but not emailed.** `04-payments.md` §6.2
-   asks for both. The document exists and both surfaces serve it. The stated
-   blocker — no attachment support on the ACS email adapter — **is gone**:
-   ADR-0026 added `OutboundAttachment` and the adapter sends files, because a
-   boarding pass had to travel as a PNG. So what is left is the wiring, not
-   the capability. Sending a link back to a login instead would still be
-   worse than not sending: an operator who has to sign in to read what they
-   were paid will phone us instead, which is the call the statement exists to
-   prevent.
+13. ~~**A statement can be downloaded but not emailed.**~~ **Closed.**
+   `04-payments.md` §6.2 asked for both and now gets both: releasing a run
+   writes a `payout.released` event, and the drain renders the same PDF the
+   two download routes serve and attaches it to an email addressed to the
+   operator's longest-standing owner. A link back to a login was never an
+   option — an operator who has to sign in to read what they were paid phones
+   us instead, which is the call the statement exists to prevent.
 14. **A followed trip is estimated from the timetable, not observed.**
    ADR-0014 §2 names three tiers of tracking; only the third exists. Conductor
    GPS needs a driver-facing surface nobody has built, and checkpoint taps need
@@ -312,7 +308,7 @@ cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 47 scanner tests, incl. a manifest off the wire
 dart run tool/check_layers.dart          # the onion rule, 414 files
 ./infra/migrations/check.sh              # 44 schema guarantees
-./tool/integration.sh                    # 493 tests on real Postgres, incl. the worker
+./tool/integration.sh                    # 494 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 445 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
@@ -334,7 +330,7 @@ twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
 **1,419 tests in total**, plus 445 smoke checks, 44 executed schema guarantees,
-493 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+494 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
@@ -1264,9 +1260,10 @@ elsewhere — the exact failure mode that purge was added to prevent, one scope
 too wide. It is per test now.
 
 **What it did not build:** emailing the statement. §6.2 asks for downloadable
-*and* emailed; attachments are not implemented on the ACS email adapter, and a
-statement that arrives as a link back to a login is not the thing being asked
-for. Named here rather than implied by silence.
+*and* emailed; attachments were not implemented on the ACS email adapter at
+the time, and a statement that arrives as a link back to a login is not the
+thing being asked for. Named here rather than implied by silence — and closed
+later, once ADR-0026 gave the adapter attachments for a different reason.
 
 **What it cost:** 18 API unit tests, 4 against real Postgres, 4 client tests,
 6 smoke checks, 3 console tests, two routes, one port method, and three

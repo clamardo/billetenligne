@@ -230,7 +230,7 @@ final class PostgresPayouts implements PayoutDesk {
       ignoreRows: true,
     );
 
-    final run = (await _read(tx, runId))!;
+    final run = (await readRun(tx, runId))!;
     await _audit(
       tx,
       actorUserId: actorUserId,
@@ -298,7 +298,25 @@ final class PostgresPayouts implements PayoutDesk {
       ignoreRows: true,
     );
 
-    final run = (await _read(tx, runId))!;
+    final run = (await readRun(tx, runId))!;
+
+    // The statement goes out as a document, and it goes out *here* — inside
+    // the transaction that moved the money, never from the handler
+    // (ADR-0019). An operator whose payout landed and whose statement did not
+    // phones us, which is the call the statement exists to prevent.
+    await tx.execute(
+      Sql.named('''
+        INSERT INTO outbox (aggregate, aggregate_id, event_type, payload,
+                            dedupe_key)
+        VALUES ('payout', @run, 'payout.released',
+                jsonb_build_object('runId', @run::text),
+                'payout.released:' || @run::text)
+        ON CONFLICT (dedupe_key) DO NOTHING
+      '''),
+      parameters: {'run': TypedValue(Type.uuid, runId)},
+      ignoreRows: true,
+    );
+
     await _audit(
       tx,
       actorUserId: actorUserId,
@@ -359,7 +377,7 @@ final class PostgresPayouts implements PayoutDesk {
       operatorId == null
           ? DbScope.platform(actorUserId!)
           : DbScope.tenant(operatorId),
-      (tx) => _read(tx, runId),
+      (tx) => readRun(tx, runId),
     );
   }
 
@@ -376,7 +394,13 @@ final class PostgresPayouts implements PayoutDesk {
     p.approved_at, p.paid_at, p.reference
   ''';
 
-  Future<PayoutRun?> _read(TxSession tx, String runId) async {
+  /// One run, hydrated, inside somebody else's transaction.
+  ///
+  /// Public and static because the **worker** reads it too, on its way to
+  /// composing the statement email. A second hydration over there would be a
+  /// second definition of what a payout run is, and the one that drifts is
+  /// the one on the document an operator files.
+  static Future<PayoutRun?> readRun(TxSession tx, String runId) async {
     final rows = await tx.execute(
       Sql.named('''
         SELECT $_columns,

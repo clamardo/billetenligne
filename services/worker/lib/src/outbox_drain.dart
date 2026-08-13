@@ -2,6 +2,9 @@ import 'dart:convert';
 
 import 'package:bel_api/src/application/ports/notification_gateway.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
+import 'package:bel_api/src/infrastructure/documents/pdf_response.dart';
+import 'package:bel_api/src/infrastructure/documents/statement_pdf.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_payouts.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_ticket_links.dart';
 import 'package:bel_api/src/infrastructure/web/qr_png.dart';
 import 'package:bel_api/src/infrastructure/web/ticket_email.dart';
@@ -937,6 +940,91 @@ final class OutboxDrain {
           eventId: 'compliance:$operatorId:$docType:$stage',
         );
 
+      case 'payout.released':
+        // `04-payments.md` §6.2 asks for the statement to be downloadable
+        // *and* sent. The download has existed since the payout desk shipped;
+        // this is the other half, and it waited on an email adapter that
+        // could carry a file — which ADR-0026 built for a boarding pass.
+        //
+        // **The document travels, not a link.** An operator who has to sign
+        // in to read what they were paid phones us instead, which is the call
+        // the statement exists to prevent — and their accountant, who files
+        // it, holds no login at all.
+        final runId = payload['runId'];
+        if (runId is! String) return null;
+
+        // The same reader the console and the API use. A second hydration
+        // here would be a second definition of what a payout run is, and the
+        // one that drifts is the one on the document somebody files.
+        final run = await PostgresPayouts.readRun(tx, runId);
+        if (run == null) return null;
+
+        // The **owner**, like every other message about the company rather
+        // than about a journey. Earliest accepted owner, so a company with two
+        // gets one statement rather than none.
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT u.email, u.language, o.trading_name, o.legal_name
+              FROM operators o
+              JOIN operator_staff s ON s.operator_id = o.id
+                                   AND s.revoked_at IS NULL
+                                   AND 'org_owner' = ANY (s.roles)
+              JOIN user_accounts u ON u.id = s.user_id
+             WHERE o.id = @id
+             ORDER BY s.invited_at
+             LIMIT 1
+          '''),
+          parameters: {'id': TypedValue(Type.uuid, run.statement.operatorId)},
+        );
+        if (rows.isEmpty) return null;
+        final o = rows.first.toColumnMap();
+
+        // Email only, and no SMS fallback. A statement *is* the attachment —
+        // a text message saying one exists, to somebody who then cannot read
+        // it, is a second phone call rather than none. An owner with no email
+        // still has the download in their console.
+        final to = o['email'] as String?;
+        if (to == null) return null;
+
+        final language = o['language'] as String? ?? 'fr';
+        final t = CatalogTranslator(_catalog, language);
+        final operatorName =
+            (o['trading_name'] ?? o['legal_name'] ?? '') as String;
+
+        // The window is half-open, `[from, to)`, so the last day it covers is
+        // the day before `to`. Printing `to` would put a date on the subject
+        // line that the document itself does not claim.
+        final lastDay = run.statement.to.subtract(const Duration(days: 1));
+        final period = '${_day(run.statement.from)} – ${_day(lastDay)}';
+        final params = <String, Object?>{
+          'period': period,
+          'amount': run.statement.net.format(locale: language),
+          'reference': run.reference ?? '',
+        };
+
+        return OutboundMessage(
+          channel: SignInChannel.email,
+          to: to,
+          subject: t('email.payoutStatement.subject', params),
+          body: t('email.payoutStatement.body', params),
+          attachments: [
+            OutboundAttachment(
+              // The same name the download carries. An operator who saved one
+              // from the console and one from their inbox must not end up
+              // with two files they have to open to tell apart.
+              name: statementFilename(run, operatorName),
+              contentType: 'application/pdf',
+              bytes: StatementPdf.render(
+                run: run,
+                catalog: _catalog,
+                operatorName: operatorName,
+                language: language,
+              ),
+            ),
+          ],
+          eventId: 'payout:$runId',
+        );
+
       case 'operator.approved':
         final operatorId = payload['operatorId'];
         if (operatorId is! String) return null;
@@ -997,6 +1085,15 @@ final class OutboxDrain {
     }
     return const {};
   }
+
+  /// `DD/MM/YYYY`, the way a date is written on a document in this market.
+  ///
+  /// Formatted here rather than by Postgres because the payout run is already
+  /// hydrated by the time this needs it, and a second query for a date the
+  /// object is holding would be a second query.
+  static String _day(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/'
+      '${date.month.toString().padLeft(2, '0')}/${date.year}';
 
   /// `breakdown_en_route` → `breakdownEnRoute`. The column is SQL's naming
   /// and the catalog key is the domain enum's, and this is the seam.
