@@ -1,11 +1,11 @@
 {
-    "name": "Console — BilletEnLigne",
-    "short_name": "Console",
+    "name": "Back-office — BilletEnLigne",
+    "short_name": "Back-office",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0A6B4F",
-    "theme_color": "#0A6B4F",
-    "description": "Configurez votre flotte, publiez vos horaires, vendez au guichet.",
+    "background_color": "#3B4650",
+    "theme_color": "#3B4650",
+    "description": "Instruire une demande, la décider, régler ce qu'un rail n'a jamais confirmé.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
