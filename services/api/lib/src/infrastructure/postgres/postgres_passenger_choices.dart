@@ -6,6 +6,8 @@ import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart' hide Result;
 
+import 'seat_occupancy.dart';
+
 /// The passenger's own choice, against Postgres (`08-disruption.md` §3.2).
 ///
 /// Two scopes, and the split is the design:
@@ -387,7 +389,6 @@ final class PostgresPassengerChoices implements PassengerChoices {
         SELECT seat_label FROM seats
          WHERE departure_id = @id AND state = 'available'
          ORDER BY seat_label
-           FOR UPDATE
       '''),
       parameters: {'id': TypedValue(Type.uuid, toDepartureId)},
     );
@@ -408,24 +409,15 @@ final class PostgresPassengerChoices implements PassengerChoices {
     // **Taken before a single old one is released.** The transaction makes it
     // atomic either way; the ordering is what stops a paid passenger from
     // existing without a seat on any coach at all, including mid-raise.
-    for (final label in taking) {
-      final claimed = await tx.execute(
-        Sql.named('''
-          UPDATE seats
-             SET state = 'sold', booking_id = @booking,
-                 hold_id = NULL, held_until = NULL
-           WHERE departure_id = @departure AND seat_label = @label
-             AND state = 'available'
-          RETURNING seat_label
-        '''),
-        parameters: {
-          'departure': TypedValue(Type.uuid, toDepartureId),
-          'label': TypedValue(Type.text, label),
-          'booking': TypedValue(Type.uuid, bookingId),
-        },
-      );
-      if (claimed.isEmpty)
-        return (applied: null, refusal: const ChoiceNoLongerAvailable());
+    final missed = await SeatOccupancy.takeUnderBooking(
+      tx,
+      departureId: toDepartureId,
+      operatorId: operatorId,
+      labels: taking,
+      bookingId: bookingId,
+    );
+    if (missed.isNotEmpty) {
+      return (applied: null, refusal: const ChoiceNoLongerAvailable());
     }
 
     final seated = await tx.execute(
@@ -468,18 +460,10 @@ final class PostgresPassengerChoices implements PassengerChoices {
       );
     }
 
-    await tx.execute(
-      Sql.named('''
-        UPDATE seats
-           SET state = 'available', booking_id = NULL, hold_id = NULL,
-               held_until = NULL
-         WHERE departure_id = @departure AND booking_id = @booking
-      '''),
-      parameters: {
-        'departure': TypedValue(Type.uuid, fromDepartureId),
-        'booking': TypedValue(Type.uuid, bookingId),
-      },
-      ignoreRows: true,
+    await SeatOccupancy.releaseBooking(
+      tx,
+      bookingId,
+      departureId: fromDepartureId,
     );
 
     await tx.execute(
@@ -604,16 +588,7 @@ final class PostgresPassengerChoices implements PassengerChoices {
     // Back on sale in the same transaction — and on a disrupted departure
     // that is the point of the whole screen: the seat this passenger gave up
     // is one the dispatcher can now offer to somebody still standing there.
-    await tx.execute(
-      Sql.named('''
-        UPDATE seats
-           SET state = 'available', booking_id = NULL, hold_id = NULL,
-               held_until = NULL
-         WHERE booking_id = @id
-      '''),
-      parameters: {'id': TypedValue(Type.uuid, bookingId)},
-      ignoreRows: true,
-    );
+    await SeatOccupancy.releaseBooking(tx, bookingId);
 
     final posting = Postings.refundApproved(
       operatorId: operatorId,

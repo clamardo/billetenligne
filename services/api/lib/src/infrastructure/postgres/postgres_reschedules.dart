@@ -4,6 +4,8 @@ import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart' hide Result;
 
+import 'seat_occupancy.dart';
+
 /// Rescheduling, against Postgres (`01-feature-spec.md` §8.1).
 ///
 /// The same two-scope shape as every other traveller-initiated movement:
@@ -363,7 +365,6 @@ final class PostgresReschedules implements RescheduleDesk {
          WHERE departure_id = @id
            AND (state = 'available' OR (state = 'held' AND held_until < now()))
          ORDER BY seat_label
-           FOR UPDATE
       '''),
       parameters: {'id': TypedValue(Type.uuid, toDepartureId)},
     );
@@ -380,29 +381,18 @@ final class PostgresReschedules implements RescheduleDesk {
     ];
 
     // Taken before a single old one is released.
-    for (final label in taking) {
-      final claimed = await tx.execute(
-        Sql.named('''
-          UPDATE seats
-             SET state = 'sold', booking_id = @booking,
-                 hold_id = NULL, held_until = NULL
-           WHERE departure_id = @departure AND seat_label = @label
-             AND (state = 'available'
-                  OR (state = 'held' AND held_until < now()))
-          RETURNING seat_label
-        '''),
-        parameters: {
-          'departure': TypedValue(Type.uuid, toDepartureId),
-          'label': TypedValue(Type.text, label),
-          'booking': TypedValue(Type.uuid, bookingId),
-        },
+    final missed = await SeatOccupancy.takeUnderBooking(
+      tx,
+      departureId: toDepartureId,
+      operatorId: row['operator_id']! as String,
+      labels: taking,
+      bookingId: bookingId,
+    );
+    if (missed.isNotEmpty) {
+      return (
+        applied: null,
+        refusal: ChangeDoesNotFit(seatsNeeded, taking.length - missed.length),
       );
-      if (claimed.isEmpty) {
-        return (
-          applied: null,
-          refusal: ChangeDoesNotFit(seatsNeeded, taking.length - 1),
-        );
-      }
     }
 
     await _relocate(
@@ -532,6 +522,10 @@ final class PostgresReschedules implements RescheduleDesk {
         SELECT c.id::text AS id, c.booking_id::text AS booking_id,
                c.operator_id::text AS operator_id,
                c.to_departure_id::text AS to_departure_id,
+               -- The order's hold is where its seats actually are: the
+               -- occupancy rows carry it, and the capture below turns those
+               -- same rows into the sale rather than taking new ones.
+               c.hold_id::text AS hold_id,
                c.seat_labels, c.state::text AS state,
                c.created_by::text AS created_by,
                b.ref, b.departure_id::text AS departure_id,
@@ -571,30 +565,17 @@ final class PostgresReschedules implements RescheduleDesk {
     // the hold rather than to "whatever is free": between the order and the
     // capture the coach may have filled around them, and the only seats this
     // booking is entitled to are the ones it paid to keep.
-    final claimed = await tx.execute(
-      Sql.named('''
-        UPDATE seats
-           SET state = 'sold', booking_id = @booking,
-               hold_id = NULL, held_until = NULL
-         WHERE departure_id = @departure
-           AND seat_label = ANY(@labels)
-           AND state = 'held'
-           AND hold_id = (SELECT hold_id FROM booking_changes WHERE id = @id)
-        RETURNING seat_label
-      '''),
-      parameters: {
-        'departure': TypedValue(Type.uuid, toDepartureId),
-        'labels': TypedValue(Type.textArray, taking),
-        'booking': TypedValue(Type.uuid, bookingId),
-        'id': TypedValue(Type.uuid, changeId),
-      },
+    final sold = await SeatOccupancy.sell(
+      tx,
+      holdId: row['hold_id']! as String,
+      bookingId: bookingId,
     );
 
     // The hold lapsed and the sweeper put the seats back before the money
     // arrived. Nothing moves, the order closes, and the capture stands as an
     // intent somebody has to refund — which is the honest outcome, and the
     // reason the window is deliberately longer than the payment's.
-    if (claimed.length < taking.length) {
+    if (sold < taking.length) {
       await tx.execute(
         Sql.named(
           "UPDATE booking_changes SET state = 'expired' WHERE id = @id",
@@ -768,6 +749,7 @@ final class PostgresReschedules implements RescheduleDesk {
       final moved = await _takeFreeSeats(
         tx,
         toDepartureId: toDepartureId,
+        operatorId: row['operator_id']! as String,
         seatsNeeded: seatsNeeded,
         bookingId: bookingId,
       );
@@ -825,7 +807,6 @@ final class PostgresReschedules implements RescheduleDesk {
          WHERE departure_id = @id
            AND (state = 'available' OR (state = 'held' AND held_until < now()))
          ORDER BY seat_label
-           FOR UPDATE
       '''),
       parameters: {'id': TypedValue(Type.uuid, toDepartureId)},
     );
@@ -867,30 +848,19 @@ final class PostgresReschedules implements RescheduleDesk {
     final holdId = held['id']! as String;
     final expiresAt = held['expires_at']! as DateTime;
 
-    for (final label in taking) {
-      final claimed = await tx.execute(
-        Sql.named('''
-          UPDATE seats
-             SET state = 'held', hold_id = @hold, held_until = @until,
-                 booking_id = NULL
-           WHERE departure_id = @departure AND seat_label = @label
-             AND (state = 'available'
-                  OR (state = 'held' AND held_until < now()))
-          RETURNING seat_label
-        '''),
-        parameters: {
-          'departure': TypedValue(Type.uuid, toDepartureId),
-          'label': TypedValue(Type.text, label),
-          'hold': TypedValue(Type.uuid, holdId),
-          'until': TypedValue(Type.timestampTz, expiresAt),
-        },
+    final missed = await SeatOccupancy.takeUnderHold(
+      tx,
+      departureId: toDepartureId,
+      operatorId: row['operator_id']! as String,
+      labels: taking,
+      holdId: holdId,
+      heldUntil: expiresAt,
+    );
+    if (missed.isNotEmpty) {
+      return (
+        order: null,
+        refusal: ChangeDoesNotFit(seatsNeeded, taking.length - missed.length),
       );
-      if (claimed.isEmpty) {
-        return (
-          order: null,
-          refusal: ChangeDoesNotFit(seatsNeeded, taking.length - 1),
-        );
-      }
     }
 
     final order = await tx.execute(
@@ -1226,6 +1196,7 @@ final class PostgresReschedules implements RescheduleDesk {
     final moved = await _takeFreeSeats(
       tx,
       toDepartureId: toDepartureId,
+      operatorId: row['operator_id']! as String,
       seatsNeeded: seatsNeeded,
       bookingId: bookingId,
     );
@@ -1352,6 +1323,7 @@ final class PostgresReschedules implements RescheduleDesk {
   Future<({List<String>? taking, int available})> _takeFreeSeats(
     TxSession tx, {
     required String toDepartureId,
+    required String operatorId,
     required int seatsNeeded,
     required String bookingId,
   }) async {
@@ -1361,7 +1333,6 @@ final class PostgresReschedules implements RescheduleDesk {
          WHERE departure_id = @id
            AND (state = 'available' OR (state = 'held' AND held_until < now()))
          ORDER BY seat_label
-           FOR UPDATE
       '''),
       parameters: {'id': TypedValue(Type.uuid, toDepartureId)},
     );
@@ -1374,26 +1345,15 @@ final class PostgresReschedules implements RescheduleDesk {
         free[i].toColumnMap()['seat_label'] as String,
     ];
 
-    for (final label in taking) {
-      final claimed = await tx.execute(
-        Sql.named('''
-          UPDATE seats
-             SET state = 'sold', booking_id = @booking,
-                 hold_id = NULL, held_until = NULL
-           WHERE departure_id = @departure AND seat_label = @label
-             AND (state = 'available'
-                  OR (state = 'held' AND held_until < now()))
-          RETURNING seat_label
-        '''),
-        parameters: {
-          'departure': TypedValue(Type.uuid, toDepartureId),
-          'label': TypedValue(Type.text, label),
-          'booking': TypedValue(Type.uuid, bookingId),
-        },
-      );
-      if (claimed.isEmpty) {
-        return (taking: null, available: taking.length - 1);
-      }
+    final missed = await SeatOccupancy.takeUnderBooking(
+      tx,
+      departureId: toDepartureId,
+      operatorId: operatorId,
+      labels: taking,
+      bookingId: bookingId,
+    );
+    if (missed.isNotEmpty) {
+      return (taking: null, available: taking.length - missed.length);
     }
 
     return (taking: taking, available: free.length);
@@ -1403,10 +1363,8 @@ final class PostgresReschedules implements RescheduleDesk {
   Future<void> _releaseOrder(TxSession tx, String changeId) async {
     await tx.execute(
       Sql.named('''
-        UPDATE seats
-           SET state = 'available', hold_id = NULL, held_until = NULL
-         WHERE state = 'held'
-           AND hold_id = (SELECT hold_id FROM booking_changes WHERE id = @id)
+        DELETE FROM seat_occupancy
+         WHERE hold_id = (SELECT hold_id FROM booking_changes WHERE id = @id)
       '''),
       parameters: {'id': TypedValue(Type.uuid, changeId)},
       ignoreRows: true,
@@ -1504,18 +1462,10 @@ final class PostgresReschedules implements RescheduleDesk {
       );
     }
 
-    await tx.execute(
-      Sql.named('''
-        UPDATE seats
-           SET state = 'available', booking_id = NULL, hold_id = NULL,
-               held_until = NULL
-         WHERE departure_id = @departure AND booking_id = @booking
-      '''),
-      parameters: {
-        'departure': TypedValue(Type.uuid, fromDepartureId),
-        'booking': TypedValue(Type.uuid, bookingId),
-      },
-      ignoreRows: true,
+    await SeatOccupancy.releaseBooking(
+      tx,
+      bookingId,
+      departureId: fromDepartureId,
     );
 
     await tx.execute(

@@ -250,11 +250,17 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
     return SeatDto(
       label: r['seat_label'] as String,
       sectionCode: r['section_code'] as String,
+      // Available is named rather than defaulted to, and the default is the
+      // unsellable answer. `partial` — a seat sold for part of the road
+      // (ADR-0025) — arrives here as `held`, which is what a client that has
+      // never heard of segments needs to be told, and any state a later
+      // migration adds gets the same treatment. A seat map that fails open
+      // sells a seat somebody is already sitting in.
       status: switch (r['state'] as String) {
-        'held' => SeatStatusDto.held,
+        'available' => SeatStatusDto.available,
         'sold' => SeatStatusDto.sold,
         'blocked' => SeatStatusDto.blocked,
-        _ => SeatStatusDto.available,
+        _ => SeatStatusDto.held,
       },
       // Per seat, so a VIP row never surprises anyone at checkout.
       fare: Money(r['fare_minor'] as int, currency),

@@ -176,9 +176,12 @@ void main() {
 
     await seed.execute(
       Sql.named('''
-        UPDATE seats SET state = 'held', hold_id = @hold,
-                         held_until = now() - INTERVAL '1 minute'
-         WHERE departure_id = @departure AND seat_label = '1A'
+        INSERT INTO seat_occupancy (departure_id, seat_label, operator_id,
+                                    span, hold_id, held_until)
+        SELECT s.departure_id, s.seat_label, s.operator_id, d.road_span,
+               @hold, now() - INTERVAL '1 minute'
+          FROM seats s JOIN departures d ON d.id = s.departure_id
+         WHERE s.departure_id = @departure AND s.seat_label = '1A'
       '''),
       parameters: {
         'hold': TypedValue(Type.uuid, holdId),
@@ -285,13 +288,14 @@ void main() {
       final departureId = await aDeparture();
       final holdId = await aLapsedHold(departureId, await aTraveller());
 
-      // The sweeper arrives after the sale. `state = 'held'` in its WHERE is
-      // what stops it un-selling a seat somebody paid for — which would be
-      // far worse than never running at all.
+      // The sweeper arrives after the sale. The occupancy stopped naming a
+      // hold at the moment of the sale, which is what stops it un-selling a
+      // seat somebody paid for — far worse than never running at all.
       await seed.execute(
         Sql.named('''
-          UPDATE seats SET state = 'sold', hold_id = NULL, held_until = NULL,
-                           booking_id = gen_random_uuid()
+          UPDATE seat_occupancy
+             SET booking_id = (SELECT id FROM bookings LIMIT 1),
+                 hold_id = NULL, held_until = NULL
            WHERE departure_id = @d AND seat_label = '1A'
         '''),
         parameters: {'d': TypedValue(Type.uuid, departureId)},
@@ -1276,9 +1280,13 @@ void main() {
       );
       await seed.execute(
         Sql.named('''
-          UPDATE seats SET state = 'held', hold_id = @hold,
-                           held_until = now() + INTERVAL '2 hours'
-           WHERE departure_id = @departure
+          INSERT INTO seat_occupancy (departure_id, seat_label, operator_id,
+                                      span, hold_id, held_until)
+          SELECT s.departure_id, s.seat_label, s.operator_id, d.road_span,
+                 @hold, now() + INTERVAL '2 hours'
+            FROM seats s JOIN departures d ON d.id = s.departure_id
+           WHERE s.departure_id = @departure
+          ON CONFLICT DO NOTHING
         '''),
         parameters: {
           'hold': TypedValue(Type.uuid, hold.first.toColumnMap()['id']),
@@ -1292,12 +1300,11 @@ void main() {
     /// paid for that the hold sweeper has already been past.
     Future<void> free(String departureId, {int count = 1}) => seed.execute(
       Sql.named('''
-        UPDATE seats
-           SET state = 'available', hold_id = NULL, held_until = NULL
+        DELETE FROM seat_occupancy
          WHERE departure_id = @departure
-           AND seat_label IN (SELECT seat_label FROM seats
+           AND seat_label IN (SELECT seat_label FROM seat_occupancy
                                WHERE departure_id = @departure
-                                 AND state = 'held'
+                                 AND hold_id IS NOT NULL
                                ORDER BY seat_label LIMIT @n)
       '''),
       parameters: {

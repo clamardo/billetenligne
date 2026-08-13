@@ -36,10 +36,10 @@ final class Sweepers {
 
   /// Marks lapsed holds and puts their seats back on sale.
   ///
-  /// The seats are released in the **same statement set** as the hold, and
-  /// only for seats still pointing at that hold — a seat that has since been
-  /// sold under a booking must not be dragged back to `available` by a
-  /// sweeper arriving late.
+  /// The occupancy is deleted in the **same statement set** as the hold, and
+  /// only the occupancy that names it — a piece of a seat that has since been
+  /// sold under a booking carries no hold at all, so a sweeper arriving late
+  /// cannot drag it back on sale.
   Future<SweepResult> expireHolds({int limit = 500}) =>
       _db.transaction(const DbScope.worker(), (tx) async {
         final lapsed = await tx.execute(
@@ -65,10 +65,7 @@ final class Sweepers {
 
         await tx.execute(
           Sql.named('''
-            UPDATE seats
-               SET state = 'available', hold_id = NULL, held_until = NULL
-             WHERE hold_id = ANY(@ids::uuid[])
-               AND state = 'held'
+            DELETE FROM seat_occupancy WHERE hold_id = ANY(@ids::uuid[])
           '''),
           parameters: {
             'ids': TypedValue(Type.textArray, [for (final id in ids) '$id']),
@@ -109,15 +106,17 @@ final class Sweepers {
 
         final ids = [for (final row in expired) '${row.toColumnMap()['id']}'];
 
-        // `state = 'held'` in the WHERE, so a seat somebody paid for between
-        // the SELECT and here is untouched. A sweeper that could un-sell a
-        // seat is worse than no sweeper.
+        // An unpaid reservation occupies its seats under the hold it was
+        // made from, never under its own id — that is what makes it read as
+        // held rather than sold. So this deletes by the hold, which also
+        // means a booking that was paid for between the SELECT and here is
+        // untouched: its occupancy stopped naming a hold at the moment of the
+        // sale. A sweeper that could un-sell a seat is worse than no sweeper.
         await tx.execute(
           Sql.named('''
-            UPDATE seats
-               SET state = 'available', hold_id = NULL, held_until = NULL,
-                   booking_id = NULL
-             WHERE booking_id = ANY(@ids::uuid[]) AND state = 'held'
+            DELETE FROM seat_occupancy o
+             USING bookings b
+             WHERE b.id = ANY(@ids::uuid[]) AND o.hold_id = b.hold_id
           '''),
           parameters: {'ids': TypedValue(Type.textArray, ids)},
           ignoreRows: true,

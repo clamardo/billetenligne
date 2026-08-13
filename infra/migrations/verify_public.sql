@@ -45,6 +45,7 @@ INSERT INTO seats (departure_id, seat_label, operator_id, section_code,
 DO $$
 DECLARE
   visible INT;
+  held    TEXT;
   aline   TEXT := '55555555-5555-5555-5555-555555555551';
   serge   TEXT := '55555555-5555-5555-5555-555555555552';
 BEGIN
@@ -71,16 +72,32 @@ BEGIN
           'cccccccc-0000-0000-0000-000000000001',
           aline::uuid, ARRAY['1A'], now() + INTERVAL '15 minutes', 'idem-aline');
 
-  UPDATE seats
-     SET state = 'held',
-         hold_id = 'dddddddd-0000-0000-0000-000000000001',
-         held_until = now() + INTERVAL '15 minutes'
+  -- The seat is taken by writing the piece of road that is now occupied, not
+  -- by setting a state: since 0036 no application role may write `seats` at
+  -- all, and the state below is the trigger's answer rather than ours.
+  INSERT INTO seat_occupancy (departure_id, seat_label, operator_id, span,
+                              hold_id, held_until)
+  SELECT 'cccccccc-0000-0000-0000-000000000001', '1A',
+         '11111111-1111-1111-1111-111111111111', d.road_span,
+         'dddddddd-0000-0000-0000-000000000001',
+         now() + INTERVAL '15 minutes'
+    FROM departures d WHERE d.id = 'cccccccc-0000-0000-0000-000000000001';
+
+  SELECT state::text INTO held FROM seats
    WHERE departure_id = 'cccccccc-0000-0000-0000-000000000001'
      AND seat_label = '1A';
+  IF held <> 'held' THEN
+    RAISE EXCEPTION 'FAIL: a traveller''s claim left the seat %', held;
+  END IF;
 
   -- ── 3. Selling is NOT ─────────────────────────────────────────────────────
   -- The single most important line in this file. If this check ever stops
   -- failing, an unauthenticated request can board a coach for free.
+  --
+  -- Two ways to try it now, and both are refused. Writing the state directly
+  -- is refused by the grant that 0036 took away; writing occupancy with a
+  -- booking behind it is refused by the policy, which lets a traveller write
+  -- exactly one kind of row — a piece of a seat held under a hold of theirs.
   BEGIN
     UPDATE seats SET state = 'sold', hold_id = NULL,
                      booking_id = gen_random_uuid()
@@ -88,7 +105,17 @@ BEGIN
        AND seat_label = '1A';
     RAISE EXCEPTION 'FAIL: the public role marked a seat sold';
   EXCEPTION WHEN insufficient_privilege THEN
-    NULL; -- expected: WITH CHECK refused the new state
+    NULL; -- expected: there is no UPDATE grant on seats to any app role
+  END;
+
+  BEGIN
+    INSERT INTO seat_occupancy (departure_id, seat_label, operator_id, span,
+                                booking_id)
+    VALUES ('cccccccc-0000-0000-0000-000000000001', '1B',
+            '11111111-1111-1111-1111-111111111111', '[0,1)', gen_random_uuid());
+    RAISE EXCEPTION 'FAIL: the public role sold itself a seat';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected: the policy insists on a hold, and on it being theirs
   END;
 
   -- Nor may it quietly block inventory, which would be a denial of service
@@ -1877,5 +1904,151 @@ BEGIN
   PERFORM set_config('app.public', 'off', true);
   PERFORM set_config('app.platform', 'off', true);
   RAISE NOTICE 'OK  a seat is sold in pieces, never twice, and says so itself';
+END
+$$;
+
+-- ── 24. A seat's state is nobody's to write ────────────────────────────────
+--
+-- Section 23 proved the derivation is *correct*. This one proves it is the
+-- only one there is: 0035 left eleven code paths still setting the state by
+-- hand, and two writers who agree until the afternoon they do not is the
+-- failure the whole slice exists to remove. 0036 removes the privilege, so
+-- the second writer cannot come back — not from a handler somebody adds next
+-- year, and not from an operator with a psql prompt.
+--
+-- The exception carved out is one column for one role: a traveller reserving
+-- from a hold moves their own deadline out to the payment window, and nothing
+-- else about the row.
+DO $$
+DECLARE
+  ocean UUID := '11111111-1111-1111-1111-111111111111';
+  aline UUID := '55555555-5555-5555-5555-555555555551';
+  serge UUID := '55555555-5555-5555-5555-555555555552';
+  dep   UUID := 'cccccccc-0000-0000-0000-0000000000d1';
+  h1    UUID := 'dddddddd-0000-0000-0000-0000000000d1';
+  seen  TEXT;
+BEGIN
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  INSERT INTO departures
+    (id, operator_id, route_id, seat_layout_id, departs_at, arrives_at,
+     capacity, fare_minor, currency)
+  VALUES (dep, ocean, 'aaaaaaaa-0000-0000-0000-000000000001',
+          'bbbbbbbb-0000-0000-0000-000000000001',
+          now() + INTERVAL '4 days', now() + INTERVAL '4 days 8 hours',
+          4, 12000, 'XAF');
+
+  INSERT INTO seats (departure_id, seat_label, operator_id, section_code,
+                     fare_minor, currency)
+  VALUES (dep, '1A', ocean, 'STD', 12000, 'XAF');
+
+  INSERT INTO holds (id, operator_id, departure_id, user_id, seat_labels,
+                     expires_at, idempotency_key)
+  VALUES (h1, ocean, dep, aline, ARRAY['1A'],
+          now() + INTERVAL '15 minutes', 'derived-aline');
+
+  -- ── Not the platform's, not an operator's, not a traveller's ──
+  --
+  -- Asked of the catalogue rather than by attempting three statements,
+  -- because a privilege that is absent for all three roles is the claim, and
+  -- `has_table_privilege` is where that claim actually lives.
+  IF has_table_privilege('bel_admin',  'seats', 'UPDATE')
+     OR has_table_privilege('bel_app',    'seats', 'UPDATE')
+     OR has_table_privilege('bel_public', 'seats', 'UPDATE') THEN
+    RAISE EXCEPTION 'FAIL: an application role can still write a seat by hand';
+  END IF;
+
+  -- And column by column, because a column grant added later would not show
+  -- up in the table-level answer above.
+  IF has_column_privilege('bel_app', 'seats', 'state', 'UPDATE')
+     OR has_column_privilege('bel_public', 'seats', 'held_until', 'UPDATE') THEN
+    RAISE EXCEPTION 'FAIL: a column grant reopened the derived state';
+  END IF;
+
+  -- ── The traveller moves their own deadline, and nothing else ──
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.user_id', aline::text, true);
+
+  INSERT INTO seat_occupancy (departure_id, seat_label, operator_id, span,
+                              hold_id, held_until)
+  SELECT dep, '1A', ocean, d.road_span, h1, now() + INTERVAL '15 minutes'
+    FROM departures d WHERE d.id = dep;
+
+  -- Reserving: the seats stay held and the deadline moves to the payment
+  -- window. This is the one UPDATE a traveller has on this table.
+  UPDATE seat_occupancy SET held_until = now() + INTERVAL '4 hours'
+   WHERE hold_id = h1;
+
+  SELECT state::text INTO seen FROM seats
+   WHERE departure_id = dep AND seat_label = '1A';
+  IF seen <> 'held' THEN
+    RAISE EXCEPTION 'FAIL: a reservation left the seat %', seen;
+  END IF;
+
+  -- What that same grant does not buy: turning the hold into a sale, which
+  -- would be a free ticket, or moving the piece of road under it.
+  BEGIN
+    UPDATE seat_occupancy SET booking_id = gen_random_uuid(), hold_id = NULL
+     WHERE hold_id = h1;
+    RAISE EXCEPTION 'FAIL: a traveller sold themselves a seat';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected: the grant names one column, and it is not this one
+  END;
+
+  BEGIN
+    UPDATE seat_occupancy SET span = '[0,9)' WHERE hold_id = h1;
+    RAISE EXCEPTION 'FAIL: a traveller rewrote the journey they bought';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  -- Nor somebody else's deadline, which would be a way to hand a stranger's
+  -- seat to whoever asked next.
+  PERFORM set_config('app.user_id', serge::text, true);
+  UPDATE seat_occupancy SET held_until = now() - INTERVAL '1 minute'
+   WHERE hold_id = h1;
+
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  SELECT count(*)::text INTO seen FROM seat_occupancy
+   WHERE hold_id = h1 AND held_until > now();
+  IF seen <> '1' THEN
+    RAISE EXCEPTION 'FAIL: a traveller expired somebody else''s hold';
+  END IF;
+
+  -- ── But a hold that ran out is nobody's ──
+  --
+  -- The claim path has always treated a lapsed hold as available rather than
+  -- waiting for the sweeper, and under occupancy that read is a DELETE by
+  -- whoever wants the seat next. It is the database's clock that decides.
+  UPDATE seat_occupancy SET held_until = now() - INTERVAL '1 minute'
+   WHERE hold_id = h1;
+
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.user_id', serge::text, true);
+  DELETE FROM seat_occupancy WHERE departure_id = dep;
+
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  SELECT count(*)::text INTO seen FROM seat_occupancy WHERE departure_id = dep;
+  IF seen <> '0' THEN
+    RAISE EXCEPTION 'FAIL: a lapsed hold kept a seat nobody was paying for';
+  END IF;
+
+  SELECT state::text INTO seen FROM seats
+   WHERE departure_id = dep AND seat_label = '1A';
+  IF seen <> 'available' THEN
+    RAISE EXCEPTION 'FAIL: a swept seat reads as %', seen;
+  END IF;
+
+  RESET ROLE;
+  PERFORM set_config('app.public', 'off', true);
+  PERFORM set_config('app.platform', 'off', true);
+  RAISE NOTICE 'OK  a seat''s state is derived, and nobody may write it';
 END
 $$;

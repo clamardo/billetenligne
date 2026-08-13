@@ -8,6 +8,7 @@ import '../../application/ports/disruption_desk.dart';
 import '../../application/ports/ticket_issuer.dart';
 import '../db/database.dart';
 import 'postgres_disruptions.dart';
+import 'seat_occupancy.dart';
 
 /// Bookings, tickets and the ledger — written together or not at all.
 ///
@@ -165,30 +166,17 @@ final class PostgresBookingStore implements BookingStore {
 
     await _insertBookingSeats(tx, bookingId, seats);
 
-    // The seats stay HELD, not sold, and the hold's expiry moves out to the
+    // The seats stay HELD, not sold, and the hold's deadline moves out to the
     // payment deadline. Selling them now would mean a ticket that can board
     // before anybody has paid; releasing them would mean a reservation whose
     // seat is gone by the time the traveller reaches the agency.
-    await tx.execute(
-      Sql.named('''
-        UPDATE seats
-           SET booking_id = @booking,
-               held_until = now() + make_interval(secs => @payWithin)
-         WHERE departure_id = @departure
-           AND seat_label = ANY(@labels)
-           AND state = 'held'
-      '''),
-      parameters: {
-        'booking': TypedValue(Type.uuid, bookingId),
-        'departure': TypedValue(Type.uuid, departureId),
-        'labels': TypedValue(
-          Type.textArray,
-          seats.map((s) => s.seatLabel).toList(),
-        ),
-        'payWithin': TypedValue(Type.double, payWithin.inSeconds.toDouble()),
-      },
-      ignoreRows: true,
-    );
+    //
+    // The occupancy keeps the *hold* as its authority rather than taking the
+    // booking's name, which is what the derived state then says out loud: an
+    // unpaid reservation reads as held, and only the capture below turns it
+    // into a sale. The booking remembers which hold it came from, so nothing
+    // has to search for these rows later.
+    await SeatOccupancy.holdUntil(tx, holdId: holdId, payWithin: payWithin);
 
     return BookingRecord(
       id: bookingId,
@@ -261,8 +249,9 @@ final class PostgresBookingStore implements BookingStore {
          WHERE id = @booking
            AND operator_id = @operator
            AND state = 'pending_payment'
-        RETURNING id, ref, departure_id, fare_minor, service_fee_minor,
-                  total_minor, currency::text AS currency, state::text AS state
+        RETURNING id, ref, departure_id, hold_id, fare_minor,
+                  service_fee_minor, total_minor,
+                  currency::text AS currency, state::text AS state
       '''),
       parameters: {
         'booking': TypedValue(Type.uuid, bookingId),
@@ -280,16 +269,14 @@ final class PostgresBookingStore implements BookingStore {
     final currency = Currency.byCode((row['currency'] as String).trim())!;
     final ref = BookingRef.trusted(row['ref'] as String);
 
-    // NOW the seats sell. Under the operator's scope, which is the only scope
-    // that can write this state at all.
-    await tx.execute(
-      Sql.named('''
-        UPDATE seats
-           SET state = 'sold', hold_id = NULL, held_until = NULL
-         WHERE booking_id = @booking AND state = 'held'
-      '''),
-      parameters: {'booking': TypedValue(Type.uuid, bookingId)},
-      ignoreRows: true,
+    // NOW the seats sell — the same occupancy rows, re-attributed from the
+    // hold that took them to the booking that paid for them. Nothing is
+    // released and re-taken, so there is no instant at which a paid seat is
+    // free for somebody else to walk into.
+    await SeatOccupancy.sell(
+      tx,
+      holdId: row['hold_id'].toString(),
+      bookingId: bookingId,
     );
 
     await _postLedger(

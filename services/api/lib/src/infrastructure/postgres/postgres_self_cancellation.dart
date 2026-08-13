@@ -6,6 +6,8 @@ import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart' hide Result;
 
+import 'seat_occupancy.dart';
+
 /// The traveller cancelling their own booking, against Postgres (§8.2).
 ///
 /// The same two-scope shape as the passenger's own choice, and for the same
@@ -306,16 +308,7 @@ final class PostgresSelfCancellation implements SelfCancellation {
     // self-service worth building at all: a seat freed at 22:00 the night
     // before is a seat somebody else buys, and a cancellation that waits for
     // an agency to open is a seat that travels empty.
-    await tx.execute(
-      Sql.named('''
-        UPDATE seats
-           SET state = 'available', booking_id = NULL, hold_id = NULL,
-               held_until = NULL
-         WHERE booking_id = @id
-      '''),
-      parameters: {'id': TypedValue(Type.uuid, bookingId)},
-      ignoreRows: true,
-    );
+    await SeatOccupancy.releaseBooking(tx, bookingId);
 
     if (row['hold_id'] != null) {
       await tx.execute(

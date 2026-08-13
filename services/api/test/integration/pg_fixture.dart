@@ -542,12 +542,18 @@ final class PgFixture {
       },
     );
 
+    // Occupancy, not a state: since ADR-0025 `seats.state` is the trigger's
+    // answer, and a fixture that wrote it by hand would be seeding a world
+    // the product cannot produce.
     await _seed.execute(
       Sql.named('''
-        UPDATE seats
-           SET state = 'held', hold_id = @hold,
-               held_until = now() + INTERVAL '2 hours'
-         WHERE departure_id = @id
+        INSERT INTO seat_occupancy (departure_id, seat_label, operator_id,
+                                    span, hold_id, held_until)
+        SELECT s.departure_id, s.seat_label, s.operator_id, d.road_span,
+               @hold, now() + INTERVAL '2 hours'
+          FROM seats s JOIN departures d ON d.id = s.departure_id
+         WHERE s.departure_id = @id
+        ON CONFLICT DO NOTHING
       '''),
       parameters: {
         'id': TypedValue(Type.uuid, departureId),
@@ -555,6 +561,52 @@ final class PgFixture {
       },
       ignoreRows: true,
     );
+  }
+
+  /// Every piece of a seat that is currently occupied, oldest first.
+  ///
+  /// The point of most of these assertions is that nothing *else* wrote a
+  /// second row: a sale that released and re-took its own seat would still
+  /// leave the state reading `sold`, and would have let somebody else in
+  /// between the two statements.
+  Future<List<Map<String, Object?>>> occupancyOn(
+    String departureId,
+    String label,
+  ) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT span::text AS span, hold_id::text AS hold_id,
+               booking_id::text AS booking_id, held_until
+          FROM seat_occupancy
+         WHERE departure_id = @departure AND seat_label = @label
+         ORDER BY created_at
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, departureId),
+        'label': TypedValue(Type.text, label),
+      },
+    );
+    return [for (final row in rows) row.toColumnMap()];
+  }
+
+  /// Live holds on a departure that occupy nothing.
+  ///
+  /// Zero, always. A hold that committed without its seats would burn its
+  /// idempotency key for nothing, so the traveller's retry — the normal case
+  /// on these networks — would be answered with "that key is spent" rather
+  /// than with a seat.
+  Future<int> emptyHolds(String departureId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT count(*)::int AS n FROM holds h
+         WHERE h.departure_id = @id AND h.state = 'active'
+           AND NOT EXISTS (
+             SELECT 1 FROM seat_occupancy o WHERE o.hold_id = h.id
+           )
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+    );
+    return rows.first.toColumnMap()['n'] as int;
   }
 
   Future<int> voidedTickets(String bookingId) async {
@@ -1342,14 +1394,18 @@ final class PgFixture {
       Sql.named('''
         INSERT INTO departures
           (operator_id, route_id, seat_layout_id, departs_at, arrives_at,
-           capacity, fare_minor, currency, status, sales_close_at)
+           capacity, fare_minor, currency, status, sales_close_at, road_span)
         VALUES
           (@operator, @route, @layout,
            now() + make_interval(secs => @offset),
            now() + make_interval(secs => @offset) + INTERVAL '8 hours',
            @capacity, @fare, 'XAF', @status::departure_status,
            CASE WHEN @closeIn::float8 IS NULL THEN NULL
-                ELSE now() + make_interval(secs => @closeIn::float8) END)
+                ELSE now() + make_interval(secs => @closeIn::float8) END,
+           -- Numbered the way the console numbers it (ADR-0025), so a fixture
+           -- departure on a road with stops has the road it really has.
+           int4range(0, 1 + (SELECT count(*)::int FROM route_stops rs
+                              WHERE rs.route_id = @route)))
         RETURNING id
       '''),
       parameters: {
@@ -1391,8 +1447,8 @@ final class PgFixture {
     );
     await _seed.execute(
       Sql.named("""
-        UPDATE seats SET held_until = now() - INTERVAL '1 minute'
-         WHERE departure_id = @id AND state = 'held'
+        UPDATE seat_occupancy SET held_until = now() - INTERVAL '1 minute'
+         WHERE departure_id = @id AND hold_id IS NOT NULL
       """),
       parameters: {'id': TypedValue(Type.uuid, departureId)},
       ignoreRows: true,
@@ -1650,7 +1706,7 @@ final class PgFixture {
     );
     await _seed.execute(
       Sql.named('''
-        UPDATE seats SET held_until = now() - INTERVAL '1 second'
+        UPDATE seat_occupancy SET held_until = now() - INTERVAL '1 second'
          WHERE hold_id = @id
       '''),
       parameters: {'id': TypedValue(Type.uuid, holdId)},

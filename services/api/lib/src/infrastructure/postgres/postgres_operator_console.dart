@@ -12,6 +12,7 @@ import 'package:postgres/postgres.dart';
 
 import '../../application/ports/operator_console.dart';
 import '../db/database.dart';
+import 'seat_occupancy.dart';
 
 /// The console, on the tenant surface.
 ///
@@ -835,11 +836,24 @@ final class PostgresOperatorConsole implements OperatorConsole {
           INSERT INTO departures
             (operator_id, route_id, pattern_id, vehicle_id, seat_layout_id,
              departs_at, arrives_at, capacity, fare_minor, currency,
-             mode, amenities, origin_station_id, destination_station_id)
+             mode, amenities, origin_station_id, destination_station_id,
+             road_span)
           SELECT @operator, @route, @pattern, @vehicle, @layout,
                  ts, ts + make_interval(mins => @duration),
                  @capacity, @fare, @currency, @mode, @amenities,
-                 @originStation, @destinationStation
+                 @originStation, @destinationStation,
+                 -- The road this coach is put on sale with, numbered here and
+                 -- never again (ADR-0025). Origin is 0, each stop follows in
+                 -- sequence, the destination is the exclusive upper bound —
+                 -- so a road with no intermediate stops is `[0,1)`, which is
+                 -- every departure that existed before segments.
+                 --
+                 -- Captured rather than joined, because a stop added next
+                 -- month must not renumber what was sold this month: a
+                 -- passenger who bought positions 1→2 bought Dolisie to
+                 -- Pointe-Noire, and it has to stay that journey.
+                 int4range(0, 1 + (SELECT count(*)::int FROM route_stops rs
+                                    WHERE rs.route_id = @route))
             FROM (SELECT ((@date::date + @time::time) AT TIME ZONE @tz) AS ts) t
            WHERE NOT EXISTS (
                    SELECT 1 FROM departures d
@@ -1105,16 +1119,7 @@ final class PostgresOperatorConsole implements OperatorConsole {
 
     // Back on sale in the same transaction. A seat left sold after a refund is
     // a seat nobody can buy and nobody is sitting in.
-    await tx.execute(
-      Sql.named('''
-        UPDATE seats
-           SET state = 'available', booking_id = NULL, hold_id = NULL,
-               held_until = NULL
-         WHERE booking_id = @id
-      '''),
-      parameters: {'id': TypedValue(Type.uuid, bookingId)},
-      ignoreRows: true,
-    );
+    await SeatOccupancy.releaseBooking(tx, bookingId);
 
     // Whose pocket it comes out of. The service fee is ours, and it only
     // moves when the operator's policy says it does.

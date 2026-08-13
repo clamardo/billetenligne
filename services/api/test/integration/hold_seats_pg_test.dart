@@ -5,6 +5,7 @@ import 'package:bel_api/src/application/hold_seats.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_seat_inventory.dart';
 import 'package:bel_domain/bel_domain.dart';
+import 'package:postgres/postgres.dart';
 import 'package:test/test.dart';
 
 import 'pg_fixture.dart';
@@ -328,12 +329,23 @@ void main() {
       final departureId = await fixture.departure(seatLabels: ['10A']);
       final userId = await fixture.traveller('sold1');
 
-      // Sold by the system after payment — a state the traveller's own role
-      // has no way of writing.
+      // Sold by the system after payment — occupancy under a booking, which
+      // is a row the traveller's own role has no way of writing.
       await db.transaction(DbScope.tenant(PgFixture.operatorId), (tx) async {
         await tx.execute(
-          "UPDATE seats SET state = 'blocked', hold_id = NULL "
-          "WHERE departure_id = '$departureId' AND seat_label = '10A'",
+          Sql.named('''
+            INSERT INTO seat_occupancy (departure_id, seat_label, operator_id,
+                                        span, booking_id)
+            SELECT @departure, '10A', @operator, d.road_span, b.id
+              FROM departures d, bookings b
+             WHERE d.id = @departure
+             LIMIT 1
+          '''),
+          parameters: {
+            'departure': TypedValue(Type.uuid, departureId),
+            'operator': TypedValue(Type.uuid, PgFixture.operatorId),
+          },
+          ignoreRows: true,
         );
       });
 

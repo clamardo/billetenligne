@@ -3,6 +3,7 @@ import 'package:postgres/postgres.dart';
 
 import '../../application/ports/seat_inventory.dart';
 import '../db/database.dart';
+import 'seat_occupancy.dart';
 
 /// The seat race, decided by Postgres.
 ///
@@ -17,148 +18,131 @@ import '../db/database.dart';
 ///  1. **The database is the clock.** Expiry is `now() + interval` computed
 ///     server-side, never a timestamp from Dart. Two API instances a few
 ///     seconds apart must not disagree about who owns a seat.
-///  2. **Locks are taken in sorted label order.** Two travellers racing for
-///     {12A, 12B} lock the same rows in the same sequence, so one waits
-///     instead of both deadlocking.
+///  2. **The race is decided by a constraint, not by a lock we remembered to
+///     take.** Since ADR-0025 a claim writes a row into `seat_occupancy`, and
+///     the EXCLUDE constraint there refuses the second one. A `SELECT ... FOR
+///     UPDATE` is a rule that has to be repeated in every path that ever
+///     touches inventory; an exclusion constraint is a rule the database
+///     applies to paths nobody has written yet.
 ///  3. **An expired hold is available.** Checked here on every read, not left
 ///     to the sweeper — a worker that has been stuck for ten minutes must not
 ///     be able to strand an operator's inventory.
+/// Somebody else got the seats between the read and the write.
+///
+/// Carried out of the transaction as an exception so that the transaction is
+/// *undone*, rather than committing a hold over seats it does not hold. Never
+/// leaves this file: [PostgresSeatInventory.claim] turns it back into the
+/// ordinary refusal the caller expects.
+final class _SeatsWentFirst implements Exception {
+  const _SeatsWentFirst(this.labels);
+  final List<String> labels;
+}
+
 final class PostgresSeatInventory implements SeatInventory {
   const PostgresSeatInventory(this._db);
 
   final Database _db;
 
   @override
-  Future<ClaimOutcome> claim(SeatClaim claim) {
+  Future<ClaimOutcome> claim(SeatClaim claim) async {
     final scope = DbScope.traveller(claim.userId);
 
-    return _db.transaction(scope, (tx) async {
-      // ── A retry is the normal case, not the exception ────────────────────
-      // Congo's networks drop requests routinely, so clients retry. The unique
-      // index on holds.idempotency_key is what makes that safe; this lookup is
-      // what makes it *fast* and lets the traveller see the hold they already
-      // have rather than an error about a seat they already hold.
-      final replay = await _findByKey(tx, claim.idempotencyKey);
-      if (replay != null) return replay;
+    try {
+      return await _db.transaction(scope, (tx) async {
+        // ── A retry is the normal case, not the exception ────────────────────
+        // Congo's networks drop requests routinely, so clients retry. The unique
+        // index on holds.idempotency_key is what makes that safe; this lookup is
+        // what makes it *fast* and lets the traveller see the hold they already
+        // have rather than an error about a seat they already hold.
+        final replay = await _findByKey(tx, claim.idempotencyKey);
+        if (replay != null) return replay;
 
-      final sellable = await _checkDeparture(tx, claim.departureId);
-      if (sellable != null) return sellable;
+        final sellable = await _checkDeparture(tx, claim.departureId);
+        if (sellable != null) return sellable;
 
-      // ── Classify before locking ──────────────────────────────────────────
-      // A plain read first, because `SELECT ... FOR UPDATE` under RLS returns
-      // only rows that pass the UPDATE policy — and that policy deliberately
-      // excludes `sold` and `blocked`. Without this read, a seat someone else
-      // has already bought would come back as "does not exist", and the app
-      // would tell the traveller their seat map is out of date when in truth
-      // they were simply too slow.
-      //
-      // Reading these without a lock is safe precisely because `sold` and
-      // `blocked` are terminal: neither ever becomes available again inside
-      // this transaction's lifetime.
-      final existing = await tx.execute(
-        Sql.named('''
-          SELECT seat_label, state::text AS state
-            FROM seats
-           WHERE departure_id = @departure AND seat_label = ANY(@labels)
-        '''),
-        parameters: {
-          'departure': TypedValue(Type.uuid, claim.departureId),
-          'labels': TypedValue(Type.textArray, claim.seatLabels),
-        },
-      );
-
-      final states = {
-        for (final row in existing)
-          row.toColumnMap()['seat_label'] as String:
-              row.toColumnMap()['state'] as String,
-      };
-
-      final unknown = [
-        for (final label in claim.seatLabels)
-          if (!states.containsKey(label)) label,
-      ];
-      if (unknown.isNotEmpty) return SeatsUnknown(unknown);
-
-      final terminal = [
-        for (final entry in states.entries)
-          if (entry.value == 'sold' || entry.value == 'blocked') entry.key,
-      ]..sort();
-      if (terminal.isNotEmpty) return SeatsTaken(terminal);
-
-      // ── Lock, in a fixed order ───────────────────────────────────────────
-      // ORDER BY inside FOR UPDATE is what stops two concurrent claims for the
-      // same pair of seats from deadlocking. Everything after this point is
-      // decided: nobody else can change these rows until we commit.
-      final locked = await tx.execute(
-        Sql.named('''
+        // ── Read the seats once, and classify ────────────────────────────────
+        // One plain read, and no lock. The seats race is settled by the
+        // exclusion constraint a few statements below, so there is nothing here
+        // worth locking; what this read is for is the fare, the operator, and
+        // being able to tell a traveller *which* seats went rather than that
+        // their seat map is out of date.
+        final priced = await tx.execute(
+          Sql.named('''
           SELECT seat_label,
                  state::text AS state,
                  fare_minor,
                  currency,
                  operator_id,
-                 held_until,
                  held_until IS NOT NULL AND held_until <= now() AS hold_lapsed
             FROM seats
            WHERE departure_id = @departure AND seat_label = ANY(@labels)
            ORDER BY seat_label
-             FOR UPDATE
         '''),
-        parameters: {
-          'departure': TypedValue(Type.uuid, claim.departureId),
-          'labels': TypedValue(Type.textArray, claim.seatLabels),
-        },
-      );
+          parameters: {
+            'departure': TypedValue(Type.uuid, claim.departureId),
+            'labels': TypedValue(Type.textArray, claim.seatLabels),
+          },
+        );
 
-      // A row that existed a moment ago and is no longer lockable was sold or
-      // blocked between the two statements. Taken, not missing.
-      final lockedLabels = {
-        for (final row in locked) row.toColumnMap()['seat_label'] as String,
-      };
-      final vanished = [
-        for (final label in claim.seatLabels)
-          if (!lockedLabels.contains(label)) label,
-      ];
-      if (vanished.isNotEmpty) return SeatsTaken(vanished);
+        final states = {
+          for (final row in priced)
+            row.toColumnMap()['seat_label'] as String:
+                row.toColumnMap()['state'] as String,
+        };
 
-      final taken = <String>[];
-      var fareMinor = 0;
-      String? currencyCode;
-      String? operatorId;
+        final unknown = [
+          for (final label in claim.seatLabels)
+            if (!states.containsKey(label)) label,
+        ];
+        if (unknown.isNotEmpty) return SeatsUnknown(unknown);
 
-      for (final row in locked) {
-        final r = row.toColumnMap();
-        final label = r['seat_label'] as String;
-        final state = r['state'] as String;
-        final lapsed = (r['hold_lapsed'] as bool?) ?? false;
+        // `sold` and `blocked` are terminal — neither becomes available again.
+        final terminal = [
+          for (final entry in states.entries)
+            if (entry.value == 'sold' || entry.value == 'blocked') entry.key,
+        ]..sort();
+        if (terminal.isNotEmpty) return SeatsTaken(terminal);
 
-        // Held and still live belongs to somebody else. Held but lapsed is
-        // ours to take — that is the check the sweeper is a backstop for, not
-        // the other way round.
-        if (state == 'held' && !lapsed) {
-          taken.add(label);
-          continue;
+        final taken = <String>[];
+        var fareMinor = 0;
+        String? currencyCode;
+        String? operatorId;
+
+        for (final row in priced) {
+          final r = row.toColumnMap();
+          final label = r['seat_label'] as String;
+          final state = r['state'] as String;
+          final lapsed = (r['hold_lapsed'] as bool?) ?? false;
+
+          // Held and still live belongs to somebody else. Held but lapsed is
+          // ours to take — that is the check the sweeper is a backstop for, not
+          // the other way round. `partial` is a seat somebody bought a piece
+          // of, and a claim for the whole road cannot have it.
+          if ((state == 'held' && !lapsed) || state == 'partial') {
+            taken.add(label);
+            continue;
+          }
+
+          fareMinor += r['fare_minor'] as int;
+          currencyCode ??= (r['currency'] as String).trim();
+          operatorId ??= r['operator_id'] as String;
         }
 
-        fareMinor += r['fare_minor'] as int;
-        currencyCode ??= (r['currency'] as String).trim();
-        operatorId ??= r['operator_id'] as String;
-      }
+        if (taken.isNotEmpty) return SeatsTaken(taken..sort());
 
-      if (taken.isNotEmpty) return SeatsTaken(taken..sort());
-
-      // ── Claim ────────────────────────────────────────────────────────────
-      // ON CONFLICT rather than a caught exception, and the difference is not
-      // stylistic. A unique violation *aborts* the transaction: every
-      // statement after it fails, including the COMMIT, so the row locks taken
-      // above would be thrown away and the claim lost. `DO NOTHING` keeps the
-      // transaction healthy and turns the collision into an empty result set,
-      // which is a fact we can act on.
-      //
-      // Empty here means exactly one thing. The replay lookup above already
-      // established that this key is not ours; if the insert also collides,
-      // the key belongs to a different traveller.
-      final inserted = await tx.execute(
-        Sql.named('''
+        // ── Claim ────────────────────────────────────────────────────────────
+        // ON CONFLICT rather than a caught exception, and the difference is not
+        // stylistic. A unique violation *aborts* the transaction: every
+        // statement after it fails, including the COMMIT, so everything done
+        // above would be thrown away and the claim lost. `DO NOTHING` keeps the
+        // transaction healthy and turns the collision into an empty result set,
+        // which is a fact we can act on.
+        //
+        // Empty here means exactly one thing. The replay lookup above already
+        // established that this key is not ours; if the insert also collides,
+        // the key belongs to a different traveller.
+        final inserted = await tx.execute(
+          Sql.named('''
           INSERT INTO holds (operator_id, departure_id, user_id, seat_labels,
                              expires_at, idempotency_key, channel)
           VALUES (@operator, @departure, @user, @labels,
@@ -166,48 +150,56 @@ final class PostgresSeatInventory implements SeatInventory {
           ON CONFLICT (idempotency_key) DO NOTHING
           RETURNING id, expires_at
         '''),
-        parameters: {
-          'operator': TypedValue(Type.uuid, operatorId),
-          'departure': TypedValue(Type.uuid, claim.departureId),
-          'user': TypedValue(Type.uuid, claim.userId),
-          'labels': TypedValue(Type.textArray, claim.seatLabels),
-          'ttl': TypedValue(Type.double, claim.ttl.inSeconds.toDouble()),
-          'key': TypedValue(Type.text, claim.idempotencyKey),
-          'channel': TypedValue(Type.text, claim.channel),
-        },
-      );
+          parameters: {
+            'operator': TypedValue(Type.uuid, operatorId),
+            'departure': TypedValue(Type.uuid, claim.departureId),
+            'user': TypedValue(Type.uuid, claim.userId),
+            'labels': TypedValue(Type.textArray, claim.seatLabels),
+            'ttl': TypedValue(Type.double, claim.ttl.inSeconds.toDouble()),
+            'key': TypedValue(Type.text, claim.idempotencyKey),
+            'channel': TypedValue(Type.text, claim.channel),
+          },
+        );
 
-      if (inserted.isEmpty) return const IdempotencyKeyTaken();
+        if (inserted.isEmpty) return const IdempotencyKeyTaken();
 
-      final row = inserted.first.toColumnMap();
-      final holdId = row['id'] as String;
-      final expiresAt = (row['expires_at'] as DateTime).toUtc();
+        final row = inserted.first.toColumnMap();
+        final holdId = row['id'] as String;
+        final expiresAt = (row['expires_at'] as DateTime).toUtc();
 
-      await tx.execute(
-        Sql.named('''
-          UPDATE seats
-             SET state      = 'held',
-                 hold_id    = @hold,
-                 held_until = @expires
-           WHERE departure_id = @departure AND seat_label = ANY(@labels)
-        '''),
-        parameters: {
-          'hold': TypedValue(Type.uuid, holdId),
-          'expires': TypedValue(Type.timestampTz, expiresAt),
-          'departure': TypedValue(Type.uuid, claim.departureId),
-          'labels': TypedValue(Type.textArray, claim.seatLabels),
-        },
-        ignoreRows: true,
-      );
+        // The seats themselves. Between the read above and here, somebody else
+        // may have taken one — the constraint says so, and says it under
+        // concurrency, which is the only condition that matters.
+        final missed = await SeatOccupancy.takeUnderHold(
+          tx,
+          departureId: claim.departureId,
+          operatorId: operatorId!,
+          labels: claim.seatLabels,
+          holdId: holdId,
+          heldUntil: expiresAt,
+        );
 
-      return SeatsClaimed(
-        holdId: holdId,
-        operatorId: operatorId!,
-        seatLabels: claim.seatLabels,
-        fare: Money(fareMinor, Currency.byCode(currencyCode!) ?? Currency.xaf),
-        expiresAt: expiresAt,
-      );
-    });
+        // Thrown, not returned, and that is the point: it takes the hold above
+        // down with it. A committed hold over seats we did not get would burn
+        // the idempotency key, so the traveller's retry — the normal case on
+        // these networks — would be answered with "that key is spent" instead
+        // of "somebody was faster". Rolled back, their retry is a fresh claim.
+        if (missed.isNotEmpty) throw _SeatsWentFirst(missed);
+
+        return SeatsClaimed(
+          holdId: holdId,
+          operatorId: operatorId,
+          seatLabels: claim.seatLabels,
+          fare: Money(
+            fareMinor,
+            Currency.byCode(currencyCode!) ?? Currency.xaf,
+          ),
+          expiresAt: expiresAt,
+        );
+      });
+    } on _SeatsWentFirst catch (e) {
+      return SeatsTaken(e.labels);
+    }
   }
 
   /// The hold this key already produced, or null.
@@ -332,32 +324,17 @@ final class PostgresSeatInventory implements SeatInventory {
         UPDATE holds
            SET state = 'released'
          WHERE id = @id AND state = 'active'
-        RETURNING departure_id, seat_labels
+        RETURNING id
       '''),
       parameters: {'id': TypedValue(Type.uuid, holdId)},
     );
 
     if (released.isEmpty) return false;
-    final r = released.first.toColumnMap();
 
-    await tx.execute(
-      Sql.named('''
-        UPDATE seats
-           SET state = 'available', hold_id = NULL, held_until = NULL
-         WHERE departure_id = @departure
-           AND seat_label = ANY(@labels)
-           AND hold_id = @hold
-      '''),
-      parameters: {
-        'departure': TypedValue(Type.uuid, r['departure_id']),
-        'labels': TypedValue(
-          Type.textArray,
-          (r['seat_labels'] as List).cast<String>(),
-        ),
-        'hold': TypedValue(Type.uuid, holdId),
-      },
-      ignoreRows: true,
-    );
+    // Scoped to the hold, not to the seats: what this traveller is entitled
+    // to let go of is what this hold took, and a seat that has since been
+    // rebuilt under another authority is none of their business.
+    await SeatOccupancy.releaseHold(tx, holdId);
 
     return true;
   });

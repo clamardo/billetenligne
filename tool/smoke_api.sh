@@ -308,6 +308,16 @@ check "seat map is not cached" "yes" \
 check "unknown departure seat map is 404" "404" \
   "$(status "$BASE/public/v1/departures/nope/seatmap")"
 
+# The state on this map is nobody's to write by hand (ADR-0025). 1A was held a
+# few checks ago by the ordinary claim path, and what a client reads back is
+# whatever the inventory says is taken — never a status the sales path set on
+# the side. A seat map that disagreed with the inventory would be the screen
+# that sells 1A twice.
+check "a held seat reads as held on the map" "yes" \
+  "$(grep -q '"label":"1A","status":"held"' <<<"$seatmap" && echo yes || echo no)"
+check "and its neighbour is still for sale" "yes" \
+  "$(grep -q '"label":"1C","status":"available"' <<<"$seatmap" && echo yes || echo no)"
+
 # ── Releasing ───────────────────────────────────────────────────────────────
 release_body="$(hold_body "smoke-release-$$" '["4A"]')"
 release_id="$(sed 's/.*"id":"\([^"]*\)".*/\1/' <<<"$release_body")"
@@ -321,6 +331,12 @@ check "releasing returns 204" "204" \
 check "releasing twice is 404, not an error page" "404" \
   "$(status -X DELETE -H "$AUTH" "$BASE/public/v1/holds/$release_id")"
 check "the seat is back on sale" "201" "$(hold "smoke-again-$$" '["4A"]')"
+
+# Not just to the claim path — to the screen. Releasing gives the piece of road
+# back, and the map says so on the very next read, with no cache in between.
+released_map="$(curl -s "$BASE/public/v1/departures/$DEP/seatmap")"
+check "and the map agrees it went and came back" "yes" \
+  "$(grep -q '"label":"4A","status":"held"' <<<"$released_map" && echo yes || echo no)"
 
 check "unknown route is 404" "404" "$(status "$BASE/public/v1/nope")"
 

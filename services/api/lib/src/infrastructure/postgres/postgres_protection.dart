@@ -4,6 +4,8 @@ import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart' hide Result;
 
+import 'seat_occupancy.dart';
+
 /// Inter-operator protection agreements against Postgres (`08-disruption.md`
 /// §5).
 ///
@@ -1322,7 +1324,6 @@ final class PostgresProtection implements ProtectionDesk {
         SELECT seat_label, fare_minor, currency FROM seats
          WHERE departure_id = @id AND state = 'available'
          ORDER BY seat_label
-           FOR UPDATE
       '''),
       parameters: {'id': TypedValue(Type.uuid, to)},
     );
@@ -1366,25 +1367,15 @@ final class PostgresProtection implements ProtectionDesk {
       // **The new seats are taken before a single old one is released**
       // (§2.4). Atomic either way; the ordering is what keeps a paid
       // passenger from ever existing without a seat on any coach at all.
-      for (final label in taking) {
-        final claimed = await tx.execute(
-          Sql.named('''
-            UPDATE seats
-               SET state = 'sold', booking_id = @booking,
-                   hold_id = NULL, held_until = NULL
-             WHERE departure_id = @departure AND seat_label = @label
-               AND state = 'available'
-            RETURNING seat_label
-          '''),
-          parameters: {
-            'departure': TypedValue(Type.uuid, to),
-            'label': TypedValue(Type.text, label),
-            'booking': TypedValue(Type.uuid, party.bookingId),
-          },
-        );
-        if (claimed.isEmpty) {
-          throw StateError('seat $label on $to vanished under a lock');
-        }
+      final missed = await SeatOccupancy.takeUnderBooking(
+        tx,
+        departureId: to,
+        operatorId: receiving,
+        labels: taking,
+        bookingId: party.bookingId,
+      );
+      if (missed.isNotEmpty) {
+        throw StateError('seats ${missed.join(', ')} on $to vanished');
       }
 
       final seated = await tx.execute(
@@ -1430,18 +1421,10 @@ final class PostgresProtection implements ProtectionDesk {
         );
       }
 
-      await tx.execute(
-        Sql.named('''
-          UPDATE seats
-             SET state = 'available', booking_id = NULL,
-                 hold_id = NULL, held_until = NULL
-           WHERE departure_id = @departure AND booking_id = @booking
-        '''),
-        parameters: {
-          'departure': TypedValue(Type.uuid, from),
-          'booking': TypedValue(Type.uuid, party.bookingId),
-        },
-        ignoreRows: true,
+      await SeatOccupancy.releaseBooking(
+        tx,
+        party.bookingId,
+        departureId: from,
       );
 
       // The booking changes hands. This is the line that makes it protection

@@ -6,6 +6,7 @@ import '../../application/ports/disruption_desk.dart';
 import '../../application/ports/ticket_issuer.dart';
 import '../db/database.dart';
 import 'postgres_operator_console.dart';
+import 'seat_occupancy.dart';
 
 /// Declaring a disruption, on the tenant surface.
 ///
@@ -327,11 +328,20 @@ final class PostgresDisruptions implements DisruptionDesk {
     // Occupied means "has a booking behind it" — sold, or held against a
     // reservation somebody is on their way to pay for. A plain hold is
     // somebody mid-checkout and is released below.
+    //
+    // Read from occupancy rather than from `seats`, because since ADR-0025
+    // that is where the answer is: an unpaid reservation occupies its seat
+    // under the hold it was made from, and the span is the piece of road that
+    // was actually sold — which has to travel to the new coach unchanged.
     final taken = await tx.execute(
       Sql.named('''
-        SELECT seat_label, state::text AS state, booking_id, held_until
-          FROM seats
-         WHERE departure_id = @id AND booking_id IS NOT NULL
+        SELECT o.seat_label, o.span::text AS span, o.held_until,
+               o.hold_id::text AS hold_id,
+               COALESCE(o.booking_id, b.id)::text AS booking_id
+          FROM seat_occupancy o
+          LEFT JOIN bookings b ON b.hold_id = o.hold_id
+         WHERE o.departure_id = @id
+           AND (o.booking_id IS NOT NULL OR b.id IS NOT NULL)
       '''),
       parameters: {'id': TypedValue(Type.uuid, departureId)},
     );
@@ -404,10 +414,7 @@ final class PostgresDisruptions implements DisruptionDesk {
       );
     }
 
-    // Everybody back into their seat. The state travels with them: a
-    // reservation that was held stays held with its own deadline, a paid seat
-    // stays sold. Flattening the two here would either sell an unpaid seat or
-    // put a paid one back on sale.
+    // Everybody back into their seat.
     final movedBookings = <String>{};
     for (final row in taken) {
       final r = row.toColumnMap();
@@ -415,24 +422,19 @@ final class PostgresDisruptions implements DisruptionDesk {
       final to = remap.destinationOf(from)!;
       final bookingId = r['booking_id'].toString();
 
-      await tx.execute(
-        Sql.named('''
-          UPDATE seats
-             SET state = @state::seat_state, booking_id = @booking,
-                 held_until = @until
-           WHERE departure_id = @departure AND seat_label = @label
-        '''),
-        parameters: {
-          'departure': TypedValue(Type.uuid, departureId),
-          'label': TypedValue(Type.text, to),
-          'state': TypedValue(Type.text, r['state'] as String),
-          'booking': TypedValue(Type.uuid, bookingId),
-          'until': TypedValue(
-            Type.timestampWithTimezone,
-            r['held_until'] as DateTime?,
-          ),
-        },
-        ignoreRows: true,
+      // The authority travels with the passenger: a reservation stays held
+      // under its own hold and its own deadline, a paid seat stays sold.
+      // Flattening the two here would either sell an unpaid seat or put a
+      // paid one back on sale.
+      await SeatOccupancy.reseat(
+        tx,
+        departureId: departureId,
+        seatLabel: to,
+        operatorId: operatorId,
+        span: r['span'] as String,
+        holdId: r['hold_id'] as String?,
+        bookingId: r['hold_id'] == null ? bookingId : null,
+        heldUntil: r['held_until'] as DateTime?,
       );
 
       if (from == to) continue;
@@ -673,14 +675,14 @@ final class PostgresDisruptions implements DisruptionDesk {
       return const Err(ReplacementRefused(NothingToMove()));
     }
 
-    // Locked, because the arithmetic below is only true if nobody sells one
-    // of these seats between the count and the claim.
+    // Not locked, and it no longer needs to be: the arithmetic below is a
+    // plan, and every seat in it is taken through the exclusion constraint,
+    // which refuses the second claimant whatever this count said.
     final free = await tx.execute(
       Sql.named('''
         SELECT seat_label FROM seats
          WHERE departure_id = @id AND state = 'available'
          ORDER BY seat_label
-           FOR UPDATE
       '''),
       parameters: {'id': TypedValue(Type.uuid, replacementDepartureId)},
     );
@@ -723,27 +725,21 @@ final class PostgresDisruptions implements DisruptionDesk {
       // transaction makes it atomic either way; the ordering is what keeps a
       // paid passenger from ever existing without a seat, including in the
       // middle of this loop when something raises.
-      for (final label in taking) {
-        final claimed = await tx.execute(
-          Sql.named('''
-            UPDATE seats
-               SET state = 'sold', booking_id = @booking,
-                   hold_id = NULL, held_until = NULL
-             WHERE departure_id = @departure AND seat_label = @label
-               AND state = 'available'
-            RETURNING seat_label
-          '''),
-          parameters: {
-            'departure': TypedValue(Type.uuid, replacementDepartureId),
-            'label': TypedValue(Type.text, label),
-            'booking': TypedValue(Type.uuid, party.bookingId),
-          },
+      final missed = await SeatOccupancy.takeUnderBooking(
+        tx,
+        departureId: replacementDepartureId,
+        operatorId: operatorId,
+        labels: taking,
+        bookingId: party.bookingId,
+      );
+      // Somebody sold one of these between the plan and here. Worth failing
+      // loudly rather than committing a wave that seated somebody nowhere —
+      // the dispatcher runs it again against a coach that is one seat
+      // smaller, which is the truth.
+      if (missed.isNotEmpty) {
+        throw StateError(
+          'seats ${missed.join(', ')} on $replacementDepartureId vanished',
         );
-        // Impossible while we hold the lock, and worth failing loudly rather
-        // than committing a wave that seated somebody nowhere.
-        if (claimed.isEmpty) {
-          throw StateError('seat $label on $replacementDepartureId vanished');
-        }
       }
 
       // The passengers travel with their party. Deleted and re-inserted
@@ -792,18 +788,10 @@ final class PostgresDisruptions implements DisruptionDesk {
       }
 
       // Now, and only now, the seats they left go back on sale.
-      await tx.execute(
-        Sql.named('''
-          UPDATE seats
-             SET state = 'available', booking_id = NULL,
-                 hold_id = NULL, held_until = NULL
-           WHERE departure_id = @departure AND booking_id = @booking
-        '''),
-        parameters: {
-          'departure': TypedValue(Type.uuid, departureId),
-          'booking': TypedValue(Type.uuid, party.bookingId),
-        },
-        ignoreRows: true,
+      await SeatOccupancy.releaseBooking(
+        tx,
+        party.bookingId,
+        departureId: departureId,
       );
 
       await tx.execute(

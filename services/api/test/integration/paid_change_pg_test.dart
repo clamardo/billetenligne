@@ -675,8 +675,7 @@ void main() {
         await db.transaction(const DbScope.worker(), (tx) async {
           await tx.execute(
             Sql.named('''
-            UPDATE seats SET state = 'available', hold_id = NULL,
-                             held_until = NULL
+            DELETE FROM seat_occupancy
              WHERE hold_id = (SELECT hold_id FROM booking_changes
                                WHERE id = @id)
           '''),
