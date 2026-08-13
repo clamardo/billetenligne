@@ -1568,6 +1568,31 @@ check "and a dead token claims nothing" "404" \
 check "there is no way to GET a claim" "405" \
   "$(status -H "$AUTH" "$BASE/public/v1/tickets/abc/claim")"
 
+# One URL, two renderings: the app when it is installed, the page when it is
+# not. Both platforms check the pair before they will hand a link over, and
+# the domain's half has to come from the same origin as the links.
+check "Android is told which app may open a ticket" "yes" \
+  "$(curl -s "$BASE/.well-known/assetlinks.json" \
+     | grep -q 'delegate_permission/common.handle_all_urls' \
+     && echo yes || echo no)"
+check "it names the package" "yes" \
+  "$(curl -s "$BASE/.well-known/assetlinks.json" \
+     | grep -q 'cg.billetenligne.bel_traveller' && echo yes || echo no)"
+# Apple has required this since iOS 9, and it is the usual way the file is
+# served wrong.
+check "iOS gets JSON with no extension and no signature" "yes" \
+  "$(curl -s -o /dev/null -w '%{content_type}' \
+     "$BASE/.well-known/apple-app-site-association" \
+     | grep -q 'application/json' && echo yes || echo no)"
+check "and only the ticket path is claimed" "yes" \
+  "$(curl -s "$BASE/.well-known/apple-app-site-association" \
+     | grep -q '/b/\*' && echo yes || echo no)"
+# The follower page is opened by strangers with no app; an OS offering to
+# install one would be answering a question nobody asked.
+check "the follower page is claimed by nobody" "yes" \
+  "$(curl -s "$BASE/.well-known/apple-app-site-association" \
+     | grep -q '/t/' && echo no || echo yes)"
+
 # ── Cancelling, by the traveller ────────────────────────────────────────────
 #
 # `01-feature-spec.md` §8.2. What a socket proves here that a unit test cannot:

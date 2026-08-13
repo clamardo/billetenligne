@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Universal Links (ADR-0026). The app's half of the handshake; the
+	     domain's half is served at /.well-known/apple-app-site-association.
+
+	     Not yet attached to the Runner target: that is an Xcode change, and
+	     there is no Mac and no Apple team for this deployment. See the app's
+	     README. The file is here rather than absent so the change is one
+	     checkbox rather than one investigation. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:blt.cg</string>
+	</array>
+</dict>
+</plist>

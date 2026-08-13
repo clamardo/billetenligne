@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:bel_api/src/application/ports/ticket_links.dart';
+import 'package:bel_api/src/infrastructure/web/app_link_claims.dart';
 import 'package:bel_api/src/infrastructure/web/boarding_pass_page.dart';
 import 'package:bel_api/src/infrastructure/web/qr_png.dart';
 import 'package:bel_api/src/infrastructure/web/qr_svg.dart';
@@ -321,6 +323,84 @@ void main() {
   });
 
   _emailTests();
+  _appLinkTests();
+}
+
+void _appLinkTests() {
+  group('a link that opens the app', () {
+    test('Android is told which app, and by which certificate', () {
+      final json =
+          jsonDecode(
+                AppLinkClaims.assetLinks(
+                  androidPackage: 'cg.billetenligne.bel_traveller',
+                  fingerprints: const ['AA:BB', 'CC:DD'],
+                ),
+              )
+              as List;
+
+      final target = (json.single as Map)['target']! as Map;
+      expect((json.single as Map)['relation'], [
+        'delegate_permission/common.handle_all_urls',
+      ]);
+      expect(target['namespace'], 'android_app');
+      expect(target['package_name'], 'cg.billetenligne.bel_traveller');
+      // Two, because a release build and an upload key are two fingerprints
+      // for one app, and forgetting the second is how links stop opening.
+      expect(target['sha256_cert_fingerprints'], ['AA:BB', 'CC:DD']);
+    });
+
+    // Blank is a supported state: a deployment with no store listing serves a
+    // well-formed file with nothing in it, rather than a 404 that sends
+    // somebody looking at DNS.
+    test('and with no certificate it is still well formed', () {
+      final json =
+          jsonDecode(
+                AppLinkClaims.assetLinks(
+                  androidPackage: 'cg.billetenligne.bel_traveller',
+                  fingerprints: const [],
+                ),
+              )
+              as List;
+      expect(
+        ((json.single as Map)['target']! as Map)['sha256_cert_fingerprints'],
+        isEmpty,
+      );
+    });
+
+    test('iOS is told the app claims the ticket path and no other', () {
+      final json =
+          jsonDecode(
+                AppLinkClaims.appleAppSiteAssociation(
+                  appleAppId: 'TEAM.bundle',
+                ),
+              )
+              as Map;
+
+      final details =
+          ((json['applinks']! as Map)['details']! as List).single as Map;
+      expect(details['appIDs'], ['TEAM.bundle']);
+      // `/t/` is the follower page, opened by strangers with no app. An
+      // operating system offering to install one would be answering a
+      // question nobody asked.
+      expect(((details['components']! as List).single as Map)['/'], '/b/*');
+    });
+
+    test('an empty environment claims nothing, and says so', () {
+      final blank = AppLinkIdentity.from(const {});
+      expect(blank.androidFingerprints, isEmpty);
+      expect(blank.appleAppId, '');
+      expect(blank.isClaimed, isFalse);
+    });
+
+    test('fingerprints are split, trimmed and upper-cased', () {
+      final identity = AppLinkIdentity.from(const {
+        'BEL__ANDROIDFINGERPRINTS': 'aa:bb , cc:dd ,',
+        'BEL__APPLEAPPID': 'TEAM.bundle',
+      });
+      expect(identity.androidFingerprints, ['AA:BB', 'CC:DD']);
+      expect(identity.isClaimed, isTrue);
+    });
+  });
 }
 
 void _emailTests() {

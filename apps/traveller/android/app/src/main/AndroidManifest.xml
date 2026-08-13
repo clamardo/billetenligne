@@ -24,7 +24,31 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- A ticket link opens the app, and only a ticket link (ADR-0026).
+                 `autoVerify` is what makes it silent: without it Android asks
+                 "which app?" every time, and a chooser in front of a boarding
+                 pass at a coach door is worse than a browser. The pair is
+                 checked against /.well-known/assetlinks.json, which this
+                 server serves.
+
+                 The follower page at /t/ is deliberately not claimed: it is
+                 opened by strangers with no account and no app. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"
+                      android:host="blt.cg"
+                      android:pathPrefix="/b/"/>
+            </intent-filter>
         </activity>
+        <!-- Hands the incoming URL to Flutter as the initial route rather than
+             through a plugin channel. One less package, and the path arrives
+             before the first frame — which is the difference between opening
+             on the ticket and opening on the search screen and jumping. -->
+        <meta-data
+            android:name="flutter_deeplinking_enabled"
+            android:value="true" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -15,6 +15,7 @@ import 'adapters/logging_notification_gateway.dart';
 import 'adapters/unavailable_operator_console.dart';
 import 'adapters/memory_idempotency_store.dart';
 import 'application/hold_seats.dart';
+import 'infrastructure/web/app_link_claims.dart';
 import 'adapters/airtel_money_gateway.dart';
 import 'adapters/ed25519_ticket_issuer.dart';
 import 'adapters/fake_payment_gateway.dart';
@@ -141,6 +142,7 @@ final class Services {
     required this.tickets,
     required this.usingDatabase,
     required this.smsConfigured,
+    required this.appLinks,
     Database? database,
   }) : _database = database;
 
@@ -324,6 +326,10 @@ final class Services {
   /// (ADR-0019); phone is second, and this is the switch that turns it on.
   final bool smsConfigured;
 
+  /// Who may claim `blt.cg/b/*` as their own (ADR-0026). Served at
+  /// `/.well-known/`, and blank until a store listing exists.
+  final AppLinkIdentity appLinks;
+
   final Database? _database;
 
   factory Services.resolve({
@@ -463,6 +469,7 @@ final class Services {
       tickets: _ticketIssuer,
       usingDatabase: true,
       smsConfigured: (env['COMMS__SMSFROM'] ?? '').isNotEmpty,
+      appLinks: AppLinkIdentity.from(env),
       database: db,
     );
   }
@@ -652,6 +659,7 @@ final class Services {
       // The logging sender will happily "send" an SMS to the console, and a
       // fresh clone should be able to exercise both channels.
       smsConfigured: true,
+      appLinks: AppLinkIdentity.from(const {}),
     );
   }
 

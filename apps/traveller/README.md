@@ -50,3 +50,30 @@ Both are documented in `test/funnel_widget_test.dart`, and both cost an hour:
   `await flow.holdSelection()` on its own hangs forever.
 * **Never `pumpAndSettle` on the hold screen.** The countdown schedules a frame
   every second for as long as it lives, so nothing ever settles.
+
+## A ticket link that opens the app
+
+`blt.cg/b/{token}` is one URL with two renderings (ADR-0026): this app when it
+is installed, a server-rendered page when it is not. There is deliberately no
+interstitial in between — an "install our app" screen in front of a boarding
+pass, at a coach door, is the worst screen we could build.
+
+**Android is wired.** The manifest claims `https://blt.cg/b/*` with
+`autoVerify`, and `flutter_deeplinking_enabled` hands the URL to Flutter as the
+initial route rather than through a plugin channel. The domain's half of the
+handshake is served by the API at `/.well-known/assetlinks.json`, from
+`BEL__ANDROIDPACKAGE` and `BEL__ANDROIDFINGERPRINTS`. Until a release
+certificate exists the fingerprint list is empty, the file is still served, and
+Android simply declines to verify — the link opens the page, which is the
+correct fallback rather than a failure.
+
+**iOS is one Xcode change away.** `ios/Runner/Runner.entitlements` exists and
+declares `applinks:blt.cg`, but it is not attached to the Runner target: doing
+that means editing the Xcode project, and there is no Mac and no Apple team for
+this deployment. The server half — `/.well-known/apple-app-site-association`,
+unsigned and with no `.json` extension, as iOS has required since 9 — is
+already served from `BEL__APPLEAPPID`.
+
+The follower page at `/t/` is **not** claimed by either platform. It is opened
+by strangers with no account and no app, and an operating system offering to
+install one would be answering a question nobody asked.
