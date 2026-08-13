@@ -100,6 +100,9 @@ final class SeatOccupancy {
   /// Returns the labels it could NOT take — empty when every one of them is
   /// now this hold's. The caller decides what a refusal means; here it only
   /// ever means somebody else got there first.
+  /// [span] takes only a piece of the road — `'[1,2)'` is Dolisie to the next
+  /// town along. Null takes the whole road the departure was put on sale with,
+  /// which is every claim made before ADR-0025 and most of them after it.
   static Future<List<String>> takeUnderHold(
     TxSession tx, {
     required String departureId,
@@ -107,6 +110,7 @@ final class SeatOccupancy {
     required List<String> labels,
     required String holdId,
     required DateTime heldUntil,
+    String? span,
   }) async {
     await clearLapsed(tx, departureId: departureId, labels: labels);
     return _take(
@@ -117,6 +121,7 @@ final class SeatOccupancy {
       holdId: holdId,
       bookingId: null,
       heldUntil: heldUntil,
+      span: span,
     );
   }
 
@@ -233,15 +238,19 @@ final class SeatOccupancy {
     required String? holdId,
     required String? bookingId,
     required DateTime? heldUntil,
+    String? span,
   }) async {
-    // `d.road_span` in the SELECT, not a range built in Dart: the road a
-    // departure was put on sale with is the only span a whole-road sale may
-    // claim, and reading it in the same statement leaves no window.
+    // `d.road_span` when no leg was named, and it comes out of the SELECT
+    // rather than a range built in Dart: the road a departure was put on sale
+    // with is the only span a whole-road sale may claim, and reading it in
+    // the same statement leaves no window. A leg's span is resolved from the
+    // operator's own price list before it gets here, never from a client.
     final taken = await tx.execute(
       Sql.named('''
         INSERT INTO seat_occupancy (departure_id, seat_label, operator_id,
                                     span, hold_id, booking_id, held_until)
-        SELECT @departure, label, @operator, d.road_span,
+        SELECT @departure, label, @operator,
+               COALESCE(@span::int4range, d.road_span),
                @hold, @booking, @until
           FROM unnest(@labels::text[]) AS label
           JOIN departures d ON d.id = @departure
@@ -259,6 +268,7 @@ final class SeatOccupancy {
         'hold': TypedValue(Type.uuid, holdId),
         'booking': TypedValue(Type.uuid, bookingId),
         'until': TypedValue(Type.timestampTz, heldUntil),
+        'span': TypedValue(Type.text, span),
       },
     );
 

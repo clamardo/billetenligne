@@ -83,6 +83,10 @@ final class _ScriptedGateway implements TravelGateway {
   /// hands the searched cities back rather than the coach's own ends.
   (String?, String?) askedAbout = (null, null);
 
+  /// And the pair the claim was made with, which is the one that decides what
+  /// the traveller is charged.
+  (String?, String?) heldFor = (null, null);
+
   @override
   Future<SeatMapDto> seatMap(
     String departureId, {
@@ -125,8 +129,11 @@ final class _ScriptedGateway implements TravelGateway {
     required String departureId,
     required List<String> seatLabels,
     required String idempotencyKey,
+    String? from,
+    String? to,
   }) async {
     holdKeys.add(idempotencyKey);
+    heldFor = (from, to);
     if (holdFailure != null) throw holdFailure!;
 
     return HoldDto(
@@ -791,6 +798,17 @@ void main() {
       await onSeatMap(gateway);
 
       expect(gateway.askedAbout, ('BZV', 'PNR'));
+    });
+
+    test('and claims the seats for that same journey', () async {
+      final gateway = _ScriptedGateway(searchResult: [_departure()]);
+      final flow = await onSeatMap(gateway);
+      flow.toggleSeat('1A');
+      await flow.holdSelection();
+
+      // The claim decides the price. A hold made for the coach's own ends
+      // when the row was a leg charges the through fare for half a journey.
+      expect(gateway.heldFor, ('BZV', 'PNR'));
     });
 
     test('toggles on and off', () async {

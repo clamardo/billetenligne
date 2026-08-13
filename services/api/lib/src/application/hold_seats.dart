@@ -69,6 +69,21 @@ final class SeatsNotOnDeparture extends HoldSeatsFailure {
   Map<String, Object?> get params => {'seats': seatLabels.join(', ')};
 }
 
+/// The operator does not sell that pair of towns on this coach.
+///
+/// A 404 rather than a 409: retrying cannot help, and nothing about the
+/// departure is wrong. The leg is simply not on sale — either it was never
+/// priced or the price was withdrawn between the search and the tap.
+final class SegmentNotSold extends HoldSeatsFailure {
+  const SegmentNotSold(this.fromCity, this.toCity);
+  final String fromCity;
+  final String toCity;
+  @override
+  String get code => ErrorCode.notFound;
+  @override
+  Map<String, Object?> get params => {'from': fromCity, 'to': toCity};
+}
+
 final class DepartureUnavailable extends HoldSeatsFailure {
   const DepartureUnavailable(this.reason);
   final String reason;
@@ -121,6 +136,8 @@ final class HoldSeats {
     required String userId,
     required String idempotencyKey,
     String channel = 'app',
+    String? fromCity,
+    String? toCity,
   }) async {
     final requested = [for (final s in seatLabels) s.trim().toUpperCase()];
 
@@ -149,6 +166,12 @@ final class HoldSeats {
         ttl: policy.ttl,
         idempotencyKey: idempotencyKey,
         channel: channel,
+        // Passed through untouched. Whether these two towns are a journey
+        // this operator sells is a question about a road and a price list,
+        // and both live in the database — a check here would be a second
+        // opinion formed from stale data.
+        fromCity: fromCity,
+        toCity: toCity,
       ),
     );
 
@@ -168,6 +191,9 @@ final class HoldSeats {
       SeatsTaken(:final seatLabels) => Err(SeatsAlreadyTaken(seatLabels)),
       IdempotencyKeyTaken() => const Err(HoldKeyBelongsToAnother()),
       SeatsUnknown(:final seatLabels) => Err(SeatsNotOnDeparture(seatLabels)),
+      SegmentNotOnSale(:final fromCity, :final toCity) => Err(
+        SegmentNotSold(fromCity, toCity),
+      ),
       DepartureNotSellable(:final reason) => Err(DepartureUnavailable(reason)),
     };
   }

@@ -60,71 +60,87 @@ final class PostgresSeatInventory implements SeatInventory {
         final sellable = await _checkDeparture(tx, claim.departureId);
         if (sellable != null) return sellable;
 
-        // ── Read the seats once, and classify ────────────────────────────────
+        // ── Which journey is being bought ───────────────────────────────────
+        // Null on a whole-road claim, which is every claim on a road with no
+        // priced legs. Otherwise the span and the price come from the
+        // operator's own list, resolved here rather than sent by the client.
+        final leg = claim.fromCity == null ? null : await _leg(tx, claim);
+        if (claim.fromCity != null && leg == null) {
+          return SegmentNotOnSale(claim.fromCity!, claim.toCity!);
+        }
+
+        // ── Read the seats once, and classify ───────────────────────────
         // One plain read, and no lock. The seats race is settled by the
-        // exclusion constraint a few statements below, so there is nothing here
-        // worth locking; what this read is for is the fare, the operator, and
-        // being able to tell a traveller *which* seats went rather than that
-        // their seat map is out of date.
+        // exclusion constraint a few statements below, so there is nothing
+        // here worth locking; what this read is for is the fare, the
+        // operator, and being able to tell a traveller *which* seats went
+        // rather than that their seat map is out of date.
+        //
+        // Taken is asked of occupancy over the span being bought, never of
+        // `seats.state`: on a leg the state is the wrong question, because a
+        // seat sold Brazzaville→Dolisie is exactly the seat somebody boarding
+        // at Dolisie should get. A hold that has lapsed occupies nothing —
+        // that is the check the sweeper is a backstop for, not the other way
+        // round, and a worker stuck for ten minutes must not strand an
+        // operator's inventory.
         final priced = await tx.execute(
           Sql.named('''
-          SELECT seat_label,
-                 state::text AS state,
-                 fare_minor,
-                 currency,
-                 operator_id,
-                 held_until IS NOT NULL AND held_until <= now() AS hold_lapsed
-            FROM seats
-           WHERE departure_id = @departure AND seat_label = ANY(@labels)
-           ORDER BY seat_label
-        '''),
+            SELECT s.seat_label,
+                   s.state::text AS state,
+                   s.fare_minor,
+                   s.currency,
+                   s.operator_id,
+                   EXISTS (
+                     SELECT 1 FROM seat_occupancy o
+                      WHERE o.departure_id = s.departure_id
+                        AND o.seat_label = s.seat_label
+                        AND (o.held_until IS NULL OR o.held_until > now())
+                        AND o.span && COALESCE(@span::int4range, d.road_span)
+                   ) AS taken
+              FROM seats s
+              JOIN departures d ON d.id = s.departure_id
+             WHERE s.departure_id = @departure
+               AND s.seat_label = ANY(@labels)
+             ORDER BY s.seat_label
+          '''),
           parameters: {
             'departure': TypedValue(Type.uuid, claim.departureId),
             'labels': TypedValue(Type.textArray, claim.seatLabels),
+            'span': TypedValue(Type.text, leg?.span),
           },
         );
 
-        final states = {
+        final seen = {
           for (final row in priced)
-            row.toColumnMap()['seat_label'] as String:
-                row.toColumnMap()['state'] as String,
+            row.toColumnMap()['seat_label'] as String: row.toColumnMap(),
         };
 
         final unknown = [
           for (final label in claim.seatLabels)
-            if (!states.containsKey(label)) label,
+            if (!seen.containsKey(label)) label,
         ];
         if (unknown.isNotEmpty) return SeatsUnknown(unknown);
-
-        // `sold` and `blocked` are terminal — neither becomes available again.
-        final terminal = [
-          for (final entry in states.entries)
-            if (entry.value == 'sold' || entry.value == 'blocked') entry.key,
-        ]..sort();
-        if (terminal.isNotEmpty) return SeatsTaken(terminal);
 
         final taken = <String>[];
         var fareMinor = 0;
         String? currencyCode;
         String? operatorId;
 
-        for (final row in priced) {
-          final r = row.toColumnMap();
-          final label = r['seat_label'] as String;
-          final state = r['state'] as String;
-          final lapsed = (r['hold_lapsed'] as bool?) ?? false;
+        for (final label in claim.seatLabels) {
+          final r = seen[label]!;
 
-          // Held and still live belongs to somebody else. Held but lapsed is
-          // ours to take — that is the check the sweeper is a backstop for, not
-          // the other way round. `partial` is a seat somebody bought a piece
-          // of, and a claim for the whole road cannot have it.
-          if ((state == 'held' && !lapsed) || state == 'partial') {
+          // Blocked is the operator's own decision — a broken seat, a
+          // conductor's seat — and no span makes it sellable.
+          if (r['state'] == 'blocked' || (r['taken'] as bool? ?? false)) {
             taken.add(label);
             continue;
           }
 
-          fareMinor += r['fare_minor'] as int;
-          currencyCode ??= (r['currency'] as String).trim();
+          // The leg's price, flat across the coach, or the seat's own when
+          // the whole road is being bought. Never a fare the client sent and
+          // never a fraction of the through fare invented here (ADR-0025).
+          fareMinor += leg?.fareMinor ?? r['fare_minor'] as int;
+          currencyCode ??= leg?.currency ?? (r['currency'] as String).trim();
           operatorId ??= r['operator_id'] as String;
         }
 
@@ -144,9 +160,11 @@ final class PostgresSeatInventory implements SeatInventory {
         final inserted = await tx.execute(
           Sql.named('''
           INSERT INTO holds (operator_id, departure_id, user_id, seat_labels,
-                             expires_at, idempotency_key, channel)
+                             expires_at, idempotency_key, channel,
+                             road_span, segment_fare_minor)
           VALUES (@operator, @departure, @user, @labels,
-                  now() + make_interval(secs => @ttl), @key, @channel)
+                  now() + make_interval(secs => @ttl), @key, @channel,
+                  @span::int4range, @legFare)
           ON CONFLICT (idempotency_key) DO NOTHING
           RETURNING id, expires_at
         '''),
@@ -158,6 +176,12 @@ final class PostgresSeatInventory implements SeatInventory {
             'ttl': TypedValue(Type.double, claim.ttl.inSeconds.toDouble()),
             'key': TypedValue(Type.text, claim.idempotencyKey),
             'channel': TypedValue(Type.text, claim.channel),
+            // What was quoted, kept on the hold. The reservation charges this
+            // rather than re-deriving it four hours later at a counter, where
+            // a price list edited in between would rewrite what somebody
+            // agreed to pay.
+            'span': TypedValue(Type.text, leg?.span),
+            'legFare': TypedValue(Type.bigInteger, leg?.fareMinor),
           },
         );
 
@@ -177,6 +201,7 @@ final class PostgresSeatInventory implements SeatInventory {
           labels: claim.seatLabels,
           holdId: holdId,
           heldUntil: expiresAt,
+          span: leg?.span,
         );
 
         // Thrown, not returned, and that is the point: it takes the hold above
@@ -202,6 +227,70 @@ final class PostgresSeatInventory implements SeatInventory {
     }
   }
 
+  /// The piece of road these two towns name, if the operator sells it.
+  ///
+  /// Resolved from the operator's own price list, never from the request: the
+  /// client sends the pair it searched with, and everything about what that
+  /// pair *is* — which positions, at what price, in which direction — is read
+  /// here. A road that visits a town twice has two answers and the earlier
+  /// boarding is the one a traveller meant.
+  ///
+  /// Null when nothing is priced between them. The caller turns that into a
+  /// refusal rather than quietly selling the whole road, which would charge a
+  /// traveller for a journey they did not ask for.
+  Future<({String span, int fareMinor, String currency})?> _leg(
+    TxSession tx,
+    SeatClaim claim,
+  ) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        WITH road AS (
+          SELECT r.id AS route_id, 0 AS position, r.origin_city AS city,
+                 TRUE AS boards, FALSE AS alights
+            FROM routes r
+           UNION ALL
+          SELECT rs.route_id, rs.sequence, rs.city_code,
+                 rs.allows_boarding, rs.allows_alighting
+            FROM route_stops rs
+           UNION ALL
+          SELECT r.id,
+                 1 + (SELECT count(*)::int FROM route_stops x
+                       WHERE x.route_id = r.id),
+                 r.destination_city, FALSE, TRUE
+            FROM routes r
+        )
+        SELECT int4range(sf.from_position, sf.to_position)::text AS span,
+               sf.fare_minor,
+               sf.currency
+          FROM departures d
+          JOIN segment_fares sf ON sf.route_id = d.route_id AND sf.active
+          JOIN road fs ON fs.route_id = sf.route_id
+                      AND fs.position = sf.from_position
+          JOIN road ts ON ts.route_id = sf.route_id
+                      AND ts.position = sf.to_position
+         WHERE d.id = @departure
+           AND fs.city = @from AND ts.city = @to
+           -- A set-down-only stop can end a leg and never start one.
+           AND fs.boards AND ts.alights
+         ORDER BY sf.from_position
+         LIMIT 1
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, claim.departureId),
+        'from': TypedValue(Type.text, claim.fromCity),
+        'to': TypedValue(Type.text, claim.toCity),
+      },
+    );
+
+    if (rows.isEmpty) return null;
+    final r = rows.first.toColumnMap();
+    return (
+      span: r['span'] as String,
+      fareMinor: r['fare_minor'] as int,
+      currency: (r['currency'] as String).trim(),
+    );
+  }
+
   /// The hold this key already produced, or null.
   ///
   /// RLS scopes this to the caller, which is what makes the failure of this
@@ -215,7 +304,12 @@ final class PostgresSeatInventory implements SeatInventory {
                h.seat_labels,
                h.expires_at,
                h.state::text AS state,
-               COALESCE(SUM(s.fare_minor), 0)::bigint AS fare_minor,
+               -- A leg was quoted at the operator's price for it, per seat.
+               -- Summing the seat rows would answer with the through fare and
+               -- tell a returning traveller their leg costs twice what the
+               -- first answer said.
+               COALESCE(h.segment_fare_minor * array_length(h.seat_labels, 1),
+                        SUM(s.fare_minor), 0)::bigint AS fare_minor,
                MIN(s.currency) AS currency
           FROM holds h
           LEFT JOIN seats s

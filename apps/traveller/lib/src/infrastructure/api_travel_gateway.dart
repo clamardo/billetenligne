@@ -42,8 +42,15 @@ final class ApiTravelGateway implements TravelGateway {
     required String departureId,
     required List<String> seatLabels,
     required String idempotencyKey,
+    String? from,
+    String? to,
   }) => _client.createHold(
-    CreateHoldRequest(departureId: departureId, seatLabels: seatLabels),
+    CreateHoldRequest(
+      departureId: departureId,
+      seatLabels: seatLabels,
+      fromCity: from,
+      toCity: to,
+    ),
     idempotencyKey: idempotencyKey,
   );
 

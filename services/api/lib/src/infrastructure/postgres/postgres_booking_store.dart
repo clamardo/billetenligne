@@ -54,7 +54,8 @@ final class PostgresBookingStore implements BookingStore {
            AND user_id = app_user_id()
            AND state = 'active'
            AND expires_at > now()
-        RETURNING operator_id, departure_id, seat_labels
+        RETURNING operator_id, departure_id, seat_labels,
+                  road_span::text AS road_span, segment_fare_minor
       '''),
       parameters: {'hold': TypedValue(Type.uuid, holdId)},
     );
@@ -68,6 +69,10 @@ final class PostgresBookingStore implements BookingStore {
     final operatorId = holdRow['operator_id'].toString();
     final departureId = holdRow['departure_id'].toString();
     final holdSeats = (holdRow['seat_labels'] as List).cast<String>().toSet();
+    // What this hold took, and what it was quoted at. Null on a whole-road
+    // hold, which is every hold on a road with no priced legs (ADR-0025).
+    final roadSpan = holdRow['road_span'] as String?;
+    final legFare = holdRow['segment_fare_minor'] as int?;
 
     // The passenger list must describe the seats that were actually held.
     // Without this a client could hold 1A and book 1B, which is a free seat.
@@ -97,10 +102,13 @@ final class PostgresBookingStore implements BookingStore {
 
     if (priced.length != passengers.length) return null;
 
+    // The price the hold was made at, not the price the road is at now. A leg
+    // is quoted flat by the operator; a whole road is priced by the seat row,
+    // read inside this transaction, because a seat can carry its own fare.
     final fareBySeat = <String, Money>{
       for (final row in priced)
         row.toColumnMap()['seat_label'] as String: Money(
-          row.toColumnMap()['fare_minor'] as int,
+          legFare ?? row.toColumnMap()['fare_minor'] as int,
           Currency.byCode((row.toColumnMap()['currency'] as String).trim())!,
         ),
     };
@@ -129,11 +137,16 @@ final class PostgresBookingStore implements BookingStore {
         INSERT INTO bookings
           (ref, operator_id, departure_id, hold_id, purchaser_user_id, state,
            fare_minor, service_fee_minor, total_minor, currency, channel,
-           payment_code, payment_deadline,
+           payment_code, payment_deadline, road_span,
            refund_policy_id, refund_policy_version)
         SELECT @ref, @operator, @departure, @hold, app_user_id(),
                'pending_payment', @fare, @fee, @total, @currency, @channel,
                @code, now() + make_interval(secs => @payWithin),
+               -- Where this passenger gets on and off. Occupancy knows it too
+               -- and is deleted on a refund or a coach swap; the booking is
+               -- the record that outlives both, and the one a conductor's
+               -- manifest is read from.
+               @roadSpan::int4range,
                -- Copied, not referenced. ADR-0015 rule 1: this booking is
                -- judged by the policy as it stands right now, forever, and
                -- an operator who writes better terms next month owes them to
@@ -158,6 +171,7 @@ final class PostgresBookingStore implements BookingStore {
         'channel': TypedValue(Type.text, channel),
         'code': TypedValue(Type.text, paymentCode),
         'payWithin': TypedValue(Type.double, payWithin.inSeconds.toDouble()),
+        'roadSpan': TypedValue(Type.text, roadSpan),
       },
     );
 

@@ -2079,6 +2079,47 @@ void main() {
     });
   });
 
+  group('claiming a piece of a road', () {
+    test('the searched pair rides on the hold request', () {
+      const request = CreateHoldRequest(
+        departureId: 'dep-1',
+        seatLabels: ['1A'],
+        fromCity: 'DOL',
+        toCity: 'PNR',
+      );
+
+      // Short names on the wire, matching the search query the client already
+      // sends. City codes and never positions: a position is an index into a
+      // road the client does not own (ADR-0025).
+      expect(request.toJson()['from'], 'DOL');
+      expect(request.toJson()['to'], 'PNR');
+    });
+
+    test('a whole journey names no pair at all', () {
+      const request = CreateHoldRequest(
+        departureId: 'dep-1',
+        seatLabels: ['1A'],
+      );
+
+      // Absent, not null-valued: this is exactly the request every client
+      // sent before segments existed, byte for byte.
+      expect(request.toJson().containsKey('from'), isFalse);
+      expect(request.toJson().containsKey('to'), isFalse);
+    });
+
+    test('a lower-cased pair is read as the codes they are', () {
+      final request = CreateHoldRequest.fromJson(const {
+        'departureId': 'dep-1',
+        'seatLabels': ['1A'],
+        'from': ' dol ',
+        'to': 'pnr',
+      });
+
+      expect(request.fromCity, 'DOL');
+      expect(request.toCity, 'PNR');
+    });
+  });
+
   group('a piece of a road, priced', () {
     test('cities go up, positions come back', () {
       // A console form is two dropdowns of town names; a position is an index

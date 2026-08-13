@@ -87,6 +87,11 @@ Future<Response> _hold(
     seatLabels: request.seatLabels,
     userId: principal.userId,
     idempotencyKey: key,
+    // Both or neither, and a half-named pair is refused rather than quietly
+    // widened to the whole journey — which would charge a traveller the
+    // through fare for a leg (ADR-0025).
+    fromCity: request.toCity == null ? null : request.fromCity,
+    toCity: request.fromCity == null ? null : request.toCity,
   );
 
   return switch (result) {

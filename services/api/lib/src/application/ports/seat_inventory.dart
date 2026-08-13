@@ -14,9 +14,22 @@ final class SeatClaim {
     required this.ttl,
     required this.idempotencyKey,
     this.channel = 'app',
+    this.fromCity,
+    this.toCity,
   });
 
   final String departureId;
+
+  /// The pair the traveller searched with, when they are buying a **piece** of
+  /// the road (ADR-0025). Both or neither.
+  ///
+  /// City codes rather than positions, for the same reason the seat map takes
+  /// them: a position is an index into a road the client does not own, and a
+  /// client that could send one could send a journey the operator never put
+  /// on sale. The adapter resolves them against the departure's own road and
+  /// against what the operator has priced.
+  final String? fromCity;
+  final String? toCity;
 
   /// Sorted by the use case before it gets here. Two travellers asking for
   /// {12A, 12B} and {12B, 12A} must lock the rows in the SAME order or they
@@ -96,6 +109,18 @@ final class IdempotencyKeyTaken extends ClaimOutcome {
 final class SeatsUnknown extends ClaimOutcome {
   const SeatsUnknown(this.seatLabels);
   final List<String> seatLabels;
+}
+
+/// The two towns are not a journey this operator sells.
+///
+/// Distinct from a full coach and from a departure that has left: nothing is
+/// wrong with the coach, and nothing will change by retrying. Either the
+/// operator has not priced that leg, or the road does not run between those
+/// two towns in that direction at all.
+final class SegmentNotOnSale extends ClaimOutcome {
+  const SegmentNotOnSale(this.fromCity, this.toCity);
+  final String fromCity;
+  final String toCity;
 }
 
 /// The departure cannot be sold right now.

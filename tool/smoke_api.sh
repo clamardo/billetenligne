@@ -236,6 +236,24 @@ check "key reused with a different body is 409" "409" \
   "$(hold "$smoke_key" '["1B"]')"
 
 check "a seat already held is 409" "409" "$(hold "smoke-other-$$" '["1A"]')"
+
+# Claiming a piece of the road (ADR-0025). The demo world runs no roads with
+# stops on them, so there is nothing priced between two towns here — and the
+# honest answer to that is a refusal by name, not the whole road sold at the
+# through fare. The claim path resolves the pair against the operator's own
+# price list; a client cannot talk it into a journey nobody put on sale.
+check "a leg nobody priced is 404, not the whole road" "404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/holds" \
+     -H "$AUTH" -H 'Content-Type: application/json' \
+     -H "Idempotency-Key: smoke-leg-$$" \
+     -d "{\"departureId\":\"$DEP\",\"seatLabels\":[\"2A\"],\"from\":\"DOL\",\"to\":\"PNR\"}")"
+# The coach's own two ends are the ordinary whole-journey claim, which is what
+# lets a client send back whatever pair it searched with.
+check "the coach's own pair is the ordinary claim" "201" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/public/v1/holds" \
+     -H "$AUTH" -H 'Content-Type: application/json' \
+     -H "Idempotency-Key: smoke-whole-$$" \
+     -d "{\"departureId\":\"$DEP\",\"seatLabels\":[\"2A\"],\"from\":\"BZV\",\"to\":\"PNR\"}")"
 check "a seat not on the coach is 404" "404" "$(hold "smoke-ghost-$$" '["99Z"]')"
 check "seven seats is 400" "400" \
   "$(hold "smoke-many-$$" '["2A","2B","2C","2D","3A","3B","3C"]')"

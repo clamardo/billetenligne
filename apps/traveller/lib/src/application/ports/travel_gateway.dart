@@ -46,10 +46,15 @@ abstract interface class TravelGateway {
   /// [idempotencyKey] is supplied by the caller so that a retry of a *lost*
   /// attempt carries the key of that attempt. Generating a fresh one on retry
   /// is how a dropped connection turns into two holds on two different seats.
+  /// [from] and [to] are the pair the row was found with, so the seats are
+  /// claimed for the journey being bought rather than for the whole road the
+  /// coach runs (ADR-0025).
   Future<HoldDto> hold({
     required String departureId,
     required List<String> seatLabels,
     required String idempotencyKey,
+    String? from,
+    String? to,
   });
 
   Future<void> release(String holdId);

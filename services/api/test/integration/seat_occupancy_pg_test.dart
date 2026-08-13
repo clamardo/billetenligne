@@ -231,6 +231,179 @@ void main() {
       expect(await fixture.emptyHolds(departureId), 0);
     });
 
+    test('a leg is claimed at the leg'
+        's price, for the leg only', () async {
+      // A road through one town, with the second half on sale at the
+      // operator's own price. This is the trade every company on the corridor
+      // already makes at the roadside, out of a notebook.
+      final road = await fixture.route(
+        code: 'BUY-LEG',
+        origin: 'BZV',
+        destination: 'OYO',
+      );
+      await fixture.stopsOn(road, const [(city: 'DOL', offsetMinutes: 180)]);
+      await fixture.priceSegment(
+        road,
+        fromPosition: 1,
+        toPosition: 2,
+        fareMinor: 5500,
+      );
+      final departureId = await fixture.departure(
+        seatLabels: const ['7A'],
+        onRoute: road,
+      );
+
+      final claimed = await hold(
+        departureId: departureId,
+        seatLabels: const ['7A'],
+        userId: userId,
+        idempotencyKey: key(),
+        fromCity: 'DOL',
+        toCity: 'OYO',
+      );
+
+      // The operator's price for the leg, not the coach's 12 000.
+      expect(claimed.valueOrNull!.fare, const Money.xaf(5500));
+
+      final rows = await fixture.occupancyOn(departureId, '7A');
+      expect(rows, hasLength(1));
+      // Half the road, and only half: the seat is still free from
+      // Brazzaville to Dolisie for somebody else to buy.
+      expect(rows.single['span'], '[1,2)');
+      expect(await fixture.seatStateOn(departureId, '7A'), 'partial');
+    });
+
+    test('both halves of one seat can be sold to two people', () async {
+      final road = await fixture.route(
+        code: 'BUY-BOTH',
+        origin: 'BZV',
+        destination: 'OYO',
+      );
+      await fixture.stopsOn(road, const [(city: 'DOL', offsetMinutes: 180)]);
+      await fixture.priceSegment(
+        road,
+        fromPosition: 0,
+        toPosition: 1,
+        fareMinor: 6000,
+      );
+      await fixture.priceSegment(
+        road,
+        fromPosition: 1,
+        toPosition: 2,
+        fareMinor: 5500,
+      );
+      final departureId = await fixture.departure(
+        seatLabels: const ['8A'],
+        onRoute: road,
+      );
+      final serge = await fixture.traveller('910002', name: 'Serge N.');
+
+      final first = await hold(
+        departureId: departureId,
+        seatLabels: const ['8A'],
+        userId: userId,
+        idempotencyKey: key(),
+        fromCity: 'BZV',
+        toCity: 'DOL',
+      );
+      final second = await hold(
+        departureId: departureId,
+        seatLabels: const ['8A'],
+        userId: serge,
+        idempotencyKey: key(),
+        fromCity: 'DOL',
+        toCity: 'OYO',
+      );
+
+      // One seat, two travellers, no overlap — `[0,1)` and `[1,2)` share
+      // nothing, which is a passenger alighting at Dolisie and another
+      // boarding there. The whole model exists for this row.
+      expect(first.isOk, isTrue);
+      expect(second.isOk, isTrue);
+      expect(await fixture.occupancyOn(departureId, '8A'), hasLength(2));
+
+      // And a third traveller wanting the whole road is refused, because
+      // between them the two of them have all of it.
+      final whole = await hold(
+        departureId: departureId,
+        seatLabels: const ['8A'],
+        userId: await fixture.traveller('910003'),
+        idempotencyKey: key(),
+      );
+      expect(whole.isErr, isTrue);
+    });
+
+    test('a leg nobody priced is refused by name', () async {
+      final road = await fixture.route(
+        code: 'BUY-UNPRICED',
+        origin: 'BZV',
+        destination: 'OYO',
+      );
+      await fixture.stopsOn(road, const [(city: 'DOL', offsetMinutes: 180)]);
+      final departureId = await fixture.departure(
+        seatLabels: const ['9A'],
+        onRoute: road,
+      );
+
+      final refused = await hold(
+        departureId: departureId,
+        seatLabels: const ['9A'],
+        userId: userId,
+        idempotencyKey: key(),
+        fromCity: 'DOL',
+        toCity: 'OYO',
+      );
+
+      // Not "seat taken" and not "coach gone": nothing is wrong with the
+      // coach and retrying cannot help. The operator does not sell that pair.
+      expect(refused.failureOrNull, isA<SegmentNotSold>());
+      expect(await fixture.occupancyOn(departureId, '9A'), isEmpty);
+    });
+
+    test('the reservation charges what the leg was quoted at', () async {
+      final road = await fixture.route(
+        code: 'BUY-QUOTED',
+        origin: 'BZV',
+        destination: 'OYO',
+      );
+      await fixture.stopsOn(road, const [(city: 'DOL', offsetMinutes: 180)]);
+      await fixture.priceSegment(
+        road,
+        fromPosition: 1,
+        toPosition: 2,
+        fareMinor: 5500,
+      );
+      final departureId = await fixture.departure(
+        seatLabels: const ['10A'],
+        onRoute: road,
+      );
+
+      final claimed = await hold(
+        departureId: departureId,
+        seatLabels: const ['10A'],
+        userId: userId,
+        idempotencyKey: key(),
+        fromCity: 'DOL',
+        toCity: 'OYO',
+      );
+
+      final reserved = await reserve(
+        holdId: claimed.valueOrNull!.id,
+        userId: userId,
+        passengers: [
+          const PassengerDto(fullName: 'Aline M.', seatLabel: '10A'),
+        ],
+      );
+
+      // The price on the hold, not the seat row's 12 000 — a price list
+      // edited between the tap and the counter must not rewrite what
+      // somebody agreed to pay.
+      expect(reserved.valueOrNull!.fare, const Money.xaf(5500));
+      // And the booking remembers where they get on and off, which is what a
+      // conductor's manifest will be read from.
+      expect(await fixture.bookingSpan(reserved.valueOrNull!.id), '[1,2)');
+    });
+
     test('the derived state is not writable by an operator', () async {
       final departureId = await fixture.departure(
         seatLabels: ['6A'],

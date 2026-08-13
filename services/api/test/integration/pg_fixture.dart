@@ -1027,6 +1027,15 @@ final class PgFixture {
     );
   }
 
+  /// The piece of road a booking was sold for, as text, or null for all of it.
+  Future<String?> bookingSpan(String bookingId) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT road_span::text AS span FROM bookings WHERE id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    );
+    return rows.isEmpty ? null : rows.first.toColumnMap()['span'] as String?;
+  }
+
   /// Which departure a booking is on now. The question the rebooking wave
   /// exists to change.
   Future<String> departureOf(String bookingId) async {

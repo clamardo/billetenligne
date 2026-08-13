@@ -610,6 +610,10 @@ final class BookingFlow {
         departureId: current.departure.id,
         seatLabels: current.selected.toList()..sort(),
         idempotencyKey: _attemptKey!,
+        // The row's own pair, exactly as the seat map was asked for. Sending
+        // the coach's ends instead would buy a journey nobody chose.
+        from: current.departure.originCity,
+        to: current.departure.destinationCity,
       );
       _attemptKey = null;
       _emit(HoldReady(current.departure, hold));

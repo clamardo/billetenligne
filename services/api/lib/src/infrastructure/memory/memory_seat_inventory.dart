@@ -177,6 +177,17 @@ final class MemorySeatInventory implements SeatInventory {
       return const DepartureNotSellable(DepartureNotSellable.salesClosed);
     }
 
+    // The demo world runs no roads with stops on them, so it has no legs to
+    // price. A pair that is this coach's own two ends is the ordinary
+    // whole-journey claim; anything else is a journey nobody here sells, and
+    // selling it at the through fare would be the one lie this file is not
+    // allowed to tell (ADR-0025).
+    if (claim.fromCity != null &&
+        (claim.fromCity != departure.originCity ||
+            claim.toCity != departure.destinationCity)) {
+      return SegmentNotOnSale(claim.fromCity!, claim.toCity!);
+    }
+
     final unknown = [
       for (final label in claim.seatLabels)
         if (!departure.seats.containsKey(label)) label,

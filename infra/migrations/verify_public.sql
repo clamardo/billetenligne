@@ -2052,3 +2052,93 @@ BEGIN
   RAISE NOTICE 'OK  a seat''s state is derived, and nobody may write it';
 END
 $$;
+
+-- ── 25. A traveller cannot edit what they were quoted ──────────────────────
+--
+-- A hold now carries the price of the leg it took (ADR-0025, migration 0037),
+-- and the reservation charges that number rather than re-deriving it at a
+-- counter four hours later. Which turns the table-wide UPDATE that 0005 gave
+-- `bel_public` — for one statement, releasing your own hold — into a way to
+-- buy a journey for one franc.
+--
+-- So the grant became the column it always was in practice. This is the
+-- assertion that it stayed that way.
+DO $$
+DECLARE
+  ocean UUID := '11111111-1111-1111-1111-111111111111';
+  aline UUID := '55555555-5555-5555-5555-555555555551';
+  dep   UUID := 'cccccccc-0000-0000-0000-0000000000e1';
+  h1    UUID := 'dddddddd-0000-0000-0000-0000000000e1';
+  seen  TEXT;
+BEGIN
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  INSERT INTO departures
+    (id, operator_id, route_id, seat_layout_id, departs_at, arrives_at,
+     capacity, fare_minor, currency, road_span)
+  VALUES (dep, ocean, 'aaaaaaaa-0000-0000-0000-000000000001',
+          'bbbbbbbb-0000-0000-0000-000000000001',
+          now() + INTERVAL '5 days', now() + INTERVAL '5 days 8 hours',
+          4, 12000, 'XAF', '[0,2)');
+
+  INSERT INTO seats (departure_id, seat_label, operator_id, section_code,
+                     fare_minor, currency)
+  VALUES (dep, '1A', ocean, 'STD', 12000, 'XAF');
+
+  INSERT INTO holds (id, operator_id, departure_id, user_id, seat_labels,
+                     expires_at, idempotency_key, road_span,
+                     segment_fare_minor)
+  VALUES (h1, ocean, dep, aline, ARRAY['1A'],
+          now() + INTERVAL '15 minutes', 'quoted-aline', '[1,2)', 5500);
+
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.user_id', aline::text, true);
+
+  -- What a traveller may still do to their own hold, and the only thing they
+  -- ever did: give it back.
+  UPDATE holds SET state = 'released' WHERE id = h1;
+  UPDATE holds SET state = 'active'   WHERE id = h1;
+
+  -- What they may not: rewrite the price they were quoted, or the piece of
+  -- road it was quoted for. The first is a one-franc ticket; the second is a
+  -- whole journey bought at a leg's price.
+  BEGIN
+    UPDATE holds SET segment_fare_minor = 1 WHERE id = h1;
+    RAISE EXCEPTION 'FAIL: a traveller rewrote their own quote';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected: the grant names `state`, and nothing else
+  END;
+
+  BEGIN
+    UPDATE holds SET road_span = '[0,2)' WHERE id = h1;
+    RAISE EXCEPTION 'FAIL: a traveller widened the journey they had paid for';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  -- Nor may they extend their own hold past the moment it lapses, which
+  -- would be a way to sit on a seat through the morning rush.
+  BEGIN
+    UPDATE holds SET expires_at = now() + INTERVAL '9 hours' WHERE id = h1;
+    RAISE EXCEPTION 'FAIL: a traveller extended their own hold';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  SELECT segment_fare_minor::text INTO seen FROM holds WHERE id = h1;
+  IF seen <> '5500' THEN
+    RAISE EXCEPTION 'FAIL: the quoted price reads % after all that', seen;
+  END IF;
+
+  RESET ROLE;
+  PERFORM set_config('app.public', 'off', true);
+  PERFORM set_config('app.platform', 'off', true);
+  RAISE NOTICE 'OK  a hold''s quote is the server''s, not the traveller''s';
+END
+$$;

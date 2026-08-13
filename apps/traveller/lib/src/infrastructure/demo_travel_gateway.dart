@@ -261,6 +261,8 @@ final class DemoTravelGateway implements TravelGateway {
     required String departureId,
     required List<String> seatLabels,
     required String idempotencyKey,
+    String? from,
+    String? to,
   }) async {
     await Future<void>.delayed(latency);
 

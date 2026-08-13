@@ -48,6 +48,8 @@ final class CreateHoldRequest {
     required this.departureId,
     required this.seatLabels,
     this.quantity,
+    this.fromCity,
+    this.toCity,
   });
 
   final String departureId;
@@ -58,6 +60,16 @@ final class CreateHoldRequest {
 
   final int? quantity;
 
+  /// The pair the traveller searched with, when they are buying a **piece** of
+  /// the road (ADR-0025). Absent on a whole journey, and absent is what every
+  /// client sent before segments existed.
+  ///
+  /// City codes, never positions: a position is an index into a road the
+  /// client does not own, and the server resolves the pair against what the
+  /// operator has actually priced.
+  final String? fromCity;
+  final String? toCity;
+
   int get seatCount =>
       seatLabels.isNotEmpty ? seatLabels.length : (quantity ?? 1);
 
@@ -65,6 +77,8 @@ final class CreateHoldRequest {
     'departureId': departureId,
     'seatLabels': seatLabels.isEmpty ? null : seatLabels,
     'quantity': quantity,
+    'from': fromCity,
+    'to': toCity,
   });
 
   factory CreateHoldRequest.fromJson(Map<String, Object?> json) =>
@@ -72,6 +86,8 @@ final class CreateHoldRequest {
         departureId: Wire.requireString(json['departureId'], 'departureId'),
         seatLabels: (json['seatLabels'] as List?)?.cast<String>() ?? const [],
         quantity: json['quantity'] as int?,
+        fromCity: (json['from'] as String?)?.trim().toUpperCase(),
+        toCity: (json['to'] as String?)?.trim().toUpperCase(),
       );
 }
 
