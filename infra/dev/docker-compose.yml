@@ -95,7 +95,18 @@ services:
       - ./firebase.json:/home/node/firebase.json:ro
       - ./firebase-data:/home/node/firebase-data
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:4400/emulators || exit 1"]
+      # Node, because this image ships neither wget nor curl — and a
+      # healthcheck whose tool is missing reports `unhealthy` forever, which
+      # with `--wait` means `dev: stack up` never returns and the whole local
+      # stack looks broken on somebody's first morning.
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          require('http').get('http://127.0.0.1:4400/emulators',
+          r => process.exit(r.statusCode === 200 ? 0 : 1))
+          .on('error', () => process.exit(1))
       interval: 5s
       timeout: 3s
       retries: 20
@@ -116,7 +127,11 @@ services:
     volumes:
       - azurite-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 10000 || exit 1"]
+      # `127.0.0.1`, not `localhost`. Azurite binds IPv4 only, `localhost`
+      # resolves to `::1` first inside this image, and the connection is
+      # refused on a service that is listening perfectly well — reported as
+      # `unhealthy` forever, which with `--wait` hangs the whole stack.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 10000 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 20

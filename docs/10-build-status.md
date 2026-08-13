@@ -300,6 +300,63 @@ These are true today and each one is a decision, not an oversight.
    operator's longest-standing owner. A link back to a login was never an
    option — an operator who has to sign in to read what they were paid phones
    us instead, which is the call the statement exists to prevent.
+0. **The local stack had four ways to fail on a first morning, and they are
+   fixed.** Recorded because every one of them looked like the product being
+   broken. `infra/dev/.env.example` shipped a `DATABASE_URL` with **no
+   `sslmode=disable`**, so the driver required TLS the dev Postgres does not
+   offer, the pool retried the refused handshake and the API hung on its
+   first query instead of saying so — every script that built its own URL
+   already appended it, which is exactly why nobody noticed. Azurite's
+   healthcheck asked `nc -z localhost`, which resolves to `::1` on a service
+   bound to IPv4 only. The Firebase emulator's healthcheck ran `wget`, which
+   that image does not have. Both reported `unhealthy` forever, and
+   `docker compose up --wait` — what `dev: stack up` runs — never returned.
+   And `tool/api_dev.sh` under `nohup` died *after* serving, because
+   `dart_frog dev` puts the terminal into raw mode and throws from a stream
+   callback when there is no TTY. There is now also `tool/worker.sh`, the
+   sibling of `tool/api_dev.sh`, because the worker refuses politely without
+   `DATABASE_URL` — which reads as "nothing to do" rather than "you have not
+   set a variable".
+
+0b. **Nobody could sign into the console, and no suite could have told us.**
+   The lookup that decides which operator a request belongs to runs on the
+   identity surface — before any tenant is known, because its answer *is* the
+   tenant — and it checked the company was still trading by joining
+   `operators`. That surface has a read policy on `operator_staff` and none on
+   `operators`. RLS filters rather than raising, so the join matched nothing,
+   the `LEFT JOIN LATERAL` produced a null membership, and every console and
+   back-office request answered **403 to a correctly signed-in org owner**.
+   Everything green: the API suites build a `TenantScope` directly and never
+   travel this path, and every schema guarantee asserts what a surface
+   *cannot* reach. The only way to meet it is to sign in for real, which is
+   what the local-stack work above made possible for the first time.
+
+   The fix is deliberately not a policy on `operators`: "the identity surface
+   may read every operator row" is a real widening of the tenancy boundary,
+   bought to answer a yes/no question, and it is the kind of GRANT that looks
+   reasonable in a diff and is load-bearing for a leak three years later.
+   `app_operator_is_active` is `SECURITY DEFINER` for the same reason
+   `app_is_applicant_for` is — the caller learns one bit about one id and
+   nothing else. The new guarantee holds both halves at once, which is what
+   makes it regression-proof: an org owner resolves to their operator **and**
+   `SELECT count(*) FROM operators` on that surface is still zero. No
+   implementation that joins the table can satisfy both.
+
+0c. **`.env.example` described a system that did not exist.** Seven variables
+   nothing has ever read: a ticket signing key and key id the issuer ignores
+   in favour of a compiled-in development seed, a maps key, a payments
+   gateway switch, `DATABASE_ADMIN_URL`, `AZURITE_CONNECTION_STRING`, and a
+   `BEL_TEST_RUN` flag whose real mechanism is `--profile test`. In the other
+   direction the four `STORAGE__*` variables the object store reads were
+   absent, so `services.storage.isConfigured` was false locally and the
+   vitrine's logo and cover pickers — shipped the day before — answered 503.
+   Azurite's development account and key are public and identical on every
+   machine; they are written out rather than referenced, and a logo now round
+   trips from the picker to a blob URL that fetches. Variables whose blank
+   value would beat a `??` default (the rails' base URLs) are documented as
+   comments instead of set empty, which is the trap this file was already
+   halfway into.
+
 14. ~~**A followed trip is estimated from the timetable, not observed.**~~
    **Tier 2 is built.** The handset that needed to exist already did: the
    conductor's scanner is pinned to the departure, trusted to say who boarded
@@ -338,9 +395,9 @@ cd apps/console   && flutter test        # 125 console tests
 cd apps/admin     && flutter test        # 35 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 47 scanner tests, incl. a manifest off the wire
-dart run tool/check_layers.dart          # the onion rule, 424 files
+dart run tool/check_layers.dart          # the onion rule, 426 files
 ./infra/migrations/check.sh              # 45 schema guarantees
-./tool/integration.sh                    # 513 tests on real Postgres, incl. the worker
+./tool/integration.sh                    # 515 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 445 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
@@ -379,8 +436,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,466 tests in total**, plus 454 smoke checks, 46 executed schema guarantees,
-513 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,474 tests in total**, plus 454 smoke checks, 47 executed schema guarantees,
+515 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.

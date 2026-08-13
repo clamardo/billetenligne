@@ -2,10 +2,11 @@
 
 ```bash
 cp .env.example .env
-docker compose up -d
+docker compose up -d --wait    # --wait, so the next line does not race the database
 ../../tool/migrate.sh          # a fresh volume has roles and no schema
 ../../tool/demo.sh             # a world to look at, optional
 ../../tool/api_dev.sh          # the API on http://localhost:8080
+../../tool/worker.sh           # every pass once — in another terminal
 ```
 
 That is the whole setup. No cloud credentials, no network required (ADR-0020).
@@ -26,9 +27,38 @@ tasks it chains are also individually runnable from *Run Task*.
 
 ## Signing in locally
 
-The Auth emulator does not send SMS. Any phone number accepts the code
-**`123456`**. Seeded personas are listed in [`seed/README.md`](seed/README.md), which also
+**On a handset**, the Auth emulator does not send SMS: any phone number
+accepts the code **`123456`**.
+
+**In the console or the back office**, sign-in is an emailed code and then
+TOTP (ADR-0013). The code goes to Mailpit — http://localhost:8025 — because
+`SMTP__HOST` is set in `.env.example` and nothing else is; the same sender
+delivers ticket links with their QR attached and operator statements with
+their PDF, so those are readable rather than a line of log saying a file
+existed. SMS has no equivalent and still prints to the API's console, which
+is where you would read it anyway.
+
+The seeded staff have **no second factor enrolled**, so the first sign-in
+walks through enrolment. There is no QR on that screen on purpose — see
+`docs/10-build-status.md` — so copy the setup key into an authenticator by
+hand.
+
+Seeded personas are listed in [`seed/README.md`](seed/README.md), which also
 explains the demo world and how to remove it.
+
+Checking the whole chain without a browser:
+
+```bash
+# ask for a code, read it out of Mailpit, exchange it for a session
+CH=$(curl -s -X POST localhost:8080/public/v1/auth/challenges \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"prosper@demo.billetenligne.cg"}' | jq -r .challengeId)
+CODE=$(curl -s 'localhost:8025/api/v1/messages?limit=1' \
+  | grep -oE '[0-9]{6}' | head -1)
+curl -s -X POST localhost:8080/public/v1/auth/sessions \
+  -H 'Content-Type: application/json' \
+  -d "{\"challengeId\":\"$CH\",\"code\":\"$CODE\"}"
+```
 
 ## Running without any of this
 
@@ -58,13 +88,14 @@ the wrong layer (ADR-0001).
 ## Test runs
 
 ```bash
-BEL_TEST_RUN=true docker compose --profile test up -d
+docker compose --profile test up -d
 ```
 
-Everything becomes ephemeral — Postgres on tmpfs, no Azurite volume, no
-Firebase import/export. This is not an optimisation: CogitovaSchool traced a
-genuinely confusing intermittent failure to one suite exporting its Firebase
-accounts on the way out and the next suite importing them.
+Brings up a second Postgres on tmpfs alongside the ordinary one, so a suite
+starts from an empty schema and leaves nothing behind. Add `FIREBASE_PERSISTENCE=`
+to `.env` to stop the emulator importing and exporting accounts between runs —
+CogitovaSchool traced a genuinely confusing intermittent failure to one suite
+exporting its accounts on the way out and the next suite importing them.
 
 ## SMS and email
 

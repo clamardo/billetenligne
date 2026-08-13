@@ -41,6 +41,7 @@
       // Forward-only and safe to repeat. A fresh volume has the roles file and
       // no schema at all, which used to surface as a 503 nobody could explain.
       "label": "dev: migrate",
+      "dependsOn": ["dev: env"],
       "type": "shell",
       "command": "./tool/migrate.sh",
       "options": { "cwd": "${workspaceFolder}" },
@@ -73,6 +74,11 @@
       // `.dart_frog/server.dart`, which imports the real tree, and this is
       // what writes it.
       "label": "api: routes",
+      // Any launch that regenerates the route table is a launch that is about
+      // to read `infra/dev/.env`. Creating it here rather than in a README
+      // step is the difference between a first clone that runs and one that
+      // fails on a missing file with no explanation.
+      "dependsOn": ["dev: env"],
       "type": "shell",
       "command": "./tool/frog_routes.sh",
       "options": { "cwd": "${workspaceFolder}" },

@@ -265,3 +265,80 @@ BEGIN
   RAISE NOTICE 'OK  the TOTP seed column is named for what it actually holds';
 END
 $$;
+
+-- ── The console can actually be reached ─────────────────────────────────────
+--
+-- The membership lookup runs on the identity surface, before any tenant is
+-- known, because its answer *is* the tenant. It reads `operator_staff`, which
+-- this surface may read, and it has to know whether the operator is still
+-- trading — which lives in `operators`, which this surface may not read.
+--
+-- That gap shipped. The lookup joined `operators`, RLS filtered the join to
+-- nothing instead of raising, membership came back NULL, and every console
+-- and back-office request answered 403 to somebody correctly signed in and
+-- genuinely an org owner. Nothing caught it: the API tests build a scope
+-- directly, and every guarantee above this one asserts what a surface *cannot*
+-- reach. This asserts the one thing it must.
+DO $$
+DECLARE
+  op       UUID;
+  person   UUID;
+  resolved UUID;
+  leaked   INT;
+BEGIN
+  RESET ROLE;
+  INSERT INTO operators (code, legal_name, trading_name, status, market_code)
+  VALUES ('VFY-IDN', 'Vérification Identité SARL', 'Vérif', 'active', 'CG')
+  RETURNING id INTO op;
+
+  INSERT INTO user_accounts (email, full_name, language)
+  VALUES ('membership@verify.local', 'Membre', 'fr')
+  RETURNING id INTO person;
+
+  INSERT INTO operator_staff (operator_id, user_id, roles, accepted_at)
+  VALUES (op, person, ARRAY['org_owner'], now());
+
+  SET LOCAL ROLE bel_identity;
+  PERFORM set_config('app.identity', 'on', true);
+
+  SELECT s.operator_id INTO resolved
+    FROM operator_staff s
+   WHERE s.user_id = person
+     AND s.revoked_at IS NULL
+     AND s.accepted_at IS NOT NULL
+     AND app_operator_is_active(s.operator_id)
+   LIMIT 1;
+
+  IF resolved IS DISTINCT FROM op THEN
+    RAISE EXCEPTION 'FAIL: an org owner signing in resolves to no operator';
+  END IF;
+
+  -- And the bit is all it is. A function that answered this by handing the
+  -- identity surface a view of `operators` would pass the check above and
+  -- widen the tenancy boundary to every operator in the country.
+  SELECT count(*) INTO leaked FROM operators;
+  IF leaked <> 0 THEN
+    RAISE EXCEPTION 'FAIL: the identity surface can read the operator table';
+  END IF;
+
+  -- Suspended is the same answer as invented: false, and nothing else said.
+  RESET ROLE;
+  UPDATE operators SET status = 'suspended' WHERE id = op;
+  SET LOCAL ROLE bel_identity;
+  PERFORM set_config('app.identity', 'on', true);
+
+  IF app_operator_is_active(op) THEN
+    RAISE EXCEPTION 'FAIL: staff of a suspended operator still get a scope';
+  END IF;
+  IF app_operator_is_active(gen_random_uuid()) THEN
+    RAISE EXCEPTION 'FAIL: an operator id nobody issued reads as trading';
+  END IF;
+
+  RESET ROLE;
+  DELETE FROM operator_staff WHERE user_id = person;
+  DELETE FROM user_accounts WHERE id = person;
+  DELETE FROM operators WHERE id = op;
+
+  RAISE NOTICE 'OK  an org owner signing in resolves to their operator, and to nothing else';
+END
+$$;

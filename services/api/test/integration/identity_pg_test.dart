@@ -88,6 +88,60 @@ void main() {
     return done.valueOrNull!;
   }
 
+  group('the membership every console request is scoped by', () {
+    // This is the read that decides whether somebody is staff, and of whom.
+    // It runs on the identity surface, before any tenant is known, which is
+    // exactly the constraint that broke it: the lookup joined `operators` to
+    // check the status, that surface cannot see `operators`, and RLS filters
+    // rather than raising. Membership came back null and every console and
+    // back-office request answered 403 to a signed-in org owner.
+    //
+    // Nothing above caught it, because the API suites build a TenantScope
+    // directly and never travel this path. These two tests do.
+    test('an org owner resolves to their operator', () async {
+      final signedIn = await signInWith(freshEmail());
+      final uid = signedIn.account.authUid!;
+
+      // Before the invitation is accepted, this person is a traveller.
+      expect((await directory.byAuthUid(uid))!.staff, isNull);
+
+      await fixture.rows("""
+        INSERT INTO operator_staff (operator_id, user_id, roles, accepted_at)
+        VALUES ('${PgFixture.operatorId}', '${signedIn.account.id}',
+                ARRAY['org_owner'], now())
+      """);
+
+      final account = await directory.byAuthUid(uid);
+      expect(account!.staff, isNotNull);
+      expect(account.staff!.operatorId, PgFixture.operatorId);
+      expect(account.staff!.roles, contains('org_owner'));
+    });
+
+    test('staff of an operator that has stopped trading do not', () async {
+      final signedIn = await signInWith(freshEmail());
+      final rows = await fixture.rows("""
+        INSERT INTO operators (code, legal_name, trading_name, status,
+                               market_code)
+        VALUES ('SUSP-${DateTime.now().microsecondsSinceEpoch}',
+                'Suspendu SARL', 'Suspendu', 'suspended', 'CG')
+        RETURNING id
+      """);
+      final suspended = rows.single['id'];
+
+      await fixture.rows("""
+        INSERT INTO operator_staff (operator_id, user_id, roles, accepted_at)
+        VALUES ('$suspended', '${signedIn.account.id}',
+                ARRAY['org_owner'], now())
+      """);
+
+      // Not an error and not a scope: a suspension is a decision about the
+      // company, and the person holding the token learns nothing about it
+      // here beyond having no console to open.
+      expect((await directory.byAuthUid(signedIn.account.authUid!))!.staff,
+          isNull);
+    });
+  });
+
   test('a first sign-in creates the account and its Firebase UID', () async {
     final email = freshEmail();
     final result = await signInWith(email);

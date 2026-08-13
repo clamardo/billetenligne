@@ -53,4 +53,18 @@ fi
 echo "── env    $(basename "$ENV_FILE")"
 echo "── api    http://localhost:$PORT"
 cd "$HERE/services/api"
-exec dart_frog dev --port "$PORT"
+
+# `dart_frog dev` puts the terminal into raw mode so it can listen for `r` and
+# `q`. With no TTY — `nohup`, a CI step, a tmux pipe — that throws
+# `StdinException: Error setting terminal echo mode` from a stream callback,
+# which is unhandled and takes the server down *after* it has already started
+# serving. A health check passes, then the process is gone.
+#
+# `script` hands it a pty to be disappointed by. Only when there isn't one:
+# with a real terminal the hot-reload keys should keep working.
+if [[ -t 0 ]]; then
+  exec dart_frog dev --port "$PORT"
+fi
+
+echo "── no tty, running under a pseudo-terminal so hot reload does not abort"
+exec script -qec "dart_frog dev --port $PORT" /dev/null

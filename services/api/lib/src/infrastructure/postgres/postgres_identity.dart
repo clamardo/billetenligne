@@ -32,15 +32,20 @@ final class PostgresUserDirectory implements UserDirectory {
   /// `revoked_at IS NULL` and `accepted_at IS NOT NULL`, so an invitation
   /// nobody accepted grants nothing and a dismissal takes effect on the next
   /// request rather than when a token happens to expire.
+  ///
+  /// `app_operator_is_active` rather than a join to `operators` (0044). This
+  /// runs on the identity surface, which cannot see that table — and RLS
+  /// filters instead of failing, so the join quietly matched nothing and every
+  /// console request answered 403 to somebody who really was staff. The
+  /// function answers the one bit this needs and discloses nothing else.
   static const _staffJoin = '''
     LEFT JOIN LATERAL (
       SELECT s.operator_id, s.roles, s.station_ids
         FROM operator_staff s
-        JOIN operators o ON o.id = s.operator_id
        WHERE s.user_id = user_accounts.id
          AND s.revoked_at IS NULL
          AND s.accepted_at IS NOT NULL
-         AND o.status = 'active'
+         AND app_operator_is_active(s.operator_id)
        ORDER BY s.invited_at
        LIMIT 1
     ) staff ON TRUE

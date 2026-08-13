@@ -48,6 +48,11 @@
       // written to this console, sign-in codes included — which is how you
       // sign in locally.
       "name": "Worker — outbox drain only",
+      // The drain reads `DATABASE_URL` like every other pass, and without a
+      // pre-launch task nothing else would have created the file it comes
+      // from. The migrate step is deliberately absent: this configuration
+      // exists to watch one pass, not to touch the schema.
+      "preLaunchTask": "dev: env",
       "type": "dart",
       "request": "launch",
       "program": "${workspaceFolder}/services/worker/bin/worker.dart",

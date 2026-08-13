@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:bel_api/src/adapters/acs_notification_gateway.dart';
 import 'package:bel_api/src/adapters/logging_notification_gateway.dart';
+import 'package:bel_api/src/adapters/smtp_notification_gateway.dart';
 import 'package:bel_api/src/application/ports/notification_gateway.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_ticket_links.dart';
@@ -59,6 +60,15 @@ Future<int> main(List<String> args) async {
         Platform.environment['COMMS__CONNECTIONSTRING'],
         emailFrom: Platform.environment['COMMS__EMAILFROM'],
         smsFrom: Platform.environment['COMMS__SMSFROM'],
+      ) ??
+      // The local mail catcher, so a statement drained by the worker arrives
+      // as a readable message with its PDF attached rather than as a line of
+      // log saying a PDF existed. Same order as the API, and for the same
+      // reason: ACS wins wherever it is configured.
+      SmtpNotificationGateway.tryParse(
+        Platform.environment['SMTP__HOST'],
+        port: Platform.environment['SMTP__PORT'],
+        emailFrom: Platform.environment['COMMS__EMAILFROM'],
       ) ??
       const LoggingNotificationGateway();
 

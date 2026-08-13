@@ -12,6 +12,7 @@ import 'adapters/demo_applicant_screening.dart';
 import 'adapters/fake_auth_gateway.dart';
 import 'adapters/firebase_auth_gateway.dart';
 import 'adapters/logging_notification_gateway.dart';
+import 'adapters/smtp_notification_gateway.dart';
 import 'adapters/unavailable_operator_console.dart';
 import 'adapters/memory_idempotency_store.dart';
 import 'application/hold_seats.dart';
@@ -710,11 +711,20 @@ final class Services {
   /// everything runs, writing messages to the log instead of a real handset,
   /// so nobody's phone receives an SMS from someone else's laptop and no test
   /// run costs money.
+  /// ACS when it is configured, SMTP when the local stack is, the log
+  /// otherwise — asked in that order, and the order is the safety property:
+  /// a deployment with a real connection string can never be diverted into a
+  /// mail catcher by a stray `SMTP__HOST` in its environment.
   static NotificationGateway _notifications(Map<String, String> env) =>
       AcsNotificationGateway.tryParse(
         env['COMMS__CONNECTIONSTRING'],
         emailFrom: env['COMMS__EMAILFROM'],
         smsFrom: env['COMMS__SMSFROM'],
+      ) ??
+      SmtpNotificationGateway.tryParse(
+        env['SMTP__HOST'],
+        port: env['SMTP__PORT'],
+        emailFrom: env['COMMS__EMAILFROM'],
       ) ??
       const LoggingNotificationGateway();
 

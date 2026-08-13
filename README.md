@@ -36,10 +36,10 @@ push, including the gaps.
 | `bel_design` — Kilo tokens, components, contrast gates | ✅ 69 tests |
 | `bel_backoffice` · `bel_secure_store` — shared sign-in, Keychain/Keystore | ✅ 16 tests |
 | `bel_client` — typed API client, retries, idempotency | ✅ 41 tests |
-| `services/api` — three surfaces, middleware, every route | ✅ 263 tests + 454 smoke checks |
+| `services/api` — three surfaces, middleware, every route | ✅ 271 tests + 454 smoke checks |
 | `services/worker` — outbox, payments, refunds, sweeps, compliance | ✅ 74 tests on real Postgres |
 | Database — schema, RLS, ledger, public sales boundary | ✅ 45 guarantees verified |
-| Everything against real Postgres | ✅ 513 integration tests |
+| Everything against real Postgres | ✅ 515 integration tests |
 | `apps/traveller` — search, seat map, pay, wallet, offline tickets | ✅ 230 tests |
 | `apps/scanner` — offline boarding, signed manifest, SQLite log | ✅ 62 tests |
 | `apps/console` — fleet, routes, timetables, refunds, payouts | ✅ 140 tests |
@@ -50,13 +50,13 @@ push, including the gaps.
 
 ```bash
 dart test packages/bel_domain                   # 2 s, no containers
-dart run tool/check_layers.dart                 # onion dependency rule, 424 files
-./infra/migrations/check.sh                     # 45 schema guarantees (needs Docker)
-./tool/integration.sh                           # 513 tests on real Postgres
+dart run tool/check_layers.dart                 # onion dependency rule, 426 files
+./infra/migrations/check.sh                     # 47 schema guarantees (needs Docker)
+./tool/integration.sh                           # 515 tests on real Postgres
 ./tool/smoke_api.sh                             # 445 checks, incl. the Dart client
 ```
 
-**1,466 tests in total**, plus the smoke checks, the schema guarantees, the
+**1,474 tests in total**, plus the smoke checks, the schema guarantees, the
 integration suite and 10 tests against real Azurite. The full command list is
 in [`docs/10-build-status.md`](docs/10-build-status.md).
 
@@ -191,7 +191,7 @@ Five layers, each answering a different question ([ADR-0021](docs/adr/0021-test-
 | Widget / golden | Does the screen render, in fr + en, at 3 text scales? | 520 | < 90 s |
 | **Integration** | Does this component talk to Postgres / Azurite / the PSP correctly? | 515 | ~2 min |
 | **HTTP smoke** | Is the route mounted, and does the typed client parse it? | 445 | ~40 s |
-| **Executed schema guarantees** | Does the *database* refuse what it must? | 45 | ~20 s |
+| **Executed schema guarantees** | Does the *database* refuse what it must? | 47 | ~20 s |
 | End-to-end | Can a real person complete a real journey? | — | not built |
 | Manual smoke | Real SIM, real money, real sunlight | — | pre-release |
 
