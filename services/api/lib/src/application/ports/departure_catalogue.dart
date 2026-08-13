@@ -117,7 +117,17 @@ abstract interface class DepartureCatalogue {
   /// Null when the departure does not exist. A cancelled one still resolves —
   /// somebody holding a ticket for it needs to see what happened to their
   /// coach.
-  Future<SeatMapDto?> seatMap(String departureId);
+  ///
+  /// [fromCity] and [toCity] ask about a **piece** of the road (ADR-0025):
+  /// which seats are free between Dolisie and Pointe-Noire, and what that
+  /// costs. Both or neither — a half-named leg is a caller bug rather than a
+  /// whole-road request — and a pair the operator has not priced resolves to
+  /// null, because a leg that is not on sale has no seat map to show.
+  Future<SeatMapDto?> seatMap(
+    String departureId, {
+    String? fromCity,
+    String? toCity,
+  });
 }
 
 /// A terminal, as much of it as a results row and a ticket need.

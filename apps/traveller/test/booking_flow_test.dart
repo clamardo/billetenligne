@@ -79,8 +79,19 @@ final class _ScriptedGateway implements TravelGateway {
     );
   }
 
+  /// The pair the seat map was last asked about, so a test can prove the flow
+  /// hands the searched cities back rather than the coach's own ends.
+  (String?, String?) askedAbout = (null, null);
+
   @override
-  Future<SeatMapDto> seatMap(String departureId) async => _seatMap(departureId);
+  Future<SeatMapDto> seatMap(
+    String departureId, {
+    String? from,
+    String? to,
+  }) async {
+    askedAbout = (from, to);
+    return _seatMap(departureId);
+  }
 
   /// Every departure this gateway was asked to watch, and with how many
   /// seats. A list rather than a set: asking twice is a thing the flow must
@@ -770,6 +781,17 @@ void main() {
       await flow.openSeatMap(_departure());
       return flow;
     }
+
+    test('asks about the journey on the row, not the coach', () async {
+      // On a road with priced legs the row a traveller tapped is Dolisie to
+      // Pointe-Noire while the coach itself runs Brazzaville to Pointe-Noire,
+      // and the difference is the fare. The flow hands the row's own pair
+      // back, so the seat map it draws is the one being bought (ADR-0025).
+      final gateway = _ScriptedGateway(searchResult: [_departure()]);
+      await onSeatMap(gateway);
+
+      expect(gateway.askedAbout, ('BZV', 'PNR'));
+    });
 
     test('toggles on and off', () async {
       final flow = await onSeatMap();

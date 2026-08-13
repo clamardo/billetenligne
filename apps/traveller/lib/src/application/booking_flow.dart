@@ -554,7 +554,13 @@ final class BookingFlow {
     _emit(LoadingSeatMap(departure));
 
     try {
-      final map = await _gateway.seatMap(departure.id);
+      // The pair from the row that was tapped, not the coach's own ends: on a
+      // road with priced legs those differ, and the difference is the fare.
+      final map = await _gateway.seatMap(
+        departure.id,
+        from: departure.originCity,
+        to: departure.destinationCity,
+      );
       _emit(ChoosingSeats(departure, map, const {}));
     } on ApiFailure catch (failure) {
       _emit(StepFailed(failure));

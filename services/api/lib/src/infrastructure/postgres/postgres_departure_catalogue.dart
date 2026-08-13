@@ -290,48 +290,133 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
         );
 
   @override
-  Future<SeatMapDto?> seatMap(String departureId) =>
-      _db.transaction(const DbScope.anonymous(), (tx) async {
-        final header = await tx.execute(
-          Sql.named('''
-            SELECT l.version, l.mode, l.sections, l.features
+  Future<SeatMapDto?> seatMap(
+    String departureId, {
+    String? fromCity,
+    String? toCity,
+  }) => _db.transaction(const DbScope.anonymous(), (tx) async {
+    // The road, the leg and the layout in one statement. `road_span` comes
+    // back as the answer for a whole-road request, so everything below has a
+    // span to compare against whether or not a leg was asked for.
+    final header = await tx.execute(
+      Sql.named('''
+            WITH road AS (
+              SELECT r.id AS route_id, 0 AS position, r.origin_city AS city,
+                     TRUE AS boards, FALSE AS alights
+                FROM routes r
+               UNION ALL
+              SELECT rs.route_id, rs.sequence, rs.city_code,
+                     rs.allows_boarding, rs.allows_alighting
+                FROM route_stops rs
+               UNION ALL
+              SELECT r.id,
+                     1 + (SELECT count(*)::int FROM route_stops x
+                           WHERE x.route_id = r.id),
+                     r.destination_city, FALSE, TRUE
+                FROM routes r
+            )
+            SELECT l.version, l.mode, l.sections, l.features,
+                   rt.origin_city, rt.destination_city,
+                   d.road_span::text AS road_span,
+                   leg.span::text    AS leg_span,
+                   leg.fare_minor,
+                   leg.currency
               FROM departures d
               JOIN seat_layouts l ON l.id = d.seat_layout_id
+              JOIN routes rt ON rt.id = d.route_id
+              LEFT JOIN LATERAL (
+                SELECT int4range(sf.from_position, sf.to_position) AS span,
+                       sf.fare_minor, sf.currency
+                  FROM segment_fares sf
+                  JOIN road fs ON fs.route_id = sf.route_id
+                              AND fs.position = sf.from_position
+                  JOIN road ts ON ts.route_id = sf.route_id
+                              AND ts.position = sf.to_position
+                 WHERE sf.route_id = d.route_id
+                   AND sf.active
+                   AND fs.city = @from AND ts.city = @to
+                   AND fs.boards AND ts.alights
+                 ORDER BY sf.from_position
+                 LIMIT 1
+              ) leg ON @from::text IS NOT NULL
              WHERE d.id = @id
           '''),
-          parameters: {'id': TypedValue(Type.uuid, departureId)},
-        );
-        if (header.isEmpty) return null;
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'from': TypedValue(Type.text, fromCity),
+        'to': TypedValue(Type.text, toCity),
+      },
+    );
+    if (header.isEmpty) return null;
 
-        final h = header.first.toColumnMap();
+    final h = header.first.toColumnMap();
+    // Asked about a pair and the operator has priced no leg between them. If
+    // it is the road's own two ends that is the ordinary whole-journey
+    // request — the client sends back the pair it searched with and does not
+    // have to know which of the two it made. Anything else is a leg that is
+    // not on sale, and the answer is no seat map rather than an empty one: a
+    // coach drawn with every seat greyed out reads as full.
+    if (fromCity != null && h['leg_span'] == null) {
+      final wholeRoad =
+          h['origin_city'] == fromCity && h['destination_city'] == toCity;
+      if (!wholeRoad) return null;
+    }
 
-        final seats = await tx.execute(
-          Sql.named('''
-            SELECT seat_label,
-                   section_code,
-                   fare_minor,
-                   currency,
-                   -- A hold that has lapsed reads as available. The sweeper is
-                   -- a tidy-up, never the thing that decides — otherwise a
-                   -- stalled worker shows a coach as full when it is empty.
-                   CASE WHEN state = 'held' AND held_until <= now()
-                        THEN 'available' ELSE state::text END AS state
-              FROM seats
-             WHERE departure_id = @id
-             ORDER BY seat_label
+    final span = (h['leg_span'] ?? h['road_span']) as String;
+
+    final seats = await tx.execute(
+      Sql.named('''
+            SELECT s.seat_label,
+                   s.section_code,
+                   -- The operator's price for the leg, flat across the coach.
+                   -- A section premium on a piece of a road is a commercial
+                   -- decision nobody has made, and inventing one is exactly
+                   -- what ADR-0025 refuses to do with a fare.
+                   COALESCE(@fare::bigint, s.fare_minor) AS fare_minor,
+                   COALESCE(@currency::text, s.currency) AS currency,
+                   -- Occupancy, not `seats.state`, and over the span asked
+                   -- about: a seat sold Brazzaville→Dolisie is free from
+                   -- Dolisie on, and reads `partial` to anybody who asks the
+                   -- column instead. A hold that has lapsed occupies nothing
+                   -- — the sweeper is a tidy-up, never the thing that
+                   -- decides, or a stalled worker shows a full coach.
+                   CASE
+                     WHEN s.state = 'blocked' THEN 'blocked'
+                     WHEN EXISTS (SELECT 1 FROM seat_occupancy o
+                                   WHERE o.departure_id = s.departure_id
+                                     AND o.seat_label = s.seat_label
+                                     AND o.booking_id IS NOT NULL
+                                     AND o.span && @span::int4range)
+                       THEN 'sold'
+                     WHEN EXISTS (SELECT 1 FROM seat_occupancy o
+                                   WHERE o.departure_id = s.departure_id
+                                     AND o.seat_label = s.seat_label
+                                     AND o.held_until > now()
+                                     AND o.span && @span::int4range)
+                       THEN 'held'
+                     ELSE 'available'
+                   END AS state
+              FROM seats s
+             WHERE s.departure_id = @id
+             ORDER BY s.seat_label
           '''),
-          parameters: {'id': TypedValue(Type.uuid, departureId)},
-        );
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'span': TypedValue(Type.text, span),
+        'fare': TypedValue(Type.bigInteger, h['fare_minor'] as int?),
+        'currency': TypedValue(Type.text, (h['currency'] as String?)?.trim()),
+      },
+    );
 
-        return SeatMapDto(
-          departureId: departureId,
-          mode: (h['mode'] as String?) ?? 'bus',
-          layoutVersion: (h['version'] as int?) ?? 1,
-          sections: _sections(h['sections']),
-          features: _features(h['features']),
-          seats: [for (final row in seats) _toSeat(row.toColumnMap())],
-        );
-      });
+    return SeatMapDto(
+      departureId: departureId,
+      mode: (h['mode'] as String?) ?? 'bus',
+      layoutVersion: (h['version'] as int?) ?? 1,
+      sections: _sections(h['sections']),
+      features: _features(h['features']),
+      seats: [for (final row in seats) _toSeat(row.toColumnMap())],
+    );
+  });
 
   SeatDto _toSeat(Map<String, dynamic> r) {
     final currency =

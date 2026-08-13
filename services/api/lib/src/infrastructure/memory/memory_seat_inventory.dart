@@ -375,9 +375,23 @@ final class MemoryDepartureCatalogue implements DepartureCatalogue {
   }
 
   @override
-  Future<SeatMapDto?> seatMap(String departureId) async {
+  Future<SeatMapDto?> seatMap(
+    String departureId, {
+    String? fromCity,
+    String? toCity,
+  }) async {
     final departure = _inventory.departure(departureId);
     if (departure == null) return null;
+    // The pair is handed back by the client unchanged, so on a whole journey
+    // it is this coach's own two ends and means nothing. The demo world has
+    // no roads with stops on them, so it has no legs to price either — and
+    // answering a leg question with a whole-road seat map is the one lie this
+    // file is not allowed to tell (ADR-0025).
+    if (fromCity != null &&
+        (fromCity != departure.originCity ||
+            toCity != departure.destinationCity)) {
+      return null;
+    }
 
     final now = _clock.now();
     final labels = departure.seats.keys.toList()..sort();

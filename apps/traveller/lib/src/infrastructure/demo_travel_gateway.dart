@@ -179,7 +179,11 @@ final class DemoTravelGateway implements TravelGateway {
   }
 
   @override
-  Future<SeatMapDto> seatMap(String departureId) async {
+  Future<SeatMapDto> seatMap(
+    String departureId, {
+    String? from,
+    String? to,
+  }) async {
     await Future<void>.delayed(latency);
 
     final seats = _seats[departureId];

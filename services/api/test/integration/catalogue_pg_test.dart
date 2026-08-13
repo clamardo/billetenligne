@@ -729,6 +729,71 @@ void main() {
       expect(results.map((d) => d.id), isNot(contains(departureId)));
     });
 
+    test('the seat map answers for the leg, at the leg'
+        's price', () async {
+      final road = await corridor('LEG-MAP');
+      await fixture.priceSegment(
+        road,
+        fromPosition: 1,
+        toPosition: 2,
+        fareMinor: 5500,
+      );
+      final departureId = await fixture.departure(
+        seatLabels: const ['1A', '1B'],
+        fromNow: const Duration(hours: 12),
+        onRoute: road,
+      );
+      await fixture.occupyLeg(departureId, '1A', from: 0, to: 1);
+
+      final leg = await catalogue.seatMap(
+        departureId,
+        fromCity: 'DOL',
+        toCity: 'OYO',
+      );
+
+      // 1A is sold as far as Dolisie and empty afterwards, which is exactly
+      // the seat somebody boarding at Dolisie should be offered.
+      expect(
+        leg!.seats.firstWhere((s) => s.label == '1A').status,
+        SeatStatusDto.available,
+      );
+      // The operator's price for the leg, flat across the coach. Not a
+      // fraction of the through fare, and not the seat's own 12 000.
+      expect(leg.seats.first.fare, const Money.xaf(5500));
+
+      // The same coach, asked about as a whole journey: the first half is
+      // taken, so the seat is not for sale.
+      final whole = await catalogue.seatMap(departureId);
+      expect(
+        whole!.seats.firstWhere((s) => s.label == '1A').status,
+        SeatStatusDto.held,
+      );
+      expect(whole.seats.first.fare, const Money.xaf(12000));
+    });
+
+    test('a pair nobody priced has no seat map at all', () async {
+      final road = await corridor('LEG-MAP-NONE');
+      final departureId = await fixture.departure(
+        seatLabels: const ['1A'],
+        fromNow: const Duration(hours: 12),
+        onRoute: road,
+      );
+
+      // Not an empty coach and not the whole road: a leg that is not on sale
+      // has nothing to draw, and a coach with every seat greyed out would
+      // read as full rather than as unsold.
+      expect(
+        await catalogue.seatMap(departureId, fromCity: 'DOL', toCity: 'OYO'),
+        isNull,
+      );
+      // The road's own two ends are the ordinary whole-journey request, which
+      // is what lets a client send back whatever pair it searched with.
+      expect(
+        await catalogue.seatMap(departureId, fromCity: 'BZV', toCity: 'OYO'),
+        isNotNull,
+      );
+    });
+
     test('a seat sold on the first half is free on the second', () async {
       final road = await corridor('LEG-HALF');
       await fixture.priceSegment(road, fromPosition: 0, toPosition: 1);

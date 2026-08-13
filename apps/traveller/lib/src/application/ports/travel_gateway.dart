@@ -23,7 +23,10 @@ abstract interface class TravelGateway {
   /// spinner at the bottom of a complete list is a screen that never settles.
   Future<TripPageDto> search(SearchDeparturesQuery query);
 
-  Future<SeatMapDto> seatMap(String departureId);
+  /// [from] and [to] are the pair the search was made with, handed back
+  /// unchanged so the answer is about the journey the traveller is buying
+  /// rather than about the whole road the coach runs (ADR-0025).
+  Future<SeatMapDto> seatMap(String departureId, {String? from, String? to});
 
   /// Ask to be told when a full coach has room again.
   ///

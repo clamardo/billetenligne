@@ -308,6 +308,21 @@ check "seat map is not cached" "yes" \
 check "unknown departure seat map is 404" "404" \
   "$(status "$BASE/public/v1/departures/nope/seatmap")"
 
+# The pair the traveller searched with, handed back (ADR-0025). On a whole
+# journey it is the coach's own two ends and changes nothing; on a road with
+# priced legs it is what makes the answer be about the leg being bought. The
+# demo world runs no roads with stops, so the second check below is the
+# honest one: a pair nobody priced has no seat map, rather than a whole-road
+# map at a whole-road price.
+check "the searched pair is accepted" "200" \
+  "$(status "$BASE/public/v1/departures/$DEP/seatmap?from=BZV&to=PNR")"
+check "a pair nobody priced is 404" "404" \
+  "$(status "$BASE/public/v1/departures/$DEP/seatmap?from=DOL&to=PNR")"
+# Half a pair is a client bug, and is refused rather than quietly widened to
+# the whole road — which would price a leg at the through fare.
+check "naming one end only is 400" "400" \
+  "$(status "$BASE/public/v1/departures/$DEP/seatmap?from=BZV")"
+
 # The state on this map is nobody's to write by hand (ADR-0025). 1A was held a
 # few checks ago by the ordinary claim path, and what a client reads back is
 # whatever the inventory says is taken — never a status the sales path set on

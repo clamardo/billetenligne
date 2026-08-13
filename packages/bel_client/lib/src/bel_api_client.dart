@@ -74,8 +74,21 @@ final class BelApiClient {
   }
 
   /// The layout and the live availability, in one response.
-  Future<SeatMapDto> seatMap(String departureId) async {
-    final body = await _get('/public/v1/departures/$departureId/seatmap');
+  ///
+  /// [from] and [to] are the pair the traveller searched with, sent back
+  /// unchanged. On a whole journey they are the road's own ends and change
+  /// nothing; on a piece of a road they are what makes the answer be about
+  /// that piece — which seats are free between those two towns, at the price
+  /// the operator set for them (ADR-0025).
+  Future<SeatMapDto> seatMap(
+    String departureId, {
+    String? from,
+    String? to,
+  }) async {
+    final body = await _get(
+      '/public/v1/departures/$departureId/seatmap',
+      query: {if (from != null) 'from': from, if (to != null) 'to': to},
+    );
     return SeatMapDto.fromJson(body);
   }
 
