@@ -188,6 +188,43 @@ void main() {
     });
   });
 
+  group('somebody to call for help', () {
+    test('both selling companies are in the open channel, and dated', () async {
+      // A channel with one member is a channel that looks broken. Both, so a
+      // call put out from either console has somebody on the other end.
+      final rows = await query('''
+        SELECT code, open_protection_at
+          FROM operators
+         WHERE code IN ('DEMO-ALZ', 'DEMO-KLV', 'DEMO-LKN')
+         ORDER BY code
+      ''');
+
+      for (final code in ['DEMO-ALZ', 'DEMO-KLV']) {
+        expect(
+          rows.firstWhere((r) => r['code'] == code)['open_protection_at'],
+          isNotNull,
+          reason: '$code is not in the open-protection channel',
+        );
+      }
+    });
+
+    test('joining is a person on a date, not a column that was set', () async {
+      // The question a dispute about a rebill asks is who agreed to carry
+      // somebody else's passengers, and when. A seeder that set the column
+      // would answer neither.
+      final rows = await query('''
+        SELECT a.action, u.email
+          FROM audit_log a
+          JOIN user_accounts u ON u.id = a.actor_id
+          JOIN operators o ON o.id = a.operator_id
+         WHERE o.code = 'DEMO-ALZ' AND a.action = 'protection.open_in'
+      ''');
+
+      expect(rows, hasLength(1));
+      expect(rows.single['email'], 'angele@$demoEmailDomain');
+    });
+  });
+
   group('taking it away again', () {
     test('seeding twice leaves one world, not two', () async {
       await world.purge();

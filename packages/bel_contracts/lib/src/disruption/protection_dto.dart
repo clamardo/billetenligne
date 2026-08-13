@@ -203,9 +203,10 @@ final class AgreementDecisionRequest {
 final class ProtectionRequestDto {
   const ProtectionRequestDto({
     required this.id,
-    required this.agreementId,
     required this.counterpartyName,
     required this.weAsked,
+    this.agreementId,
+    this.callId,
     required this.fromDepartureId,
     required this.toDepartureId,
     required this.seatsRequested,
@@ -223,11 +224,22 @@ final class ProtectionRequestDto {
   });
 
   final String id;
-  final String agreementId;
+
+  /// The authority behind the movement. **Exactly one is set**: an agreement
+  /// carries a negotiated discount, an open call carries the price it was
+  /// broadcast at. A client that wants to know which kind of rescue this was
+  /// asks which one is present rather than reading a `kind` string that could
+  /// disagree with the ids beside it.
+  final String? agreementId;
+  final String? callId;
+
   final String counterpartyName;
 
   /// Whether this is ours to chase or ours to answer.
   final bool weAsked;
+
+  /// Nobody was asked in particular: it went out to the road.
+  bool get wasOpenCall => callId != null;
 
   final String fromDepartureId;
   final String toDepartureId;
@@ -265,6 +277,7 @@ final class ProtectionRequestDto {
   Map<String, Object?> toJson() => Wire.compact({
     'id': id,
     'agreementId': agreementId,
+    'callId': callId,
     'counterpartyName': counterpartyName,
     'weAsked': weAsked,
     'fromDepartureId': fromDepartureId,
@@ -289,7 +302,8 @@ final class ProtectionRequestDto {
     Map<String, Object?> json,
   ) => ProtectionRequestDto(
     id: Wire.requireString(json['id'], 'id'),
-    agreementId: Wire.requireString(json['agreementId'], 'agreementId'),
+    agreementId: json['agreementId'] as String?,
+    callId: json['callId'] as String?,
     counterpartyName: Wire.requireString(
       json['counterpartyName'],
       'counterpartyName',
@@ -356,4 +370,205 @@ final class ProtectionRequestBody {
         ),
         note: json['note'] as String?,
       );
+}
+
+/// An open call for room, as both consoles read it (`08-disruption.md` §5).
+///
+/// The same row serves the company asking and the companies who might answer,
+/// with [weOpened] deciding which of the two screens it is drawn on. One DTO
+/// rather than an outbound and an inbound one, because they carry the same
+/// facts and a second shape would be a second thing to keep in step.
+final class OpenCallDto {
+  const OpenCallDto({
+    required this.id,
+    required this.sendingOperatorName,
+    required this.weOpened,
+    required this.fromDepartureId,
+    required this.originCity,
+    required this.destinationCity,
+    required this.seatsRequested,
+    required this.rebillPerSeat,
+    required this.state,
+    required this.openedAt,
+    required this.expiresAt,
+    this.note,
+    this.departsAt,
+    this.closedAt,
+  });
+
+  final String id;
+
+  /// Named, because an operator deciding whether to take forty-two strangers
+  /// is deciding partly on who is asking.
+  final String sendingOperatorName;
+
+  /// Ours to chase, or ours to answer.
+  final bool weOpened;
+
+  final String fromDepartureId;
+  final String originCity;
+  final String destinationCity;
+  final int seatsRequested;
+
+  /// Per seat, in the broken departure's own currency.
+  final Money rebillPerSeat;
+
+  /// `open` · `answered` · `withdrawn` · `expired`.
+  final String state;
+
+  final DateTime openedAt;
+
+  /// A call with no end is a call still on somebody's console next week.
+  final DateTime expiresAt;
+
+  final String? note;
+  final DateTime? departsAt;
+  final DateTime? closedAt;
+
+  bool get isOpen => state == 'open';
+
+  /// What the whole coach-load is worth, which is the figure an operator
+  /// decides on. Per seat is what the terms are; this is what it is worth.
+  Money get rebillTotal => rebillPerSeat.multiply(seatsRequested);
+
+  Map<String, Object?> toJson() => Wire.compact({
+    'id': id,
+    'sendingOperatorName': sendingOperatorName,
+    'weOpened': weOpened,
+    'fromDepartureId': fromDepartureId,
+    'originCity': originCity,
+    'destinationCity': destinationCity,
+    'seatsRequested': seatsRequested,
+    'rebillPerSeat': Wire.money(rebillPerSeat),
+    'state': state,
+    'openedAt': Wire.instant(openedAt),
+    'expiresAt': Wire.instant(expiresAt),
+    'note': note,
+    'departsAt': departsAt == null ? null : Wire.instant(departsAt!),
+    'closedAt': closedAt == null ? null : Wire.instant(closedAt!),
+  });
+
+  factory OpenCallDto.fromJson(Map<String, Object?> json) => OpenCallDto(
+    id: Wire.requireString(json['id'], 'id'),
+    sendingOperatorName: Wire.requireString(
+      json['sendingOperatorName'],
+      'sendingOperatorName',
+    ),
+    weOpened: json['weOpened'] as bool? ?? false,
+    fromDepartureId: Wire.requireString(
+      json['fromDepartureId'],
+      'fromDepartureId',
+    ),
+    originCity: Wire.requireString(json['originCity'], 'originCity'),
+    destinationCity: Wire.requireString(
+      json['destinationCity'],
+      'destinationCity',
+    ),
+    seatsRequested: Wire.requireInt(json['seatsRequested'], 'seatsRequested'),
+    rebillPerSeat: Wire.readMoney(
+      json['rebillPerSeat'],
+      field: 'rebillPerSeat',
+    ),
+    state: Wire.requireString(json['state'], 'state'),
+    openedAt: Wire.readInstant(json['openedAt'], field: 'openedAt'),
+    expiresAt: Wire.readInstant(json['expiresAt'], field: 'expiresAt'),
+    note: json['note'] as String?,
+    departsAt: json['departsAt'] == null
+        ? null
+        : Wire.readInstant(json['departsAt'], field: 'departsAt'),
+    closedAt: json['closedAt'] == null
+        ? null
+        : Wire.readInstant(json['closedAt'], field: 'closedAt'),
+  );
+}
+
+/// The inbox, and whether this operator is even in it.
+///
+/// [receiving] travels with the list so an empty inbox can say which kind of
+/// empty it is: *nobody needs help right now* and *you never said yes* are the
+/// same zero rows and completely different screens.
+final class OpenCallsDto {
+  const OpenCallsDto({required this.receiving, required this.calls});
+
+  final bool receiving;
+  final List<OpenCallDto> calls;
+
+  Map<String, Object?> toJson() => {
+    'receiving': receiving,
+    'calls': [for (final c in calls) c.toJson()],
+  };
+
+  factory OpenCallsDto.fromJson(Map<String, Object?> json) => OpenCallsDto(
+    receiving: json['receiving'] as bool? ?? false,
+    calls: [
+      for (final c in (json['calls'] as List? ?? const []))
+        OpenCallDto.fromJson((c as Map).cast<String, Object?>()),
+    ],
+  );
+}
+
+/// Broadcasting for room.
+final class OpenCallBody {
+  const OpenCallBody({
+    required this.departureId,
+    this.windowMinutes,
+    this.note,
+  });
+
+  /// The coach that has failed.
+  final String departureId;
+
+  /// How long the call stays live. Omitted means the server's own window —
+  /// the client does not get to keep one open all week.
+  final int? windowMinutes;
+
+  final String? note;
+
+  Map<String, Object?> toJson() => Wire.compact({
+    'departureId': departureId,
+    'windowMinutes': windowMinutes,
+    'note': note,
+  });
+
+  factory OpenCallBody.fromJson(Map<String, Object?> json) => OpenCallBody(
+    departureId: Wire.requireString(json['departureId'], 'departureId'),
+    windowMinutes: json['windowMinutes'] as int?,
+    note: json['note'] as String?,
+  );
+}
+
+/// Answering one, with a departure of our own.
+final class AnswerCallBody {
+  const AnswerCallBody({required this.replacementDepartureId, this.note});
+
+  /// Named, never "whichever has room": a departure nobody has looked at is
+  /// not a plan, and this one is about to carry somebody else's passengers.
+  final String replacementDepartureId;
+
+  final String? note;
+
+  Map<String, Object?> toJson() => Wire.compact({
+    'replacementDepartureId': replacementDepartureId,
+    'note': note,
+  });
+
+  factory AnswerCallBody.fromJson(Map<String, Object?> json) => AnswerCallBody(
+    replacementDepartureId: Wire.requireString(
+      json['replacementDepartureId'],
+      'replacementDepartureId',
+    ),
+    note: json['note'] as String?,
+  );
+}
+
+/// Opting in or out of receiving open calls.
+final class ReceiveOpenCallsBody {
+  const ReceiveOpenCallsBody({required this.receiving});
+
+  final bool receiving;
+
+  Map<String, Object?> toJson() => {'receiving': receiving};
+
+  factory ReceiveOpenCallsBody.fromJson(Map<String, Object?> json) =>
+      ReceiveOpenCallsBody(receiving: json['receiving'] as bool? ?? false);
 }

@@ -245,6 +245,27 @@ final class ApiConsoleGateway implements ConsoleGateway {
   }) => _client.decideProtectionRequest(requestId: requestId, request: request);
 
   @override
+  Future<OpenCallsDto> openProtectionCalls() => _client.openProtectionCalls();
+
+  @override
+  Future<OpenCallDto> openProtectionCall(OpenCallBody body) =>
+      _client.openProtectionCall(body);
+
+  @override
+  Future<OpenCallDto> withdrawProtectionCall(String callId) =>
+      _client.withdrawProtectionCall(callId);
+
+  @override
+  Future<ProtectionRequestDto> answerProtectionCall({
+    required String callId,
+    required AnswerCallBody body,
+  }) => _client.answerProtectionCall(callId: callId, body: body);
+
+  @override
+  Future<bool> receiveOpenProtectionCalls(bool receiving) =>
+      _client.receiveOpenProtectionCalls(receiving);
+
+  @override
   Future<List<DepartureSummaryDto>> tripsOn({
     required String originCity,
     required String destinationCity,

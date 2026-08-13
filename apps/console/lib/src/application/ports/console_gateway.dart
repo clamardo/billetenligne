@@ -117,6 +117,27 @@ abstract interface class ConsoleGateway {
     required AgreementDecisionRequest request,
   });
 
+  // ── Open protection (§5) ────────────────────────────────────────────────
+
+  /// Live calls for room on roads we run, our own included, and whether we
+  /// are in the channel at all.
+  Future<OpenCallsDto> openProtectionCalls();
+
+  /// Broadcast for room. Nobody in particular is asked.
+  Future<OpenCallDto> openProtectionCall(OpenCallBody body);
+
+  /// Take our own call back, while it is still open.
+  Future<OpenCallDto> withdrawProtectionCall(String callId);
+
+  /// Answer somebody's call with a departure of ours. First to accept wins.
+  Future<ProtectionRequestDto> answerProtectionCall({
+    required String callId,
+    required AnswerCallBody body,
+  });
+
+  /// Opt in or out of receiving calls. Returns what it now is.
+  Future<bool> receiveOpenProtectionCalls(bool receiving);
+
   /// Everybody's departures on a road, for a local day — the public search,
   /// asked from the console.
   ///

@@ -1542,3 +1542,191 @@ BEGIN
   RAISE NOTICE 'OK  an operator reads its sales block, and grades neither it nor itself';
 END
 $$;
+
+-- ── 22. An open call is broadcast to a road, not to a bulletin board ────────
+--
+-- 0034. The first protection path where the row is deliberately readable by
+-- companies that have no relationship with the sender at all, which makes
+-- "who was invited" the entire control — and it is computed in a policy, not
+-- asserted by a handler. Four conditions, each of which is somebody's
+-- afternoon convenience away from being dropped, so each is executed here.
+DO $$
+DECLARE
+  ocean  UUID := '11111111-1111-1111-1111-111111111111';
+  bony   UUID := '22222222-2222-2222-2222-222222222222';
+  niari  UUID := '33333333-3333-3333-3333-333333333333';
+  broken UUID := 'cccccccc-0000-0000-0000-000000000001';
+  call   UUID := 'ffffffff-0000-0000-0000-000000000001';
+  seen   INT;
+BEGIN
+  -- A third company that runs the other direction only.
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  INSERT INTO operators (id, code, legal_name, market_code, status)
+  VALUES (niari, 'NIA', 'Niari Express', 'CG', 'active');
+
+  INSERT INTO routes (id, operator_id, origin_city, destination_city,
+                      code, duration_minutes)
+  VALUES ('aaaaaaaa-0000-0000-0000-000000000003', niari, 'PNR', 'BZV',
+          'NIA-PNR-BZV', 460);
+
+  -- ── Opting in is the company's own decision, made by the company ──
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'off', true);
+
+  PERFORM set_config('app.tenant_id', bony::text, true);
+  UPDATE operators SET open_protection_at = now() WHERE id = bony;
+
+  PERFORM set_config('app.tenant_id', niari::text, true);
+  UPDATE operators SET open_protection_at = now() WHERE id = niari;
+
+  -- And not for somebody else. The column grant lets this statement through;
+  -- the tenant policy is what makes it move nothing.
+  UPDATE operators SET open_protection_at = NULL WHERE id = bony;
+
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  SELECT count(*) INTO seen
+    FROM operators WHERE id = bony AND open_protection_at IS NOT NULL;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: an operator opted another company out';
+  END IF;
+
+  -- ── The call goes out, from the company whose coach has failed ──
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', ocean::text, true);
+
+  INSERT INTO protection_calls
+    (id, sending_operator_id, from_departure_id, origin_city,
+     destination_city, seats_requested, rebill_minor, currency, expires_at)
+  VALUES (call, ocean, broken, 'BZV', 'PNR', 31, 12000, 'XAF',
+          now() + INTERVAL '2 hours');
+
+  BEGIN
+    INSERT INTO protection_calls
+      (sending_operator_id, from_departure_id, origin_city, destination_city,
+       seats_requested, rebill_minor, currency, expires_at)
+    VALUES (bony, broken, 'BZV', 'PNR', 5, 12000, 'XAF',
+            now() + INTERVAL '2 hours');
+    RAISE EXCEPTION 'FAIL: an operator called for help in another company''s name';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  -- ── Who was invited ──
+  --
+  -- Opted in, active, selling, and on this road: the whole list, and all four
+  -- matter. Bony is all four.
+  PERFORM set_config('app.tenant_id', bony::text, true);
+  SELECT count(*) INTO seen FROM protection_calls WHERE id = call;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: an invited operator cannot see the call';
+  END IF;
+
+  -- Niari opted in and is active and selling, and runs PNR→BZV. A road is a
+  -- direction. This is the difference between a broadcast and a bulletin
+  -- board, and it is one EXISTS clause wide.
+  PERFORM set_config('app.tenant_id', niari::text, true);
+  SELECT count(*) INTO seen FROM protection_calls WHERE id = call;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: a company that does not run the road saw the call';
+  END IF;
+
+  -- A company that never opted in sees nothing, which is the default and the
+  -- reason the column is nullable.
+  PERFORM set_config('app.tenant_id', 'dddddddd-0000-0000-0000-0000000000ff',
+                     true);
+  SELECT count(*) INTO seen FROM protection_calls WHERE id = call;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: a company that never opted in saw the call';
+  END IF;
+
+  -- And a company blocked on its own paperwork stops being routed passengers
+  -- the moment it is blocked (0032), without anybody editing this table.
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  UPDATE operators SET sales_blocked_at = now(), sales_blocked_doc = 'licence'
+   WHERE id = bony;
+
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', bony::text, true);
+  SELECT count(*) INTO seen FROM protection_calls WHERE id = call;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: a blocked company was offered other people''s passengers';
+  END IF;
+
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  UPDATE operators SET sales_blocked_at = NULL, sales_blocked_doc = NULL
+   WHERE id = bony;
+
+  -- ── The terms are not writable, by either side ──
+  --
+  -- A price that moved while a console had the call open is a call nobody
+  -- would answer twice, so the sender's UPDATE grant is three columns wide
+  -- and none of them is a term.
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', ocean::text, true);
+
+  BEGIN
+    UPDATE protection_calls SET seats_requested = 1 WHERE id = call;
+    RAISE EXCEPTION 'FAIL: the sender rewrote the size of their own ask';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  BEGIN
+    UPDATE protection_calls SET rebill_minor = 0 WHERE id = call;
+    RAISE EXCEPTION 'FAIL: the sender rewrote what they offered to pay';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  BEGIN
+    DELETE FROM protection_calls WHERE id = call;
+    RAISE EXCEPTION 'FAIL: a call was deleted rather than closed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  -- An invited operator does not close somebody else's call either. The
+  -- policy is a USING clause, so the row is invisible to the statement rather
+  -- than the statement refused — a silent zero-row UPDATE, which is exactly
+  -- the kind of control that reads as working and is never tested.
+  PERFORM set_config('app.tenant_id', bony::text, true);
+  UPDATE protection_calls
+     SET state = 'withdrawn', closed_at = now() WHERE id = call;
+
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  SELECT count(*) INTO seen
+    FROM protection_calls WHERE id = call AND state = 'open';
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: an invited operator withdrew a call that was not theirs';
+  END IF;
+
+  -- What the sender may do: take it back, while it is still theirs to take.
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', ocean::text, true);
+  UPDATE protection_calls
+     SET state = 'withdrawn', closed_at = now() WHERE id = call;
+
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  SELECT count(*) INTO seen
+    FROM protection_calls WHERE id = call AND state = 'withdrawn';
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: the sender could not withdraw their own call';
+  END IF;
+
+  RESET ROLE;
+  PERFORM set_config('app.platform', 'off', true);
+  RAISE NOTICE 'OK  an open call reaches the road it names, and its terms are nobody''s to edit';
+END
+$$;

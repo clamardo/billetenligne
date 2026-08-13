@@ -1883,6 +1883,201 @@ void main() {
       expect(back.riskReasons, isEmpty);
     });
   });
+
+  group('calling out to the road', () {
+    test('a call carries its terms, because nobody negotiates at 05:40', () {
+      final sent = OpenCallDto(
+        id: 'call-1',
+        sendingOperatorName: 'Océan du Nord',
+        weOpened: false,
+        fromDepartureId: 'dep-broken',
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        seatsRequested: 31,
+        rebillPerSeat: const Money.xaf(9000),
+        state: 'open',
+        openedAt: t0,
+        expiresAt: t0.add(const Duration(hours: 2)),
+        note: 'Boîte de vitesses, PK 84',
+        departsAt: t0.add(const Duration(hours: 1)),
+      );
+
+      final back = roundTrip(sent.toJson, OpenCallDto.fromJson);
+
+      expect(back.sendingOperatorName, 'Océan du Nord');
+      expect(back.seatsRequested, 31);
+      expect(back.rebillPerSeat, const Money.xaf(9000));
+      expect(back.state, 'open');
+      expect(back.isOpen, isTrue);
+      expect(back.expiresAt, t0.add(const Duration(hours: 2)));
+      expect(back.note, 'Boîte de vitesses, PK 84');
+      expect(back.closedAt, isNull);
+    });
+
+    test('the total is what an operator decides on, and it is derived', () {
+      // Per seat is the term; the coach-load is the decision. A total on the
+      // wire would be a second number free to disagree with the first.
+      final call = OpenCallDto(
+        id: 'call-1',
+        sendingOperatorName: 'Océan du Nord',
+        weOpened: false,
+        fromDepartureId: 'dep-broken',
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        seatsRequested: 31,
+        rebillPerSeat: const Money.xaf(9000),
+        state: 'open',
+        openedAt: t0,
+        expiresAt: t0.add(const Duration(hours: 2)),
+      );
+
+      expect(call.rebillTotal, const Money.xaf(279000));
+      expect(call.toJson().containsKey('rebillTotal'), isFalse);
+    });
+
+    test('a closed call says when, and stops being open', () {
+      final back = roundTrip(
+        OpenCallDto(
+          id: 'call-1',
+          sendingOperatorName: 'Océan du Nord',
+          weOpened: true,
+          fromDepartureId: 'dep-broken',
+          originCity: 'BZV',
+          destinationCity: 'PNR',
+          seatsRequested: 31,
+          rebillPerSeat: const Money.xaf(9000),
+          state: 'answered',
+          openedAt: t0,
+          expiresAt: t0.add(const Duration(hours: 2)),
+          closedAt: t0.add(const Duration(minutes: 4)),
+        ).toJson,
+        OpenCallDto.fromJson,
+      );
+
+      expect(back.isOpen, isFalse);
+      expect(back.weOpened, isTrue);
+      expect(back.closedAt, t0.add(const Duration(minutes: 4)));
+    });
+
+    test('an empty inbox still says which kind of empty it is', () {
+      // Nobody needs help right now and you never opted in are the same zero
+      // rows and completely different screens.
+      final quiet = roundTrip(
+        const OpenCallsDto(receiving: true, calls: []).toJson,
+        OpenCallsDto.fromJson,
+      );
+      final out = roundTrip(
+        const OpenCallsDto(receiving: false, calls: []).toJson,
+        OpenCallsDto.fromJson,
+      );
+
+      expect(quiet.calls, isEmpty);
+      expect(quiet.receiving, isTrue);
+      expect(out.calls, isEmpty);
+      expect(out.receiving, isFalse);
+    });
+
+    test('the window is a number of minutes the client only suggests', () {
+      final back = roundTrip(
+        const OpenCallBody(
+          departureId: 'dep-broken',
+          windowMinutes: 90,
+          note: 'PK 84',
+        ).toJson,
+        OpenCallBody.fromJson,
+      );
+
+      expect(back.departureId, 'dep-broken');
+      expect(back.windowMinutes, 90);
+      expect(back.note, 'PK 84');
+
+      // Omitted is the server's own window, not zero.
+      expect(
+        OpenCallBody.fromJson(
+          const OpenCallBody(departureId: 'dep-broken').toJson(),
+        ).windowMinutes,
+        isNull,
+      );
+    });
+
+    test('an answer names a coach, and a call with none is refused', () {
+      final back = roundTrip(
+        const AnswerCallBody(
+          replacementDepartureId: 'dep-ours',
+          note: 'Deux places debout en moins',
+        ).toJson,
+        AnswerCallBody.fromJson,
+      );
+
+      expect(back.replacementDepartureId, 'dep-ours');
+      expect(back.note, 'Deux places debout en moins');
+      expect(
+        () => AnswerCallBody.fromJson(const {}),
+        throwsA(isA<WireFormatException>()),
+      );
+    });
+
+    test('a movement names one authority, and says which', () {
+      // Exactly one of the two is set. A client asks which is present rather
+      // than reading a `kind` string free to disagree with the ids beside it.
+      final fromCall = roundTrip(
+        ProtectionRequestDto(
+          id: 'req-1',
+          callId: 'call-1',
+          counterpartyName: 'Océan du Nord',
+          weAsked: false,
+          fromDepartureId: 'dep-broken',
+          toDepartureId: 'dep-ours',
+          seatsRequested: 31,
+          state: 'applied',
+          requestedAt: t0,
+          seatsMoved: 31,
+        ).toJson,
+        ProtectionRequestDto.fromJson,
+      );
+
+      expect(fromCall.wasOpenCall, isTrue);
+      expect(fromCall.agreementId, isNull);
+      expect(fromCall.callId, 'call-1');
+      expect(fromCall.coversEverybody, isTrue);
+
+      final fromTerms = roundTrip(
+        ProtectionRequestDto(
+          id: 'req-2',
+          agreementId: 'agr-1',
+          counterpartyName: 'Trans Bony Voyages',
+          weAsked: true,
+          fromDepartureId: 'dep-broken',
+          toDepartureId: 'dep-theirs',
+          seatsRequested: 12,
+          state: 'pending',
+          requestedAt: t0,
+        ).toJson,
+        ProtectionRequestDto.fromJson,
+      );
+
+      expect(fromTerms.wasOpenCall, isFalse);
+      expect(fromTerms.agreementId, 'agr-1');
+      expect(fromTerms.callId, isNull);
+    });
+
+    test('opting in is a yes or a no, and travels as one', () {
+      expect(
+        roundTrip(
+          const ReceiveOpenCallsBody(receiving: true).toJson,
+          ReceiveOpenCallsBody.fromJson,
+        ).receiving,
+        isTrue,
+      );
+      expect(
+        roundTrip(
+          const ReceiveOpenCallsBody(receiving: false).toJson,
+          ReceiveOpenCallsBody.fromJson,
+        ).receiving,
+        isFalse,
+      );
+    });
+  });
 }
 
 /// Reads the string constants declared on [ErrorCode] straight from source,

@@ -164,6 +164,38 @@ final class Sweepers {
         return SweepResult(name: 'changes.expired', affected: lapsed.length);
       });
 
+  /// Closes open protection calls nobody answered in time
+  /// (`08-disruption.md` §5).
+  ///
+  /// A call with no end is a call still on every console on the road next
+  /// week, and an inbox of stale requests for help is an inbox nobody opens —
+  /// which costs the next real call its answer. `expires_at` is what the
+  /// broadcaster chose; this pass is what makes it mean anything.
+  ///
+  /// Marks rather than deletes, like every sweeper here but one: the coach
+  /// that broke down and the fact that nobody came is what an operator looks
+  /// at when they are deciding whether this channel is worth being in.
+  Future<SweepResult> expireProtectionCalls({int limit = 500}) =>
+      _db.transaction(const DbScope.worker(), (tx) async {
+        final lapsed = await tx.execute(
+          Sql.named('''
+            UPDATE protection_calls SET state = 'expired', closed_at = now()
+             WHERE id IN (
+                     SELECT c.id FROM protection_calls c
+                      WHERE c.state = 'open'
+                        AND c.expires_at <= now()
+                      ORDER BY c.expires_at
+                      LIMIT @limit
+                      FOR UPDATE SKIP LOCKED
+                   )
+            RETURNING id
+          '''),
+          parameters: {'limit': TypedValue(Type.integer, limit)},
+        );
+
+        return SweepResult(name: 'calls.expired', affected: lapsed.length);
+      });
+
   /// Deletes spent and stale sign-in codes.
   ///
   /// The only sweeper here that deletes rather than marks, and the reason is

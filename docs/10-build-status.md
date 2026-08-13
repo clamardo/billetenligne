@@ -88,6 +88,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **`config/markets.yaml` is loaded** | ✅ done | ADR-0006, and the gap this document named first. The file is now the authority for the currency, the service fee, the dialling table and the rails; `Market.congoBrazzaville` is the **fallback** for when there is no file. A missing file falls back — that is every unit test and every fresh clone — and a **malformed one kills the process before it is healthy**, because an instance that comes up green serving last release's rails is the failure worth refusing. Enabling Orange Money, or a carrier renumbering, is a file and a restart. A currency whose exponent we do not know is refused by name, never guessed. 19 API tests · 7 smoke checks, two of them a second server started against a different file |
 | **IRROPS — the protection agreement** | ✅ done | `08-disruption.md` §5, the commercial half of option ③. Which roads, at what discount off the rescuer's public fare, up to how many seats a month, one way or both — agreed once in an office instead of at the roadside. **One party writes the terms and the other accepts them**, and afterwards the discount, the ceiling and the roads are frozen by a column-level grant. The **only row in the schema that belongs to two tenants**: an agreement neither party can read is not an agreement, so the policy names exactly two operators and an executed guarantee proves it names no third. Naming a competitor goes through a SECURITY DEFINER function returning the two facts a traveller already reads off a search result, because a SELECT policy on `operators` is all-columns and a competitor's negotiated commission is exactly what a competitor must not read. The ceiling reads `31 / 40` on the card, not on the refusal. Settlement posts one payable against the other, **no commission and no cash**, so it nets into the next payout run. 23 domain · 18 Postgres · 11 smoke · 2 schema guarantees · 7 console tests |
 | **IRROPS — the protection movement** | ✅ done | `08-disruption.md` §2.2 option ③, §2.3. The agreement now moves people. The dispatcher picks a competitor's departure out of the **public search** — the same list any traveller sees — narrowed to companies an agreement covers, later, with room; the ask lands on their console with what §2.3 says they need to answer: who, how many, which coach, what they will be paid. **Accepting applies the movement in the same transaction**, because a request accepted now and applied later is a window in which the receiving operator sells the seats they just promised. New seats taken before old ones released, both departures locked in id order, `operator_id` and `departure_id` changing together, and **every ticket re-signed under the receiving operator's code** (ADR-0007). The rebill is the discount on the **rescuer's** fare, posted payable-against-payable with no commission and no cash. The **one operation that crosses a tenant boundary**: it escalates into one narrow transaction that re-checks the agreement is still active and the request still pending, and the two SECURITY DEFINER functions it needed hand over only what a traveller can already read off a search result. 18 Postgres · 10 smoke · 2 schema guarantees · 13 console tests |
+| **IRROPS — the open protection call** | ✅ done | `08-disruption.md` §5, and the half of option ③ that works with **nobody on the other end**. An agreement takes months to negotiate; a breakdown takes ninety seconds, so the dispatcher broadcasts instead and every company that opted in and runs that road sees the call. **The terms travel on the call** — the sender's own public fare per seat, no discount, because a discount is what a relationship earns and there is no relationship here — and they are not writable afterwards by either side: the sender's UPDATE grant is `state`, `closed_at` and `answered_by_operator`, and nothing else. **Who was invited is computed in a policy**: opted in, active, still selling, running this road *in this direction*. The direction clause is the difference between a broadcast and a bulletin board; the still-selling clause is the expiry ladder enforcing itself here for free. **First to accept wins, and winning is the same commit that moves the passengers** — the election is a conditional UPDATE, the loser gets `protection.call_closed`, and a rescue that moves nobody rolls the election back and leaves the call open. A movement names **exactly one authority**, an agreement or a call, never both. Joining the channel is `protection.manage` while calling and answering are `disruption.declare` — the split runs the other way here, because agreeing to carry other companies' passengers is a standing commitment and calling for help at 05:40 is not. The inbox is one payload carrying `receiving` beside the rows, since *nobody needs help* and *you never opted in* are the same zero rows. A worker pass closes what nobody answered, **marked rather than deleted**. 8 contract · 16 Postgres · 4 worker · 10 console · 18 smoke tests · 1 schema guarantee |
 | **IRROPS — the passenger's own choice** | ✅ done | `08-disruption.md` §3.2 option ⑤. The passengers pick between the plans themselves, and a released seat goes back into the pool the other affected passengers are drawing from — which is why this covers more people than any dispatcher plan. **A default is already assigned** and the screen says so, so nobody is left holding nothing while they decide. **Every travel row states the arrival time**, because that is the question being asked at a roadside. **The refund is last, always present**, issued as an **agency claim with a code** rather than a rail disbursement we cannot make. The deadline states its own fallback in the same sentence. **Another company's coach is never offered to a passenger** — protection is an operator-to-operator settlement, and a traveller cannot commit two companies to money neither agreed to — so the alternatives are the operator's own, later, with room, inside 36 hours. Nothing is cached: the window is re-checked and the departure locked before a seat moves, so a screen open for ten minutes refuses, re-reads and shows what is left **above** the options rather than instead of them. 18 domain · 20 Postgres · 1 worker · 9 smoke · 17 traveller-app tests |
 
 ## Phase 3 and beyond
@@ -147,8 +148,9 @@ operator able to sign themselves up, and the phone channel plumbed behind an
 announcement, **every engineering item in Phase 1 is built.** What remains
 there is commercial. Phase 2 is where the unbuilt work
 lived: the re-accommodation plan, payout runs and the `config/markets.yaml`
-loader are all built, as is the whole of option ③ — the protection agreement
-and the movement under it — and option ⑤, the passenger's own choice. What is
+loader are all built, as is the whole of option ③ — the protection agreement,
+the movement under it, and the open call for operators who never had an
+agreement to begin with — and option ⑤, the passenger's own choice. What is
 left there is a telco's sandbox becoming production credentials, and an
 attachment on the ACS email adapter so a statement can be sent as well as
 downloaded.
@@ -279,21 +281,21 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 555 tests
+         packages/bel_contracts packages/bel_crypto     # 563 tests
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 236 tests
 cd packages/bel_design     && flutter test  # 67 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
 cd apps/traveller && flutter test        # 224 app tests, incl. real SQLite
-cd apps/console   && flutter test        # 109 console tests
+cd apps/console   && flutter test        # 119 console tests
 cd apps/admin     && flutter test        # 35 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 382 files
-./infra/migrations/check.sh              # 38 schema guarantees
-./tool/integration.sh                    # 417 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 356 checks, incl. the Dart client
+dart run tool/check_layers.dart          # the onion rule, 386 files
+./infra/migrations/check.sh              # 39 schema guarantees
+./tool/integration.sh                    # 439 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 374 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -304,6 +306,7 @@ docker compose -f infra/dev/docker-compose.yml up -d postgres
 ./tool/demo.sh                                        # five companies, eight people
 dart run services/worker/bin/worker.dart onboarding   # approves Niari Express, flags the duplicate
 dart run services/worker/bin/worker.dart compliance   # stops Cars Lékana selling
+dart run services/worker/bin/worker.dart calls        # closes open calls nobody answered
 ./tool/demo.sh --purge                                # and it is gone again
 ```
 
@@ -312,8 +315,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,292 tests in total**, plus 356 smoke checks, 38 executed schema guarantees,
-417 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,310 tests in total**, plus 374 smoke checks, 39 executed schema guarantees,
+439 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.

@@ -204,7 +204,7 @@ final class PostgresProtection implements ProtectionDesk {
       tx,
       actorUserId: actorUserId,
       operatorId: operatorId,
-      agreementId: id,
+      subjectId: id,
       action: 'protection.proposed',
       after: {
         'counterparty': counterpartyId,
@@ -315,7 +315,7 @@ final class PostgresProtection implements ProtectionDesk {
       tx,
       actorUserId: actorUserId,
       operatorId: operatorId,
-      agreementId: agreementId,
+      subjectId: agreementId,
       action: 'protection.$decision',
       after: {'state': next, if (reason != null) 'reason': reason},
     );
@@ -455,6 +455,7 @@ final class PostgresProtection implements ProtectionDesk {
     final rows = await tx.execute('''
           SELECT id::text                    AS id,
                  agreement_id::text          AS agreement_id,
+                 call_id::text               AS call_id,
                  sending_operator_id::text   AS sending_operator_id,
                  receiving_operator_id::text AS receiving_operator_id,
                  from_departure_id::text     AS from_departure_id,
@@ -627,7 +628,7 @@ final class PostgresProtection implements ProtectionDesk {
         tx,
         actorUserId: actorUserId,
         operatorId: operatorId,
-        agreementId: live.agreement.id,
+        subjectId: live.agreement.id,
         action: 'protection.requested',
         after: {
           'toDepartureId': replacementDepartureId,
@@ -738,7 +739,7 @@ final class PostgresProtection implements ProtectionDesk {
           tx,
           actorUserId: actorUserId,
           operatorId: operatorId,
-          agreementId: state['agreement_id']! as String,
+          subjectId: state['agreement_id'] as String? ?? requestId,
           action: 'protection.declined',
           after: {'requestId': requestId, if (reason != null) 'reason': reason},
         );
@@ -771,6 +772,435 @@ final class PostgresProtection implements ProtectionDesk {
         : (request: found, refusal: null);
   }
 
+  // ── Open protection (§5) ────────────────────────────────────────────────
+
+  @override
+  Future<({bool receiving, List<OpenCallView> calls})> openCalls(
+    String operatorId,
+  ) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // Read through the definer function 0034 defines, for the same reason
+    // 0022 exists: a call names the *sender's* departure, and `departures` is
+    // tenant-isolated, so a plain join drops exactly the calls this operator
+    // was invited to answer — an empty inbox on the console of the company
+    // that could have helped.
+    final rows = await tx.execute('''
+      SELECT id::text                   AS id,
+             sending_operator_id::text  AS sending_operator_id,
+             sending_operator_name,
+             from_departure_id::text    AS from_departure_id,
+             origin_city, destination_city, seats_requested,
+             rebill_minor, currency, state, note,
+             opened_at, expires_at, departs_at,
+             answered_by_operator::text AS answered_by_operator,
+             closed_at, we_opened
+        FROM open_protection_calls()
+    ''');
+
+    final me = await tx.execute(
+      Sql.named(
+        'SELECT open_protection_at IS NOT NULL AS receiving '
+        'FROM operators WHERE id = @id',
+      ),
+      parameters: {'id': TypedValue(Type.uuid, operatorId)},
+    );
+
+    return (
+      receiving:
+          me.isNotEmpty &&
+          (me.first.toColumnMap()['receiving'] as bool? ?? false),
+      calls: [for (final row in rows) _call(row.toColumnMap())],
+    );
+  });
+
+  OpenCallView _call(Map<String, dynamic> row) {
+    final currency =
+        Currency.byCode(row['currency'] as String? ?? 'XAF') ?? Currency.xaf;
+    return OpenCallView(
+      id: row['id']! as String,
+      sendingOperatorId: row['sending_operator_id']! as String,
+      sendingOperatorName: row['sending_operator_name']! as String,
+      weOpened: row['we_opened'] as bool? ?? false,
+      fromDepartureId: row['from_departure_id']! as String,
+      originCity: row['origin_city']! as String,
+      destinationCity: row['destination_city']! as String,
+      seatsRequested: row['seats_requested']! as int,
+      rebillPerSeat: Money(row['rebill_minor']! as int, currency),
+      state: row['state']! as String,
+      openedAt: row['opened_at']! as DateTime,
+      expiresAt: row['expires_at']! as DateTime,
+      note: row['note'] as String?,
+      departsAt: row['departs_at'] as DateTime?,
+      answeredByOperator: row['answered_by_operator'] as String?,
+      closedAt: row['closed_at'] as DateTime?,
+    );
+  }
+
+  @override
+  Future<bool> receiveOpenCalls({
+    required String operatorId,
+    required bool receiving,
+    required String actorUserId,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // A timestamp, not a flag: "since when" is the question a dispute asks.
+    // Re-opting-in does not restamp an operator who is already in, because
+    // the date they joined is a fact and a toggle tapped twice is not an
+    // event.
+    await tx.execute(
+      Sql.named('''
+        UPDATE operators
+           SET open_protection_at = CASE
+                 WHEN @on THEN COALESCE(open_protection_at, now())
+                 ELSE NULL
+               END
+         WHERE id = @id
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, operatorId),
+        'on': TypedValue(Type.boolean, receiving),
+      },
+      ignoreRows: true,
+    );
+
+    await _audit(
+      tx,
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      subjectId: operatorId,
+      subjectType: 'operator',
+      action: receiving ? 'protection.open_in' : 'protection.open_out',
+      after: {'receiving': receiving},
+    );
+    return receiving;
+  });
+
+  @override
+  Future<({OpenCallView? call, AgreementRefusal? refusal})> openCall({
+    required String operatorId,
+    required String departureId,
+    required String actorUserId,
+    required DateTime now,
+    Duration window = const Duration(hours: 2),
+    String? note,
+  }) async {
+    final opened = await _db.transaction(DbScope.tenant(operatorId), (
+      tx,
+    ) async {
+      // The broken coach, its road, and how many people are actually on it.
+      // Read under our own tenancy, so a departure that is not ours is
+      // simply not there — there is no id to guess your way into.
+      final rows = await tx.execute(
+        Sql.named('''
+          SELECT d.id::text AS id, r.origin_city, r.destination_city,
+                 d.fare_minor, d.currency,
+                 (SELECT COALESCE(sum(1), 0)::int
+                    FROM bookings b
+                    JOIN booking_seats bs ON bs.booking_id = b.id
+                   WHERE b.departure_id = d.id AND b.state = 'confirmed'
+                 ) AS seats_needed
+            FROM departures d
+            JOIN routes r ON r.id = d.route_id
+           WHERE d.id = @id AND d.operator_id = @me
+        '''),
+        parameters: {
+          'id': TypedValue(Type.uuid, departureId),
+          'me': TypedValue(Type.uuid, operatorId),
+        },
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.first.toColumnMap();
+
+      final needed = row['seats_needed'] as int? ?? 0;
+      // Nobody to rescue is not an error and not a call. Broadcasting an
+      // empty coach to every operator on the road is how a useful channel
+      // becomes one nobody reads.
+      if (needed < 1) return const NobodyCouldBeMoved();
+
+      final id = await tx.execute(
+        Sql.named('''
+          INSERT INTO protection_calls
+            (sending_operator_id, from_departure_id, origin_city,
+             destination_city, seats_requested, rebill_minor, currency,
+             note, opened_by_user, expires_at)
+          VALUES (@me, @from, @origin, @destination, @seats, @rebill,
+                  @currency, @note, @actor, @expires)
+          ON CONFLICT (from_departure_id) WHERE state = 'open'
+          DO NOTHING
+          RETURNING id::text AS id
+        '''),
+        parameters: {
+          'me': TypedValue(Type.uuid, operatorId),
+          'from': TypedValue(Type.uuid, departureId),
+          'origin': TypedValue(Type.text, row['origin_city']! as String),
+          'destination': TypedValue(
+            Type.text,
+            row['destination_city']! as String,
+          ),
+          'seats': TypedValue(Type.integer, needed),
+          // The sender's own public fare per seat. Not the rescuer's, which
+          // we cannot see from here and which is theirs to price — the
+          // movement recomputes the rebill on the seats actually given up
+          // (§5), and this is what the call *offers*, which is the number an
+          // operator decides on.
+          'rebill': TypedValue(Type.integer, row['fare_minor']! as int),
+          'currency': TypedValue(Type.text, row['currency']! as String),
+          'note': TypedValue(Type.text, note),
+          'actor': TypedValue(Type.uuid, actorUserId),
+          'expires': TypedValue(Type.timestampTz, now.add(window)),
+        },
+      );
+      // The partial unique index answered instead of us: this coach already
+      // has a live call, and a second one is the same forty-two people read
+      // twice on every console in the country.
+      if (id.isEmpty) return const CallAlreadyClosed('open');
+
+      final callId = id.first.toColumnMap()['id']! as String;
+      await _audit(
+        tx,
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        subjectId: callId,
+        subjectType: 'protection_call',
+        action: 'protection.call_opened',
+        after: {
+          'departureId': departureId,
+          'seatsRequested': needed,
+          if (note != null) 'note': note,
+        },
+      );
+      return callId;
+    });
+
+    if (opened == null) return (call: null, refusal: const UnknownCall());
+    if (opened is AgreementRefusal) return (call: null, refusal: opened);
+    return _rereadCall(operatorId, opened as String);
+  }
+
+  @override
+  Future<({OpenCallView? call, AgreementRefusal? refusal})> withdrawCall({
+    required String operatorId,
+    required String callId,
+    required String actorUserId,
+  }) async {
+    final closed = await _db.transaction(DbScope.tenant(operatorId), (
+      tx,
+    ) async {
+      // Conditional on `open`, so withdrawing one somebody has just answered
+      // does not un-move their passengers.
+      final rows = await tx.execute(
+        Sql.named('''
+          UPDATE protection_calls
+             SET state = 'withdrawn', closed_at = now()
+           WHERE id = @id AND sending_operator_id = @me AND state = 'open'
+          RETURNING id
+        '''),
+        parameters: {
+          'id': TypedValue(Type.uuid, callId),
+          'me': TypedValue(Type.uuid, operatorId),
+        },
+      );
+      if (rows.isEmpty) return false;
+
+      await _audit(
+        tx,
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        subjectId: callId,
+        subjectType: 'protection_call',
+        action: 'protection.call_withdrawn',
+        after: const {},
+      );
+      return true;
+    });
+
+    if (!closed) {
+      final mine = await openCalls(operatorId);
+      final found = mine.calls.where((c) => c.id == callId).firstOrNull;
+      return found == null
+          ? (call: null, refusal: const UnknownCall())
+          : (call: null, refusal: CallAlreadyClosed(found.state));
+    }
+    return _rereadCall(operatorId, callId);
+  }
+
+  Future<({OpenCallView? call, AgreementRefusal? refusal})> _rereadCall(
+    String operatorId,
+    String callId,
+  ) async {
+    final mine = await openCalls(operatorId);
+    final found = mine.calls.where((c) => c.id == callId).firstOrNull;
+    return found == null
+        ? (call: null, refusal: const UnknownCall())
+        : (call: found, refusal: null);
+  }
+
+  @override
+  Future<({ProtectionRequestView? request, AgreementRefusal? refusal})>
+  answerCall({
+    required String operatorId,
+    required String callId,
+    required String replacementDepartureId,
+    required String actorUserId,
+    required DateTime now,
+    String? note,
+  }) async {
+    // Two reads under our own tenancy first, so the refusals are sentences
+    // rather than a zero-row UPDATE inside the privileged block below. Both
+    // are re-checked there — this is the friendly version, not the control.
+    final ours = await _db.transaction(DbScope.tenant(operatorId), (tx) async {
+      final call = await tx.execute(
+        Sql.named('''
+          SELECT id::text AS id, state, origin_city, destination_city,
+                 sending_operator_id::text AS sending_operator_id,
+                 from_departure_id::text AS from_departure_id,
+                 expires_at
+            FROM open_protection_calls()
+           WHERE id = @id
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, callId)},
+      );
+      if (call.isEmpty) {
+        // The inbox function only offers *live* calls to a candidate, so a
+        // call that has just been answered or has run out of time is absent
+        // rather than closed. The row itself is still readable — the policy
+        // is deliberately not restricted to live ones, because an operator
+        // has to be able to read the call they answered — so ask it directly
+        // and tell them which it was. "Somebody was faster" and "no such
+        // call" are completely different things to a dispatcher.
+        final closed = await tx.execute(
+          Sql.named(
+            'SELECT state::text AS state, expires_at '
+            'FROM protection_calls WHERE id = @id',
+          ),
+          parameters: {'id': TypedValue(Type.uuid, callId)},
+        );
+        if (closed.isEmpty) return null;
+        final row = closed.first.toColumnMap();
+        final state = row['state']! as String;
+        return CallAlreadyClosed(
+          state == 'open' && !(row['expires_at']! as DateTime).isAfter(now)
+              ? 'expired'
+              : state,
+        );
+      }
+      final row = call.first.toColumnMap();
+
+      // Invited, but not to answer our own call for help.
+      if (row['sending_operator_id'] == operatorId) return null;
+
+      final mine = await tx.execute(
+        Sql.named(
+          'SELECT id FROM departures '
+          'WHERE id = @id AND operator_id = @me',
+        ),
+        parameters: {
+          'id': TypedValue(Type.uuid, replacementDepartureId),
+          'me': TypedValue(Type.uuid, operatorId),
+        },
+      );
+      if (mine.isEmpty) return null;
+      return row;
+    });
+
+    if (ours == null) return (request: null, refusal: const UnknownCall());
+    if (ours is AgreementRefusal) return (request: null, refusal: ours);
+
+    final live = ours as Map<String, dynamic>;
+    if (live['state'] != 'open') {
+      return (
+        request: null,
+        refusal: CallAlreadyClosed(live['state']! as String),
+      );
+    }
+    if (!(live['expires_at']! as DateTime).isAfter(now)) {
+      return (request: null, refusal: const CallAlreadyClosed('expired'));
+    }
+
+    // From here it is one transaction, under the platform scope, and it has
+    // to be: the winner is *elected* by the same commit that acts on having
+    // won. Two consoles that both saw `open` would otherwise both move people
+    // onto two different coaches, and the passengers would be the ones to
+    // find out. The privilege moves for the reason [_applyWithin] documents —
+    // neither tenant can see both halves of a movement — and everything it
+    // would otherwise trust is re-checked inside it.
+    final outcome = await _db
+        .transaction(DbScope.platform(actorUserId), (tx) async {
+          final won = await tx.execute(
+            Sql.named('''
+          UPDATE protection_calls
+             SET state = 'answered', closed_at = now(),
+                 answered_by_operator = @me
+           WHERE id = @id AND state = 'open' AND expires_at > now()
+          RETURNING sending_operator_id::text AS sending_operator_id,
+                    from_departure_id::text   AS from_departure_id,
+                    seats_requested, disruption_id::text AS disruption_id
+        '''),
+            parameters: {
+              'id': TypedValue(Type.uuid, callId),
+              'me': TypedValue(Type.uuid, operatorId),
+            },
+          );
+          // Somebody else was faster. The ordinary outcome of a broadcast.
+          if (won.isEmpty) return const CallAlreadyClosed('answered');
+          final call = won.first.toColumnMap();
+
+          final inserted = await tx.execute(
+            Sql.named('''
+          INSERT INTO protection_requests
+            (call_id, sending_operator_id, receiving_operator_id,
+             from_departure_id, to_departure_id, disruption_id,
+             seats_requested, note, requested_by_user)
+          VALUES (@call, @sending, @me, @from, @to, @disruption, @seats,
+                  @note, @actor)
+          RETURNING id::text AS id
+        '''),
+            parameters: {
+              'call': TypedValue(Type.uuid, callId),
+              'sending': TypedValue(
+                Type.uuid,
+                call['sending_operator_id']! as String,
+              ),
+              'me': TypedValue(Type.uuid, operatorId),
+              'from': TypedValue(
+                Type.uuid,
+                call['from_departure_id']! as String,
+              ),
+              'to': TypedValue(Type.uuid, replacementDepartureId),
+              'disruption': TypedValue(
+                Type.uuid,
+                call['disruption_id'] as String?,
+              ),
+              'seats': TypedValue(
+                Type.integer,
+                call['seats_requested']! as int,
+              ),
+              'note': TypedValue(Type.text, note),
+              'actor': TypedValue(Type.uuid, actorUserId),
+            },
+          );
+          final requestId = inserted.first.toColumnMap()['id']! as String;
+
+          final failed = await _applyProtection(
+            requestId: requestId,
+            actorUserId: actorUserId,
+            autoAccepted: false,
+            within: tx,
+          );
+          // Nobody fitted after all — the rescuer sold the seats while the call
+          // sat on their screen, which is exactly what they should have been
+          // doing. Throwing rolls the whole transaction back, which puts the call
+          // back to `open` for somebody else to answer. A failed answer that
+          // consumed the call would strand the passengers on a technicality.
+          if (failed != null) throw _AnswerFailed(failed);
+          return requestId;
+        })
+        .catchError((Object e) => e is _AnswerFailed ? e.refusal : throw e);
+
+    if (outcome is AgreementRefusal) {
+      return (request: null, refusal: outcome);
+    }
+    return _reread(operatorId, outcome as String);
+  }
+
   /// Moves the passengers, reissues their tickets under the receiving
   /// operator, and settles the rebill — all in one transaction.
   ///
@@ -789,7 +1219,37 @@ final class PostgresProtection implements ProtectionDesk {
     required String requestId,
     required String actorUserId,
     required bool autoAccepted,
-  }) => _db.transaction(DbScope.platform(actorUserId), (tx) async {
+    TxSession? within,
+  }) => within != null
+      ? _applyWithin(
+          within,
+          requestId: requestId,
+          actorUserId: actorUserId,
+          autoAccepted: autoAccepted,
+        )
+      : _db.transaction(
+          DbScope.platform(actorUserId),
+          (tx) => _applyWithin(
+            tx,
+            requestId: requestId,
+            actorUserId: actorUserId,
+            autoAccepted: autoAccepted,
+          ),
+        );
+
+  /// The movement itself, on a transaction somebody else may already own.
+  ///
+  /// Answering an open call has to close the call and move the passengers in
+  /// **one** transaction — the winner is elected by the same commit that acts
+  /// on having won — so this cannot open its own. An agreement-based accept
+  /// has nothing to elect and gets a transaction of its own from the wrapper
+  /// above.
+  Future<AgreementRefusal?> _applyWithin(
+    TxSession tx, {
+    required String requestId,
+    required String actorUserId,
+    required bool autoAccepted,
+  }) async {
     final rows = await tx.execute(
       Sql.named('''
         SELECT q.state::text                 AS state,
@@ -797,10 +1257,14 @@ final class PostgresProtection implements ProtectionDesk {
                q.receiving_operator_id::text AS receiving_operator_id,
                q.from_departure_id::text     AS from_departure_id,
                q.to_departure_id::text       AS to_departure_id,
+               q.call_id::text               AS call_id,
                a.state::text                 AS agreement_state,
-               a.rebill_discount_bps         AS discount_bps
+               -- No agreement, no negotiated discount: a call is rebilled at
+               -- the receiving operator's own fare, which is the price it was
+               -- broadcast at.
+               COALESCE(a.rebill_discount_bps, 0) AS discount_bps
           FROM protection_requests q
-          JOIN protection_agreements a ON a.id = q.agreement_id
+          LEFT JOIN protection_agreements a ON a.id = q.agreement_id
          WHERE q.id = @id
            FOR UPDATE OF q
       '''),
@@ -816,7 +1280,11 @@ final class PostgresProtection implements ProtectionDesk {
     // from when the request was written. An agreement suspended in between
     // authorises nothing, and this is the transaction that would otherwise
     // act on a stale yes.
-    if (row['agreement_state'] != 'active') {
+    //
+    // A call needs no equivalent check here: it is elected and closed by the
+    // caller inside this same transaction, so "still open" is not a fact that
+    // can go stale between the check and the act.
+    if (row['call_id'] == null && row['agreement_state'] != 'active') {
       return const AgreementRefused(NoAgreement());
     }
 
@@ -1032,9 +1500,10 @@ final class PostgresProtection implements ProtectionDesk {
     await tx.execute(
       Sql.named('''
         INSERT INTO protection_movements
-          (agreement_id, sending_operator_id, receiving_operator_id,
+          (agreement_id, call_id, sending_operator_id, receiving_operator_id,
            disruption_id, departure_id, seats, rebill_minor, currency, txn_id)
-        SELECT q.agreement_id, q.sending_operator_id, q.receiving_operator_id,
+        SELECT q.agreement_id, q.call_id,
+               q.sending_operator_id, q.receiving_operator_id,
                q.disruption_id, q.to_departure_id, @seats, @rebill, @currency,
                @txn
           FROM protection_requests q WHERE q.id = @id
@@ -1113,7 +1582,7 @@ final class PostgresProtection implements ProtectionDesk {
     );
 
     return null;
-  });
+  }
 
   /// Re-signs every moved ticket under the **receiving** operator's code.
   ///
@@ -1293,7 +1762,8 @@ final class PostgresProtection implements ProtectionDesk {
 
     return ProtectionRequestView(
       id: row['id']! as String,
-      agreementId: row['agreement_id']! as String,
+      agreementId: row['agreement_id'] as String?,
+      callId: row['call_id'] as String?,
       sendingOperatorId: row['sending_operator_id']! as String,
       receivingOperatorId: row['receiving_operator_id']! as String,
       counterpartyName: names[counterpartyId] ?? counterpartyId,
@@ -1325,21 +1795,23 @@ final class PostgresProtection implements ProtectionDesk {
     TxSession tx, {
     required String actorUserId,
     required String operatorId,
-    required String agreementId,
+    required String subjectId,
     required String action,
     required Map<String, Object?> after,
+    String subjectType = 'protection_agreement',
   }) => tx.execute(
     Sql.named('''
       INSERT INTO audit_log
         (actor_id, actor_type, action, subject_type, subject_id,
          operator_id, after_state)
-      VALUES (@actor, 'operator_staff', @action, 'protection_agreement',
+      VALUES (@actor, 'operator_staff', @action, @subject_type,
               @subject, @operator, @after)
     '''),
     parameters: {
       'actor': TypedValue(Type.uuid, actorUserId),
       'action': TypedValue(Type.text, action),
-      'subject': TypedValue(Type.text, agreementId),
+      'subject_type': TypedValue(Type.text, subjectType),
+      'subject': TypedValue(Type.text, subjectId),
       'operator': TypedValue(Type.uuid, operatorId),
       'after': TypedValue(Type.jsonb, after),
     },
@@ -1362,4 +1834,15 @@ final class _RebookingAsFailure extends DomainFailure {
   final RebookingRefusal refusal;
   @override
   String get code => refusal.code;
+}
+
+/// Carries a refusal out of the answer transaction while rolling it back.
+///
+/// The rollback is the point: an answer that could not move anybody must
+/// leave the call open for somebody else, and the only way to undo the
+/// election in the same breath as the movement is to abandon the transaction
+/// that made it.
+final class _AnswerFailed implements Exception {
+  const _AnswerFailed(this.refusal);
+  final AgreementRefusal refusal;
 }

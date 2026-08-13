@@ -174,6 +174,34 @@ console:
     movesNow: "Accepting moves the passengers to your company straight away, with new tickets."
     accept: "Accept"
     decline: "Decline"
+  # Open protection (08-disruption.md §5): the call put out to the whole road
+  # when you have an agreement with nobody. That is most companies on day one,
+  # and they are who this section is for.
+  open:
+    title: "Open calls"
+    inChannel: "You receive other companies' calls on your lines."
+    outOfChannel: "You do not receive other companies' calls."
+    quiet: "Nobody needs help on your lines right now."
+    notListening: "Turn receiving on to see calls on your lines."
+    ours: "Your call"
+    weAsked: "You are asking the whole road for {count} seat(s)."
+    theyAsked: "{name} is asking the whole road for {count} seat(s)."
+    road: "Line"
+    coach: "The coach"
+    rebill: "Rebilled"
+    note: "Note"
+    seatsValue: "{free} free · {asked} asked for"
+    firstWins: "First to accept takes the passengers. Everybody else is told."
+    nobodyOwesUs: "Nobody is obliged to answer. Keep looking for a way."
+    answer: "Take the passengers"
+    noCoach: "None of your departures can take them: you need a later coach on the same line, with seats."
+    withdraw: "Withdraw the call"
+    broadcast: "Call put out for {count} seat(s)."
+    state:
+      open: "Live"
+      answered: "Taken"
+      withdrawn: "Withdrawn"
+      expired: "No answer"
   manifest:
     summary: "{sold} sold · {boarded} boarded · {capacity} seats"
     empty: "No passengers yet."
@@ -526,3 +554,7 @@ console:
     protection.moved: "{a1} passenger(s) now travel with {a2}. New tickets sent."
     protection.movedPartial: "{a1} of {a2} placed with {a3}. Find the others a coach."
     protection.requestDeclined: "Request from {a1} declined. Nobody was moved."
+    protection.broadcast: "Call put out to the whole road for {a1} passenger(s). Nobody is obliged to answer."
+    protection.callWithdrawn: "Call withdrawn. Nobody sees it any more."
+    protection.openIn: "You now receive other companies' calls."
+    protection.openOut: "You no longer receive other companies' calls."

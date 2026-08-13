@@ -5,6 +5,7 @@ import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_operator_applications.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_operator_console.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_platform_console.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_protection.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart' hide Result;
 
@@ -49,12 +50,14 @@ final class DemoWorld {
     : _seed = seed,
       _applications = PostgresOperatorApplications(db),
       _platform = PostgresPlatformConsole(db),
-      _console = PostgresOperatorConsole(db, timeZone: 'Africa/Brazzaville');
+      _console = PostgresOperatorConsole(db, timeZone: 'Africa/Brazzaville'),
+      _protection = PostgresProtection(db);
 
   final Connection _seed;
   final PostgresOperatorApplications _applications;
   final PostgresPlatformConsole _platform;
   final PostgresOperatorConsole _console;
+  final PostgresProtection _protection;
 
   /// Removes the demo world.
   ///
@@ -275,6 +278,25 @@ final class DemoWorld {
     await _network(alizes, code: 'ALZ', hour: '06:00', fare: 12000);
     await _network(kouilou, code: 'KLV', hour: '07:30', fare: 11000);
 
+    // Both in the open-protection channel (`08-disruption.md` §5), so a call
+    // put out from either console has somebody on the other end of it. Opting
+    // in is the one decision here that no amount of waiting produces: a
+    // channel with one member is a channel that looks broken.
+    //
+    // Through the desk rather than by setting the column, so the audit trail
+    // says a person joined on a date — which is the question a dispute about
+    // a rebill actually asks.
+    for (final (operator, owner) in [
+      (alizes, 'angele'),
+      (kouilou, 'prosper'),
+    ]) {
+      await _protection.receiveOpenCalls(
+        operatorId: operator,
+        receiving: true,
+        actorUserId: await _userIdOf(owner),
+      );
+    }
+
     // Paperwork in three states, because the expiry ladder is only visible
     // when something is actually approaching a date (03-operator-lifecycle.md
     // §3.3): one company entirely in order, one three weeks out so the console
@@ -334,6 +356,7 @@ final class DemoWorld {
     stdout
       ..writeln('── demo world seeded')
       ..writeln('   3 operators selling · 1 of them with lapsed paperwork')
+      ..writeln('   2 of them in the open-protection channel')
       ..writeln('   2 applications waiting for the onboarding pass')
       ..writeln(
         '   people: *@$demoEmailDomain, traveller ${demoPhonePrefix}00001',
@@ -372,6 +395,16 @@ final class DemoWorld {
         'phone': phone == null ? null : '$demoPhonePrefix$phone',
         'name': fullName,
       },
+    );
+    return rows.first.toColumnMap()['id'] as String;
+  }
+
+  /// The id behind a demo handle. Read rather than re-created: [_person]
+  /// upserts a name as well, and calling it for an id alone would rewrite one.
+  Future<String> _userIdOf(String handle) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT id FROM user_accounts WHERE email = @email'),
+      parameters: {'email': '$handle@$demoEmailDomain'},
     );
     return rows.first.toColumnMap()['id'] as String;
   }

@@ -175,6 +175,34 @@ console:
     movesNow: "En acceptant, les passagers changent de compagnie tout de suite et reçoivent un nouveau billet."
     accept: "Accepter"
     decline: "Refuser"
+  # Protection ouverte (08-disruption.md §5) : l'appel lancé à toute la route
+  # quand on n'a d'accord avec personne. C'est le cas de la plupart des
+  # compagnies le premier jour, et c'est pour elles que cette section existe.
+  open:
+    title: "Appels ouverts"
+    inChannel: "Vous recevez les appels des autres compagnies sur vos lignes."
+    outOfChannel: "Vous ne recevez pas les appels des autres compagnies."
+    quiet: "Personne ne demande de l'aide sur vos lignes en ce moment."
+    notListening: "Activez la réception pour voir les appels sur vos lignes."
+    ours: "Votre appel"
+    weAsked: "Vous demandez {count} place(s) à toute la route."
+    theyAsked: "{name} demande {count} place(s) à toute la route."
+    road: "Ligne"
+    coach: "Car concerné"
+    rebill: "Refacturation"
+    note: "Précision"
+    seatsValue: "{free} libres · {asked} demandées"
+    firstWins: "Le premier qui accepte prend les passagers. Les autres sont prévenus."
+    nobodyOwesUs: "Personne n'est tenu de répondre. Continuez à chercher une solution."
+    answer: "Prendre les passagers"
+    noCoach: "Aucun de vos départs ne peut les prendre : il faut un car plus tard sur la même ligne, avec des places."
+    withdraw: "Retirer l'appel"
+    broadcast: "Appel lancé pour {count} place(s)."
+    state:
+      open: "En cours"
+      answered: "Pris en charge"
+      withdrawn: "Retiré"
+      expired: "Sans réponse"
   manifest:
     summary: "{sold} vendus · {boarded} embarqués · {capacity} places"
     empty: "Aucun passager pour l'instant."
@@ -527,3 +555,7 @@ console:
     protection.moved: "{a1} passager(s) voyagent maintenant avec {a2}. Nouveaux billets envoyés."
     protection.movedPartial: "{a1} sur {a2} placés chez {a3}. Trouvez une solution pour les autres."
     protection.requestDeclined: "Demande de {a1} refusée. Personne n'a été déplacé."
+    protection.broadcast: "Appel lancé à toute la route pour {a1} passager(s). Personne n'est tenu de répondre."
+    protection.callWithdrawn: "Appel retiré. Plus personne ne le voit."
+    protection.openIn: "Vous recevez désormais les appels des autres compagnies."
+    protection.openOut: "Vous ne recevez plus les appels des autres compagnies."

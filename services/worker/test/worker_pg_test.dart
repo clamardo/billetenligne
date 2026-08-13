@@ -1831,4 +1831,121 @@ void main() {
       expect(message.body, contains('lignes'));
     });
   });
+
+  group('a call nobody answered', () {
+    /// A call for help, put out [ago] and lasting [window].
+    Future<String> aCall({
+      required String departureId,
+      required Duration ago,
+      required Duration window,
+      String state = 'open',
+    }) async {
+      final rows = await seed.execute(
+        Sql.named('''
+          INSERT INTO protection_calls
+            (sending_operator_id, from_departure_id, origin_city,
+             destination_city, seats_requested, rebill_minor, currency,
+             state, opened_at, expires_at, closed_at, answered_by_operator)
+          VALUES (@operator, @departure, 'BZV', 'PNR', 31, 9000, 'XAF',
+                  @state::protection_call_state,
+                  now() - make_interval(secs => @ago),
+                  now() - make_interval(secs => @ago)
+                    + make_interval(secs => @window),
+                  CASE WHEN @state = 'open' THEN NULL ELSE now() END,
+                  CASE WHEN @state = 'answered' THEN @other::uuid END)
+          RETURNING id
+        '''),
+        parameters: {
+          'operator': TypedValue(Type.uuid, operatorId),
+          'departure': TypedValue(Type.uuid, departureId),
+          'state': TypedValue(Type.text, state),
+          'ago': TypedValue(Type.integer, ago.inSeconds),
+          'window': TypedValue(Type.integer, window.inSeconds),
+          'other': TypedValue(
+            Type.text,
+            '22222222-2222-2222-2222-222222222222',
+          ),
+        },
+      );
+      return rows.first.toColumnMap()['id'] as String;
+    }
+
+    Future<Map<String, dynamic>> callRow(String id) async {
+      final rows = await seed.execute(
+        Sql.named('''
+          SELECT state::text AS state, closed_at
+            FROM protection_calls WHERE id = @id
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, id)},
+      );
+      return rows.first.toColumnMap();
+    }
+
+    test('is closed, and closed with a time', () async {
+      // Two hours to find somebody, put out three hours ago. Nobody came.
+      final call = await aCall(
+        departureId: await aDeparture(),
+        ago: const Duration(hours: 3),
+        window: const Duration(hours: 2),
+      );
+
+      final result = await sweepers.expireProtectionCalls();
+      expect(result.name, 'calls.expired');
+
+      final row = await callRow(call);
+      expect(row['state'], 'expired');
+      // Marked, never deleted: the coach that broke down and the fact that
+      // nobody came is what an operator reads when they decide whether this
+      // channel is worth being in.
+      expect(row['closed_at'], isNotNull);
+    });
+
+    test('a call still inside its window is left alone', () async {
+      final call = await aCall(
+        departureId: await aDeparture(),
+        ago: const Duration(minutes: 10),
+        window: const Duration(hours: 2),
+      );
+
+      await sweepers.expireProtectionCalls();
+
+      final row = await callRow(call);
+      expect(row['state'], 'open');
+      expect(row['closed_at'], isNull);
+    });
+
+    test('a call somebody answered is not reopened as a failure', () async {
+      // The window passes on every answered call eventually. A sweeper that
+      // read `expires_at` alone would rewrite last week's successful rescue
+      // into one nobody came to.
+      final call = await aCall(
+        departureId: await aDeparture(),
+        ago: const Duration(days: 2),
+        window: const Duration(hours: 2),
+        state: 'answered',
+      );
+
+      await sweepers.expireProtectionCalls();
+
+      expect((await callRow(call))['state'], 'answered');
+    });
+
+    test('running it twice expires nothing the second time', () async {
+      final departure = await aDeparture();
+      await aCall(
+        departureId: departure,
+        ago: const Duration(hours: 3),
+        window: const Duration(hours: 2),
+      );
+
+      final first = await sweepers.expireProtectionCalls();
+      final second = await sweepers.expireProtectionCalls();
+
+      // The absolute count is not ours to assert — this database is shared
+      // with the API suite. What is ours is that the pass converges: whatever
+      // it found, a second run over the same rows finds fewer.
+      expect(first.affected, greaterThanOrEqualTo(1));
+      expect(second.affected, lessThan(first.affected));
+    });
+  });
 }

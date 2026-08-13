@@ -1840,6 +1840,89 @@ check "answering a request that does not exist is a 409" "409" \
      -H 'Content-Type: application/json' -d '{"decision":"accept"}')"
 
 
+# ── Calling out to whoever is on the road ───────────────────────────────────
+#
+# `08-disruption.md` §5. Option ③ with nobody on the other end of it yet: the
+# call goes to every company that opted in and runs this road, and the terms
+# travel on the call rather than being negotiated.
+#
+# Two things this proves that no unit test can. **The inbox is one payload,
+# not two** — `receiving` travels beside the rows, because an empty inbox has
+# to be able to say which kind of empty it is. And **the two capabilities run
+# opposite ways here**: broadcasting is `disruption.declare`, the roadside
+# decision; agreeing to *receive* is `protection.manage`, which is a standing
+# commitment about what the company is for.
+echo
+echo "── calling out to whoever is on the road"
+
+call_as() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST \
+    "$BASE/console/v1/protection/open" -H "$1" \
+    -H 'Content-Type: application/json' -d "$2"
+}
+
+check "an anonymous caller sees no open calls" "401" \
+  "$(status "$BASE/console/v1/protection/open")"
+check "a traveller cannot read the inbox" "403" \
+  "$(status -H "$AUTH" "$BASE/console/v1/protection/open")"
+check "the operator reads their inbox" "200" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/protection/open")"
+
+inbox="$(curl -s -H "$OP_AUTH" "$BASE/console/v1/protection/open")"
+check "an empty inbox still says which kind of empty it is" "yes" \
+  "$(grep -q '"receiving"' <<<"$inbox" && echo yes || echo no)"
+
+check "an anonymous caller cannot call for help" "401" \
+  "$(call_as 'X-Nothing: 1' '{"departureId":"'"$DEP"'"}')"
+check "a traveller cannot call for help either" "403" \
+  "$(call_as "$AUTH" '{"departureId":"'"$DEP"'"}')"
+check "a call with no coach is refused by name" "400" \
+  "$(call_as "$OP_AUTH" '{}')"
+check "a well-formed call gets past validation" "409" \
+  "$(call_as "$OP_AUTH" '{"departureId":"'"$DEP"'","windowMinutes":90}')"
+# The window is clamped rather than rejected: a client asking for a week gets
+# half a day, because the number is how long every other console in the
+# country carries the row and no client owns that.
+check "an absurd window is clamped, not refused" "409" \
+  "$(call_as "$OP_AUTH" '{"departureId":"'"$DEP"'","windowMinutes":100000}')"
+
+check "GET is not a way to answer a call" "405" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/protection/open/call-1/answer")"
+check "answering with no coach of our own is refused by name" "400" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/protection/open/call-1/answer" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d '{}')"
+check "answering a call nobody put out is a 409" "409" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/protection/open/call-1/answer" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' \
+     -d '{"replacementDepartureId":"'"$DEP"'"}')"
+check "withdrawing a call nobody put out is a 409" "409" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+     "$BASE/console/v1/protection/open/call-1" -H "$OP_AUTH")"
+check "GET is not a way to withdraw one" "405" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/protection/open/call-1")"
+
+# Opting in is the other capability, and this is the one route in this family
+# where a dispatcher is not enough.
+check "an anonymous caller cannot opt a company in" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+     "$BASE/console/v1/protection/open/receiving" \
+     -H 'Content-Type: application/json' -d '{"receiving":true}')"
+check "a traveller cannot opt a company in" "403" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+     "$BASE/console/v1/protection/open/receiving" -H "$AUTH" \
+     -H 'Content-Type: application/json' -d '{"receiving":true}')"
+check "the operator may say yes" "200" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+     "$BASE/console/v1/protection/open/receiving" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d '{"receiving":true}')"
+check "POST is not a way to opt in" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/protection/open/receiving" -H "$OP_AUTH" \
+     -H 'Content-Type: application/json' -d '{"receiving":true}')"
+
+
 # ── The Dart client against this same server ────────────────────────────────
 #
 # curl proves the HTTP surface; this proves the seam the *app* actually uses —

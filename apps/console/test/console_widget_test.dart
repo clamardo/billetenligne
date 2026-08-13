@@ -530,6 +530,43 @@ final class _ScriptedConsole implements ConsoleGateway {
     );
   }
 
+  /// The open-call inbox, and whether this operator is in the channel.
+  OpenCallsDto callInbox = const OpenCallsDto(receiving: false, calls: []);
+
+  @override
+  Future<OpenCallsDto> openProtectionCalls() async {
+    saved.add('openCalls');
+    return callInbox;
+  }
+
+  @override
+  Future<OpenCallDto> openProtectionCall(OpenCallBody body) async {
+    saved.add('openCall:${body.departureId}');
+    return _call(id: 'call-new', weOpened: true);
+  }
+
+  @override
+  Future<OpenCallDto> withdrawProtectionCall(String callId) async {
+    saved.add('withdrawCall:$callId');
+    return _call(id: callId, weOpened: true, state: 'withdrawn');
+  }
+
+  @override
+  Future<ProtectionRequestDto> answerProtectionCall({
+    required String callId,
+    required AnswerCallBody body,
+  }) async {
+    saved.add('answerCall:$callId:${body.replacementDepartureId}');
+    return _request(id: 'req-answered', state: 'applied', seatsMoved: 2);
+  }
+
+  @override
+  Future<bool> receiveOpenProtectionCalls(bool receiving) async {
+    saved.add('receiving:$receiving');
+    callInbox = OpenCallsDto(receiving: receiving, calls: callInbox.calls);
+    return receiving;
+  }
+
   @override
   Future<List<DepartureSummaryDto>> tripsOn({
     required String originCity,
@@ -1944,6 +1981,249 @@ void main() {
       // "placed" stops looking for a coach.
       expect(
         find.textContaining("Rien ne bouge tant qu'ils n'ont pas répondu"),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('calling the whole road', () {
+    /// A dispatcher: may broadcast and may answer, may not sign anything.
+    _ScriptedConsole dispatcher() => _ScriptedConsole(
+      capabilities: const ['booking.read', 'disruption.declare'],
+    );
+
+    /// Somebody who can commit the company to the channel as well.
+    _ScriptedConsole owner() => _ScriptedConsole(
+      capabilities: const [
+        'booking.read',
+        'disruption.declare',
+        'protection.manage',
+      ],
+    );
+
+    // Zero rows twice over, and two completely different situations. This is
+    // the reason `receiving` travels beside the list rather than the client
+    // inferring it from a count.
+    testWidgets('an inbox nobody opted into says so', (tester) async {
+      final workspace = await pump(tester, dispatcher());
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Activez la réception'), findsOneWidget);
+    });
+
+    testWidgets('and a quiet morning says something else', (tester) async {
+      final gateway = dispatcher()
+        ..callInbox = const OpenCallsDto(receiving: true, calls: []);
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining("Personne ne demande de l'aide"),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('joining the channel is not the dispatcher\'s to do', (
+      tester,
+    ) async {
+      final gateway = dispatcher();
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      // They can call for help at 05:40 and answer somebody else's call. What
+      // they cannot do is promise, on the company's behalf, that it will keep
+      // answering — that is a standing commitment about what the company is
+      // for, and it needs the capability that signs things.
+      expect(find.text('Appels ouverts'), findsOneWidget);
+      expect(find.byType(Switch), findsNothing);
+    });
+
+    testWidgets('the company says yes once, and is told it said yes', (
+      tester,
+    ) async {
+      final gateway = owner();
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('receiving:true'));
+      expect(
+        find.textContaining('Vous recevez désormais les appels'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('somebody else\'s call names who is asking, and for how many', (
+      tester,
+    ) async {
+      final gateway = dispatcher()
+        ..callInbox = OpenCallsDto(
+          receiving: true,
+          calls: [_call(seatsRequested: 31, note: 'Boîte de vitesses, PK 84')],
+        );
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      // An operator deciding whether to take thirty-one strangers is deciding
+      // partly on who is asking, and entirely on the price — which travels on
+      // the call rather than being negotiated at the roadside.
+      expect(
+        find.textContaining('Ocean du Nord demande 31 place(s)'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Boîte de vitesses'), findsOneWidget);
+      // The coach-load, not the per-seat term: 12 000 × 31 is the figure an
+      // operator actually decides on.
+      expect(find.textContaining('372${Money.narrowNbsp}000'), findsOneWidget);
+      // First to accept wins, said before the tap rather than in the notice
+      // that follows it.
+      expect(find.textContaining('Le premier qui accepte'), findsOneWidget);
+      expect(find.text('Prendre les passagers'), findsOneWidget);
+      expect(find.text("Retirer l'appel"), findsNothing);
+    });
+
+    testWidgets('our own call is ours to take back, not to answer', (
+      tester,
+    ) async {
+      final gateway = dispatcher()
+        ..callInbox = OpenCallsDto(
+          receiving: true,
+          calls: [_call(weOpened: true, seatsRequested: 31)],
+        );
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Votre appel'), findsOneWidget);
+      // Nobody is obliged to come, and a dispatcher who reads "envoyé" as
+      // "placed" stops looking for a coach.
+      expect(
+        find.textContaining("Personne n'est tenu de répondre"),
+        findsOneWidget,
+      );
+      expect(find.text('Prendre les passagers'), findsNothing);
+
+      await tester.tap(find.text("Retirer l'appel"));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('withdrawCall:call-1'));
+      expect(find.textContaining('Appel retiré'), findsOneWidget);
+    });
+
+    testWidgets('answering offers our own coaches with their live seats', (
+      tester,
+    ) async {
+      final gateway = dispatcher()
+        ..callInbox = OpenCallsDto(
+          receiving: true,
+          calls: [_call(seatsRequested: 31)],
+        )
+        ..tripList = [
+          // Ours, later, with room: the only kind that can answer.
+          _trip(id: 'dep-ours', operatorId: 'op-1', seatsAvailable: 40),
+          // Somebody else's, on the same road. The public search answers "who
+          // is going to Pointe-Noire"; only our own subset is ours to offer.
+          _trip(id: 'dep-theirs', operatorId: 'op-bony'),
+          // Ours, but before the broken coach was even due. Offering a coach
+          // that has already gone is offering nothing.
+          _trip(
+            id: 'dep-gone',
+            operatorId: 'op-1',
+            departsAt: DateTime.utc(2026, 8, 10, 5),
+          ),
+        ];
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Prendre les passagers'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('trips:BZV:PNR'));
+      final inDialog = find.descendant(
+        of: find.byType(Dialog),
+        matching: find.textContaining('40 libres · 31 demandées'),
+      );
+      expect(inDialog, findsOneWidget);
+
+      await tester.tap(inDialog);
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('answerCall:call-1:dep-ours'));
+    });
+
+    testWidgets('a console with no coach to spare is told so, plainly', (
+      tester,
+    ) async {
+      final gateway = dispatcher()
+        ..callInbox = OpenCallsDto(receiving: true, calls: [_call()])
+        ..tripList = [_trip(id: 'dep-theirs', operatorId: 'op-bony')];
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Prendre les passagers'));
+      await tester.pumpAndSettle();
+
+      // Which is not the same sentence as "no calls": there is a call, and we
+      // have nothing to answer it with.
+      expect(
+        find.textContaining('Aucun de vos départs ne peut les prendre'),
+        findsOneWidget,
+      );
+      expect(gateway.saved.where((s) => s.startsWith('answerCall')), isEmpty);
+    });
+
+    testWidgets(
+      'ours comes first, because our passengers are the ones waiting',
+      (tester) async {
+        final gateway = dispatcher()
+          ..callInbox = OpenCallsDto(
+            receiving: true,
+            calls: [
+              _call(id: 'call-theirs'),
+              _call(id: 'call-ours', weOpened: true),
+            ],
+          );
+        final workspace = await pump(tester, gateway);
+        workspace.openSection(ConsoleSection.protection);
+        await tester.pumpAndSettle();
+
+        final ours = tester.getTopLeft(find.text('Votre appel')).dy;
+        final theirs = tester
+            .getTopLeft(find.textContaining('Ocean du Nord demande'))
+            .dy;
+        expect(ours, lessThan(theirs));
+      },
+    );
+
+    testWidgets('a closed call is off the screen, not greyed out on it', (
+      tester,
+    ) async {
+      final gateway = dispatcher()
+        ..callInbox = OpenCallsDto(
+          receiving: true,
+          calls: [
+            _call(state: 'answered'),
+            _call(id: 'c2', state: 'expired'),
+          ],
+        );
+      final workspace = await pump(tester, gateway);
+      workspace.openSection(ConsoleSection.protection);
+      await tester.pumpAndSettle();
+
+      // History is noise between a dispatcher and the coach they are trying
+      // to fill. The inbox is what is live.
+      expect(find.textContaining('Ocean du Nord demande'), findsNothing);
+      expect(
+        find.textContaining("Personne ne demande de l'aide"),
         findsOneWidget,
       );
     });
@@ -3581,6 +3861,30 @@ ProtectionRequestDto _request({
   rebill: const Money.xaf(15300),
   seatsMoved: seatsMoved,
   declineReason: declineReason,
+);
+
+/// An open call, as either console reads it.
+OpenCallDto _call({
+  String id = 'call-1',
+  bool weOpened = false,
+  String state = 'open',
+  String sendingOperatorName = 'Ocean du Nord',
+  int seatsRequested = 12,
+  String? note,
+}) => OpenCallDto(
+  id: id,
+  sendingOperatorName: sendingOperatorName,
+  weOpened: weOpened,
+  fromDepartureId: 'dep-broken',
+  originCity: 'BZV',
+  destinationCity: 'PNR',
+  seatsRequested: seatsRequested,
+  rebillPerSeat: const Money.xaf(12000),
+  state: state,
+  openedAt: DateTime.utc(2026, 8, 10, 5, 40),
+  expiresAt: DateTime.utc(2026, 8, 10, 7, 40),
+  note: note,
+  departsAt: DateTime.utc(2026, 8, 10, 6),
 );
 
 /// A competitor's departure, as the public search returns it.

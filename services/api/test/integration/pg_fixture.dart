@@ -526,7 +526,7 @@ final class PgFixture {
   /// seats are held, by somebody, until well past the moment being tested.
   /// `sold` would need a booking behind every seat, which the constraint
   /// insists on and which this is not trying to prove.
-  Future<void> fillDeparture(String departureId) async {
+  Future<void> fillDeparture(String departureId, {String? heldBy}) async {
     final hold = await _seed.execute(
       Sql.named('''
         INSERT INTO holds (departure_id, operator_id, seat_labels, expires_at,
@@ -538,7 +538,7 @@ final class PgFixture {
       '''),
       parameters: {
         'id': TypedValue(Type.uuid, departureId),
-        'operator': TypedValue(Type.uuid, operatorId),
+        'operator': TypedValue(Type.uuid, heldBy ?? operatorId),
       },
     );
 
@@ -1013,6 +1013,76 @@ final class PgFixture {
     await _seed.execute('DELETE FROM protection_movements');
     await _seed.execute('DELETE FROM protection_requests');
     await _seed.execute('DELETE FROM protection_agreements');
+    await _seed.execute('DELETE FROM protection_calls');
+    // Out of the open channel again, so a test that never mentions it starts
+    // from the product's own default: a company that has not said yes.
+    await _seed.execute('UPDATE operators SET open_protection_at = NULL');
+  }
+
+  /// Puts an operator in the open-protection channel, the way the console's
+  /// switch does.
+  Future<void> receiveOpenCalls(String operatorId, {bool receiving = true}) =>
+      _seed.execute(
+        Sql.named(
+          'UPDATE operators SET open_protection_at = '
+          'CASE WHEN @on THEN now() ELSE NULL END WHERE id = @id',
+        ),
+        parameters: {
+          'id': TypedValue(Type.uuid, operatorId),
+          'on': TypedValue(Type.boolean, receiving),
+        },
+        ignoreRows: true,
+      );
+
+  /// Puts a call past its window without waiting two hours for it.
+  Future<void> expireCall(String callId) => _seed.execute(
+    Sql.named(
+      "UPDATE protection_calls SET expires_at = now() - interval '1 minute' "
+      'WHERE id = @id',
+    ),
+    parameters: {'id': TypedValue(Type.uuid, callId)},
+    ignoreRows: true,
+  );
+
+  /// Puts an operator back on sale after [blockSales].
+  Future<void> unblockSales(String operatorId) => _seed.execute(
+    Sql.named(
+      'UPDATE operators SET sales_blocked_at = NULL, sales_blocked_doc = NULL '
+      'WHERE id = @id',
+    ),
+    parameters: {'id': TypedValue(Type.uuid, operatorId)},
+    ignoreRows: true,
+  );
+
+  /// What one request actually settled, read past every policy.
+  Future<Map<String, dynamic>?> protectionMovement(String requestId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT m.seats, m.rebill_minor::int AS rebill_minor,
+               m.agreement_id::text AS agreement_id,
+               m.call_id::text      AS call_id
+          FROM protection_movements m
+          JOIN protection_requests q
+            ON q.to_departure_id = m.departure_id
+           AND q.receiving_operator_id = m.receiving_operator_id
+         WHERE q.id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, requestId)},
+    );
+    return rows.isEmpty ? null : rows.first.toColumnMap();
+  }
+
+  /// The state of a call, read past every policy.
+  Future<Map<String, dynamic>?> callRow(String callId) async {
+    final rows = await _seed.execute(
+      Sql.named(
+        'SELECT state::text AS state, closed_at, '
+        'answered_by_operator::text AS answered_by_operator '
+        'FROM protection_calls WHERE id = @id',
+      ),
+      parameters: {'id': TypedValue(Type.uuid, callId)},
+    );
+    return rows.isEmpty ? null : rows.first.toColumnMap();
   }
 
   /// A layout belonging to a DIFFERENT operator, so the ownership checks can

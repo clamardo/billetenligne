@@ -899,6 +899,55 @@ final class BelApiClient {
     ),
   );
 
+  // ── Open protection (§5) ──────────────────────────────────────────────
+
+  /// The open calls this operator can see, and whether they are even in the
+  /// channel.
+  ///
+  /// `receiving` travels with the list on purpose: an empty inbox has to be
+  /// able to say which kind of empty it is. *Nobody needs help right now* and
+  /// *you never opted in* are the same zero rows and completely different
+  /// screens, and a client that had to ask twice would draw the wrong one for
+  /// as long as the two calls were apart.
+  Future<OpenCallsDto> openProtectionCalls() async =>
+      OpenCallsDto.fromJson(await _get('/console/v1/protection/open'));
+
+  /// Broadcast a request for room to every opted-in operator on the road.
+  Future<OpenCallDto> openProtectionCall(OpenCallBody body) async =>
+      OpenCallDto.fromJson(
+        await _postJson('/console/v1/protection/open', body.toJson()),
+      );
+
+  /// Take it back. Only the sender can, and only while it is open.
+  Future<OpenCallDto> withdrawProtectionCall(String callId) async =>
+      OpenCallDto.fromJson(
+        (await _send(
+          'DELETE',
+          '/console/v1/protection/open/$callId',
+          idempotent: true,
+        ))!,
+      );
+
+  /// Answer one with a departure of ours. **First to accept wins**, and a
+  /// loser is told so rather than left believing they have taken it on.
+  Future<ProtectionRequestDto> answerProtectionCall({
+    required String callId,
+    required AnswerCallBody body,
+  }) async => ProtectionRequestDto.fromJson(
+    await _postJson(
+      '/console/v1/protection/open/$callId/answer',
+      body.toJson(),
+    ),
+  );
+
+  /// Opt in or out of receiving open calls. Returns what it now is.
+  Future<bool> receiveOpenProtectionCalls(bool receiving) async {
+    final body = await _putJson('/console/v1/protection/open/receiving', {
+      'receiving': receiving,
+    });
+    return (body ?? const {})['receiving'] as bool? ?? false;
+  }
+
   /// The expiry calendar across every operator, worst first
   /// (`03-operator-lifecycle.md` §6, "Conformité").
   ///

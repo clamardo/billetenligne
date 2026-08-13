@@ -115,6 +115,10 @@ Future<int> main(List<String> args) async {
     'alerts': seatAlerts.notify,
     'alerts-expired': seatAlerts.expire,
     'reservations': sweepers.expireReservations,
+    // A call for help nobody answered. Cheap, and it has to run often rather
+    // than early: an inbox of stale requests is an inbox nobody opens, and
+    // the cost of that lands on the next real call.
+    'calls': sweepers.expireProtectionCalls,
     // The one pass that takes something away rather than tidying up: it
     // stops an operator whose insurance lapsed from selling, and suspends
     // them a week later. Late in the order because the ladder is measured in

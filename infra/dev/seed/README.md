@@ -68,7 +68,7 @@ Pointe-Noire must mean the same Pointe-Noire, and it belongs to nobody.
 | Code | Name | State | There to show |
 |---|---|---|---|
 | `DEMO-ALZ` | Alizés Transport | active, papers in order | ordinary selling on BZV↔PNR and BZV↔DOL |
-| `DEMO-KLV` | Kouilou Voyages | active, insurance in 20 days | the console's compliance banner; the counterparty for protection |
+| `DEMO-KLV` | Kouilou Voyages | active, insurance in 20 days | the console's compliance banner; the counterparty for protection, and the console that answers an open call |
 | `DEMO-LKN` | Cars Lékana | active, insurance lapsed | the red row on Conformité, and the pass that stops the sale |
 | `DEMO-SERGE` | Niari Express | submitted, small and complete | the onboarding pass approving on its own |
 | `DEMO-CLONE` | (a second "Alizés Transport") | submitted, duplicate name | the pass sorting to `elevated` and leaving it for a person |
@@ -85,6 +85,29 @@ dart run services/worker/bin/worker.dart compliance   # stops Cars Lékana selli
 `BEL__SCREENING=demo`. That flag is safe to leave set: the screening adapter
 clears companies by their own `DEMO-` code, not by the environment, so a flag
 that survives into a real deployment auto-approves nobody.
+
+## The open-protection channel
+
+Both selling companies are **in the channel** (`08-disruption.md` §5), so a
+call for room put out from either console reaches somebody. That is not a
+column the seed sets: it goes through the protection desk, so the audit trail
+says which owner joined and on what date — which is the question a dispute
+about a rebill actually asks.
+
+A call itself is not seeded, and cannot be: the number of seats on a call is
+how many people are *on the coach*, and a call for an empty departure is
+refused on purpose. Sell a ticket or two on an Alizés departure first, declare
+a breakdown on it, then broadcast — Kouilou's console has the call within a
+refresh, and answering it moves the passengers and posts the rebill in one
+commit. First to accept wins; there is no second winner to test against on a
+one-console demo, but the loser's path is covered in
+`services/api/test/integration/open_protection_pg_test.dart`.
+
+Calls nobody answers do not linger:
+
+```bash
+dart run services/worker/bin/worker.dart calls   # closes the ones past their window
+```
 
 ## People
 

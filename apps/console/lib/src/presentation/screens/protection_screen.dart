@@ -70,6 +70,19 @@ final class ProtectionScreen extends StatelessWidget {
           return a.awaitingUs ? -1 : 1;
         });
 
+    // Ours first, then everybody else's, newest first inside each. Our own
+    // call is the one with our passengers standing beside it.
+    final liveCalls =
+        [
+          for (final call in workspace.calls.calls)
+            if (call.isOpen) call,
+        ]..sort((a, b) {
+          if (a.weOpened == b.weOpened) {
+            return b.openedAt.compareTo(a.openedAt);
+          }
+          return a.weOpened ? -1 : 1;
+        });
+
     return ListView(
       padding: EdgeInsets.all(kilo.space.s4),
       children: [
@@ -129,6 +142,82 @@ final class ProtectionScreen extends StatelessWidget {
           SizedBox(height: kilo.space.s3),
         ],
 
+        // Open protection, above the agreements and below the live requests.
+        //
+        // The order on this screen is the order of how much of a hurry
+        // somebody is in: a named request has a company waiting on an answer,
+        // a call has a road full of people who might not have noticed, and an
+        // agreement is read once a quarter. An operator with no agreements at
+        // all — which is most of them, on day one — has this section and
+        // nothing else, and it is the reason §5's last sentence exists.
+        if (canDecide || canManage) ...[
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.t('console.open.title'),
+                      style: kilo.text.label,
+                    ),
+                    SizedBox(height: kilo.space.s1),
+                    Text(
+                      context.t(
+                        workspace.calls.receiving
+                            ? 'console.open.inChannel'
+                            : 'console.open.outOfChannel',
+                      ),
+                      style: kilo.text.caption.copyWith(
+                        color: kilo.color.contentSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Joining the channel is a standing commitment about what this
+              // company is for, so it needs the capability that signs things
+              // rather than the one that drives.
+              if (canManage)
+                Switch(
+                  value: workspace.calls.receiving,
+                  onChanged: workspace.receiveOpenProtectionCalls,
+                ),
+            ],
+          ),
+          SizedBox(height: kilo.space.s2),
+
+          if (liveCalls.isEmpty)
+            Padding(
+              padding: EdgeInsets.only(bottom: kilo.space.s3),
+              child: Text(
+                // Which kind of empty this is, said out loud. "Nobody needs
+                // help right now" and "you never said yes" are the same zero
+                // rows and completely different situations.
+                context.t(
+                  workspace.calls.receiving
+                      ? 'console.open.quiet'
+                      : 'console.open.notListening',
+                ),
+                style: kilo.text.caption.copyWith(
+                  color: kilo.color.contentSecondary,
+                ),
+              ),
+            )
+          else
+            for (final call in liveCalls)
+              Padding(
+                padding: EdgeInsets.only(bottom: kilo.space.s3),
+                child: _CallCard(
+                  call: call,
+                  canDecide: canDecide,
+                  onWithdraw: () => workspace.withdrawProtectionCall(call.id),
+                  onAnswer: () => _answer(context, call),
+                ),
+              ),
+          SizedBox(height: kilo.space.s3),
+        ],
+
         if (waiting.isNotEmpty) ...[
           Text(
             context.t('console.protection.awaitingUs'),
@@ -171,6 +260,83 @@ final class ProtectionScreen extends StatelessWidget {
               ),
             ),
       ],
+    );
+  }
+
+  /// Answering a call: pick one of our own coaches, then go.
+  ///
+  /// The list is fetched when the dialog opens rather than with the page,
+  /// because most mornings nobody breaks down and this is the one screen
+  /// where the extra request buys something. Seat counts on the buttons come
+  /// from the same search a traveller sees, so a coach that filled up while
+  /// the call sat there is not offered.
+  Future<void> _answer(BuildContext context, OpenCallDto call) async {
+    final candidates = await workspace.answerCandidates(call);
+    if (!context.mounted) return;
+
+    if (candidates.isEmpty) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(dialogContext.t('console.open.answer')),
+          content: Text(dialogContext.t('console.open.noCoach')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(dialogContext.t('common.actions.close')),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(dialogContext.t('console.open.answer')),
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                // First to accept wins, said before the tap and not after.
+                dialogContext.t('console.open.firstWins'),
+                style: dialogContext.kilo.text.caption.copyWith(
+                  color: dialogContext.kilo.color.contentSecondary,
+                ),
+              ),
+              SizedBox(height: dialogContext.kilo.space.s3),
+              for (final trip in candidates)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(_ProtectionTime.of(trip.departsAt)),
+                  subtitle: Text(
+                    dialogContext.t('console.open.seatsValue', {
+                      'free': '${trip.seatsAvailable}',
+                      'asked': '${call.seatsRequested}',
+                    }),
+                  ),
+                  onTap: () => Navigator.of(dialogContext).pop(trip.id),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(dialogContext.t('common.actions.cancel')),
+          ),
+        ],
+      ),
+    );
+
+    if (chosen == null) return;
+    await workspace.answerProtectionCall(
+      callId: call.id,
+      replacementDepartureId: chosen,
     );
   }
 
@@ -594,6 +760,142 @@ class _RequestCard extends StatelessWidget {
   }
 
   static String _time(DateTime instant) {
+    final local = instant.toUtc().add(const Duration(hours: 1));
+    return '${local.hour.toString().padLeft(2, '0')}h'
+        '${local.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+/// One open call, as either side of it reads.
+///
+/// The same card serves the company asking and the companies who might
+/// answer, because they are looking at the same facts and a second widget
+/// would be a second thing to keep in step. [OpenCallDto.weOpened] decides
+/// which single action is offered.
+class _CallCard extends StatelessWidget {
+  const _CallCard({
+    required this.call,
+    required this.canDecide,
+    this.onAnswer,
+    this.onWithdraw,
+  });
+
+  final OpenCallDto call;
+  final bool canDecide;
+  final VoidCallback? onAnswer;
+  final VoidCallback? onWithdraw;
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+
+    return KCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      call.weOpened
+                          ? context.t('console.open.ours')
+                          : call.sendingOperatorName,
+                      style: kilo.text.h3,
+                    ),
+                    SizedBox(height: kilo.space.s1),
+                    Text(
+                      context.t(
+                        call.weOpened
+                            ? 'console.open.weAsked'
+                            : 'console.open.theyAsked',
+                        {
+                          'count': call.seatsRequested,
+                          'name': call.sendingOperatorName,
+                        },
+                      ),
+                      style: kilo.text.body.copyWith(
+                        color: kilo.color.contentSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              KChip(
+                context.t('console.open.state.${call.state}'),
+                tone: call.isOpen ? KChipTone.warning : KChipTone.neutral,
+              ),
+            ],
+          ),
+          SizedBox(height: kilo.space.s3),
+
+          _Term(
+            label: context.t('console.open.road'),
+            value: '${call.originCity} → ${call.destinationCity}',
+          ),
+          if (call.departsAt case final at?)
+            _Term(
+              label: context.t('console.open.coach'),
+              value: _ProtectionTime.of(at),
+            ),
+          // What the whole coach-load is worth, which is the figure an
+          // operator decides on. Per seat is what the terms are; this is
+          // what it is worth.
+          _Term(
+            label: context.t('console.open.rebill'),
+            value: call.rebillTotal.format(locale: context.language),
+          ),
+          if (call.note case final note?)
+            _Term(label: context.t('console.open.note'), value: note),
+
+          if (call.isOpen) ...[
+            SizedBox(height: kilo.space.s2),
+            Text(
+              // The one thing about a broadcast that is not obvious, and the
+              // reason a dispatcher must not read "sent" and walk away:
+              // nobody in particular has been asked, so nobody in particular
+              // owes an answer.
+              context.t(
+                call.weOpened
+                    ? 'console.open.nobodyOwesUs'
+                    : 'console.open.firstWins',
+              ),
+              style: kilo.text.caption.copyWith(
+                color: kilo.color.contentSecondary,
+              ),
+            ),
+          ],
+
+          if (canDecide && call.isOpen) ...[
+            SizedBox(height: kilo.space.s3),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (call.weOpened)
+                  TextButton(
+                    onPressed: onWithdraw,
+                    child: Text(context.t('console.open.withdraw')),
+                  )
+                else
+                  FilledButton(
+                    onPressed: onAnswer,
+                    child: Text(context.t('console.open.answer')),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Brazzaville local time, the way both cards on this screen print it.
+abstract final class _ProtectionTime {
+  static String of(DateTime instant) {
     final local = instant.toUtc().add(const Duration(hours: 1));
     return '${local.hour.toString().padLeft(2, '0')}h'
         '${local.minute.toString().padLeft(2, '0')}';

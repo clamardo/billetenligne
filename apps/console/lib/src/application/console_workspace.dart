@@ -104,6 +104,26 @@ final class ConsoleWorkspace {
   /// enforces that with a grant rather than with a missing button.
   List<PayoutRunDto> statements = const [];
 
+  /// Open calls for room on roads we run, ours and other people's, plus
+  /// whether we are in the channel at all (`08-disruption.md` §5).
+  ///
+  /// Loaded wherever the agreements are, and for the same reason: the
+  /// dispatcher's disruption sheet has to know that broadcasting is possible
+  /// before it draws the option. An operator with no agreements at all —
+  /// which is most of them, on day one — has this and nothing else.
+  OpenCallsDto calls = const OpenCallsDto(receiving: false, calls: []);
+
+  /// Calls somebody else has made that we could answer. The number on the
+  /// tab: an unanswered call for help is the one thing on this console with
+  /// a person standing beside it.
+  int get callsAwaitingUs =>
+      calls.calls.where((c) => c.isOpen && !c.weOpened).length;
+
+  /// Our own live call, if we have one. At most one per broken coach, so
+  /// this is the whole state of "have we asked the road for help".
+  OpenCallDto? get ourLiveCall =>
+      calls.calls.where((c) => c.isOpen && c.weOpened).firstOrNull;
+
   /// Standing protection agreements, in either role (`08-disruption.md` §5).
   ///
   /// Loaded for the whole console rather than only its own section, because
@@ -213,6 +233,7 @@ final class ConsoleWorkspace {
         if (_canSeeProtection) {
           agreements = await _gateway.protectionAgreements();
           requests = await _gateway.protectionRequests();
+          calls = await _gateway.openProtectionCalls();
         }
       case ConsoleSection.counter:
         board = await _gateway.board(day);
@@ -237,6 +258,7 @@ final class ConsoleWorkspace {
       case ConsoleSection.protection:
         agreements = await _gateway.protectionAgreements();
         requests = await _gateway.protectionRequests();
+        calls = await _gateway.openProtectionCalls();
         // The corridors offered when proposing are built from the lines this
         // operator actually runs. Loading them lazily would mean an empty
         // list the first time the dialog opens, which reads as "we serve
@@ -590,6 +612,90 @@ final class ConsoleWorkspace {
           'protection.movedPartial|${decided.seatsMoved ?? 0}'
           '|${decided.seatsRequested}|${decided.counterpartyName}';
     }
+    await _loadSection();
+  });
+
+  // ── Open protection (§5) ──────────────────────────────────────────────
+
+  /// Our own departures that could carry the people on somebody else's
+  /// broken coach.
+  ///
+  /// Read from the **public search**, which is the same list a traveller
+  /// sees, and then narrowed to ours. Not from the board: the board is one
+  /// local day of our own coaches and the call may be for tomorrow morning,
+  /// and asking the search means the seat counts on the buttons are the ones
+  /// being sold from rather than a number cached at page load.
+  ///
+  /// Later than the broken departure and with seats left, for the obvious
+  /// reason: offering a coach that has already gone is offering nothing.
+  Future<List<DepartureSummaryDto>> answerCandidates(OpenCallDto call) async {
+    final when = call.departsAt ?? call.openedAt;
+    final trips = await _gateway.tripsOn(
+      originCity: call.originCity,
+      destinationCity: call.destinationCity,
+      date: when,
+    );
+    return [
+      for (final trip in trips)
+        if (trip.operatorId == _identity?.operatorId &&
+            trip.id != call.fromDepartureId &&
+            trip.departsAt.isAfter(when) &&
+            trip.seatsAvailable > 0)
+          trip,
+    ]..sort((a, b) => a.departsAt.compareTo(b.departsAt));
+  }
+
+  /// Broadcast for room to every opted-in operator on the road.
+  ///
+  /// Nobody in particular is asked, which is the whole point and also the
+  /// thing the notice has to say: a dispatcher who reads "envoyé" and walks
+  /// away is one who never finds out that nobody came.
+  Future<void> openProtectionCall({
+    required String departureId,
+    String? note,
+  }) => _run(() async {
+    final call = await _gateway.openProtectionCall(
+      OpenCallBody(departureId: departureId, note: note),
+    );
+    _notice = 'protection.broadcast|${call.seatsRequested}';
+    await _loadSection();
+  });
+
+  /// Take our own call back.
+  Future<void> withdrawProtectionCall(String callId) => _run(() async {
+    await _gateway.withdrawProtectionCall(callId);
+    _notice = 'protection.callWithdrawn';
+    await _loadSection();
+  });
+
+  /// Answer somebody's call with a departure of ours.
+  ///
+  /// **First to accept wins**, so the notice distinguishes losing the race
+  /// from a coach that turned out too small: one means somebody else has the
+  /// passengers and the other means they are still standing there.
+  Future<void> answerProtectionCall({
+    required String callId,
+    required String replacementDepartureId,
+    String? note,
+  }) => _run(() async {
+    final moved = await _gateway.answerProtectionCall(
+      callId: callId,
+      body: AnswerCallBody(
+        replacementDepartureId: replacementDepartureId,
+        note: note,
+      ),
+    );
+    _notice = moved.coversEverybody
+        ? 'protection.moved|${moved.seatsMoved ?? 0}|${moved.counterpartyName}'
+        : 'protection.movedPartial|${moved.seatsMoved ?? 0}'
+              '|${moved.seatsRequested}|${moved.counterpartyName}';
+    await _loadSection();
+  });
+
+  /// Join or leave the open-protection channel.
+  Future<void> receiveOpenProtectionCalls(bool receiving) => _run(() async {
+    await _gateway.receiveOpenProtectionCalls(receiving);
+    _notice = receiving ? 'protection.openIn' : 'protection.openOut';
     await _loadSection();
   });
 
