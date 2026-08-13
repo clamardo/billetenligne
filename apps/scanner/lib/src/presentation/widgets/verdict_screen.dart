@@ -33,6 +33,7 @@ class VerdictScreen extends StatelessWidget {
     final kilo = context.kilo;
     final style = _VerdictStyle.of(outcome.result, kilo.color);
     final payload = outcome.payload;
+    final leg = _leg;
 
     return Semantics(
       liveRegion: true,
@@ -79,6 +80,18 @@ class VerdictScreen extends StatelessWidget {
                       ),
                     ),
                   ],
+                  // Where they get off, when they bought a piece of the road
+                  // (ADR-0025). The conductor learns it here, at the door,
+                  // rather than at Dolisie when somebody stands up and the
+                  // seat behind them has already left empty.
+                  if (leg != null) ...[
+                    SizedBox(height: kilo.space.s2),
+                    Text(
+                      leg,
+                      textAlign: TextAlign.center,
+                      style: kilo.text.h3.copyWith(color: style.foreground),
+                    ),
+                  ],
                   if (_supportingLine != null) ...[
                     SizedBox(height: kilo.space.s5),
                     Text(
@@ -110,6 +123,15 @@ class VerdictScreen extends StatelessWidget {
     );
   }
 
+  /// Only for a piece of the road. A whole-journey ticket says the two towns
+  /// the coach itself is going between, which is the one thing everybody at
+  /// this door already knows.
+  String? get _leg {
+    final entry = outcome.entry;
+    if (entry?.alightsAt == null) return null;
+    return 'Descend à ${entry!.alightsAt}';
+  }
+
   String? get _supportingLine => switch (outcome.result) {
     VerificationResult.alreadyBoarded =>
       outcome.firstScannedAt == null
@@ -130,7 +152,9 @@ class VerdictScreen extends StatelessWidget {
 
   String get _spokenLabel {
     final name = outcome.payload?.passengerName ?? '';
-    return '${_VerdictStyle.wordFor(outcome.result)}. $name';
+    final leg = _leg;
+    return '${_VerdictStyle.wordFor(outcome.result)}. $name'
+        '${leg == null ? '' : '. $leg'}';
   }
 
   static String _hhmm(DateTime t) {

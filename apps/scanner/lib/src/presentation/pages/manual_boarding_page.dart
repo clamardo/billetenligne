@@ -167,7 +167,14 @@ class _PassengerRow extends StatelessWidget {
                   children: [
                     Text(entry.passengerName, style: kilo.text.h3),
                     Text(
-                      entry.bookingRef,
+                      // The leg beside the reference, for the same reason the
+                      // conductor's printed list carries it: this is the row
+                      // somebody is read out of at the roadside, and where
+                      // they get off is half of what is being checked.
+                      entry.alightsAt == null
+                          ? entry.bookingRef
+                          : '${entry.bookingRef}  ·  '
+                                '${entry.boardsAt} → ${entry.alightsAt}',
                       style: kilo.text.code.copyWith(
                         color: kilo.color.contentMuted,
                       ),

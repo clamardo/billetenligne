@@ -229,6 +229,52 @@ void main() {
     });
   });
 
+  group('the door knows where they get off', () {
+    test('a leg rides on the verdict, a whole road does not', () {
+      // Marie bought Brazzaville→Dolisie. The conductor scanning her at the
+      // door is the person who has to know 2C comes free three hours from
+      // now, and the only place that fact reaches them is here — the QR is
+      // signed and says nothing about it.
+      final leg = session.scan(
+        ticket('ZZ1188', '2C'),
+        presentedCode: liveCode('ZZ1188', '2C'),
+      );
+      expect(leg.result, VerificationResult.valid);
+      expect(leg.entry!.boardsAt, 'BZV');
+      expect(leg.entry!.alightsAt, 'DOL');
+
+      // Aline is riding the whole road, which is what the departure already
+      // says. Nothing extra goes on her verdict.
+      final whole = session.scan(
+        ticket('7QK4M2', '14A'),
+        presentedCode: liveCode('7QK4M2', '14A'),
+      );
+      expect(whole.entry!.alightsAt, isNull);
+    });
+
+    test('a dead phone boarded by hand carries it too', () {
+      // The manual path is the one used at the roadside with a flat battery,
+      // and it reads the same row.
+      final outcome = session.boardManually(
+        bookingRef: 'K2M8PQ',
+        seatLabel: '9D',
+      );
+      expect(outcome.result, VerificationResult.valid);
+      expect(outcome.entry!.boardsAt, 'DOL');
+    });
+
+    test('a second scan still names the leg', () {
+      final code = liveCode('ZZ1188', '2C');
+      session.scan(ticket('ZZ1188', '2C'), presentedCode: code);
+      final again = session.scan(ticket('ZZ1188', '2C'), presentedCode: code);
+
+      // The verdict a conductor argues with is the refusal, so it has to
+      // carry as much as the acceptance did.
+      expect(again.result, VerificationResult.alreadyBoarded);
+      expect(again.entry!.alightsAt, 'DOL');
+    });
+  });
+
   group('offline behaviour', () {
     test('a whole boarding run touches no network', () {
       // The session holds a manifest, a verifier and a local log. There is no

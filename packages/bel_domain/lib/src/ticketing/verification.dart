@@ -53,6 +53,7 @@ final class VerificationOutcome {
   const VerificationOutcome({
     required this.result,
     this.payload,
+    this.entry,
     this.firstScannedAt,
     this.expectedDepartureId,
     this.detail,
@@ -63,6 +64,11 @@ final class VerificationOutcome {
   /// Present whenever the signature verified — so even a wrong-departure or
   /// already-boarded verdict can name the passenger and seat.
   final TicketPayload? payload;
+
+  /// The manifest's own row for this ticket, present once it has been found.
+  /// It carries what the signed payload cannot: whether this passenger is
+  /// riding a piece of the road, and where they get off.
+  final ManifestEntry? entry;
 
   final DateTime? firstScannedAt;
   final String? expectedDepartureId;
@@ -123,11 +129,25 @@ final class ManifestEntry {
     required this.seatLabel,
     required this.passengerName,
     required this.rotatingSecret,
+    this.boardsAt,
+    this.alightsAt,
   });
 
   final String bookingRef;
   final String seatLabel;
   final String passengerName;
+
+  /// Where this passenger gets on and off, when they bought a piece of the
+  /// road rather than the whole of it (ADR-0025). Null is the ordinary
+  /// whole-journey ticket, which is what the departure already says.
+  ///
+  /// It lives on the manifest rather than in the QR on purpose. The payload
+  /// is signed, so putting the leg in it would mean a format change and a
+  /// scanner in the field refusing every ticket issued after the day we
+  /// shipped it — for a fact the device already downloaded before the coach
+  /// left the yard.
+  final String? boardsAt;
+  final String? alightsAt;
 
   /// Per-ticket secret, so the device can compute the expected freshness code
   /// offline. Never leaves the manifest, and the manifest never leaves the
@@ -251,6 +271,7 @@ final class TicketVerifier {
       return VerificationOutcome(
         result: VerificationResult.alreadyBoarded,
         payload: payload,
+        entry: entry,
         firstScannedAt: already,
       );
     }
@@ -265,6 +286,7 @@ final class TicketVerifier {
         return VerificationOutcome(
           result: VerificationResult.valid,
           payload: payload,
+          entry: entry,
           detail: 'printed',
         );
       }
@@ -278,6 +300,7 @@ final class TicketVerifier {
         return VerificationOutcome(
           result: VerificationResult.staleCode,
           payload: payload,
+          entry: entry,
         );
       }
     }
@@ -285,6 +308,7 @@ final class TicketVerifier {
     return VerificationOutcome(
       result: VerificationResult.valid,
       payload: payload,
+      entry: entry,
     );
   }
 
@@ -316,12 +340,14 @@ final class TicketVerifier {
     if (already != null) {
       return VerificationOutcome(
         result: VerificationResult.alreadyBoarded,
+        entry: entry,
         firstScannedAt: already,
       );
     }
 
     return VerificationOutcome(
       result: VerificationResult.valid,
+      entry: entry,
       detail: 'manual',
     );
   }

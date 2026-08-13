@@ -30,16 +30,70 @@ final class DemoDeparture {
   static const departureId = 'dep-bzv-pnr-0600';
   static const _seed = 'bel-dev-ticket-signing-seed-0000';
 
-  static final _passengers = <({String ref, String seat, String name})>[
-    (ref: '7QK4M2', seat: '14A', name: 'Aline Mabiala'),
-    (ref: '7QK4M2', seat: '14B', name: 'Pascal Nkouka'),
-    (ref: 'ZZ1188', seat: '2C', name: 'Marie Kimbembe'),
-    (ref: 'H4T9RB', seat: '5A', name: 'Jean-Marc Obami'),
-    (ref: 'H4T9RB', seat: '5B', name: 'Sylvie Loubaki'),
-    (ref: 'K2M8PQ', seat: '9D', name: 'Antoine Bikindou'),
-    (ref: 'R7V3XN', seat: '11C', name: 'Chantal Ngoma'),
-    (ref: 'T5W2YZ', seat: '3A', name: 'Firmin Massamba'),
-  ];
+  /// A coach on a road with a stop on it, because that is what this corridor
+  /// is: Brazzaville to Pointe-Noire through Dolisie. Two of the eight bought
+  /// a piece of it (ADR-0025) — one riding only as far as Dolisie, one
+  /// boarding there — and everybody else has the whole road, which is what a
+  /// leg being null means.
+  static final _passengers =
+      <({String ref, String seat, String name, String? from, String? to})>[
+        (
+          ref: '7QK4M2',
+          seat: '14A',
+          name: 'Aline Mabiala',
+          from: null,
+          to: null,
+        ),
+        (
+          ref: '7QK4M2',
+          seat: '14B',
+          name: 'Pascal Nkouka',
+          from: null,
+          to: null,
+        ),
+        (
+          ref: 'ZZ1188',
+          seat: '2C',
+          name: 'Marie Kimbembe',
+          from: 'BZV',
+          to: 'DOL',
+        ),
+        (
+          ref: 'H4T9RB',
+          seat: '5A',
+          name: 'Jean-Marc Obami',
+          from: null,
+          to: null,
+        ),
+        (
+          ref: 'H4T9RB',
+          seat: '5B',
+          name: 'Sylvie Loubaki',
+          from: null,
+          to: null,
+        ),
+        (
+          ref: 'K2M8PQ',
+          seat: '9D',
+          name: 'Antoine Bikindou',
+          from: 'DOL',
+          to: 'PNR',
+        ),
+        (
+          ref: 'R7V3XN',
+          seat: '11C',
+          name: 'Chantal Ngoma',
+          from: null,
+          to: null,
+        ),
+        (
+          ref: 'T5W2YZ',
+          seat: '3A',
+          name: 'Firmin Massamba',
+          from: null,
+          to: null,
+        ),
+      ];
 
   static Future<DemoDeparture> build({DateTime? departsAt}) async {
     final departure =
@@ -64,6 +118,12 @@ final class DemoDeparture {
         seatLabel: p.seat,
         passengerName: p.name,
         rotatingSecret: secret,
+        // On the manifest, not in the QR: the payload is signed, so putting
+        // the leg inside it would mean every ticket issued after the change
+        // is refused by a scanner nobody has updated — for a fact the device
+        // downloaded before the coach left the yard.
+        boardsAt: p.from,
+        alightsAt: p.to,
       );
 
       final payload = TicketPayload(
