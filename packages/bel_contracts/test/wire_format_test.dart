@@ -2292,6 +2292,20 @@ void main() {
       expect(back.unknown, isEmpty);
     });
 
+    // ADR-0026. The answer the counter gets back when it sends a ticket.
+    test('a sent ticket link carries an address and never a link', () {
+      final back = TicketLinkSentDto.fromJson(
+        jsonDecode('{"channel":"email","sentTo":"walkin@example.cg"}')
+            as Map<String, Object?>,
+      );
+
+      expect(back.channel, 'email');
+      expect(back.sentTo, 'walkin@example.cg');
+      // There is no field a token could arrive in, and that is the point: the
+      // plaintext is minted by the drain and lives in the message alone.
+      expect(back.toJson().keys, ['channel', 'sentTo']);
+    });
+
     test('a whole-road ticket carries no leg', () {
       final back = BoardingManifestDto.fromJson(
         jsonDecode(

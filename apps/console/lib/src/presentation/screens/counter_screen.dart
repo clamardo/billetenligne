@@ -662,7 +662,7 @@ class _CounterScreenState extends State<CounterScreen> {
 
   Future<void> _showReceipt(CounterSaleDto sale) => showDialog<void>(
     context: context,
-    builder: (_) => TicketReceipt(sale: sale),
+    builder: (_) => TicketReceipt(sale: sale, workspace: _work),
   );
 }
 

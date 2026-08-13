@@ -395,6 +395,18 @@ console:
     paid: "Paiement encaissé"
     total: "Total"
     smsQueued: "{count} billet(s) — SMS en cours d'envoi."
+    # La question au guichet (ADR-0026). Posée ici parce que c'est le seul
+    # moment où le client est devant le vendeur et peut épeler son adresse.
+    sendTitle: "Envoyer le billet au client ?"
+    sendWhy: "Il pourra le rouvrir n'importe quand : le QR est dans le message."
+    byEmail: "Par e-mail"
+    byPhone: "Par SMS"
+    address: "Adresse ou numéro"
+    addressHint: "Vide = celui du dossier"
+    send: "Envoyer"
+    sentTo: "Envoyé à {a1}"
+    sendAgain: "Renvoyer"
+    revoke: "Annuler le lien"
   vitrine:
     title: "Votre vitrine"
     intro: "C'est ce que voit un voyageur avant de choisir votre compagnie. Tout est modifiable, à tout moment."
@@ -550,6 +562,8 @@ console:
     rebook.partial: "{a1} relogés, {a2} sans solution. Trouvez-leur un car."
     counter.collected: "Encaissé. Référence {a1}."
     counter.sold: "Vendu. Référence {a1}."
+    ticketLink.sent: "Billet envoyé à {a1}. Relisez l'adresse au client."
+    ticketLink.revoked: "Lien annulé. Le billet reste valable."
     protection.proposed: "Proposition envoyée à {a1}. Rien n'est couvert tant qu'ils n'ont pas accepté."
     protection.accept: "Accord avec {a1} en vigueur."
     protection.decline: "Proposition de {a1} refusée."

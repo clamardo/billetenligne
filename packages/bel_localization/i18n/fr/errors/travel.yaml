@@ -14,6 +14,14 @@ errors:
   auth:
     unauthorized: "Connectez-vous pour continuer."
     forbidden: "Vous n'avez pas accès à cette action."
+  # ADR-0026. Le lien vers le billet : ce qui peut échouer est toujours un
+  # fait sur le monde — pas encore payé, rien où l'envoyer — parce que le
+  # vendeur est debout devant le client et doit savoir quoi dire.
+  ticketLink:
+    unknown_booking: "Cette réservation est introuvable."
+    nothing_to_send: "Ce billet n'est pas encore payé : il n'y a rien à envoyer."
+    channel_unavailable: "L'envoi par SMS n'est pas encore disponible. Utilisez l'e-mail."
+    no_destination: "Aucune adresse pour l'envoi. Demandez-la au client et saisissez-la."
   resource:
     not_found: "Introuvable."
     conflict: "Cette action est déjà en cours. Réessayez dans un instant."

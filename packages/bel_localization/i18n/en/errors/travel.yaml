@@ -14,6 +14,14 @@ errors:
   auth:
     unauthorized: "Sign in to continue."
     forbidden: "You do not have access to this action."
+  # ADR-0026. The ticket link: everything that can fail here is a fact about
+  # the world — not paid yet, nowhere to send it — because the vendor is
+  # standing in front of the customer and has to know what to say.
+  ticketLink:
+    unknown_booking: "That booking cannot be found."
+    nothing_to_send: "This ticket is not paid for yet, so there is nothing to send."
+    channel_unavailable: "Sending by SMS is not available yet. Use email."
+    no_destination: "No address to send it to. Ask the customer and type it in."
   resource:
     not_found: "Not found."
     conflict: "This action is already in progress. Try again shortly."

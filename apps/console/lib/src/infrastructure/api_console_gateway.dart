@@ -348,4 +348,19 @@ final class ApiConsoleGateway implements ConsoleGateway {
     stationId: stationId,
     idempotencyKey: idempotencyKey,
   );
+
+  @override
+  Future<TicketLinkSentDto> sendTicketLink({
+    required String bookingRef,
+    required String channel,
+    String? sendTo,
+  }) => _client.sendTicketLink(
+    bookingRef: bookingRef,
+    channel: channel,
+    sendTo: sendTo,
+  );
+
+  @override
+  Future<void> revokeTicketLinks(String bookingRef) =>
+      _client.revokeTicketLinks(bookingRef);
 }

@@ -698,6 +698,28 @@ final class BoardingUploadResultDto {
       );
 }
 
+/// What the counter gets back when it sends a ticket link (ADR-0026).
+///
+/// **No link.** The plaintext token is minted by the drain, in the transaction
+/// that composes the message, so it exists in the message and in a SHA-256
+/// hash — never on a till screen, where the next person in the queue can
+/// photograph it. What comes back is the address it went to, which is what the
+/// vendor reads back across the counter.
+final class TicketLinkSentDto {
+  const TicketLinkSentDto({required this.channel, required this.sentTo});
+
+  final String channel;
+  final String sentTo;
+
+  Map<String, Object?> toJson() => {'channel': channel, 'sentTo': sentTo};
+
+  factory TicketLinkSentDto.fromJson(Map<String, Object?> json) =>
+      TicketLinkSentDto(
+        channel: Wire.requireString(json['channel'], 'channel'),
+        sentTo: Wire.requireString(json['sentTo'], 'sentTo'),
+      );
+}
+
 /// What the guichet answers with: a paid booking and its tickets.
 final class CounterSaleDto {
   const CounterSaleDto({

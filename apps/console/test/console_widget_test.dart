@@ -732,6 +732,26 @@ final class _ScriptedConsole implements ConsoleGateway {
     return _sale;
   }
 
+  /// The address the vendor typed, echoed. The real server answers with what
+  /// it actually sent to, which on an empty field is the account's own.
+  @override
+  Future<TicketLinkSentDto> sendTicketLink({
+    required String bookingRef,
+    required String channel,
+    String? sendTo,
+  }) async {
+    saved.add('link:$bookingRef:$channel:${sendTo ?? ''}');
+    return TicketLinkSentDto(
+      channel: channel,
+      sentTo: sendTo ?? '+242069000001',
+    );
+  }
+
+  @override
+  Future<void> revokeTicketLinks(String bookingRef) async {
+    saved.add('unlink:$bookingRef');
+  }
+
   static final _sale = CounterSaleDto(
     id: 'bk-1',
     ref: 'BEL-7QK4M2',
@@ -2513,6 +2533,62 @@ void main() {
       // through the outbox and may take a minute.
       expect(find.text('Paiement encaissé'), findsOneWidget);
       expect(find.text('BEL-7QK4M2'), findsOneWidget);
+    });
+
+    // ADR-0026. The question is asked on the receipt because this is the only
+    // moment the customer is in front of the vendor and can spell their own
+    // address.
+    testWidgets('the receipt asks whether to send the ticket', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'booking.sell'],
+      );
+      await pump(tester, gateway);
+      await tester.tap(find.text('Guichet'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, 'K4M2Q');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Encaisser').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Envoyer le billet au client ?'), findsOneWidget);
+
+      // The last field on the screen is the one on the receipt dialog.
+      await tester.enterText(find.byType(TextField).last, 'walkin@example.cg');
+      await tester.tap(find.text('Envoyer'));
+      await tester.pumpAndSettle();
+
+      // The reference travels without its BEL- prefix, which is display only.
+      expect(gateway.saved, contains('link:7QK4M2:email:walkin@example.cg'));
+      // The address is read back, because a typo caught at the counter costs
+      // ten seconds and one caught at the coach door costs a ticket.
+      expect(find.textContaining('walkin@example.cg'), findsWidgets);
+    });
+
+    // Ten seconds, when a customer says they forwarded it to the wrong person.
+    testWidgets('and offers to take it back once it is sent', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'booking.sell'],
+      );
+      await pump(tester, gateway);
+      await tester.tap(find.text('Guichet'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, 'K4M2Q');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Encaisser').last);
+      await tester.pumpAndSettle();
+
+      // Nothing to revoke before anything has been sent.
+      expect(find.text('Annuler le lien'), findsNothing);
+
+      await tester.tap(find.text('Envoyer'));
+      await tester.pumpAndSettle();
+      expect(find.text('Annuler le lien'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Annuler le lien'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Annuler le lien'));
+      await tester.pumpAndSettle();
+      expect(gateway.saved, contains('unlink:7QK4M2'));
     });
 
     testWidgets('a short code cannot be submitted', (tester) async {

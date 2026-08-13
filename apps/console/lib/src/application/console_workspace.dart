@@ -956,6 +956,40 @@ final class ConsoleWorkspace {
     return moved;
   }
 
+  /// The question at the till: *voulez-vous aussi le recevoir ?* (ADR-0026).
+  ///
+  /// The notice names the address rather than saying "sent", because the
+  /// vendor's next sentence is reading it back — and a typo in an email
+  /// caught at the counter costs ten seconds, while one caught at the coach
+  /// door costs a ticket.
+  Future<TicketLinkSentDto?> sendTicketLink({
+    required String bookingRef,
+    required String channel,
+    String? sendTo,
+  }) async {
+    TicketLinkSentDto? sent;
+    await _run(() async {
+      sent = await _gateway.sendTicketLink(
+        bookingRef: bookingRef.trim(),
+        channel: channel,
+        sendTo: sendTo?.trim().isEmpty ?? true ? null : sendTo!.trim(),
+      );
+      _notice = 'ticketLink.sent|${sent!.sentTo}';
+    });
+    return sent;
+  }
+
+  /// Ten seconds, when a customer says they forwarded it to the wrong person.
+  Future<bool> revokeTicketLinks(String bookingRef) async {
+    var done = false;
+    await _run(() async {
+      await _gateway.revokeTicketLinks(bookingRef.trim());
+      _notice = 'ticketLink.revoked';
+      done = true;
+    });
+    return done;
+  }
+
   Future<ClaimedRefundDto?> payClaim({
     required String claimCode,
     required String stationId,

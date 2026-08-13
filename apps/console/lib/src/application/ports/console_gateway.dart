@@ -264,4 +264,16 @@ abstract interface class ConsoleGateway {
     required String stationId,
     required String idempotencyKey,
   });
+
+  /// Sends the customer their ticket (ADR-0026). Answers with the address it
+  /// went to, never with the link — the token does not exist yet when this
+  /// returns.
+  Future<TicketLinkSentDto> sendTicketLink({
+    required String bookingRef,
+    required String channel,
+    String? sendTo,
+  });
+
+  /// Kills every live link on a booking.
+  Future<void> revokeTicketLinks(String bookingRef);
 }

@@ -1087,6 +1087,29 @@ final class BelApiClient {
     ),
   );
 
+  /// Sends the customer their ticket (ADR-0026).
+  ///
+  /// **The answer contains no link.** The token is minted by the drain, in the
+  /// transaction that composes the message, so what comes back is the address
+  /// it went to — which is the thing the vendor reads back across the counter.
+  /// A URL on a till screen would be a ticket the next person in the queue can
+  /// photograph.
+  Future<TicketLinkSentDto> sendTicketLink({
+    required String bookingRef,
+    required String channel,
+    String? sendTo,
+  }) async => TicketLinkSentDto.fromJson(
+    await _postJson('/console/v1/bookings/$bookingRef/ticket-link', {
+      'channel': channel,
+      if (sendTo != null) 'sendTo': sendTo,
+    }),
+  );
+
+  /// Kills every live link on a booking — the ten seconds a vendor has when a
+  /// customer says they forwarded it to the wrong person.
+  Future<void> revokeTicketLinks(String bookingRef) =>
+      _send('DELETE', '/console/v1/bookings/$bookingRef/ticket-link');
+
   // ── The vitrine ───────────────────────────────────────────────────────────
 
   /// The operator's own storefront, for the editor.
