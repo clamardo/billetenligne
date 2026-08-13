@@ -1236,6 +1236,9 @@ final class PostgresOperatorConsole implements OperatorConsole {
       capacity: head['capacity'] as int,
       tickets: live,
       voided: voided,
+      // In the same request as the manifest, on the same signal, in the yard.
+      // The tap this list exists for happens where there is none.
+      waypoints: await _waypoints(tx, departureId, operatorId) ?? const [],
     );
   });
 
@@ -1314,6 +1317,141 @@ final class PostgresOperatorConsole implements OperatorConsole {
 
     return (recorded: recorded, unknown: unknown);
   });
+
+  @override
+  Future<({List<String> recorded, List<String> unknown})> confirmPassage({
+    required String operatorId,
+    required String departureId,
+    required String? reportedByUserId,
+    required List<PassageReport> passages,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final recorded = <String>[];
+    final unknown = <String>[];
+
+    for (final p in passages) {
+      // One statement resolves the stop against *this coach's road* and
+      // writes the checkpoint, so a device that got confused about which
+      // departure it was pinned to cannot report a waypoint from another
+      // route. `DO NOTHING` is the first-tap-wins rule, by primary key.
+      final done = await tx.execute(
+        Sql.named('''
+          INSERT INTO departure_checkpoints
+            (departure_id, route_stop_id, operator_id, passed_at,
+             reported_by, device_id)
+          SELECT d.id, rs.id, d.operator_id, @at, @by, @device
+            FROM departures d
+            JOIN route_stops rs ON rs.route_id = d.route_id
+           WHERE d.id = @departure
+             AND d.operator_id = @operator
+             AND rs.id = @stop
+          ON CONFLICT (departure_id, route_stop_id) DO NOTHING
+          RETURNING route_stop_id
+        '''),
+        parameters: {
+          'departure': TypedValue(Type.uuid, departureId),
+          'operator': TypedValue(Type.uuid, operatorId),
+          'stop': TypedValue(Type.uuid, p.stopId),
+          'at': TypedValue(Type.timestampTz, p.passedAt.toUtc()),
+          'by': TypedValue(Type.uuid, reportedByUserId),
+          'device': TypedValue(Type.text, p.deviceId),
+        },
+      );
+
+      if (done.isNotEmpty) {
+        recorded.add(p.stopId);
+        continue;
+      }
+
+      // Nothing written: either it is already there — which is a success from
+      // the device's point of view, and the whole reason a retry is safe — or
+      // this road has never had a stop with that id.
+      final existing = await tx.execute(
+        Sql.named('''
+          SELECT 1 FROM departure_checkpoints
+           WHERE departure_id = @departure AND route_stop_id = @stop
+        '''),
+        parameters: {
+          'departure': TypedValue(Type.uuid, departureId),
+          'stop': TypedValue(Type.uuid, p.stopId),
+        },
+      );
+
+      (existing.isEmpty ? unknown : recorded).add(p.stopId);
+    }
+
+    return (recorded: recorded, unknown: unknown);
+  });
+
+  @override
+  Future<List<Waypoint>?> waypoints({
+    required String operatorId,
+    required String departureId,
+  }) => _db.transaction(
+    DbScope.tenant(operatorId),
+    (tx) async => _waypoints(tx, departureId, operatorId),
+  );
+
+  /// The road, and what is confirmed on it.
+  ///
+  /// Returns null for a departure that is not this operator's, which is the
+  /// same answer as one that does not exist: a conductor's handset asking
+  /// about somebody else's coach learns nothing from the difference.
+  static Future<List<Waypoint>?> _waypoints(
+    TxSession tx,
+    String departureId,
+    String operatorId,
+  ) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT rs.id, rs.offset_minutes,
+               COALESCE(st.name, ci.name_fr) AS name,
+               c.passed_at
+          FROM departures d
+          JOIN route_stops rs ON rs.route_id = d.route_id
+          JOIN cities ci ON ci.code = rs.city_code
+          LEFT JOIN stations st ON st.id = rs.station_id
+          LEFT JOIN departure_checkpoints c
+                 ON c.departure_id = d.id AND c.route_stop_id = rs.id
+         WHERE d.id = @departure AND d.operator_id = @operator
+         ORDER BY rs.sequence
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, departureId),
+        'operator': TypedValue(Type.uuid, operatorId),
+      },
+    );
+
+    // A road with no intermediate stops is a real road — Brazzaville to
+    // Pointe-Noire direct — so an empty list has to be told apart from a
+    // departure this operator may not read. The existence check is separate
+    // for exactly that reason.
+    if (rows.isEmpty) {
+      final exists = await tx.execute(
+        Sql.named(
+          'SELECT 1 FROM departures '
+          'WHERE id = @departure AND operator_id = @operator',
+        ),
+        parameters: {
+          'departure': TypedValue(Type.uuid, departureId),
+          'operator': TypedValue(Type.uuid, operatorId),
+        },
+      );
+      return exists.isEmpty ? null : const [];
+    }
+
+    return [
+      for (final row in rows)
+        () {
+          final r = row.toColumnMap();
+          return Waypoint(
+            stopId: r['id'].toString(),
+            name: r['name'] as String,
+            offsetMinutes: r['offset_minutes'] as int,
+            passedAt: r['passed_at'] as DateTime?,
+          );
+        }(),
+    ];
+  }
 
   // ── Getting paid ──────────────────────────────────────────────────────────
 

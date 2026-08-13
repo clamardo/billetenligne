@@ -36,12 +36,12 @@ push, including the gaps.
 | `bel_design` — Kilo tokens, components, contrast gates | ✅ 67 tests |
 | `bel_backoffice` · `bel_secure_store` — shared sign-in, Keychain/Keystore | ✅ 16 tests |
 | `bel_client` — typed API client, retries, idempotency | ✅ 41 tests |
-| `services/api` — three surfaces, middleware, every route | ✅ 263 tests + 445 smoke checks |
+| `services/api` — three surfaces, middleware, every route | ✅ 263 tests + 454 smoke checks |
 | `services/worker` — outbox, payments, refunds, sweeps, compliance | ✅ 74 tests on real Postgres |
 | Database — schema, RLS, ledger, public sales boundary | ✅ 45 guarantees verified |
-| Everything against real Postgres | ✅ 506 integration tests |
+| Everything against real Postgres | ✅ 513 integration tests |
 | `apps/traveller` — search, seat map, pay, wallet, offline tickets | ✅ 230 tests |
-| `apps/scanner` — offline boarding, signed manifest, SQLite log | ✅ 47 tests |
+| `apps/scanner` — offline boarding, signed manifest, SQLite log | ✅ 62 tests |
 | `apps/console` — fleet, routes, timetables, refunds, payouts | ✅ 125 tests |
 | `apps/admin` — approvals, compliance, payouts, analytics | ✅ 35 tests |
 | Local dev stack, seeded demo world, VS Code debugger | ✅ `infra/dev`, `.vscode/` |
@@ -50,13 +50,13 @@ push, including the gaps.
 
 ```bash
 dart test packages/bel_domain                   # 2 s, no containers
-dart run tool/check_layers.dart                 # onion dependency rule, 421 files
+dart run tool/check_layers.dart                 # onion dependency rule, 424 files
 ./infra/migrations/check.sh                     # 45 schema guarantees (needs Docker)
-./tool/integration.sh                           # 506 tests on real Postgres
+./tool/integration.sh                           # 513 tests on real Postgres
 ./tool/smoke_api.sh                             # 445 checks, incl. the Dart client
 ```
 
-**1,439 tests in total**, plus the smoke checks, the schema guarantees, the
+**1,457 tests in total**, plus the smoke checks, the schema guarantees, the
 integration suite and 10 tests against real Azurite. The full command list is
 in [`docs/10-build-status.md`](docs/10-build-status.md).
 

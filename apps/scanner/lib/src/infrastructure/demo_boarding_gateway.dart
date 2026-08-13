@@ -43,6 +43,23 @@ final class DemoBoardingGateway implements BoardingGateway {
       signatures: demo.verifier,
       preparer: demo.verifier,
       simulatedScans: demo.simulatedScans(),
+      // The RN1's real waypoints, at their real offsets. A demo road with one
+      // invented stop would exercise the list without ever showing what it
+      // looks like on the run this app was built for.
+      waypoints: const [
+        WaypointDto(stopId: 'demo-kinkala', name: 'Kinkala', offsetMinutes: 90),
+        WaypointDto(
+          stopId: 'demo-madingou',
+          name: 'Madingou',
+          offsetMinutes: 240,
+        ),
+        WaypointDto(stopId: 'demo-nkayi', name: 'Nkayi', offsetMinutes: 300),
+        WaypointDto(
+          stopId: 'demo-dolisie',
+          name: 'Dolisie',
+          offsetMinutes: 400,
+        ),
+      ],
     );
   }
 
@@ -53,4 +70,11 @@ final class DemoBoardingGateway implements BoardingGateway {
     required String departureId,
     required List<BoardingUploadDto> boardings,
   }) async => {for (final b in boardings) b.key};
+
+  /// Settles everything, for the same reason.
+  @override
+  Future<Set<String>> uploadCheckpoints({
+    required String departureId,
+    required List<PassageUploadDto> passages,
+  }) async => {for (final p in passages) p.stopId};
 }

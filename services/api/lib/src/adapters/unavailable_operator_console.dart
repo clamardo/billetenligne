@@ -133,6 +133,20 @@ final class UnavailableOperatorConsole implements OperatorConsole {
   }) async => _refuse();
 
   @override
+  Future<({List<String> recorded, List<String> unknown})> confirmPassage({
+    required String operatorId,
+    required String departureId,
+    required String? reportedByUserId,
+    required List<PassageReport> passages,
+  }) async => _refuse();
+
+  @override
+  Future<List<Waypoint>?> waypoints({
+    required String operatorId,
+    required String departureId,
+  }) async => throw const ConsoleRequiresDatabase();
+
+  @override
   Future<List<BoardingDeparture>> boardingDay({
     required String operatorId,
     required DateTime localDate,

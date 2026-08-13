@@ -267,6 +267,7 @@ final class BoardingManifestData {
     required this.tickets,
     required this.voided,
     required this.capacity,
+    this.waypoints = const [],
   });
 
   final String departureId;
@@ -274,6 +275,15 @@ final class BoardingManifestData {
   final String routeCode;
   final DateTime departsAt;
   final int capacity;
+
+  /// The road, in the order it runs, so the conductor can confirm passage
+  /// from a dead zone (ADR-0014 §1, tier 2).
+  ///
+  /// Shipped with the manifest for the same reason the public keys are: the
+  /// tap that matters happens 300 km from the nearest usable signal, and a
+  /// list of waypoints fetched on demand is a list that is never there when
+  /// somebody needs it.
+  final List<Waypoint> waypoints;
 
   /// Live tickets, one per seat.
   final List<BoardingTicket> tickets;
@@ -310,6 +320,51 @@ final class BoardingTicket {
   /// road (ADR-0025). Null is the whole journey.
   final String? boardsAt;
   final String? alightsAt;
+}
+
+/// A place on the road a conductor can confirm the coach has passed.
+///
+/// A route stop rather than a coordinate: Dolisie, Nkayi, Madingou are places
+/// with names, already in the timetable with the minutes into the run, and a
+/// follower who reads *passé Dolisie* knows where that is.
+final class Waypoint {
+  const Waypoint({
+    required this.stopId,
+    required this.name,
+    required this.offsetMinutes,
+    this.passedAt,
+  });
+
+  final String stopId;
+
+  /// The station if the stop names one, the city otherwise.
+  final String name;
+
+  /// Minutes into the run, which is what places it on the follower's bar.
+  final int offsetMinutes;
+
+  /// When this coach was confirmed past it, or null for a waypoint still
+  /// ahead. Carried so a handset that relaunches mid-route redraws what it
+  /// already sent rather than offering to confirm Dolisie a second time.
+  final DateTime? passedAt;
+}
+
+/// A conductor's tap: this coach is past this place, at this time.
+final class PassageReport {
+  const PassageReport({
+    required this.stopId,
+    required this.passedAt,
+    this.deviceId,
+  });
+
+  final String stopId;
+
+  /// The device's clock, at the roadside. It is the only one that was there —
+  /// a checkpoint stamped with the hour it happened to sync would report the
+  /// coach ninety minutes behind where it is.
+  final DateTime passedAt;
+
+  final String? deviceId;
 }
 
 /// One boarding a device recorded while it was offline.
@@ -490,6 +545,34 @@ abstract interface class OperatorConsole {
     required String departureId,
     required String? scannedByUserId,
     required List<Boarding> boardings,
+  });
+
+  /// The conductor confirms the coach is past a waypoint (ADR-0014 §1,
+  /// tier 2).
+  ///
+  /// **First tap wins**, like a redemption: a conductor who double-taps means
+  /// the same thing twice, and the time somebody acts on is the first one.
+  /// The row is append-only — there is no grant to revise it — because a
+  /// claim that a coach was somewhere at a time is not something anybody gets
+  /// to edit afterwards.
+  ///
+  /// Returns what was accepted and what this road has never heard of. Both
+  /// leave the device's outbox, for the reason above [recordBoardings].
+  Future<({List<String> recorded, List<String> unknown})> confirmPassage({
+    required String operatorId,
+    required String departureId,
+    required String? reportedByUserId,
+    required List<PassageReport> passages,
+  });
+
+  /// The road this coach runs, and which of its waypoints are confirmed.
+  ///
+  /// Read by the console rather than by the scanner, which already has the
+  /// list from its pinned manifest. Null when the departure is not this
+  /// operator's.
+  Future<List<Waypoint>?> waypoints({
+    required String operatorId,
+    required String departureId,
   });
 
   /// Everything a scanner needs to board this coach with the radio switched

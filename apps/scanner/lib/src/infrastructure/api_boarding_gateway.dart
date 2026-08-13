@@ -56,6 +56,9 @@ final class ApiBoardingGateway implements BoardingGateway {
       ),
       signatures: verifier,
       preparer: verifier,
+      // Straight through. The road is a list of names and offsets — nothing
+      // to decode, and nothing this adapter is entitled to reinterpret.
+      waypoints: dto.waypoints,
     );
   }
 
@@ -71,6 +74,20 @@ final class ApiBoardingGateway implements BoardingGateway {
     // Both lists leave the outbox. `unknown` is not a failure to be retried —
     // it is a ticket this coach has never heard of, and it will still be one
     // tomorrow.
+    return {...result.recorded, ...result.unknown};
+  }
+
+  @override
+  Future<Set<String>> uploadCheckpoints({
+    required String departureId,
+    required List<PassageUploadDto> passages,
+  }) async {
+    final result = await _client.confirmPassage(
+      departureId: departureId,
+      passages: passages,
+    );
+    // Same rule, same reason: a stop id this road has never had will not
+    // start being on it tomorrow either.
     return {...result.recorded, ...result.unknown};
   }
 }

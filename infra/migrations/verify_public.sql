@@ -1015,7 +1015,12 @@ BEGIN
    WHERE r.routine_name = 'followed_trip'
      AND p.parameter_mode = 'OUT'
      AND p.parameter_name ~ 'seat|ref|fare|price|minor|phone|msisdn|name'
-     AND p.parameter_name NOT IN ('operator_name');
+     -- Both exceptions are things rather than people: the company running the
+     -- coach, and a place on the road. `checkpoint_name` is *Dolisie*, which
+     -- is the whole point of the second tracking tier (0043) — if it ever
+     -- carried a person's name this guarantee would be the one to change,
+     -- and it would not be changed.
+     AND p.parameter_name NOT IN ('operator_name', 'checkpoint_name');
   IF leaked IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL: the follower page exposes %', leaked;
   END IF;
@@ -2325,5 +2330,77 @@ BEGIN
   PERFORM set_config('app.public', 'off', true);
   PERFORM set_config('app.platform', 'off', true);
   RAISE NOTICE 'OK  a link hands over a counter account, never a person''s';
+END
+$$;
+
+-- ── 24. Where a coach has been is not a table anybody can walk ──────────────
+--
+-- 0043. The conductor's tap is the first thing this product records about a
+-- vehicle's *position*, and the reason it was acceptable to build at all is
+-- that it follows a coach and never a person (ADR-0014). That is a promise
+-- about who can read it, and a promise about who can change it.
+--
+-- Three claims, in the order they would break:
+--
+--   * the follower reads a checkpoint only through `followed_trip`. A public
+--     SELECT on the table would be row-enumerable across every operator's
+--     movements, which is a fleet-tracking feed nobody agreed to publish;
+--   * an operator sees its own coaches and no others, the shape 0004 gives
+--     every tenant table;
+--   * and nobody may revise one. A claim that a coach was somewhere at a time
+--     is evidence — a delay dispute, a missed connection — and a row that can
+--     be edited afterwards is not.
+DO $$
+DECLARE
+  ocean UUID := '11111111-1111-1111-1111-111111111111';
+  seen  INT;
+  wrote BOOLEAN := FALSE;
+BEGIN
+  RESET ROLE;
+  PERFORM set_config('app.platform', 'on', true);
+  SET LOCAL ROLE bel_admin;
+
+  -- The public role cannot read the table at all — not filtered to nothing,
+  -- refused. A grant is what would have to be added for that to change, and
+  -- adding one would fail here.
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.public', 'on', true);
+  BEGIN
+    SELECT count(*) INTO seen FROM departure_checkpoints;
+    RAISE EXCEPTION 'FAIL: the public role can read where coaches are';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  -- And the operator whose coach it is may not rewrite one.
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.public', 'off', true);
+  PERFORM set_config('app.platform', 'off', true);
+  PERFORM set_config('app.tenant_id', ocean::text, true);
+
+  BEGIN
+    UPDATE departure_checkpoints SET passed_at = now();
+    wrote := TRUE;
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+  IF wrote THEN
+    RAISE EXCEPTION 'FAIL: a checkpoint can be moved after the fact';
+  END IF;
+
+  BEGIN
+    DELETE FROM departure_checkpoints;
+    wrote := TRUE;
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+  IF wrote THEN
+    RAISE EXCEPTION 'FAIL: a checkpoint can be deleted';
+  END IF;
+
+  RESET ROLE;
+  PERFORM set_config('app.tenant_id', '', true);
+  RAISE NOTICE 'OK  a coach''s position is read through one door and never rewritten';
 END
 $$;

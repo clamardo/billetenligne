@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'src/application/boarding_session.dart';
 import 'src/application/boarding_sync.dart';
 import 'src/application/ports/boarding_gateway.dart';
+import 'src/application/road_progress.dart';
 import 'src/application/simulated_scan.dart';
 import 'src/infrastructure/api_boarding_gateway.dart';
 import 'src/infrastructure/demo_boarding_gateway.dart';
@@ -241,6 +242,7 @@ class _CoachFlowState extends State<_CoachFlow> {
 
   BoardingSession? _session;
   BoardingSync? _sync;
+  RoadProgress? _road;
   List<SimulatedScan> _simulatedScans = const [];
 
   @override
@@ -281,10 +283,18 @@ class _CoachFlowState extends State<_CoachFlow> {
     if (store == null) return;
 
     var settled = 0;
-    for (final departureId in store.departuresAwaitingSync()) {
+    // The union of the two queues: a coach can have unsent waypoints and no
+    // unsent boardings — a conductor who confirmed Dolisie on a run that
+    // boarded in the yard — and that tap would otherwise wait for somebody to
+    // re-open that departure.
+    for (final departureId in {
+      ...store.departuresAwaitingSync(),
+      ...store.departuresAwaitingCheckpoints(),
+    }) {
       final report = await BoardingSync(
         gateway: widget.gateway,
         outbox: store.forDeparture(departureId),
+        road: store.roadFor(departureId),
         departureId: departureId,
       ).drain();
       settled += report.settled;
@@ -312,15 +322,18 @@ class _CoachFlowState extends State<_CoachFlow> {
       // same seat label boards on both.
       final RedemptionOutbox outbox;
       final RedemptionLog log;
+      final CheckpointOutbox road;
       final store = widget.log;
       if (store == null) {
         final memory = MemoryRedemptionLog();
         outbox = memory;
         log = memory;
+        road = MemoryCheckpointLog();
       } else {
         final persisted = store.forDeparture(coach.id);
         outbox = persisted;
         log = persisted;
+        road = store.roadFor(coach.id);
       }
 
       if (!mounted) return;
@@ -344,7 +357,14 @@ class _CoachFlowState extends State<_CoachFlow> {
         _sync = BoardingSync(
           gateway: widget.gateway,
           outbox: outbox,
+          road: road,
           departureId: coach.id,
+        );
+        _road = RoadProgress(
+          road: pinned.waypoints,
+          outbox: road,
+          clock: const SystemClock(),
+          deviceId: widget.deviceId,
         );
       });
     } on Object catch (e) {
@@ -405,6 +425,7 @@ class _CoachFlowState extends State<_CoachFlow> {
     setState(() {
       _session = null;
       _sync = null;
+      _road = null;
       _simulatedScans = const [];
     });
     await _load();
@@ -420,6 +441,7 @@ class _CoachFlowState extends State<_CoachFlow> {
         session: session,
         simulatedScans: _simulatedScans,
         sync: _sync,
+        road: _road,
         onLeave: _leave,
       );
     }

@@ -1068,6 +1068,33 @@ final class BelApiClient {
     }),
   );
 
+  /// Confirms the coach is past a waypoint (ADR-0014 §1, tier 2).
+  ///
+  /// A batch and idempotent, like the boardings beside it: the tap happens in
+  /// a dead zone and the outbox empties later, possibly twice. What comes
+  /// back names what was accepted and what this road has never heard of, and
+  /// **both leave the queue**.
+  Future<BoardingUploadResultDto> confirmPassage({
+    required String departureId,
+    required List<PassageUploadDto> passages,
+  }) async => BoardingUploadResultDto.fromJson(
+    await _postJson('/console/v1/departures/$departureId/checkpoints', {
+      'passages': [for (final p in passages) p.toJson()],
+    }),
+  );
+
+  /// The road this coach runs, and which of its waypoints are confirmed.
+  ///
+  /// The scanner does not need this — its pinned manifest already carries the
+  /// road. It is here for anything that wants the list without pinning.
+  Future<List<WaypointDto>> waypointsFor(String departureId) async {
+    final body = await _get('/console/v1/departures/$departureId/checkpoints');
+    return [
+      for (final row in (body['waypoints'] as List? ?? const []))
+        WaypointDto.fromJson(row as Map<String, Object?>),
+    ];
+  }
+
   /// Collect against a reservation made on a phone.
   Future<CounterSaleDto> collectPayment({
     required String paymentCode,

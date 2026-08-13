@@ -171,6 +171,51 @@ void main() {
     // And the one nobody scanned is still the one the conductor calls for.
     expect(resumed.noShows.single.seatLabel, '2C');
   });
+
+  group('the road, in the same file', () {
+    test('a confirmed waypoint survives the app being killed', () {
+      store.roadFor('dep-1').confirm(stopId: 'stop-dolisie', at: at);
+
+      // A conductor confirms Dolisie four hours into a run with no signal.
+      // Losing that to a backgrounded camera app is losing the only reason
+      // somebody at the far end stopped phoning the agency.
+      final relaunched = store.roadFor('dep-1');
+      expect(relaunched.confirmed()['stop-dolisie'], at);
+      expect(relaunched.pending().single.stopId, 'stop-dolisie');
+      expect(store.departuresAwaitingCheckpoints(), ['dep-1']);
+    });
+
+    test('first tap wins, by the storage engine', () {
+      final road = store.roadFor('dep-1');
+      road.confirm(stopId: 'stop-nkayi', at: at);
+      road.confirm(stopId: 'stop-nkayi', at: at.add(const Duration(hours: 1)));
+
+      // The same rule the server enforces with ON CONFLICT DO NOTHING, held
+      // here by INSERT OR IGNORE rather than by whoever remembers it.
+      expect(road.confirmed()['stop-nkayi'], at);
+    });
+
+    test('two coaches in a day do not share a road', () {
+      store.roadFor('dep-1').confirm(stopId: 'stop-nkayi', at: at);
+
+      // A conductor works the outbound and the return. The same waypoint is
+      // passed on both, and a log that could not tell them apart would show
+      // the evening run already past Nkayi before it left.
+      expect(store.roadFor('dep-2').confirmed(), isEmpty);
+      expect(store.roadFor('dep-2').pending(), isEmpty);
+    });
+
+    test('what went up stops being pending, and stays confirmed', () {
+      final road = store.roadFor('dep-1');
+      road.confirm(stopId: 'stop-nkayi', at: at);
+      road.markSynced(['stop-nkayi']);
+
+      expect(road.pending(), isEmpty);
+      expect(store.departuresAwaitingCheckpoints(), isEmpty);
+      // Sent is not forgotten: the list still has to draw the tick.
+      expect(road.confirmed(), contains('stop-nkayi'));
+    });
+  });
 }
 
 final class _NothingVerifies implements SignatureVerifier {

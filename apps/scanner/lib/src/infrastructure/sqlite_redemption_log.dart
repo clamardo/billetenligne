@@ -56,6 +56,21 @@ final class SqliteRedemptionStore {
         PRIMARY KEY (departure_id, key)
       )
     ''');
+
+    // The road, in the same file. A second table rather than a column,
+    // because a checkpoint is a place and a boarding is a person, and sharing
+    // one would mean every query about who boarded had to remember to exclude
+    // the other.
+    _db.execute('''
+      CREATE TABLE IF NOT EXISTS checkpoints (
+        departure_id TEXT    NOT NULL,
+        stop_id      TEXT    NOT NULL,
+        passed_at    INTEGER NOT NULL,
+        device_id    TEXT,
+        synced       INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (departure_id, stop_id)
+      )
+    ''');
   }
 
   /// The log for one coach.
@@ -65,6 +80,24 @@ final class SqliteRedemptionStore {
   /// would refuse the second coach's 14A as already boarded.
   RedemptionLogForDeparture forDeparture(String departureId) =>
       RedemptionLogForDeparture._(_db, departureId);
+
+  /// The road this coach has been confirmed along, scoped the same way and
+  /// for the same reason.
+  CheckpointLogForDeparture roadFor(String departureId) =>
+      CheckpointLogForDeparture._(_db, departureId);
+
+  /// Coaches this device still has unsent checkpoints for.
+  ///
+  /// Separate from [departuresAwaitingSync] because a coach can have one
+  /// without the other: a conductor confirms Dolisie on a run whose boardings
+  /// all went up in the yard, and that tap would otherwise sit on the handset
+  /// until somebody happened to re-open that departure.
+  List<String> departuresAwaitingCheckpoints() => [
+    for (final row in _db.select(
+      'SELECT DISTINCT departure_id FROM checkpoints WHERE synced = 0',
+    ))
+      row['departure_id'] as String,
+  ];
 
   /// Coaches this device still has unsent boardings for.
   ///
@@ -167,4 +200,71 @@ final class RedemptionLogForDeparture
         codeWasStale: (row['code_stale'] as int) == 1,
       ),
   ];
+}
+
+/// One coach's road, behind the outbox the scanner asks for.
+final class CheckpointLogForDeparture implements CheckpointOutbox {
+  CheckpointLogForDeparture._(this._db, this._departureId);
+
+  final Database _db;
+  final String _departureId;
+
+  @override
+  void confirm({
+    required String stopId,
+    required DateTime at,
+    String? deviceId,
+  }) {
+    // OR IGNORE is the first-tap-wins rule, enforced by the storage engine
+    // rather than by whoever remembers it — the same guarantee the server
+    // makes with ON CONFLICT DO NOTHING.
+    _db.execute(
+      'INSERT OR IGNORE INTO checkpoints '
+      '(departure_id, stop_id, passed_at, device_id) VALUES (?, ?, ?, ?)',
+      [_departureId, stopId, at.toUtc().millisecondsSinceEpoch, deviceId],
+    );
+  }
+
+  @override
+  Map<String, DateTime> confirmed() => {
+    for (final row in _db.select(
+      'SELECT stop_id, passed_at FROM checkpoints WHERE departure_id = ?',
+      [_departureId],
+    ))
+      row['stop_id'] as String: DateTime.fromMillisecondsSinceEpoch(
+        row['passed_at'] as int,
+        isUtc: true,
+      ),
+  };
+
+  @override
+  List<PassageUploadDto> pending() => [
+    for (final row in _db.select(
+      'SELECT stop_id, passed_at, device_id FROM checkpoints '
+      'WHERE departure_id = ? AND synced = 0 ORDER BY passed_at',
+      [_departureId],
+    ))
+      PassageUploadDto(
+        stopId: row['stop_id'] as String,
+        passedAt: DateTime.fromMillisecondsSinceEpoch(
+          row['passed_at'] as int,
+          isUtc: true,
+        ),
+        deviceId: row['device_id'] as String?,
+      ),
+  ];
+
+  @override
+  void markSynced(Iterable<String> stopIds) {
+    final statement = _db.prepare(
+      'UPDATE checkpoints SET synced = 1 WHERE departure_id = ? AND stop_id = ?',
+    );
+    try {
+      for (final id in stopIds) {
+        statement.execute([_departureId, id]);
+      }
+    } finally {
+      statement.dispose();
+    }
+  }
 }

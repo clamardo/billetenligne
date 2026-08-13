@@ -78,6 +78,17 @@ Future<Response> onRequest(RequestContext context, String id) async {
       'keys': {
         for (final e in keys.entries) '${e.key}': base64.encode(e.value),
       },
+      // The road, in the same request as the manifest and for the same
+      // reason: the tap it exists for happens where there is no signal.
+      'waypoints': [
+        for (final w in manifest.waypoints)
+          {
+            'stopId': w.stopId,
+            'name': w.name,
+            'offsetMinutes': w.offsetMinutes,
+            if (w.passedAt != null) 'passedAt': Wire.instant(w.passedAt!),
+          },
+      ],
     },
     headers: {
       BelHeaders.traceId: trace,

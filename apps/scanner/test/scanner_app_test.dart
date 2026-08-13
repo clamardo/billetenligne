@@ -77,6 +77,12 @@ final class _OneCoach implements BoardingGateway {
     required String departureId,
     required List<BoardingUploadDto> boardings,
   }) => throw UnimplementedError();
+
+  @override
+  Future<Set<String>> uploadCheckpoints({
+    required String departureId,
+    required List<PassageUploadDto> passages,
+  }) => throw UnimplementedError();
 }
 
 final class _Refuses implements BoardingGateway {
@@ -91,5 +97,11 @@ final class _Refuses implements BoardingGateway {
   Future<Set<String>> uploadBoardings({
     required String departureId,
     required List<BoardingUploadDto> boardings,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<Set<String>> uploadCheckpoints({
+    required String departureId,
+    required List<PassageUploadDto> passages,
   }) => throw UnimplementedError();
 }

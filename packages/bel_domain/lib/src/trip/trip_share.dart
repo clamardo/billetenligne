@@ -150,6 +150,35 @@ final class Checkpoint {
     required this.passedAt,
   });
 
+  /// A waypoint placed by the timetable rather than by a number somebody
+  /// typed: [offsetMinutes] into a run of [durationMinutes].
+  ///
+  /// The route already knows how far along Dolisie is, because a stop there
+  /// has to be sold with a departure time. Deriving the fraction from that
+  /// beats a second column an operator would have to maintain and would get
+  /// subtly wrong the first time a road is rerouted.
+  ///
+  /// Clamped, and 0 for a route with no duration: a stop whose offset is
+  /// longer than the whole run is a timetable somebody mistyped, and the bar
+  /// must not render at 130% while they fix it.
+  factory Checkpoint.onRoad({
+    required String name,
+    required int offsetMinutes,
+    required int durationMinutes,
+    required DateTime passedAt,
+  }) {
+    final raw = durationMinutes <= 0 ? 0.0 : offsetMinutes / durationMinutes;
+    return Checkpoint(
+      name: name,
+      fraction: raw < 0
+          ? 0
+          : raw > 1
+          ? 1
+          : raw,
+      passedAt: passedAt,
+    );
+  }
+
   final String name;
 
   /// Where this waypoint sits on the run, 0 to 1. Dolisie is roughly two

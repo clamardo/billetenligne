@@ -152,12 +152,14 @@ final class PostgresTripSharing implements TripSharing {
       departsAt: departsAt,
       arrivesAt: arrivesAt,
       status: r['status']! as String,
-      // Tier 3 only, today. GPS reporting and checkpoint taps are ADR-0014's
-      // tiers 1 and 2 and neither is built — so what comes back is honestly
-      // labelled an estimate rather than dressed as a position.
-      progress: scheduledProgress(
+      // Tier 2 when a conductor has confirmed a waypoint, tier 3 otherwise.
+      // GPS is ADR-0014's tier 1 and still needs a driver-facing surface
+      // nobody has built — until then the honest answer is the furthest place
+      // somebody actually confirmed, and an estimate when there is none.
+      progress: _progress(
+        r,
         now: now,
-        departsAt: (r['revised_departs_at'] as DateTime?) ?? departsAt,
+        departsAt: departsAt,
         arrivesAt: arrivesAt,
       ),
       expiresAt: expiresAt,
@@ -167,6 +169,47 @@ final class PostgresTripSharing implements TripSharing {
       revisedDepartsAt: r['revised_departs_at'] as DateTime?,
     );
   });
+
+  /// The best tier this row can honestly support.
+  ///
+  /// Never dressed up: a confirmed waypoint carries the conductor's clock and
+  /// the place's name into the answer, and nothing else moves the bar off the
+  /// timetable. A page that smoothed the two together would be the one piece
+  /// of this product that lied.
+  static TripProgress _progress(
+    Map<String, Object?> r, {
+    required DateTime now,
+    required DateTime departsAt,
+    required DateTime arrivesAt,
+  }) {
+    // The revised time when a dispatcher has declared a delay: an estimate
+    // drawn from a departure that did not happen is worse than no estimate.
+    final from = (r['revised_departs_at'] as DateTime?) ?? departsAt;
+
+    final name = r['checkpoint_name'] as String?;
+    final passedAt = r['checkpoint_passed_at'] as DateTime?;
+    final offset = r['checkpoint_offset_minutes'] as int?;
+    final duration = r['route_duration_minutes'] as int?;
+
+    if (name == null || passedAt == null || offset == null) {
+      return scheduledProgress(now: now, departsAt: from, arrivesAt: arrivesAt);
+    }
+
+    return checkpointProgress(
+      now: now,
+      departsAt: from,
+      arrivesAt: arrivesAt,
+      last: Checkpoint.onRoad(
+        name: name,
+        offsetMinutes: offset,
+        // A route with no duration recorded places the waypoint at the
+        // origin rather than throwing: the fact worth showing is *passé
+        // Dolisie à 10:42*, and the bar is the decoration around it.
+        durationMinutes: duration ?? 0,
+        passedAt: passedAt,
+      ),
+    );
+  }
 
   Future<Map<String, Object?>?> _booking(TxSession tx, String ref) async {
     final rows = await tx.execute(

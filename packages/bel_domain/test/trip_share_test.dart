@@ -178,4 +178,87 @@ void main() {
       expect(p.fraction, greaterThan(0.66));
     });
   });
+
+  _checkpointPlacementTests();
+}
+
+void _checkpointPlacementTests() {
+  group('a waypoint placed by the timetable', () {
+    final passedAt = DateTime.utc(2026, 8, 13, 10, 42);
+
+    test('sits where the route says it does', () {
+      // Dolisie is roughly two thirds of the way from Brazzaville to
+      // Pointe-Noire, and the route already knows that because a stop there
+      // has to be sold with a departure time.
+      final dolisie = Checkpoint.onRoad(
+        name: 'Dolisie',
+        offsetMinutes: 400,
+        durationMinutes: 600,
+        passedAt: passedAt,
+      );
+
+      expect(dolisie.fraction, closeTo(0.666, 0.001));
+      expect(dolisie.name, 'Dolisie');
+      expect(dolisie.passedAt, passedAt);
+    });
+
+    test('a mistyped timetable does not render past the end of the road', () {
+      // An offset longer than the run is somebody's typo, and it arrives
+      // through a route editor rather than through this. The bar must not
+      // draw at 130% while they fix it.
+      expect(
+        Checkpoint.onRoad(
+          name: 'Nkayi',
+          offsetMinutes: 900,
+          durationMinutes: 600,
+          passedAt: passedAt,
+        ).fraction,
+        1,
+      );
+      expect(
+        Checkpoint.onRoad(
+          name: 'Nkayi',
+          offsetMinutes: -30,
+          durationMinutes: 600,
+          passedAt: passedAt,
+        ).fraction,
+        0,
+      );
+      // A route with no duration is one nobody has finished writing. Zero is
+      // the honest answer, and the tier still says a conductor confirmed it.
+      expect(
+        Checkpoint.onRoad(
+          name: 'Nkayi',
+          offsetMinutes: 120,
+          durationMinutes: 0,
+          passedAt: passedAt,
+        ).fraction,
+        0,
+      );
+    });
+
+    test('the bar never walks backwards after a tap', () {
+      // The coach is confirmed past Dolisie at two thirds, and the timetable
+      // thinks it is a third of the way. The tap wins: a bar that retreated
+      // after a conductor's confirmation would make the tap look like a
+      // mistake.
+      final progress = checkpointProgress(
+        now: DateTime.utc(2026, 8, 13, 11),
+        departsAt: DateTime.utc(2026, 8, 13, 8),
+        arrivesAt: DateTime.utc(2026, 8, 13, 18),
+        last: Checkpoint.onRoad(
+          name: 'Dolisie',
+          offsetMinutes: 400,
+          durationMinutes: 600,
+          passedAt: passedAt,
+        ),
+      );
+
+      expect(progress.tier, TrackingTier.checkpoint);
+      expect(progress.fraction, closeTo(0.666, 0.001));
+      expect(progress.isEstimate, isFalse);
+      expect(progress.checkpointName, 'Dolisie');
+      expect(progress.reportedAt, passedAt);
+    });
+  });
 }

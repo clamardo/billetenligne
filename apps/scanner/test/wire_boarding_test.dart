@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:bel_client/bel_client.dart';
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_crypto/bel_crypto.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_scanner/src/application/boarding_session.dart';
 import 'package:bel_scanner/src/application/boarding_sync.dart';
+import 'package:bel_scanner/src/application/road_progress.dart';
 import 'package:bel_scanner/src/infrastructure/api_boarding_gateway.dart';
 import 'package:bel_scanner/src/infrastructure/memory_redemption_log.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -76,6 +78,17 @@ void main() {
     ],
     'voided': ['BEL-T5W2YZ/3A'],
     'keys': {'1': publicKeyB64},
+    'waypoints': [
+      {'stopId': 'stop-kinkala', 'name': 'Kinkala', 'offsetMinutes': 90},
+      {
+        'stopId': 'stop-dolisie',
+        'name': 'Dolisie',
+        'offsetMinutes': 400,
+        // Already confirmed, by this handset before it was killed or by the
+        // conductor at the other door.
+        'passedAt': '2026-08-15T10:42:00.000Z',
+      },
+    ],
   });
 
   setUp(() async {
@@ -286,6 +299,165 @@ void main() {
       ).drain();
 
       expect(report.settled, 0);
+      expect(transport.requests, hasLength(1));
+    });
+  });
+
+
+  group('the road', () {
+    /// A gateway that has pinned dep-1, plus the road it came back with.
+    Future<({ApiBoardingGateway gateway, List<WaypointDto> road})> pinRoad(
+      _Scripted transport,
+    ) async {
+      final gateway = ApiBoardingGateway(
+        BelApiClient(
+          baseUrl: Uri.parse('https://api.test'),
+          httpClient: transport,
+          token: () async => 'tok',
+        ),
+        clock: FixedClock(now),
+      );
+      final pinned = await gateway.pin('dep-1');
+      return (gateway: gateway, road: pinned.waypoints);
+    }
+
+    test('arrives with the manifest, in road order', () async {
+      final pinned = await pinRoad(_Scripted([(200, manifestJson())]));
+
+      // One request. The tap this list exists for happens four hours later
+      // with no signal, so a road fetched on demand is a road that is never
+      // there.
+      expect(pinned.road, hasLength(2));
+      expect(pinned.road.first.name, 'Kinkala');
+      expect(pinned.road.first.offsetMinutes, 90);
+      expect(pinned.road.first.passedAt, isNull);
+      expect(pinned.road.last.passedAt, DateTime.utc(2026, 8, 15, 10, 42));
+    });
+
+    test('a place already behind the coach is not offered again', () async {
+      final pinned = await pinRoad(_Scripted([(200, manifestJson())]));
+      final outbox = MemoryCheckpointLog();
+
+      final progress = RoadProgress(
+        road: pinned.road,
+        outbox: outbox,
+        clock: FixedClock(now),
+        deviceId: 'handset-1',
+      );
+
+      // Dolisie came back confirmed. A handset killed at lunch and relaunched
+      // must not offer it again — and must not queue it, because the server
+      // is where it came from.
+      final dolisie = progress.points().last;
+      expect(dolisie.isBehind, isTrue);
+      expect(progress.confirm('stop-dolisie'), isFalse);
+      expect(outbox.pending(), isEmpty);
+      expect(progress.lastConfirmed?.name, 'Dolisie');
+    });
+
+    test('one tap goes up on the next window, with the device clock', () async {
+      final transport = _Scripted([
+        (200, manifestJson()),
+        (200, '{"recorded":["stop-kinkala"],"unknown":[]}'),
+      ]);
+      final pinned = await pinRoad(transport);
+      final outbox = MemoryCheckpointLog();
+
+      final progress = RoadProgress(
+        road: pinned.road,
+        outbox: outbox,
+        clock: FixedClock(now),
+        deviceId: 'handset-1',
+      );
+      expect(progress.confirm('stop-kinkala'), isTrue);
+
+      final sync = BoardingSync(
+        gateway: pinned.gateway,
+        outbox: MemoryRedemptionLog(),
+        road: outbox,
+        departureId: 'dep-1',
+      );
+      expect(sync.pendingCount, 1);
+
+      final report = await sync.drain();
+
+      expect(report.ok, isTrue);
+      expect(report.checkpointsSettled, 1);
+      expect(sync.pendingCount, 0);
+      expect(
+        transport.requests.last.url.path,
+        '/console/v1/departures/dep-1/checkpoints',
+      );
+      // The conductor's clock, not ours. A checkpoint stamped with the hour
+      // it happened to sync would report the coach an hour behind itself.
+      expect(transport.bodies.last, contains(now.toIso8601String()));
+      expect(transport.bodies.last, contains('handset-1'));
+    });
+
+    test('a second tap on the same place changes nothing', () async {
+      final pinned = await pinRoad(_Scripted([(200, manifestJson())]));
+      final outbox = MemoryCheckpointLog();
+
+      final progress = RoadProgress(
+        road: pinned.road,
+        outbox: outbox,
+        clock: FixedClock(now),
+        deviceId: 'handset-1',
+      );
+
+      expect(progress.confirm('stop-kinkala'), isTrue);
+      // A double tap on a moving coach means the same thing twice, and the
+      // time worth keeping is the first one — the rule the server enforces by
+      // primary key, held here so an offline handset behaves the same way.
+      expect(progress.confirm('stop-kinkala'), isFalse);
+      expect(outbox.pending(), hasLength(1));
+      expect(outbox.confirmed()['stop-kinkala'], now);
+    });
+
+    test('an unsent tap survives a failed send', () async {
+      final transport = _Scripted([
+        (200, manifestJson()),
+        (503, '{"error":{"code":"unavailable"}}'),
+        (503, '{"error":{"code":"unavailable"}}'),
+        (503, '{"error":{"code":"unavailable"}}'),
+        (503, '{"error":{"code":"unavailable"}}'),
+      ]);
+      final pinned = await pinRoad(transport);
+      final outbox = MemoryCheckpointLog();
+
+      RoadProgress(
+        road: pinned.road,
+        outbox: outbox,
+        clock: FixedClock(now),
+      ).confirm('stop-kinkala');
+
+      final report = await BoardingSync(
+        gateway: pinned.gateway,
+        outbox: MemoryRedemptionLog(),
+        road: outbox,
+        departureId: 'dep-1',
+      ).drain();
+
+      expect(report.ok, isFalse);
+      expect(report.stillPending, 1);
+      // Still confirmed on the handset. A failed send is a fact about the
+      // network, never about where the coach has been.
+      expect(outbox.confirmed(), contains('stop-kinkala'));
+    });
+
+    test('an empty road queue does not touch the network', () async {
+      final transport = _Scripted([(200, manifestJson())]);
+      final pinned = await pinRoad(transport);
+
+      final report = await BoardingSync(
+        gateway: pinned.gateway,
+        outbox: MemoryRedemptionLog(),
+        road: MemoryCheckpointLog(),
+        departureId: 'dep-1',
+      ).drain();
+
+      expect(report.settled, 0);
+      expect(report.checkpointsSettled, 0);
       expect(transport.requests, hasLength(1));
     });
   });

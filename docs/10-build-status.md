@@ -289,15 +289,22 @@ These are true today and each one is a decision, not an oversight.
    operator's longest-standing owner. A link back to a login was never an
    option — an operator who has to sign in to read what they were paid phones
    us instead, which is the call the statement exists to prevent.
-14. **A followed trip is estimated from the timetable, not observed.**
-   ADR-0014 §2 names three tiers of tracking; only the third exists. Conductor
-   GPS needs a driver-facing surface nobody has built, and checkpoint taps need
-   somebody with a handset at a station. So the follower page draws a **dashed**
-   bar and says *estimation d'après l'horaire* rather than a solid line
-   somebody would read as a position — a coach that left forty minutes late
-   shows as on schedule until a dispatcher declares the delay. The other two
-   tiers are written and tested in the domain, so the day either data source
-   appears the page improves without the model changing.
+14. ~~**A followed trip is estimated from the timetable, not observed.**~~
+   **Tier 2 is built.** The handset that needed to exist already did: the
+   conductor's scanner is pinned to the departure, trusted to say who boarded
+   it, and in the coach. One more tap says *we have passed Dolisie*, and the
+   follower page — which has been able to render all three tiers since it
+   shipped — stops drawing a dashed bar and says *passé Dolisie à 10:42*.
+   Waypoints are the route's own stops, so the fraction comes from the
+   timetable rather than a number somebody maintains, and the name is one a
+   person waiting at the far end would use. The tap queues on the device like
+   a boarding, because the RN1 is four hours with no usable signal; the
+   **device's clock** is what gets recorded, ours only as *when we heard*; and
+   the row is append-only — no UPDATE grant, no DELETE grant, because a claim
+   about where a coach was is evidence in a delay dispute. **Tier 1 (GPS) is
+   still not built** and is the one that needs a driver-facing surface nobody
+   has asked for; a coach whose conductor never taps still shows as an
+   estimate, honestly labelled.
 
 ---
 
@@ -320,9 +327,9 @@ cd apps/console   && flutter test        # 125 console tests
 cd apps/admin     && flutter test        # 35 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 47 scanner tests, incl. a manifest off the wire
-dart run tool/check_layers.dart          # the onion rule, 421 files
+dart run tool/check_layers.dart          # the onion rule, 424 files
 ./infra/migrations/check.sh              # 45 schema guarantees
-./tool/integration.sh                    # 506 tests on real Postgres, incl. the worker
+./tool/integration.sh                    # 513 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 445 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
@@ -361,8 +368,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,439 tests in total**, plus 445 smoke checks, 45 executed schema guarantees,
-506 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,457 tests in total**, plus 454 smoke checks, 46 executed schema guarantees,
+513 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.

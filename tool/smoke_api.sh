@@ -2027,6 +2027,44 @@ check "GET is not a way to record a boarding" "405" \
   "$(status -H "$OP_AUTH" "$BASE/console/v1/departures/$DEP/redemptions")"
 
 echo
+echo "── the conductor saying where the coach has got to"
+
+# ADR-0014 tier 2. The follower page has drawn a dashed bar since it shipped
+# because nothing could tell it otherwise; this is the door an observation
+# comes through, and it is behind `boarding.scan` because it is a conductor's
+# tap rather than a dispatcher's.
+passage_post() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST \
+    "$BASE/console/v1/departures/$DEP/checkpoints" -H "$1" \
+    -H 'Content-Type: application/json' -d "$2"
+}
+
+check "an anonymous device places no coach" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/departures/$DEP/checkpoints" \
+     -H 'Content-Type: application/json' -d '{"passages":[]}')"
+check "a traveller cannot say where a coach is" "403" \
+  "$(passage_post "$AUTH" '{"passages":[]}')"
+check "and cannot read the road either" "403" \
+  "$(status -H "$AUTH" "$BASE/console/v1/departures/$DEP/checkpoints")"
+# The device's clock is what gets recorded, so it has to be there — the same
+# rule as a boarding, and for the same reason.
+check "a passage with no time is refused" "400" \
+  "$(passage_post "$OP_AUTH" '{"passages":[{"stopId":"a-stop"}]}')"
+check "a passage naming no place is refused" "400" \
+  "$(passage_post "$OP_AUTH" '{"passages":[{"passedAt":"2026-08-15T10:42:00Z"}]}')"
+check "a well-formed tap gets past validation" "503" \
+  "$(passage_post "$OP_AUTH" \
+     '{"passages":[{"stopId":"a-stop","passedAt":"2026-08-15T10:42:00Z","deviceId":"handset-1"}]}')"
+check "an empty queue is accepted, not refused" "503" \
+  "$(passage_post "$OP_AUTH" '{"passages":[]}')"
+check "a conductor may read the road" "503" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/departures/$DEP/checkpoints")"
+check "DELETE is not a way to unsay one" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+     "$BASE/console/v1/departures/$DEP/checkpoints" -H "$OP_AUTH")"
+
+echo
 echo "── moving the passengers onto another departure"
 
 rebook_as() {

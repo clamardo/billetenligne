@@ -6,7 +6,9 @@ import 'dart:math';
 import 'package:bel_api/src/adapters/ed25519_ticket_issuer.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_booking_store.dart';
+import 'package:bel_api/src/application/ports/operator_console.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_disruptions.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_operator_console.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_trip_sharing.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:test/test.dart';
@@ -34,6 +36,7 @@ void main() {
   late PostgresBookingStore bookings;
   late PostgresDisruptions desk;
   late PostgresTripSharing sharing;
+  late PostgresOperatorConsole console;
   late String operatorId;
   late String staffId;
   late String stationId;
@@ -54,6 +57,7 @@ void main() {
       shareBase: Uri.parse('https://blt.cg'),
       random: Random(97),
     );
+    console = PostgresOperatorConsole(db, timeZone: PgFixture.timeZone);
     operatorId = PgFixture.operatorId;
     staffId = await fixture.traveller('share-actor', name: 'Régulateur');
     stationId = await fixture.station('BZV', 'Agence partage');
@@ -202,6 +206,227 @@ void main() {
 
       final arrives = await fixture.arrivesAt(trip.depId);
       expect(share.valueOrNull!.expiresAt.difference(arrives).inHours, 6);
+    });
+  });
+
+  group('the conductor confirms passage', () {
+    /// A paid trip on a road with two named stops, shared, plus the console
+    /// the conductor's handset talks to.
+    Future<({String token, String depId, List<Waypoint> road})>
+    sharedTripWithRoad() async {
+      final routeId = await fixture.route(
+        code: 'ROAD-${DateTime.now().microsecondsSinceEpoch}',
+        destination: 'PNR',
+      );
+      await fixture.stopsOn(routeId, const [
+        (city: 'OYO', offsetMinutes: 150),
+        (city: 'DOL', offsetMinutes: 200),
+      ]);
+      final departureId = await fixture.departure(
+        seatLabels: const ['1A'],
+        fromNow: const Duration(hours: 1),
+        fareMinor: 9000,
+        onRoute: routeId,
+      );
+      final booking = await fixture.reserve(
+        db: db,
+        bookings: bookings,
+        departureId: departureId,
+        seatLabel: '1A',
+        name: 'Aline M.',
+      );
+      await bookings.captureCash(
+        bookingId: booking.id,
+        operatorId: operatorId,
+        stationId: stationId,
+        soldByUserId: staffId,
+        posting: Postings.cashSale(
+          operatorId: operatorId,
+          stationId: stationId,
+          fare: booking.fare,
+          serviceFee: booking.serviceFee,
+        ).valueOrNull!,
+      );
+
+      final token = (await sharing.share(
+        bookingRef: booking.ref.value,
+        userId: await fixture.purchaserOf(booking.id),
+        now: now,
+      )).valueOrNull!.token!;
+
+      return (
+        token: token,
+        depId: departureId,
+        road: (await console.waypoints(
+          operatorId: operatorId,
+          departureId: departureId,
+        ))!,
+      );
+    }
+
+    test('the road comes back in the order it is driven', () async {
+      final trip = await sharedTripWithRoad();
+
+      expect(trip.road.map((w) => w.name), ['Oyo', 'Dolisie']);
+      expect(trip.road.first.offsetMinutes, 150);
+      // Nothing confirmed yet, which is what puts the follower on a dashed
+      // bar rather than a position.
+      expect(trip.road.every((w) => w.passedAt == null), isTrue);
+    });
+
+    test('one tap moves the follower off the estimate', () async {
+      final trip = await sharedTripWithRoad();
+      final passedAt = now.subtract(const Duration(minutes: 20));
+
+      final result = await console.confirmPassage(
+        operatorId: operatorId,
+        departureId: trip.depId,
+        reportedByUserId: staffId,
+        passages: [
+          PassageReport(
+            stopId: trip.road.first.stopId,
+            passedAt: passedAt,
+            deviceId: 'handset-1',
+          ),
+        ],
+      );
+      expect(result.recorded, hasLength(1));
+
+      final followed = await sharing.follow(token: trip.token, now: now);
+
+      // The whole point of the tier: a place with a name and the conductor's
+      // clock, instead of *estimation d'après l'horaire*.
+      expect(followed!.progress.tier, TrackingTier.checkpoint);
+      expect(followed.progress.isEstimate, isFalse);
+      expect(followed.progress.checkpointName, 'Oyo');
+      expect(followed.progress.reportedAt, passedAt);
+      // 150 minutes into a 300-minute run.
+      expect(followed.progress.fraction, closeTo(0.5, 0.001));
+    });
+
+    test('the furthest place down the road is the one shown', () async {
+      final trip = await sharedTripWithRoad();
+
+      // Confirmed out of order, which happens: a conductor remembers Nkayi
+      // an hour after they have passed Dolisie. How far along the coach is is
+      // a fact about the road, not about the order somebody tapped.
+      await console.confirmPassage(
+        operatorId: operatorId,
+        departureId: trip.depId,
+        reportedByUserId: staffId,
+        passages: [
+          PassageReport(stopId: trip.road.last.stopId, passedAt: now),
+          PassageReport(
+            stopId: trip.road.first.stopId,
+            passedAt: now.add(const Duration(minutes: 5)),
+          ),
+        ],
+      );
+
+      final followed = await sharing.follow(token: trip.token, now: now);
+      expect(followed!.progress.checkpointName, 'Dolisie');
+    });
+
+    test('a second tap keeps the first time', () async {
+      final trip = await sharedTripWithRoad();
+      final first = now.subtract(const Duration(minutes: 30));
+
+      await console.confirmPassage(
+        operatorId: operatorId,
+        departureId: trip.depId,
+        reportedByUserId: staffId,
+        passages: [
+          PassageReport(stopId: trip.road.first.stopId, passedAt: first),
+        ],
+      );
+      // The same outbox, uploaded twice after a lost reply. Recorded, not
+      // refused: from the device's point of view the row is settled either
+      // way, and it must leave the queue.
+      final again = await console.confirmPassage(
+        operatorId: operatorId,
+        departureId: trip.depId,
+        reportedByUserId: staffId,
+        passages: [
+          PassageReport(stopId: trip.road.first.stopId, passedAt: now),
+        ],
+      );
+      expect(again.recorded, hasLength(1));
+      expect(again.unknown, isEmpty);
+
+      final road = await console.waypoints(
+        operatorId: operatorId,
+        departureId: trip.depId,
+      );
+      expect(road!.first.passedAt, first);
+    });
+
+    test('a stop from another road is unknown, not recorded', () async {
+      final trip = await sharedTripWithRoad();
+      final other = await sharedTripWithRoad();
+
+      final result = await console.confirmPassage(
+        operatorId: operatorId,
+        departureId: trip.depId,
+        reportedByUserId: staffId,
+        passages: [
+          PassageReport(stopId: other.road.first.stopId, passedAt: now),
+        ],
+      );
+
+      // A device that got confused about which departure it was pinned to
+      // must not be able to move another coach's bar. Unknown rather than
+      // refused, so the row still leaves its outbox.
+      expect(result.recorded, isEmpty);
+      expect(result.unknown, hasLength(1));
+      final followed = await sharing.follow(token: trip.token, now: now);
+      expect(followed!.progress.tier, TrackingTier.schedule);
+    });
+
+    test("another operator's coach is not theirs to place", () async {
+      final trip = await sharedTripWithRoad();
+
+      final road = await console.waypoints(
+        operatorId: PgFixture.secondOperatorId,
+        departureId: trip.depId,
+      );
+      // The same answer as a departure that does not exist: telling a
+      // stranger which would confirm the id is real.
+      expect(road, isNull);
+
+      final result = await console.confirmPassage(
+        operatorId: PgFixture.secondOperatorId,
+        departureId: trip.depId,
+        reportedByUserId: staffId,
+        passages: [
+          PassageReport(stopId: trip.road.first.stopId, passedAt: now),
+        ],
+      );
+      expect(result.recorded, isEmpty);
+
+      final followed = await sharing.follow(token: trip.token, now: now);
+      expect(followed!.progress.tier, TrackingTier.schedule);
+    });
+
+    test('a road with no stops is a road, not a failure', () async {
+      final routeId = await fixture.route(
+        code: 'DIRECT-${DateTime.now().microsecondsSinceEpoch}',
+        destination: 'PNR',
+      );
+      final departureId = await fixture.departure(
+        seatLabels: const ['1A'],
+        fromNow: const Duration(hours: 1),
+        onRoute: routeId,
+      );
+
+      // Brazzaville to Pointe-Noire direct. Empty, and told apart from a
+      // departure this operator may not read — which is null.
+      expect(
+        await console.waypoints(
+          operatorId: operatorId,
+          departureId: departureId,
+        ),
+        isEmpty,
+      );
     });
   });
 

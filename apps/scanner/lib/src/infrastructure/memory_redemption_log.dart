@@ -73,3 +73,50 @@ final class _Scan {
   final bool codeWasStale;
   bool synced = false;
 }
+
+/// The road, in memory. The demo's version of the SQLite log beside it, and
+/// what the tests run against.
+final class MemoryCheckpointLog implements CheckpointOutbox {
+  final Map<String, _Passage> _passed = {};
+
+  @override
+  void confirm({
+    required String stopId,
+    required DateTime at,
+    String? deviceId,
+  }) {
+    // First tap wins, like a boarding: a conductor who double-taps on a
+    // moving coach means the same thing twice.
+    _passed.putIfAbsent(stopId, () => _Passage(at, deviceId));
+  }
+
+  @override
+  Map<String, DateTime> confirmed() => {
+    for (final e in _passed.entries) e.key: e.value.at,
+  };
+
+  @override
+  List<PassageUploadDto> pending() => [
+    for (final e in _passed.entries)
+      if (!e.value.synced)
+        PassageUploadDto(
+          stopId: e.key,
+          passedAt: e.value.at,
+          deviceId: e.value.deviceId,
+        ),
+  ];
+
+  @override
+  void markSynced(Iterable<String> stopIds) {
+    for (final id in stopIds) {
+      _passed[id]?.synced = true;
+    }
+  }
+}
+
+class _Passage {
+  _Passage(this.at, this.deviceId);
+  final DateTime at;
+  final String? deviceId;
+  var synced = false;
+}

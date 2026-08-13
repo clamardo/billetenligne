@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 
 import '../../application/boarding_session.dart';
 import '../../application/boarding_sync.dart';
+import '../../application/road_progress.dart';
 import '../../application/simulated_scan.dart';
 import '../widgets/camera_view.dart';
+import '../widgets/road_sheet.dart';
 import '../widgets/ticket_simulator.dart';
 import '../widgets/verdict_screen.dart';
 import 'manual_boarding_page.dart';
@@ -22,11 +24,17 @@ class BoardingPage extends StatefulWidget {
     required this.session,
     this.simulatedScans = const [],
     this.sync,
+    this.road,
     this.onLeave,
     super.key,
   });
 
   final BoardingSession session;
+
+  /// The road this coach runs, so the conductor can say where it has got to
+  /// (ADR-0014 §1, tier 2). Null on a run with no intermediate stops, and the
+  /// control disappears rather than opening an empty sheet.
+  final RoadProgress? road;
 
   /// Empties the outbox when the conductor asks. Null on a device with no
   /// server behind it, and the control disappears rather than failing.
@@ -142,11 +150,32 @@ class _BoardingPageState extends State<BoardingPage> {
                 ],
               ),
             ),
-            _BoardingFooter(session: widget.session, onManual: _openManual),
+            _BoardingFooter(
+              session: widget.session,
+              onManual: _openManual,
+              road: widget.road?.hasRoad == true ? widget.road : null,
+              onRoad: _openRoad,
+            ),
           ],
         ),
       ),
     );
+  }
+
+  /// The road sheet. Modal rather than a second screen: the camera is the
+  /// app, and a conductor who opens this is answering a question, not
+  /// navigating.
+  Future<void> _openRoad() async {
+    final road = widget.road;
+    if (road == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => RoadSheet(road: road),
+    );
+    // The footer shows the last place confirmed, and the sheet is where it
+    // changes.
+    if (mounted) setState(() {});
   }
 
   Future<void> _openManual() async {
@@ -319,33 +348,66 @@ class _StalenessChip extends StatelessWidget {
 }
 
 class _BoardingFooter extends StatelessWidget {
-  const _BoardingFooter({required this.session, required this.onManual});
+  const _BoardingFooter({
+    required this.session,
+    required this.onManual,
+    required this.onRoad,
+    this.road,
+  });
 
   final BoardingSession session;
   final VoidCallback onManual;
+  final VoidCallback onRoad;
+  final RoadProgress? road;
 
   @override
   Widget build(BuildContext context) {
     final kilo = context.kilo;
+    final road = this.road;
+    final last = road?.lastConfirmed;
+
+    final outlined = OutlinedButton.styleFrom(
+      foregroundColor: kilo.color.contentPrimary,
+      side: BorderSide(color: kilo.color.borderStrong),
+      shape: RoundedRectangleBorder(borderRadius: kilo.radius.controlBorder),
+    );
 
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(kilo.space.s4),
       color: kilo.color.surfaceRaised,
-      child: SizedBox(
-        height: kilo.space.touchTarget + 8,
-        child: OutlinedButton.icon(
-          onPressed: onManual,
-          icon: const Icon(Icons.keyboard_alt_outlined),
-          label: const Text('Embarquement manuel'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: kilo.color.contentPrimary,
-            side: BorderSide(color: kilo.color.borderStrong),
-            shape: RoundedRectangleBorder(
-              borderRadius: kilo.radius.controlBorder,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: kilo.space.touchTarget + 8,
+            child: OutlinedButton.icon(
+              onPressed: onManual,
+              icon: const Icon(Icons.keyboard_alt_outlined),
+              label: const Text('Embarquement manuel'),
+              style: outlined,
             ),
           ),
-        ),
+          // Second, and smaller. The door is what this app is for; the road is
+          // something the same person does four hours later, and putting it
+          // first would cost a tap sixty times a morning to save one twice.
+          if (road != null) ...[
+            SizedBox(height: kilo.space.s2),
+            SizedBox(
+              height: kilo.space.touchTarget,
+              child: OutlinedButton.icon(
+                onPressed: onRoad,
+                icon: const Icon(Icons.place_outlined),
+                label: Text(
+                  last == null
+                      ? 'Où sommes-nous ?'
+                      : 'Passé ${last.name} · signaler',
+                ),
+                style: outlined,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -639,6 +639,7 @@ final class BoardingManifestDto {
     required this.tickets,
     required this.voided,
     required this.keys,
+    this.waypoints = const [],
   });
 
   final String departureId;
@@ -657,6 +658,9 @@ final class BoardingManifestDto {
   /// rather than compiled into the app, so a key can be rotated without a
   /// store release.
   final Map<int, String> keys;
+
+  /// The road, in the order it runs. See [WaypointDto].
+  final List<WaypointDto> waypoints;
 
   factory BoardingManifestDto.fromJson(Map<String, Object?> json) =>
       BoardingManifestDto(
@@ -678,6 +682,11 @@ final class BoardingManifestDto {
           for (final e in (json['keys'] as Map? ?? const {}).entries)
             int.parse(e.key.toString()): Wire.requireString(e.value, 'keys'),
         },
+        waypoints: Wire.readList(
+          json['waypoints'],
+          WaypointDto.fromJson,
+          field: 'waypoints',
+        ),
       );
 }
 
@@ -759,6 +768,85 @@ final class BoardingUploadResultDto {
           for (final k in (json['unknown'] as List? ?? const []))
             Wire.requireString(k, 'unknown'),
         ],
+      );
+}
+
+/// A place on the road, and whether this coach is past it (ADR-0014 §1).
+///
+/// Shipped with the pinned manifest rather than fetched when the conductor
+/// opens the list, because the tap this exists for happens 300 km from the
+/// nearest usable signal. A waypoint list that needs a network is a waypoint
+/// list that is never there.
+final class WaypointDto {
+  const WaypointDto({
+    required this.stopId,
+    required this.name,
+    required this.offsetMinutes,
+    this.passedAt,
+  });
+
+  final String stopId;
+
+  /// The station if the stop names one, the city otherwise — the name a
+  /// person waiting at the other end would use.
+  final String name;
+
+  /// Minutes into the run. What places it on the follower's bar, and what
+  /// keeps the list in road order on a handset that has no route table.
+  final int offsetMinutes;
+
+  /// When this coach was confirmed past it, or null for a waypoint still
+  /// ahead. Present so a handset that relaunched mid-route redraws what it
+  /// already sent instead of offering Dolisie a second time.
+  final DateTime? passedAt;
+
+  Map<String, Object?> toJson() => {
+    'stopId': stopId,
+    'name': name,
+    'offsetMinutes': offsetMinutes,
+    if (passedAt != null) 'passedAt': Wire.instant(passedAt!),
+  };
+
+  factory WaypointDto.fromJson(Map<String, Object?> json) => WaypointDto(
+    stopId: Wire.requireString(json['stopId'], 'stopId'),
+    name: Wire.requireString(json['name'], 'name'),
+    offsetMinutes: Wire.requireInt(json['offsetMinutes'], 'offsetMinutes'),
+    passedAt: json['passedAt'] == null
+        ? null
+        : Wire.readInstant(json['passedAt'], field: 'passedAt'),
+  );
+}
+
+/// One tap a device queued: this coach is past this place, at this time.
+///
+/// The same shape queued on the handset and sent up, like a boarding — and
+/// carrying the device's clock for the same reason.
+final class PassageUploadDto {
+  const PassageUploadDto({
+    required this.stopId,
+    required this.passedAt,
+    this.deviceId,
+  });
+
+  final String stopId;
+
+  /// The conductor's device, at the roadside. A checkpoint stamped with the
+  /// hour it happened to sync would report the coach an hour behind itself.
+  final DateTime passedAt;
+
+  final String? deviceId;
+
+  Map<String, Object?> toJson() => {
+    'stopId': stopId,
+    'passedAt': Wire.instant(passedAt),
+    if (deviceId != null) 'deviceId': deviceId,
+  };
+
+  factory PassageUploadDto.fromJson(Map<String, Object?> json) =>
+      PassageUploadDto(
+        stopId: Wire.requireString(json['stopId'], 'stopId'),
+        passedAt: Wire.readInstant(json['passedAt'], field: 'passedAt'),
+        deviceId: json['deviceId'] as String?,
       );
 }
 
