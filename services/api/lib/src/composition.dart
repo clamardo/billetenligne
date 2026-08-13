@@ -58,6 +58,7 @@ import 'application/reserve_booking.dart';
 import 'application/search_departures.dart';
 import 'application/second_factor_sign_in.dart';
 import 'application/sign_in.dart';
+import 'infrastructure/config/dev_env.dart';
 import 'infrastructure/config/market_catalog.dart';
 import 'infrastructure/db/database.dart';
 import 'infrastructure/memory/memory_booking_store.dart';
@@ -148,6 +149,7 @@ final class Services {
     required this.tickets,
     required this.usingDatabase,
     required this.smsConfigured,
+    this.mailChannel = 'log',
     required this.appLinks,
     Database? database,
   }) : _database = database;
@@ -333,6 +335,9 @@ final class Services {
   /// different claims and confusing them wastes an afternoon.
   final bool usingDatabase;
 
+  /// `acs`, `smtp` or `log` — where email actually goes from this process.
+  final String mailChannel;
+
   /// Whether a message sent to a handset would actually arrive.
   ///
   /// Reported so the sign-in route can refuse the phone channel outright
@@ -351,7 +356,12 @@ final class Services {
     Map<String, String>? environment,
     Clock clock = const SystemClock(),
   }) {
-    final env = environment ?? Platform.environment;
+    // Fills gaps from `infra/dev/.env` when the process was started without
+    // it, and does nothing at all once `DATABASE_URL` is set — see `DevEnv`.
+    // Without this, a launcher whose env file quietly did not apply gets the
+    // in-memory composition, a 200 from `/health`, invented departures and a
+    // sign-in code on stdout, with nothing anywhere saying so.
+    final env = DevEnv.fill(environment ?? Platform.environment);
     final market = marketCatalog(env).defaultMarket;
     final url = env['DATABASE_URL'];
 
@@ -484,6 +494,7 @@ final class Services {
       clock: clock,
       tickets: _ticketIssuer,
       usingDatabase: true,
+      mailChannel: _mailChannel(env),
       smsConfigured: (env['COMMS__SMSFROM'] ?? '').isNotEmpty,
       appLinks: AppLinkIdentity.from(env),
       database: db,
@@ -679,6 +690,7 @@ final class Services {
       clock: clock,
       tickets: _ticketIssuer,
       usingDatabase: false,
+      mailChannel: _mailChannel(environment ?? const {}),
       // The logging sender will happily "send" an SMS to the console, and a
       // fresh clone should be able to exercise both channels.
       smsConfigured: true,
@@ -715,6 +727,18 @@ final class Services {
   /// otherwise — asked in that order, and the order is the safety property:
   /// a deployment with a real connection string can never be diverted into a
   /// mail catcher by a stray `SMTP__HOST` in its environment.
+  /// Which of the three senders is actually wired, for `/health` to report.
+  ///
+  /// Named rather than inferred at the call site, because "is the mail
+  /// working" is the question, and the three answers — a real ACS resource, a
+  /// local catcher, or stdout — are indistinguishable from outside the
+  /// process until something is expected to arrive and does not.
+  static String _mailChannel(Map<String, String> env) {
+    if ((env['COMMS__CONNECTIONSTRING'] ?? '').isNotEmpty) return 'acs';
+    if ((env['SMTP__HOST'] ?? '').isNotEmpty) return 'smtp';
+    return 'log';
+  }
+
   static NotificationGateway _notifications(Map<String, String> env) =>
       AcsNotificationGateway.tryParse(
         env['COMMS__CONNECTIONSTRING'],

@@ -4,6 +4,7 @@ import 'package:bel_api/src/adapters/acs_notification_gateway.dart';
 import 'package:bel_api/src/adapters/logging_notification_gateway.dart';
 import 'package:bel_api/src/adapters/smtp_notification_gateway.dart';
 import 'package:bel_api/src/application/ports/notification_gateway.dart';
+import 'package:bel_api/src/infrastructure/config/dev_env.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_ticket_links.dart';
 import 'package:bel_localization/bel_localization.dart';
@@ -40,7 +41,11 @@ import 'package:bel_worker/src/timetable_horizon.dart';
 /// The exit code is what a scheduler reads: non-zero if any pass threw, so a
 /// failing drain is visible rather than a quiet gap in delivery.
 Future<int> main(List<String> args) async {
-  final url = Platform.environment['DATABASE_URL'];
+  // The same gap-filling the API does, for the same reason: the worker is
+  // started by a shell script, a launch configuration and a cron trigger, and
+  // exactly one of those is guaranteed to have sourced the env file.
+  final env = DevEnv.fill(Platform.environment);
+  final url = env['DATABASE_URL'];
   if (url == null || url.isEmpty) {
     stderr.writeln(
       'DATABASE_URL is unset. The worker has nothing to sweep and no queue '
@@ -57,18 +62,18 @@ Future<int> main(List<String> args) async {
   // without anybody receiving anything.
   final NotificationGateway notifications =
       AcsNotificationGateway.tryParse(
-        Platform.environment['COMMS__CONNECTIONSTRING'],
-        emailFrom: Platform.environment['COMMS__EMAILFROM'],
-        smsFrom: Platform.environment['COMMS__SMSFROM'],
+        env['COMMS__CONNECTIONSTRING'],
+        emailFrom: env['COMMS__EMAILFROM'],
+        smsFrom: env['COMMS__SMSFROM'],
       ) ??
       // The local mail catcher, so a statement drained by the worker arrives
       // as a readable message with its PDF attached rather than as a line of
       // log saying a PDF existed. Same order as the API, and for the same
       // reason: ACS wins wherever it is configured.
       SmtpNotificationGateway.tryParse(
-        Platform.environment['SMTP__HOST'],
-        port: Platform.environment['SMTP__PORT'],
-        emailFrom: Platform.environment['COMMS__EMAILFROM'],
+        env['SMTP__HOST'],
+        port: env['SMTP__PORT'],
+        emailFrom: env['COMMS__EMAILFROM'],
       ) ??
       const LoggingNotificationGateway();
 
@@ -99,7 +104,7 @@ Future<int> main(List<String> args) async {
     db: db,
     notifications: notifications,
     catalog: CatalogLoader.fromDirectory(
-      Platform.environment['BEL_I18N_DIR'] ?? 'packages/bel_localization/i18n',
+      env['BEL_I18N_DIR'] ?? 'packages/bel_localization/i18n',
     ),
     // Every time in every message is rendered in this zone. The market's, not
     // the host's: a container in Europe would otherwise tell a traveller in
@@ -111,7 +116,7 @@ Future<int> main(List<String> args) async {
     links: PostgresTicketLinks(
       db,
       linkBase: Uri.parse(
-        Platform.environment['BEL__SHAREBASEURL'] ?? 'https://blt.cg',
+        env['BEL__SHAREBASEURL'] ?? 'https://blt.cg',
       ),
     ),
   );

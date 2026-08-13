@@ -54,6 +54,12 @@ check() {
 status() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 
 echo "── building"
+# `BEL_ENV_FILE=none` on every server below. This suite exercises the **fakes**
+# composition on purpose — no Postgres, no mail, a fake rail that can produce
+# every terminal state — and it runs in a working tree with a perfectly good
+# `infra/dev/.env` next to it, which the API would otherwise find and use. "No
+# DATABASE_URL means fakes" is the contract these 465 checks are built on.
+#
 # From scratch, every time. `dart_frog build` generates into build/ without
 # removing what is already there, so a route that has been renamed or moved
 # stays mounted from the previous run and the suite tests a server that no
@@ -89,7 +95,7 @@ echo "── starting on :$PORT"
 # halves of the switch are needed to reach a card here — the market file has
 # to announce the rail and the deployment has to have something behind it —
 # and the checks below prove each half separately.
-(cd "$API_DIR" && exec env PORT="$PORT" BEL_SIGNIN_MAX_PER_SOURCE=6 \
+(cd "$API_DIR" && exec env BEL_ENV_FILE=none PORT="$PORT" BEL_SIGNIN_MAX_PER_SOURCE=6 \
   BEL_MARKETS_FILE=/tmp/bel-smoke-markets-card.yaml \
   CARD__SANDBOX=1 ORANGE__SANDBOX=1 \
   dart build/bin/server.dart >/tmp/bel-smoke.log 2>&1) &
@@ -107,6 +113,17 @@ fi
 echo "── checks"
 
 check "health responds"            "200" "$(status "$BASE/health")"
+# What this process is actually wired to. Absent, the commonest local failure
+# is invisible: an env file that did not apply leaves the API on the in-memory
+# composition, answering 200 with invented departures and the sign-in code on
+# its own stdout, while the mail catcher stays empty for a reason nobody can
+# see. This smoke run *is* the fakes composition, so `fakes` and `log` are the
+# right answers here — the point is that it says which.
+health="$(curl -s "$BASE/health")"
+check "health says what it is wired to" "yes" \
+  "$(grep -q '"data":"fakes"' <<<"$health" && echo yes || echo no)"
+check "and where email would go" "yes" \
+  "$(grep -q '"mail":"log"' <<<"$health" && echo yes || echo no)"
 check "market is public"           "200" "$(status "$BASE/public/v1/market")"
 check "cities are public"          "200" "$(status "$BASE/public/v1/cities")"
 
@@ -2368,7 +2385,7 @@ check "the pushed file differs from the shipped one" "yes" \
   "$(cmp -s /tmp/bel-smoke-markets.yaml "$API_DIR/../../config/markets.yaml" \
     && echo no || echo yes)"
 
-(cd "$API_DIR" && exec env PORT="$CONFIG_PORT" \
+(cd "$API_DIR" && exec env BEL_ENV_FILE=none PORT="$CONFIG_PORT" \
   BEL_MARKETS_FILE=/tmp/bel-smoke-markets.yaml \
   dart build/bin/server.dart >/tmp/bel-smoke-config.log 2>&1) &
 config_pid=$!
@@ -2404,7 +2421,7 @@ config_pid=""
 # rails under a green deploy is the failure this refuses to have.
 printf 'defaultMarket: CG\nmarkets:\n  - code: CG\n    currency: ZWL\n' \
   > /tmp/bel-smoke-markets-broken.yaml
-(cd "$API_DIR" && exec env PORT="$CONFIG_PORT" \
+(cd "$API_DIR" && exec env BEL_ENV_FILE=none PORT="$CONFIG_PORT" \
   BEL_MARKETS_FILE=/tmp/bel-smoke-markets-broken.yaml \
   dart build/bin/server.dart >/tmp/bel-smoke-broken.log 2>&1) &
 config_pid=$!
