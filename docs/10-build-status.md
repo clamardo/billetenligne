@@ -241,13 +241,19 @@ These are true today and each one is a decision, not an oversight.
    typed key stays underneath it**, in groups of four: a back office is opened
    on a laptop far more often than a QR assumes, and an authenticator running
    on that same machine cannot scan its own screen.
-8. **A cover photo can be uploaded but has no control in the console.** The
-   API takes one — same port, same sniffing, a bigger budget — and the
-   storefront renders one when it is there. What is missing is the picker,
-   and it is missing because the storefront was designed to look complete
-   without a cover (`03-operator-lifecycle.md` §2.4: "a storefront that looks
-   empty without one is a broken design"). Building a control for a field most
-   operators will never fill was not worth the slice.
+8. ~~**A cover photo can be uploaded but has no control in the console.**~~
+   **Closed.** The picker sits under the logo, smaller, and says *facultative*
+   before it says anything else — because `03-operator-lifecycle.md` §2.4 is
+   right that a storefront which looks empty without one is a broken design,
+   and an empty slot reading as an oversight is exactly what makes somebody
+   upload a blurry photograph of a parked coach. `KBrandHeader` paints the
+   photograph **under a scrim**: the title and tagline are drawn in a colour
+   verified against the accent and against plein soleil, not against an image
+   nobody reviewed, and the scrim is what keeps that guarantee true. The live
+   preview shows it, which is the point of that screen. Still open: nothing
+   *renders* the public storefront yet — `GET /public/v1/operators/{code}` and
+   the typed client method exist and carry `coverUrl`, and the page at
+   `blt.cg/o/<code>` that consumes them does not.
 9. **Brand assets are capped rather than downscaled.** The spec asks for three
    raster sizes and a monochrome variant; what ships refuses anything over
    40 KB or 512 px instead. Re-encoding somebody's brand mark is a silent
@@ -266,11 +272,16 @@ These are true today and each one is a decision, not an oversight.
    it, which is what stops somebody holding one (ADR-0012). Reordering renames
    every seat in both moved sections, so their blocks are dropped and the
    operator is told rather than left with a block that landed on somebody
-   else's seat. **Still not built: undo/redo.** A block is one tap to reverse
-   and a fitting one button, so the missing case is the reorder that discards
-   blocks — which now announces itself instead of being silent. Numbering is
-   also chosen once for the whole layout rather than per section, which the
-   model allows and no operator has asked for.
+   else's seat. **Undo/redo is built too**, and deliberately coarse: a step is
+   a *decision* — a seat condemned, a section moved, a door placed — not a
+   keystroke, because a history recording every character needs forty taps to
+   get back past a retyped row count and is a history nobody uses. Text fields
+   keep their own per-character undo. Each step is a snapshot of the whole
+   screen rather than an inverse operation, since the first inverse somebody
+   forgets to write is the one that corrupts a layout, and a snapshot that is
+   wrong is at least visibly wrong. Numbering is still chosen once for the
+   whole layout rather than per section, which the model allows and no
+   operator has asked for.
 11. ~~**A ticket lives only in memory on the device.**~~ **Closed**, and so is
    its sibling on the scanner. The traveller app keeps its tickets in a
    SQLite vault and the scanner keeps its boarding log in one, so a cold
@@ -368,7 +379,7 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,457 tests in total**, plus 454 smoke checks, 46 executed schema guarantees,
+**1,466 tests in total**, plus 454 smoke checks, 46 executed schema guarantees,
 513 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs

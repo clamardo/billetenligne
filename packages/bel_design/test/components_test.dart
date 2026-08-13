@@ -485,6 +485,18 @@ void main() {
   });
 
   group('KBrandHeader', () {
+    /// The gradient between a photograph and the text drawn on it.
+    ///
+    /// Matched by the gradient rather than by type: the monogram tile is a
+    /// `DecoratedBox` too, and a test that counted boxes would pass for the
+    /// wrong reason the day somebody wrapped one.
+    final scrim = find.byWidgetPredicate(
+      (w) =>
+          w is DecoratedBox &&
+          w.decoration is BoxDecoration &&
+          (w.decoration as BoxDecoration).gradient != null,
+    );
+
     testWidgets('an operator with no logo still gets a mark', (tester) async {
       await tester.pumpWidget(
         host(
@@ -518,6 +530,46 @@ void main() {
 
       expect(find.byKey(const Key('logo')), findsOneWidget);
       expect(find.byType(KMonogram), findsNothing);
+    });
+
+    testWidgets('no cover means the pattern, and no scrim over nothing', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          const KBrandHeader(title: 'Océan du Nord', accent: AccentHue.ocean),
+        ),
+      );
+
+      // The ordinary case. A storefront that looks empty without a
+      // photograph is a broken design, so the generated pattern is the
+      // design rather than a placeholder for one.
+      expect(find.byType(CustomPaint), findsWidgets);
+      expect(scrim, findsNothing);
+    });
+
+    testWidgets('a cover is painted under a scrim, never over the title', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          const KBrandHeader(
+            title: 'Océan du Nord',
+            tagline: 'Le confort sur toutes les routes',
+            accent: AccentHue.ocean,
+            cover: SizedBox.shrink(key: Key('cover')),
+          ),
+        ),
+      );
+
+      expect(find.byKey(const Key('cover')), findsOneWidget);
+      // The one contrast guarantee this component makes is that its text is
+      // readable on its accent. A photograph nobody reviewed would break it,
+      // so the scrim is between the two — and the title is still last in the
+      // stack, drawn over both.
+      expect(scrim, findsOneWidget);
+      expect(find.text('Océan du Nord'), findsOneWidget);
+      expect(find.text('Le confort sur toutes les routes'), findsOneWidget);
     });
 
     testWidgets('the compact header drops the tagline, not the title', (

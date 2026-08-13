@@ -44,6 +44,7 @@ final class KBrandHeader extends StatelessWidget {
     this.tagline,
     this.pattern = HeaderPattern.flat,
     this.logo,
+    this.cover,
     this.footnote,
     this.compact = false,
     super.key,
@@ -59,6 +60,20 @@ final class KBrandHeader extends StatelessWidget {
   /// operator who never opened this screen still looks maintained rather than
   /// abandoned.
   final Widget? logo;
+
+  /// The operator's photograph, when they have uploaded one, painted behind
+  /// the pattern.
+  ///
+  /// **Behind a scrim, and that is not decoration.** The title and tagline are
+  /// drawn in [_onAccent], a colour verified against the accent and against
+  /// plein soleil — not against somebody's photograph of a white minibus at
+  /// noon. The scrim is what keeps the one contrast guarantee this component
+  /// makes true when a caller hands it an image nobody reviewed.
+  ///
+  /// Null is the ordinary case and costs nothing: the generated pattern is
+  /// the design, and a cover is an addition to it rather than a replacement
+  /// for the storefront that works without one.
+  final Widget? cover;
 
   /// Reliability, usually: `★ 4,2 · 92% à l'heure`. Rendered by the caller,
   /// because the design system holds no business rules.
@@ -81,6 +96,24 @@ final class KBrandHeader extends StatelessWidget {
           CustomPaint(
             painter: _PatternPainter(pattern: pattern, accent: accent.color),
           ),
+          if (cover != null) ...[
+            cover!,
+            // Weighted towards the bottom, where the tagline sits, and never
+            // fully opaque: an operator who uploaded a photograph should be
+            // able to see it. See [cover].
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    accent.color.withValues(alpha: 0.55),
+                    accent.color.withValues(alpha: 0.88),
+                  ],
+                ),
+              ),
+            ),
+          ],
           Padding(
             padding: EdgeInsets.symmetric(
               horizontal: kilo.space.s4,

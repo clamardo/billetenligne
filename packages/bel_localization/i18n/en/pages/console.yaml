@@ -254,6 +254,11 @@ console:
       tapToBlock: "Tap a seat to take it out of service. It keeps its number and stops being sold."
       blockedCount: "{count} seat(s) out of service."
       unblockAll: "Restore all"
+      # A step is a decision — a seat condemned, a section moved — not a
+      # keystroke. Text fields keep their own undo, which is the right
+      # granularity for text.
+      undo: "Undo the last change"
+      redo: "Redo"
       moveUp: "Move towards the front"
       moveDown: "Move towards the back"
       # Seat numbers depend on where a section sits. After a move, a blocked
@@ -435,6 +440,16 @@ console:
   vitrine:
     title: "Your storefront"
     intro: "This is what a traveller sees before choosing your company. All of it stays editable, forever."
+    # A cover photo is optional, and saying so is half the control: the
+    # storefront is designed to look complete without one
+    # (`03-operator-lifecycle.md` §2.4), and an empty slot that reads as an
+    # oversight is what makes somebody upload anything at all.
+    cover: "Cover photo"
+    coverOptional: "Optional. Without one, your pattern and colour fill the banner — the storefront never looks unfinished."
+    coverRules: "PNG or JPEG. 120 KB maximum, 1600 px per side."
+    coverUpload: "Upload"
+    coverReplace: "Replace"
+    coverRemove: "Remove the photo"
     logoNotYet: "Logo upload is not available on this server. Your initials are drawn in your colour — no storefront is ever left empty."
     logo: "Logo"
     logoRules: "PNG, JPEG or SVG. 40 KB maximum, 512 px per side."

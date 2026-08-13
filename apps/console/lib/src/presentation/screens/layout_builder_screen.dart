@@ -47,6 +47,90 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
   /// Doors, stairs and the lavatory.
   final _features = <LayoutFeature>[];
 
+  /// What the screen looked like before each structural change, and after
+  /// each undo.
+  ///
+  /// **Coarse on purpose.** A step is a *decision* — a seat condemned, a
+  /// section moved, a door placed — not a keystroke. A history that recorded
+  /// every character would need forty taps of undo to get back past a row
+  /// count somebody retyped, which is a history nobody uses. Text fields keep
+  /// their own per-character undo, which is the right granularity for text.
+  ///
+  /// The typed-but-uncommitted text does ride along in a snapshot, so undoing
+  /// a deleted section restores the numbers that were in it. The cost is that
+  /// undo also reverts text typed since the last decision — and redo puts it
+  /// back, because the current state is snapshotted on the way out.
+  final _past = <_Snapshot>[];
+  final _future = <_Snapshot>[];
+
+  /// Deep enough for a session of drawing, bounded so a screen left open all
+  /// afternoon does not hold every coach the operator has ever considered.
+  static const _historyDepth = 40;
+
+  bool get _canUndo => _past.isNotEmpty;
+  bool get _canRedo => _future.isNotEmpty;
+
+  /// Call **before** mutating. Everything reachable from the screen goes in,
+  /// because a partial snapshot is a restore that silently drops something.
+  void _remember() {
+    _past.add(_snapshot());
+    if (_past.length > _historyDepth) _past.removeAt(0);
+    // A new decision ends the redo line. Keeping it would let somebody redo
+    // their way into a layout that never existed.
+    _future.clear();
+  }
+
+  _Snapshot _snapshot() => _Snapshot(
+    name: _name.text,
+    mode: _mode,
+    numbering: _numbering,
+    sections: [for (final s in _sections) s.snapshot()],
+    blocked: {..._blocked},
+    features: [..._features],
+    movedBlocks: _movedBlocks,
+  );
+
+  void _undo() {
+    if (!_canUndo) return;
+    final now = _snapshot();
+    setState(() {
+      _restore(_past.removeLast());
+      _future.add(now);
+    });
+  }
+
+  void _redo() {
+    if (!_canRedo) return;
+    final now = _snapshot();
+    setState(() {
+      _restore(_future.removeLast());
+      _past.add(now);
+    });
+  }
+
+  void _restore(_Snapshot s) {
+    // The editors own `TextEditingController`s, so a restore is a rebuild
+    // rather than an assignment. Disposing first is not optional: a leaked
+    // controller keeps notifying a widget that is gone.
+    for (final editor in _sections) {
+      editor.dispose();
+    }
+    _sections
+      ..clear()
+      ..addAll([for (final e in s.sections) _SectionEditor.from(e)]);
+
+    _name.text = s.name;
+    _mode = s.mode;
+    _numbering = s.numbering;
+    _blocked
+      ..clear()
+      ..addAll(s.blocked);
+    _features
+      ..clear()
+      ..addAll(s.features);
+    _movedBlocks = s.movedBlocks;
+  }
+
   @override
   void dispose() {
     _name.dispose();
@@ -82,7 +166,10 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
       name: _name.text,
       mode: _mode,
       sections: sections,
-      blocked: {for (final b in _blocked) if (labels.contains(b)) b},
+      blocked: {
+        for (final b in _blocked)
+          if (labels.contains(b)) b,
+      },
       features: List.unmodifiable(_features),
     );
   }
@@ -93,7 +180,22 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
     final draft = _draft;
 
     return Scaffold(
-      appBar: AppBar(title: Text(context.t('console.fleet.builder.title'))),
+      appBar: AppBar(
+        title: Text(context.t('console.fleet.builder.title')),
+        actions: [
+          IconButton(
+            tooltip: context.t('console.fleet.builder.undo'),
+            icon: const Icon(Icons.undo),
+            onPressed: _canUndo ? _undo : null,
+          ),
+          IconButton(
+            tooltip: context.t('console.fleet.builder.redo'),
+            icon: const Icon(Icons.redo),
+            onPressed: _canRedo ? _redo : null,
+          ),
+          SizedBox(width: kilo.space.s2),
+        ],
+      ),
       // The save control lives on a bar of its own rather than in the app
       // bar, and not for looks: a refusal here has to say what it wants, and
       // an explanation under a button does not fit in a 56-pixel toolbar. It
@@ -204,7 +306,10 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
                       ),
                     ),
                 ],
-                onChanged: (v) => setState(() => _mode = v ?? _mode),
+                onChanged: (v) => setState(() {
+                  _remember();
+                  _mode = v ?? _mode;
+                }),
               ),
             ),
             SizedBox(width: kilo.space.s3),
@@ -223,7 +328,10 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
                       ),
                     ),
                 ],
-                onChanged: (v) => setState(() => _numbering = v ?? _numbering),
+                onChanged: (v) => setState(() {
+                  _remember();
+                  _numbering = v ?? _numbering;
+                }),
               ),
             ),
           ],
@@ -252,7 +360,10 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
               // that produces one is offering a dead end.
               onRemove: _sections.length == 1
                   ? null
-                  : () => setState(() => _sections.removeAt(i).dispose()),
+                  : () => setState(() {
+                      _remember();
+                      _sections.removeAt(i).dispose();
+                    }),
               // Order is physical: section one is at the front. Getting VIP
               // and standard the wrong way round meant deleting both and
               // retyping them, which is how somebody loses a fare they had
@@ -274,7 +385,10 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
             icon: Icons.add,
             onPressed: _sections.length >= 6
                 ? null
-                : () => setState(() => _sections.add(_SectionEditor())),
+                : () => setState(() {
+                    _remember();
+                    _sections.add(_SectionEditor());
+                  }),
           ),
         ),
       ],
@@ -291,6 +405,7 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
   /// the operator is told. Losing two taps is better than blocking the wrong
   /// seat quietly.
   void _move(int from, int to) => setState(() {
+    _remember();
     final blocksBefore = _blocked.length;
     final section = _sections.removeAt(from);
     _sections.insert(to, section);
@@ -384,6 +499,7 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
               // ever be sold, which is why the map is here rather than a grid
               // of checkboxes: the thing being edited is the coach.
               onToggle: (seat) => setState(() {
+                _remember();
                 if (!_blocked.remove(seat.label)) _blocked.add(seat.label);
               }),
               labels: KSeatMapLabels(
@@ -407,10 +523,11 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
                   ),
                 ),
                 TextButton(
-                  onPressed: () => setState(_blocked.clear),
-                  child: Text(
-                    context.t('console.fleet.builder.unblockAll'),
-                  ),
+                  onPressed: () => setState(() {
+                    _remember();
+                    _blocked.clear();
+                  }),
+                  child: Text(context.t('console.fleet.builder.unblockAll')),
                 ),
               ],
             ),
@@ -464,7 +581,10 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
                 IconButton(
                   tooltip: context.t('console.fleet.builder.removeFeature'),
                   icon: const Icon(Icons.delete_outline),
-                  onPressed: () => setState(() => _features.removeAt(i)),
+                  onPressed: () => setState(() {
+                    _remember();
+                    _features.removeAt(i);
+                  }),
                 ),
               ],
             ),
@@ -492,7 +612,12 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
       context: context,
       builder: (context) => const _FeatureDialog(),
     );
-    if (added != null) setState(() => _features.add(added));
+    if (added != null) {
+      setState(() {
+        _remember();
+        _features.add(added);
+      });
+    }
   }
 }
 
@@ -547,9 +672,7 @@ class _FeatureDialogState extends State<_FeatureDialog> {
                 DropdownMenuItem(
                   value: t,
                   child: Text(
-                    context.t(
-                      'console.fleet.builder.featureTypes.${t.name}',
-                    ),
+                    context.t('console.fleet.builder.featureTypes.${t.name}'),
                   ),
                 ),
             ],
@@ -618,6 +741,27 @@ final class _SectionEditor {
       abreast = TextEditingController(text: '2+2'),
       pitch = TextEditingController(),
       fareValue = TextEditingController();
+
+  /// Rebuilt from a snapshot, controllers and all. Undo restores a section
+  /// that was deleted, which means the widget tree gets new controllers —
+  /// there is no way to un-dispose the old ones.
+  _SectionEditor.from(_SectionSnapshot s)
+    : rows = TextEditingController(text: s.rows),
+      abreast = TextEditingController(text: s.abreast),
+      pitch = TextEditingController(text: s.pitch),
+      fareValue = TextEditingController(text: s.fareValue) {
+    code = s.code;
+    fareMode = s.fareMode;
+  }
+
+  _SectionSnapshot snapshot() => _SectionSnapshot(
+    code: code,
+    rows: rows.text,
+    abreast: abreast.text,
+    pitch: pitch.text,
+    fareMode: fareMode,
+    fareValue: fareValue.text,
+  );
 
   String code = 'STD';
   final TextEditingController rows;
@@ -879,4 +1023,49 @@ class _SectionCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// One step of history: everything the screen holds, as values.
+///
+/// A record of the *state*, not of the action that produced it. An undo stack
+/// of inverse operations needs an inverse for every action, and the first one
+/// somebody forgets to write is the one that corrupts the layout — where a
+/// snapshot that is simply wrong is a snapshot that is visibly wrong.
+final class _Snapshot {
+  const _Snapshot({
+    required this.name,
+    required this.mode,
+    required this.numbering,
+    required this.sections,
+    required this.blocked,
+    required this.features,
+    required this.movedBlocks,
+  });
+
+  final String name;
+  final TransportMode mode;
+  final SeatNumbering numbering;
+  final List<_SectionSnapshot> sections;
+  final Set<String> blocked;
+  final List<LayoutFeature> features;
+  final bool movedBlocks;
+}
+
+/// One section, as text rather than as controllers.
+final class _SectionSnapshot {
+  const _SectionSnapshot({
+    required this.code,
+    required this.rows,
+    required this.abreast,
+    required this.pitch,
+    required this.fareMode,
+    required this.fareValue,
+  });
+
+  final String code;
+  final String rows;
+  final String abreast;
+  final String pitch;
+  final _FareMode fareMode;
+  final String fareValue;
 }

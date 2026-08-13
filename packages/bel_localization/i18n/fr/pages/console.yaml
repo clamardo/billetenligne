@@ -256,6 +256,11 @@ console:
       tapToBlock: "Touchez un siège pour le condamner. Il garde son numéro et cesse d'être vendu."
       blockedCount: "{count} siège(s) condamné(s)."
       unblockAll: "Tout rétablir"
+      # Une étape, c'est une décision — un siège condamné, une section
+      # déplacée — pas une frappe au clavier. Les champs de texte gardent
+      # leur propre annulation, qui est la bonne granularité pour du texte.
+      undo: "Annuler la dernière action"
+      redo: "Rétablir"
       moveUp: "Déplacer vers l'avant"
       moveDown: "Déplacer vers l'arrière"
       # Les numéros de siège dépendent de la position de la section. Après un
@@ -439,6 +444,16 @@ console:
   vitrine:
     title: "Votre vitrine"
     intro: "C'est ce que voit un voyageur avant de choisir votre compagnie. Tout est modifiable, à tout moment."
+    # Une photo de couverture est facultative, et le dire est la moitié du
+    # contrôle : la vitrine est dessinée pour être complète sans elle
+    # (`03-operator-lifecycle.md` §2.4), et un emplacement vide qui ressemble
+    # à un oubli pousse quelqu'un à téléverser n'importe quoi.
+    cover: "Photo de couverture"
+    coverOptional: "Facultative. Sans elle, votre motif et votre couleur remplissent le bandeau — la vitrine n'a jamais l'air inachevée."
+    coverRules: "PNG ou JPEG. 120 Ko maximum, 1600 px de côté."
+    coverUpload: "Téléverser"
+    coverReplace: "Remplacer"
+    coverRemove: "Retirer la photo"
     logoNotYet: "Sur ce serveur, le téléversement de logo n'est pas disponible. Vos initiales sont dessinées dans votre couleur — aucune vitrine ne reste vide."
     logo: "Logo"
     logoRules: "PNG, JPEG ou SVG. 40 Ko maximum, 512 px de côté."

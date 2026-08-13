@@ -174,6 +174,8 @@ class _Form extends StatelessWidget {
         SizedBox(height: kilo.space.s4),
 
         _LogoField(state: state, vitrine: vitrine, enabled: canSave),
+        SizedBox(height: kilo.space.s3),
+        _CoverField(state: state, vitrine: vitrine, enabled: canSave),
         SizedBox(height: kilo.space.s4),
 
         _Field(
@@ -393,6 +395,10 @@ class _Preview extends StatelessWidget {
             accent: state._accent,
             pattern: state._pattern,
             logo: _logoMark(vitrine, 56),
+            // The preview is the point of this screen: an operator has to see
+            // their photograph under the scrim, with their own title on top
+            // of it, before it is anybody else's first impression.
+            cover: _coverImage(vitrine),
           ),
         ),
         SizedBox(height: kilo.space.s2),
@@ -441,6 +447,19 @@ class _Preview extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The uploaded photograph, or null so the generated pattern stands alone.
+Widget? _coverImage(VitrineDto vitrine) {
+  final url = vitrine.coverUrl;
+  if (url == null) return null;
+  return Image.network(
+    url,
+    fit: BoxFit.cover,
+    // A cover that 404s falls back to the pattern rather than painting a
+    // broken-image glyph across the operator's own name.
+    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+  );
 }
 
 /// The uploaded mark, or null so [KBrandHeader] falls back to its monogram.
@@ -574,6 +593,123 @@ class _LogoField extends StatelessWidget {
               onPressed: enabled && !workspace.busy
                   ? () => workspace.removeVitrineAsset('logo')
                   : null,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The cover control.
+///
+/// Second, smaller, and saying *facultative* out loud. The storefront was
+/// designed to look complete without a cover
+/// (`03-operator-lifecycle.md` §2.4) — an empty slot that reads as an
+/// oversight is exactly what makes somebody upload a blurry photograph of a
+/// parked coach, and a bad cover is worse than the generated pattern it
+/// replaces.
+///
+/// The preview is a wide strip rather than a thumbnail, because a cover is
+/// cropped to a banner and a square preview would flatter a photograph whose
+/// subject is about to be cut off.
+class _CoverField extends StatelessWidget {
+  const _CoverField({
+    required this.state,
+    required this.vitrine,
+    required this.enabled,
+  });
+
+  final _VitrineScreenState state;
+  final VitrineDto vitrine;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+    final workspace = state.widget.workspace;
+    final url = vitrine.coverUrl;
+
+    // No picker means no browser. The logo control explains itself in that
+    // case because a logo is what every storefront has; a cover is optional,
+    // so the honest thing is to show nothing rather than a second apology.
+    if (!workspace.canUploadAssets) return const SizedBox.shrink();
+
+    return KCard(
+      tone: kilo.color.surfaceSunken,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      context.t('console.vitrine.cover'),
+                      style: kilo.text.label,
+                    ),
+                    SizedBox(height: kilo.space.s1),
+                    Text(
+                      context.t(
+                        url == null
+                            ? 'console.vitrine.coverOptional'
+                            : 'console.vitrine.coverRules',
+                      ),
+                      style: kilo.text.caption.copyWith(
+                        color: kilo.color.contentSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: kilo.space.s3),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 200),
+                child: KButton(
+                  label: context.t(
+                    url == null
+                        ? 'console.vitrine.coverUpload'
+                        : 'console.vitrine.coverReplace',
+                  ),
+                  tone: KButtonTone.secondary,
+                  icon: Icons.image_outlined,
+                  fullWidth: false,
+                  onPressed: enabled && !workspace.busy
+                      ? () => workspace.uploadVitrineAsset('cover')
+                      : null,
+                ),
+              ),
+              if (url != null) ...[
+                SizedBox(width: kilo.space.s2),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: context.t('console.vitrine.coverRemove'),
+                  onPressed: enabled && !workspace.busy
+                      ? () => workspace.removeVitrineAsset('cover')
+                      : null,
+                ),
+              ],
+            ],
+          ),
+          if (url != null) ...[
+            SizedBox(height: kilo.space.s3),
+            ClipRRect(
+              borderRadius: kilo.radius.controlBorder,
+              child: AspectRatio(
+                aspectRatio: 16 / 5,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  // A cover that 404s — storage moved, the blob deleted
+                  // underneath us — must not paint a broken-image glyph
+                  // across the operator's own brand page.
+                  errorBuilder: (_, _, _) =>
+                      ColoredBox(color: kilo.color.surfaceSunken),
+                ),
+              ),
             ),
           ],
         ],

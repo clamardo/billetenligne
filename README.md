@@ -33,7 +33,7 @@ push, including the gaps.
 | Product, architecture and design docs | ✅ `docs/` |
 | Architecture decision records (26) | ✅ `docs/adr/` |
 | `bel_domain` · `bel_localization` · `bel_contracts` · `bel_crypto` | ✅ 603 tests |
-| `bel_design` — Kilo tokens, components, contrast gates | ✅ 67 tests |
+| `bel_design` — Kilo tokens, components, contrast gates | ✅ 69 tests |
 | `bel_backoffice` · `bel_secure_store` — shared sign-in, Keychain/Keystore | ✅ 16 tests |
 | `bel_client` — typed API client, retries, idempotency | ✅ 41 tests |
 | `services/api` — three surfaces, middleware, every route | ✅ 263 tests + 454 smoke checks |
@@ -42,7 +42,7 @@ push, including the gaps.
 | Everything against real Postgres | ✅ 513 integration tests |
 | `apps/traveller` — search, seat map, pay, wallet, offline tickets | ✅ 230 tests |
 | `apps/scanner` — offline boarding, signed manifest, SQLite log | ✅ 62 tests |
-| `apps/console` — fleet, routes, timetables, refunds, payouts | ✅ 125 tests |
+| `apps/console` — fleet, routes, timetables, refunds, payouts | ✅ 140 tests |
 | `apps/admin` — approvals, compliance, payouts, analytics | ✅ 35 tests |
 | Local dev stack, seeded demo world, VS Code debugger | ✅ `infra/dev`, `.vscode/` |
 | CI — analyze, format, layers, tests, schema, integration | ✅ `.github/workflows/ci.yml` |
@@ -56,7 +56,7 @@ dart run tool/check_layers.dart                 # onion dependency rule, 424 fil
 ./tool/smoke_api.sh                             # 445 checks, incl. the Dart client
 ```
 
-**1,457 tests in total**, plus the smoke checks, the schema guarantees, the
+**1,466 tests in total**, plus the smoke checks, the schema guarantees, the
 integration suite and 10 tests against real Azurite. The full command list is
 in [`docs/10-build-status.md`](docs/10-build-status.md).
 

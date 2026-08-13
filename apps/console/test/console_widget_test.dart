@@ -709,15 +709,25 @@ final class _ScriptedConsole implements ConsoleGateway {
     required String mimeType,
   }) async {
     saved.add('upload:$asset:${bytes.length}:$mimeType');
+    // Only the asset that was sent comes back with a URL. A fake that lit up
+    // both would hide a screen wiring the cover button to the logo field.
     return vitrineRow = vitrineRow.withAssetUrls(
-      logoUrl: 'https://storage.test/operators/op-1/logo.png',
+      logoUrl: asset == 'logo'
+          ? 'https://storage.test/operators/op-1/logo.png'
+          : vitrineRow.logoUrl,
+      coverUrl: asset == 'cover'
+          ? 'https://storage.test/operators/op-1/cover.jpg'
+          : vitrineRow.coverUrl,
     );
   }
 
   @override
   Future<VitrineDto> removeVitrineAsset(String asset) async {
     saved.add('remove:$asset');
-    return vitrineRow = vitrineRow.withAssetUrls();
+    return vitrineRow = vitrineRow.withAssetUrls(
+      logoUrl: asset == 'logo' ? null : vitrineRow.logoUrl,
+      coverUrl: asset == 'cover' ? null : vitrineRow.coverUrl,
+    );
   }
 
   @override
@@ -2799,6 +2809,128 @@ void main() {
       expect(section.containsKey('fareSupplement'), isFalse);
     });
 
+    testWidgets('a decision can be taken back, and taken back again', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      // Nothing to undo on a fresh screen, and the control says so rather
+      // than being absent — an operator looking for it should find it greyed.
+      expect(
+        tester
+            .widget<IconButton>(
+              find.ancestor(
+                of: find.byTooltip('Annuler la dernière action'),
+                matching: find.byType(IconButton),
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+
+      await tapVisible(tester, find.text('3C'));
+      await tapVisible(tester, find.text('7A'));
+      expect(find.textContaining('2 siège(s)'), findsOneWidget);
+
+      await tapVisible(tester, find.byTooltip('Annuler la dernière action'));
+      expect(find.textContaining('1 siège(s)'), findsOneWidget);
+
+      await tapVisible(tester, find.byTooltip('Annuler la dernière action'));
+      expect(find.textContaining('siège(s) condamné(s)'), findsNothing);
+
+      // And forward again. A step is a decision, so two taps of undo and two
+      // of redo land exactly where they started.
+      await tapVisible(tester, find.byTooltip('Rétablir'));
+      await tapVisible(tester, find.byTooltip('Rétablir'));
+      expect(find.textContaining('2 siège(s)'), findsOneWidget);
+    });
+
+    testWidgets('undoing a deleted section brings back what was in it', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tester.enterText(fieldNamed('Nom du plan'), 'Car 70');
+      await tapVisible(tester, find.text('Ajouter une section'));
+      await tester.enterText(fieldNamed('Sièges de front').last, '5');
+      await tester.enterText(fieldNamed('Rangées').last, '1');
+      await tester.pumpAndSettle();
+      expect(find.text('45 places'), findsOneWidget);
+
+      // Deleting a section used to be how somebody lost a fare and a row
+      // count they had already typed. The snapshot carries the text, not
+      // just the shape.
+      await tapVisible(tester, find.byIcon(Icons.delete_outline).last);
+      expect(find.text('40 places'), findsOneWidget);
+
+      await tapVisible(tester, find.byTooltip('Annuler la dernière action'));
+      expect(find.text('45 places'), findsOneWidget);
+      expect(find.text('Commence à la rangée 11'), findsOneWidget);
+    });
+
+    testWidgets('a new decision ends the redo line', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tapVisible(tester, find.text('3C'));
+      await tapVisible(tester, find.byTooltip('Annuler la dernière action'));
+      expect(
+        tester
+            .widget<IconButton>(
+              find.ancestor(
+                of: find.byTooltip('Rétablir'),
+                matching: find.byType(IconButton),
+              ),
+            )
+            .onPressed,
+        isNotNull,
+      );
+
+      // Branching. Redoing after this would rebuild a layout that never
+      // existed, so the forward history goes.
+      await tapVisible(tester, find.text('7A'));
+      expect(
+        tester
+            .widget<IconButton>(
+              find.ancestor(
+                of: find.byTooltip('Rétablir'),
+                matching: find.byType(IconButton),
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+    });
+
+    testWidgets('undoing a reorder takes the warning with it', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'fleet.manage'],
+      );
+      await openBuilder(tester, gateway);
+
+      await tapVisible(tester, find.text('Ajouter une section'));
+      await tester.enterText(fieldNamed('Rangées').last, '2');
+      await tester.pumpAndSettle();
+      await tapVisible(tester, find.text('1A'));
+
+      await tapVisible(tester, find.byTooltip('Déplacer vers l\'avant').last);
+      expect(find.textContaining('leurs numéros ont changé'), findsOneWidget);
+
+      // The block comes back and so does its number, so the notice explaining
+      // that numbers changed has to go with it.
+      await tapVisible(tester, find.byTooltip('Annuler la dernière action'));
+      expect(find.textContaining('leurs numéros ont changé'), findsNothing);
+      expect(find.textContaining('1 siège(s)'), findsOneWidget);
+    });
+
     testWidgets('a cancelled draw sends nothing', (tester) async {
       final gateway = _ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
@@ -2963,9 +3095,7 @@ void main() {
       expect(gateway.drawn!['features'], isEmpty);
     });
 
-    testWidgets('sections are reordered without being retyped', (
-      tester,
-    ) async {
+    testWidgets('sections are reordered without being retyped', (tester) async {
       final gateway = _ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
@@ -3765,6 +3895,16 @@ void main() {
   });
 
   group('the vitrine', () {
+    /// The upload button inside one card.
+    ///
+    /// There are two of them now — a logo and a cover — and both say
+    /// *Téléverser*, because both do the same thing to two different fields.
+    /// Scoping to the card is what an operator does with their eyes.
+    Finder uploadIn(String field) => find.descendant(
+      of: find.ancestor(of: find.text(field), matching: find.byType(KCard)),
+      matching: find.widgetWithText(KButton, 'Téléverser'),
+    );
+
     testWidgets('with nowhere to pick a file, no upload button is offered', (
       tester,
     ) async {
@@ -3800,7 +3940,7 @@ void main() {
       workspace.openSection(ConsoleSection.vitrine);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Téléverser'));
+      await tester.tap(uploadIn('Logo'));
       await tester.pumpAndSettle();
 
       expect(gateway.saved, contains('upload:logo:4:image/png'));
@@ -3832,7 +3972,7 @@ void main() {
       workspace.openSection(ConsoleSection.vitrine);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Téléverser'));
+      await tester.tap(uploadIn('Logo'));
       await tester.pumpAndSettle();
 
       expect(gateway.saved, isEmpty);
@@ -3858,7 +3998,7 @@ void main() {
 
       workspace.openSection(ConsoleSection.vitrine);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Téléverser'));
+      await tester.tap(uploadIn('Logo'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('Retirer le logo'));
@@ -3938,6 +4078,84 @@ void main() {
       );
 
       expect(find.text('Vitrine'), findsNothing);
+    });
+    testWidgets('a cover is optional, and the screen says so first', (
+      tester,
+    ) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'vitrine.manage'],
+      );
+      final workspace = await pump(
+        tester,
+        gateway,
+        files: _ScriptedPicker(null),
+      );
+
+      workspace.openSection(ConsoleSection.vitrine);
+      await tester.pumpAndSettle();
+
+      // `03-operator-lifecycle.md` §2.4: an empty slot that reads as an
+      // oversight is what makes somebody upload a blurry photograph of a
+      // parked coach. The word *facultative* is the control.
+      expect(find.text('Photo de couverture'), findsOneWidget);
+      expect(find.textContaining('Facultative'), findsOneWidget);
+    });
+
+    testWidgets('the cover button uploads a cover, not a logo', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'vitrine.manage'],
+      );
+      final picker = _ScriptedPicker(
+        const PickedFile(
+          name: 'gare.jpg',
+          bytes: [1, 2, 3, 4, 5, 6],
+          mimeType: 'image/jpeg',
+        ),
+      );
+      final workspace = await pump(tester, gateway, files: picker);
+
+      workspace.openSection(ConsoleSection.vitrine);
+      await tester.pumpAndSettle();
+
+      await tester.tap(uploadIn('Photo de couverture'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('upload:cover:6:image/jpeg'));
+      expect(gateway.saved, isNot(contains('upload:logo:6:image/jpeg')));
+      // Once there is one, the constraints replace the reassurance: the
+      // person reading is now somebody whose file might be refused.
+      expect(find.textContaining('120 Ko'), findsOneWidget);
+      expect(find.textContaining('Facultative'), findsNothing);
+    });
+
+    testWidgets('a cover can be taken off again', (tester) async {
+      final gateway = _ScriptedConsole(
+        capabilities: const ['booking.read', 'vitrine.manage'],
+      );
+      final workspace = await pump(
+        tester,
+        gateway,
+        files: _ScriptedPicker(
+          const PickedFile(
+            name: 'gare.jpg',
+            bytes: [1, 2, 3],
+            mimeType: 'image/jpeg',
+          ),
+        ),
+      );
+
+      workspace.openSection(ConsoleSection.vitrine);
+      await tester.pumpAndSettle();
+      await tester.tap(uploadIn('Photo de couverture'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Retirer la photo'));
+      await tester.pumpAndSettle();
+
+      // And the logo is untouched: two fields, two removals.
+      expect(gateway.saved, contains('remove:cover'));
+      expect(gateway.saved, isNot(contains('remove:logo')));
+      expect(find.textContaining('Facultative'), findsOneWidget);
     });
   });
 
