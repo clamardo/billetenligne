@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:bel_api/src/adapters/demo_applicant_screening.dart';
 import 'package:bel_api/src/application/auto_review_applications.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_protection.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_review_queue.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_worker/src/compliance_watch.dart';
@@ -56,6 +57,15 @@ void main() {
   Future<List<Map<String, dynamic>>> query(String sql) async {
     final rows = await seed.execute(sql);
     return rows.map((r) => r.toColumnMap()).toList();
+  }
+
+  /// The user behind a demo handle, for the actions that need an actor.
+  Future<String> ownerOf(String handle) async {
+    final rows = await query(
+      "SELECT id::text AS id FROM user_accounts "
+      "WHERE email = '$handle@$demoEmailDomain'",
+    );
+    return rows.single['id'] as String;
   }
 
   group('a world you can shop in', () {
@@ -222,6 +232,109 @@ void main() {
 
       expect(rows, hasLength(1));
       expect(rows.single['email'], 'angele@$demoEmailDomain');
+    });
+  });
+
+  group('a coach worth breaking down', () {
+    /// Tomorrow's first Alizés departure to Pointe-Noire, and who is on it.
+    Future<Map<String, dynamic>> tomorrow() async {
+      final rows = await query('''
+        SELECT d.id::text AS id, d.operator_id::text AS operator_id,
+               (SELECT count(*) FROM bookings b
+                 WHERE b.departure_id = d.id AND b.state = 'confirmed'
+               ) AS confirmed,
+               (SELECT count(*) FROM seats s
+                 WHERE s.departure_id = d.id AND s.state = 'sold'
+               ) AS sold
+          FROM departures d
+          JOIN routes r ON r.id = d.route_id
+          JOIN operators o ON o.id = d.operator_id
+         WHERE o.code = 'DEMO-ALZ'
+           AND r.destination_city = 'PNR'
+           AND d.departs_at::date = (now() + INTERVAL '1 day')::date
+         ORDER BY d.departs_at
+         LIMIT 1
+      ''');
+      return rows.single;
+    }
+
+    test('has people on it, holding tickets that were signed', () async {
+      final departure = await tomorrow();
+      expect(departure['confirmed'], 12);
+      // The seat is what the conductor counts, and it moved with the booking.
+      expect(departure['sold'], 12);
+
+      final tickets = await query('''
+        SELECT count(*) AS n,
+               count(*) FILTER (WHERE t.signature IS NOT NULL) AS signed
+          FROM tickets t
+          JOIN bookings b ON b.id = t.booking_id
+         WHERE b.departure_id = '${departure['id']}'
+      ''');
+      // A ticket with no signature renders a QR no conductor will accept, so
+      // "sold" and "has a ticket that scans" are two different claims and
+      // both are made here.
+      expect(tickets.single['n'], 12);
+      expect(tickets.single['signed'], 12);
+    });
+
+    test('the money is on the ledger, and it balances', () async {
+      // A seed that INSERTed a booking would have skipped this entirely, and
+      // the payout run reads exactly these rows.
+      final rows = await query('''
+        SELECT sum(l.amount_minor) FILTER (WHERE l.direction = 'debit')
+                 AS debits,
+               sum(l.amount_minor) FILTER (WHERE l.direction = 'credit')
+                 AS credits
+          FROM ledger_entries l
+          JOIN operators o ON o.id = l.operator_id
+         WHERE o.code LIKE 'DEMO-%'
+      ''');
+
+      final debits = rows.single['debits'];
+      expect(debits, isNotNull);
+      expect(rows.single['credits'], debits);
+    });
+
+    test('and the road can now be called for help', () async {
+      // The reason the passengers are here at all. A call asks for exactly
+      // the people on the coach, so a departure nobody bought a seat on is
+      // refused — which is why this could not be seeded before.
+      final departure = await tomorrow();
+      final protection = PostgresProtection(db);
+
+      final opened = await protection.openCall(
+        operatorId: departure['operator_id'] as String,
+        departureId: departure['id'] as String,
+        actorUserId: await ownerOf('angele'),
+        now: DateTime.now().toUtc(),
+      );
+
+      expect(opened.refusal, isNull);
+      expect(opened.call!.seatsRequested, 12);
+
+      // And the other company, which opted in and runs this road, has it.
+      final kouilou = await query(
+        "SELECT id::text AS id FROM operators WHERE code = 'DEMO-KLV'",
+      );
+      final inbox = await protection.openCalls(kouilou.single['id'] as String);
+
+      expect(inbox.receiving, isTrue);
+      // By id rather than by count: this database is shared with the API
+      // suite, which leaves calls of its own on this road.
+      final theirs = inbox.calls.where((c) => c.id == opened.call!.id);
+      expect(theirs, hasLength(1));
+      expect(theirs.single.weOpened, isFalse);
+      expect(theirs.single.sendingOperatorName, contains('Alizés'));
+      expect(theirs.single.seatsRequested, 12);
+
+      // Put it back: this database is shared, and a live call is a row the
+      // next suite would have to reason about.
+      await protection.withdrawCall(
+        operatorId: departure['operator_id'] as String,
+        callId: opened.call!.id,
+        actorUserId: await ownerOf('angele'),
+      );
     });
   });
 

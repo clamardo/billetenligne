@@ -94,13 +94,12 @@ column the seed sets: it goes through the protection desk, so the audit trail
 says which owner joined and on what date — which is the question a dispute
 about a rebill actually asks.
 
-A call itself is not seeded, and cannot be: the number of seats on a call is
-how many people are *on the coach*, and a call for an empty departure is
-refused on purpose. Sell a ticket or two on an Alizés departure first, declare
-a breakdown on it, then broadcast — Kouilou's console has the call within a
-refresh, and answering it moves the passengers and posts the rebill in one
-commit. First to accept wins; there is no second winner to test against on a
-one-console demo, but the loser's path is covered in
+A call itself is not seeded, and that is a decision rather than a gap: a live
+call is a thing a dispatcher does, and the world's job is to make it possible.
+Declare a breakdown on tomorrow's 06:00 and broadcast — Kouilou's console has
+the call within a refresh, and answering it moves the passengers and posts the
+rebill in one commit. First to accept wins; there is no second console to race
+on a one-machine demo, but the loser's path is covered in
 `services/api/test/integration/open_protection_pg_test.dart`.
 
 Calls nobody answers do not linger:
@@ -109,10 +108,31 @@ Calls nobody answers do not linger:
 dart run services/worker/bin/worker.dart calls   # closes the ones past their window
 ```
 
+## Passengers on the coaches
+
+Most of what this product does only exists once somebody has paid. A
+disruption with nobody to tell, a rescue coach with nobody to move, an open
+call for room on an empty departure — each of those is a screen that renders
+and proves nothing. So the world **sells tickets at the guichet**: twelve
+seats on tomorrow's 06:00 Alizés to Pointe-Noire, three on the day after, and
+five on Kouilou's 07:30.
+
+Cash at the counter rather than a mobile-money rail, because a rail sale has
+to be authorised on a handset nobody is holding. It goes through the same
+`HoldSeats` → `ReserveBooking` → `captureCash` path the console does, so the
+ledger, the signed tickets and the outbox messages are all really there — a
+seed that INSERTed a booking would have skipped the ledger the payout run
+later reads.
+
+Which makes tomorrow's 06:00 **the coach to break**: a load big enough that a
+rescue is a decision rather than arithmetic, small enough to read on one
+screen.
+
 ## People
 
 Any phone number accepts the code `123456` in the Auth emulator, and every
-address below is a sign-in.
+address below is a sign-in. The passengers are people too — they carry
+`alz-p1@…`, `klv-p3@…` and so on, so the purge finds them by the same mark.
 
 | Sign-in | Who |
 |---|---|

@@ -1,11 +1,17 @@
 import 'dart:io';
 
+import 'package:bel_api/src/application/hold_seats.dart';
 import 'package:bel_api/src/application/ports/platform_console.dart';
+import 'package:bel_api/src/application/reserve_booking.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_operator_applications.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_operator_console.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_platform_console.dart';
+import 'package:bel_api/src/adapters/ed25519_ticket_issuer.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_booking_store.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_protection.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_seat_inventory.dart';
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart' hide Result;
 
@@ -47,12 +53,14 @@ const demoPhonePrefix = '+2420690';
 
 final class DemoWorld {
   DemoWorld({required Database db, required Connection seed})
-    : _seed = seed,
+    : _db = db,
+      _seed = seed,
       _applications = PostgresOperatorApplications(db),
       _platform = PostgresPlatformConsole(db),
       _console = PostgresOperatorConsole(db, timeZone: 'Africa/Brazzaville'),
       _protection = PostgresProtection(db);
 
+  final Database _db;
   final Connection _seed;
   final PostgresOperatorApplications _applications;
   final PostgresPlatformConsole _platform;
@@ -349,6 +357,16 @@ final class DemoWorld {
       dailyDepartures: 2,
     );
 
+    // People on the coaches. Tomorrow's 06:00 to Pointe-Noire is the one that
+    // carries a load worth breaking down: enough passengers that a rescue
+    // coach is a decision rather than an arithmetic exercise, and few enough
+    // that a manifest fits on a screen. The day after is thinner, so a
+    // dispatcher looking at both can tell which is which.
+    final onBoard =
+        await _sell(alizes, code: 'ALZ', inDays: 1, seats: 12) +
+        await _sell(alizes, code: 'ALZ', inDays: 2, seats: 3) +
+        await _sell(kouilou, code: 'KLV', inDays: 1, seats: 5);
+
     // Somebody to buy a ticket as. The Auth emulator accepts 123456 for any
     // number, so this account is signed into without a handset.
     await _person('voyageur', 'Chancelvie Okemba', phone: '00001');
@@ -357,6 +375,9 @@ final class DemoWorld {
       ..writeln('── demo world seeded')
       ..writeln('   3 operators selling · 1 of them with lapsed paperwork')
       ..writeln('   2 of them in the open-protection channel')
+      ..writeln(
+        '   $onBoard passengers on tomorrow\'s coaches, paid at the guichet',
+      )
       ..writeln('   2 applications waiting for the onboarding pass')
       ..writeln(
         '   people: *@$demoEmailDomain, traveller ${demoPhonePrefix}00001',
@@ -592,7 +613,7 @@ final class DemoWorld {
           vehicleId: vehicle.id,
           originStationId: station.id,
         ),
-        'pattern BZV-\${road.\$1}',
+        'pattern BZV-${road.$1}',
       );
 
       // A fortnight, which is enough for a traveller to search any ordinary
@@ -629,6 +650,135 @@ final class DemoWorld {
     },
     ignoreRows: true,
   );
+
+  /// Passengers on a coach, sold over the counter.
+  ///
+  /// **Without this the demo world has roads and no people on them**, and
+  /// most of what this product does only exists once somebody has paid: a
+  /// disruption has nobody to tell, a rescue coach has nobody to move, an
+  /// open call for room is refused because a call for an empty departure is
+  /// not a call. A world you can look at is not the same as a world you can
+  /// break.
+  ///
+  /// Cash at the guichet rather than a mobile-money rail, and that is the
+  /// only choice here that needed making: a rail sale would have to be
+  /// authorised by a handset nobody is holding, whereas a counter sale is one
+  /// transaction the operator console genuinely performs — hold, reserve,
+  /// take the money, post the ledger, issue the tickets, queue the message.
+  /// It goes through `HoldSeats` and `ReserveBooking` for the same reason
+  /// everything else here does: a seed that INSERTed a booking would prove
+  /// that INSERT works, and would quietly skip the ledger the payout run
+  /// later reads.
+  Future<int> _sell(
+    String operatorId, {
+    required String code,
+    required int inDays,
+    required int seats,
+  }) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT d.id::text AS id, d.origin_station_id::text AS station
+          FROM departures d
+          JOIN routes r ON r.id = d.route_id
+         WHERE d.operator_id = @op
+           AND r.destination_city = 'PNR'
+           AND d.departs_at::date = (now() + make_interval(days => @days))::date
+         ORDER BY d.departs_at
+         LIMIT 1
+      '''),
+      parameters: {
+        'op': TypedValue(Type.uuid, operatorId),
+        'days': TypedValue(Type.integer, inDays),
+      },
+    );
+    if (rows.isEmpty) return 0;
+    final departureId = rows.first.toColumnMap()['id'] as String;
+    final stationId = rows.first.toColumnMap()['station'] as String;
+
+    // The development signer, whose seed is fixed (ADR-0020), so a ticket in
+    // yesterday's screenshot still scans today.
+    final bookings = PostgresBookingStore(
+      _db,
+      issuer: await Ed25519TicketIssuer.development(),
+    );
+    final holds = HoldSeats(inventory: PostgresSeatInventory(_db));
+    final reserve = ReserveBooking(bookings: bookings);
+
+    final free = await _seed.execute(
+      Sql.named('''
+        SELECT seat_label FROM seats
+         WHERE departure_id = @id AND state = 'available'
+         ORDER BY seat_label
+         LIMIT @n
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'n': TypedValue(Type.integer, seats),
+      },
+    );
+
+    var sold = 0;
+    for (final (index, row) in free.indexed) {
+      final label = row.toColumnMap()['seat_label'] as String;
+      final who = _passengers[index % _passengers.length];
+      // A handle per seat, so re-seeding produces the same people and the
+      // purge finds every one of them by the address it already looks for.
+      final handle = '${code.toLowerCase()}-p${index + 1}';
+      final userId = await _person(handle, who, phone: '${_digits(handle)}');
+
+      final held = await holds(
+        departureId: departureId,
+        seatLabels: [label],
+        userId: userId,
+        idempotencyKey: 'demo:$handle:$departureId',
+        channel: 'agency',
+      );
+      if (held case Err()) continue;
+
+      final booked = await reserve(
+        holdId: held.valueOrNull!.id,
+        userId: userId,
+        passengers: [PassengerDto(fullName: who, seatLabel: label)],
+        channel: 'agency',
+      );
+      if (booked case Err()) continue;
+
+      final booking = booked.valueOrNull!;
+      final posting = Postings.cashSale(
+        operatorId: booking.operatorId,
+        stationId: stationId,
+        fare: booking.fare,
+        serviceFee: booking.serviceFee,
+      );
+      if (posting case Err()) continue;
+
+      final paid = await bookings.captureCash(
+        bookingId: booking.id,
+        operatorId: booking.operatorId,
+        stationId: stationId,
+        // Nobody: the demo has no vendor account, and inventing one would put
+        // a name on a till reading that never sat at it.
+        soldByUserId: null,
+        posting: posting.valueOrNull!,
+      );
+      if (paid != null) sold++;
+    }
+    return sold;
+  }
+
+  /// Names for the seats. Ordinary Congolese names, invented, and reused
+  /// across coaches on purpose — a manifest of forty distinct strangers is
+  /// harder to read at a glance than one with people you start to recognise.
+  static const _passengers = [
+    'Chancelvie Okemba',
+    'Rodrigue Bakala',
+    'Fideline Ngoma',
+    'Bertrand Mavoungou',
+    'Clarisse Itoua',
+    'Juste Bouiti',
+    'Ornella Massamba',
+    'Landry Ondongo',
+  ];
 
   Future<void> _mark(String operatorId, String suffix) => _seed.execute(
     Sql.named('UPDATE operators SET code = @code WHERE id = @id'),
