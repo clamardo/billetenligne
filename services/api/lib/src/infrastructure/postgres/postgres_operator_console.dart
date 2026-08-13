@@ -1089,6 +1089,105 @@ final class PostgresOperatorConsole implements OperatorConsole {
     );
   });
 
+  @override
+  Future<BoardingManifestData?> boardingManifest({
+    required String operatorId,
+    required String departureId,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final header = await tx.execute(
+      Sql.named('''
+        SELECT d.departs_at, d.capacity, r.code AS route_code,
+               o.code AS operator_code
+          FROM departures d
+          JOIN routes r ON r.id = d.route_id
+          JOIN operators o ON o.id = d.operator_id
+         WHERE d.id = @id AND d.operator_id = @operator
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'operator': TypedValue(Type.uuid, operatorId),
+      },
+    );
+    if (header.isEmpty) return null;
+
+    // Tickets rather than bookings, because a ticket is what gets scanned:
+    // one row per seat, carrying its own secret, and a voided one is still a
+    // row — the device has to be told about it rather than left to infer it
+    // from an absence.
+    final rows = await tx.execute(
+      Sql.named('''
+        WITH road AS (
+          SELECT r.id AS route_id, 0 AS position, r.origin_city AS city
+            FROM routes r
+           UNION ALL
+          SELECT rs.route_id, rs.sequence, rs.city_code FROM route_stops rs
+           UNION ALL
+          SELECT r.id,
+                 1 + (SELECT count(*)::int FROM route_stops x
+                       WHERE x.route_id = r.id),
+                 r.destination_city
+            FROM routes r
+        )
+        SELECT b.ref, t.seat_label, bs.passenger_name, t.rotating_secret,
+               t.voided_at,
+               CASE WHEN b.road_span <> d.road_span THEN fs.city END
+                 AS boards_at,
+               CASE WHEN b.road_span <> d.road_span THEN ts.city END
+                 AS alights_at
+          FROM tickets t
+          JOIN bookings b ON b.id = t.booking_id
+          JOIN departures d ON d.id = b.departure_id
+          JOIN booking_seats bs
+            ON bs.booking_id = b.id AND bs.seat_label = t.seat_label
+          LEFT JOIN road fs ON fs.route_id = d.route_id
+                           AND fs.position = lower(b.road_span)
+          LEFT JOIN road ts ON ts.route_id = d.route_id
+                           AND ts.position = upper(b.road_span)
+         WHERE b.departure_id = @id
+           AND b.operator_id = @operator
+         ORDER BY t.seat_label
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'operator': TypedValue(Type.uuid, operatorId),
+      },
+    );
+
+    final head = header.first.toColumnMap();
+    final live = <BoardingTicket>[];
+    final voided = <String>[];
+
+    for (final row in rows) {
+      final r = row.toColumnMap();
+      final ref = r['ref'] as String;
+      final seat = r['seat_label'] as String;
+      if (r['voided_at'] != null) {
+        voided.add('$ref/$seat');
+        continue;
+      }
+      live.add(
+        BoardingTicket(
+          bookingRef: ref,
+          seatLabel: seat,
+          passengerName: r['passenger_name'] as String,
+          rotatingSecret: (r['rotating_secret'] as List).cast<int>(),
+          boardsAt: r['boards_at'] as String?,
+          alightsAt: r['alights_at'] as String?,
+        ),
+      );
+    }
+
+    return BoardingManifestData(
+      departureId: departureId,
+      operatorCode: head['operator_code'] as String,
+      routeCode: head['route_code'] as String,
+      departsAt: head['departs_at'] as DateTime,
+      capacity: head['capacity'] as int,
+      tickets: live,
+      voided: voided,
+    );
+  });
+
   // ── Getting paid ──────────────────────────────────────────────────────────
 
   // ── Refunds ───────────────────────────────────────────────────────────────

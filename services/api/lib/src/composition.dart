@@ -135,6 +135,7 @@ final class Services {
     required this.inventory,
     required this.idempotency,
     required this.clock,
+    required this.tickets,
     required this.usingDatabase,
     required this.smsConfigured,
     Database? database,
@@ -158,6 +159,14 @@ final class Services {
   /// the traveller browses, and a fake one would be a second definition of
   /// every coach and route, kept in sync by hand.
   final OperatorConsole console;
+
+  /// Signs tickets, and hands out the public halves.
+  ///
+  /// On `Services` because one route needs the second half: the boarding
+  /// manifest a scanner pins ships the verification keys with it, so a
+  /// conductor's device can check a signature at the roadside with nothing
+  /// but what it downloaded in the yard (ADR-0007, ADR-0022).
+  final TicketIssuer tickets;
 
   /// The dispatcher's disruption desk (`08-disruption.md`). Separate from
   /// [console] because it is the one operator surface a passenger feels
@@ -439,6 +448,7 @@ final class Services {
         PostgresIdempotencyStore(db, scope: const DbScope.anonymous()),
       ),
       clock: clock,
+      tickets: _ticketIssuer,
       usingDatabase: true,
       smsConfigured: (env['COMMS__SMSFROM'] ?? '').isNotEmpty,
       database: db,
@@ -624,6 +634,7 @@ final class Services {
       inventory: inventory,
       idempotency: Idempotency(MemoryIdempotencyStore()),
       clock: clock,
+      tickets: _ticketIssuer,
       usingDatabase: false,
       // The logging sender will happily "send" an SMS to the console, and a
       // fresh clone should be able to exercise both channels.
@@ -885,6 +896,12 @@ final class Services {
 /// issues share one future rather than generating two keys.
 final class _LazyTicketIssuer implements TicketIssuer {
   Future<Ed25519TicketIssuer>? _resolved;
+
+  @override
+  Future<Map<int, List<int>>> verificationKeys() async {
+    final issuer = await (_resolved ??= Ed25519TicketIssuer.development());
+    return issuer.verificationKeys();
+  }
 
   @override
   Future<List<SignedTicket>> issue({

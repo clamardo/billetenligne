@@ -28,6 +28,16 @@ final class SignedTicket {
 /// Signs tickets. **Server-side only** — the private key never leaves us, and
 /// devices carry public keys so they can verify offline at the roadside.
 abstract interface class TicketIssuer {
+  /// The public halves, by key id, for a device that has to verify offline.
+  ///
+  /// Handed to a scanner with the manifest it pins rather than compiled into
+  /// the app: a key compiled in is a key that cannot be rotated without a
+  /// store release, and a store release is a week in a market where these
+  /// handsets are updated over an agency's own wifi at best. The trust anchor
+  /// is the authenticated console session that asked — the same one already
+  /// trusted to hand over every passenger's name.
+  Future<Map<int, List<int>>> verificationKeys();
+
   Future<List<SignedTicket>> issue({
     required BookingRef bookingRef,
     required String departureId,

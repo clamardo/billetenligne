@@ -2208,6 +2208,90 @@ void main() {
       expect(back.segments.single.fromPosition, 0);
     });
   });
+
+  group('the departure a scanner pins', () {
+    // Composed by the server, decoded by the device: no `toJson` here for the
+    // same reason the route has none, so this is read from a literal.
+    Map<String, Object?> pinned({
+      List<Object?> tickets = const [],
+      List<Object?> voided = const [],
+    }) => {
+      'departureId': 'dep-1',
+      'operatorCode': 'ODN',
+      'routeCode': 'BZV-PNR',
+      'departsAt': '2026-08-15T05:00:00.000Z',
+      'capacity': 49,
+      'tickets': tickets,
+      'voided': voided,
+      'keys': {'1': 'a2V5LWJ5dGVz'},
+    };
+
+    test('the secret, the leg and the keys survive the wire', () {
+      final back = BoardingManifestDto.fromJson(
+        jsonDecode(
+              jsonEncode(
+                pinned(
+                  tickets: [
+                    {
+                      'bookingRef': 'BEL-7QK4M2',
+                      'seatLabel': '14A',
+                      'passengerName': 'Aline M.',
+                      'secret': 'c2VjcmV0LWJ5dGVz',
+                      'boardsAt': 'DOL',
+                      'alightsAt': 'PNR',
+                    },
+                  ],
+                  voided: ['BEL-3RT9P1/3A'],
+                ),
+              ),
+            )
+            as Map<String, Object?>,
+      );
+
+      expect(back.tickets.single.rotatingSecret, 'c2VjcmV0LWJ5dGVz');
+      expect(back.tickets.single.alightsAt, 'PNR');
+      // The key id is an int on the device and a string on the wire, because
+      // JSON has no other kind of object key.
+      expect(back.keys[1], 'a2V5LWJ5dGVz');
+      expect(back.voided, ['BEL-3RT9P1/3A']);
+    });
+
+    test('a coach with nobody on it still pins', () {
+      // An empty coach is an ordinary morning, not a failure to download. A
+      // device that treated it as one would send a conductor looking for
+      // signal they do not have.
+      final back = BoardingManifestDto.fromJson(
+        jsonDecode(jsonEncode(pinned())) as Map<String, Object?>,
+      );
+
+      expect(back.tickets, isEmpty);
+      expect(back.voided, isEmpty);
+      expect(back.capacity, 49);
+    });
+
+    test('a whole-road ticket carries no leg', () {
+      final back = BoardingManifestDto.fromJson(
+        jsonDecode(
+              jsonEncode(
+                pinned(
+                  tickets: [
+                    {
+                      'bookingRef': 'BEL-7QK4M2',
+                      'seatLabel': '14A',
+                      'passengerName': 'Aline M.',
+                      'secret': 'c2VjcmV0LWJ5dGVz',
+                    },
+                  ],
+                ),
+              ),
+            )
+            as Map<String, Object?>,
+      );
+
+      expect(back.tickets.single.boardsAt, isNull);
+      expect(back.tickets.single.alightsAt, isNull);
+    });
+  });
 }
 
 /// Reads the string constants declared on [ErrorCode] straight from source,

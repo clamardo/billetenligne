@@ -184,6 +184,39 @@ void main() {
       expect(hold.total.currency.code, 'XAF');
     });
 
+    test('pins a boarding manifest, secrets and keys included', () async {
+      // The one request a scanner makes before the door opens (ADR-0022).
+      // What matters is that the URL is the route dart_frog mounted and that
+      // the bytes-on-the-wire fields survive: a secret that arrives mangled
+      // fails every freshness check at the roadside, silently.
+      final transport = _ScriptedClient([
+        (
+          200,
+          '{"departureId":"dep-1","operatorCode":"ODN",'
+              '"routeCode":"BZV-PNR","departsAt":"2026-08-15T05:00:00.000Z",'
+              '"capacity":49,"tickets":[{"bookingRef":"BEL-7QK4M2",'
+              '"seatLabel":"14A","passengerName":"Aline M.",'
+              '"secret":"c2VjcmV0LWJ5dGVz","boardsAt":"DOL",'
+              '"alightsAt":"PNR"}],"voided":["BEL-3RT9P1/3A"],'
+              '"keys":{"1":"a2V5LWJ5dGVz"}}',
+        ),
+      ]);
+
+      final pinned = await clientFor(
+        transport,
+        token: 'tok',
+      ).pinForBoarding('dep-1');
+
+      expect(
+        transport.requests.single.url.path,
+        '/console/v1/departures/dep-1/boarding',
+      );
+      expect(pinned.tickets.single.rotatingSecret, 'c2VjcmV0LWJ5dGVz');
+      expect(pinned.tickets.single.alightsAt, 'PNR');
+      expect(pinned.keys[1], 'a2V5LWJ5dGVz');
+      expect(pinned.voided, ['BEL-3RT9P1/3A']);
+    });
+
     test('a refusal keeps its code, params and trace id', () async {
       final transport = _ScriptedClient([
         (

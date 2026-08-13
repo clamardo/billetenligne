@@ -218,6 +218,66 @@ final class Manifest {
   int get boarded => rows.where((r) => r.boarded).length;
 }
 
+/// The pinned departure a scanner boards from (ADR-0022).
+///
+/// Downloaded once, in the yard, on whatever signal there is. After that the
+/// door works with no network at all, which is the whole design: the verdict
+/// is a signature check, a lookup in [tickets] and the device's own
+/// redemption log.
+final class BoardingManifestData {
+  const BoardingManifestData({
+    required this.departureId,
+    required this.operatorCode,
+    required this.routeCode,
+    required this.departsAt,
+    required this.tickets,
+    required this.voided,
+    required this.capacity,
+  });
+
+  final String departureId;
+  final String operatorCode;
+  final String routeCode;
+  final DateTime departsAt;
+  final int capacity;
+
+  /// Live tickets, one per seat.
+  final List<BoardingTicket> tickets;
+
+  /// `REF/SEAT` for every ticket voided since it was issued — refunded,
+  /// cancelled, or moved to another coach. Carried explicitly because an
+  /// Ed25519 signature stays valid forever: only the manifest knows the money
+  /// went back, and a device that never hears about it boards somebody who
+  /// has already been paid.
+  final List<String> voided;
+}
+
+/// One seat on a pinned manifest.
+final class BoardingTicket {
+  const BoardingTicket({
+    required this.bookingRef,
+    required this.seatLabel,
+    required this.passengerName,
+    required this.rotatingSecret,
+    this.boardsAt,
+    this.alightsAt,
+  });
+
+  final String bookingRef;
+  final String seatLabel;
+  final String passengerName;
+
+  /// Seeds the freshness code the traveller's screen regenerates every thirty
+  /// seconds (ADR-0007). It is what makes a screenshot detectably stale, and
+  /// it is why this response is a credential rather than a list.
+  final List<int> rotatingSecret;
+
+  /// Where this passenger gets on and off, when they bought a piece of the
+  /// road (ADR-0025). Null is the whole journey.
+  final String? boardsAt;
+  final String? alightsAt;
+}
+
 /// Everything an operator configures and runs.
 ///
 /// One port for the whole console surface, unlike the traveller side where
@@ -348,6 +408,22 @@ abstract interface class OperatorConsole {
   });
 
   Future<Manifest?> manifest({
+    required String operatorId,
+    required String departureId,
+  });
+
+  /// Everything a scanner needs to board this coach with the radio switched
+  /// off (ADR-0022): the passengers, their per-ticket rotating secrets, and
+  /// the tickets that have been voided since.
+  ///
+  /// A different read from [manifest] even though both are "who is on this
+  /// coach", because the two answer different questions. The dispatcher's
+  /// manifest is a document — names, phones, how many boarded — and this one
+  /// is a **credential set** the device verifies against for the next eight
+  /// hours with nobody watching. It carries secrets the printed list must not,
+  /// and it deliberately carries no phone numbers: a conductor's handset is
+  /// the most easily lost device in this company.
+  Future<BoardingManifestData?> boardingManifest({
     required String operatorId,
     required String departureId,
   });

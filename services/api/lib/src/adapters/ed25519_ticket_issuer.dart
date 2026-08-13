@@ -33,6 +33,11 @@ final class Ed25519TicketIssuer implements TicketIssuer {
       );
 
   @override
+  Future<Map<int, List<int>>> verificationKeys() async => {
+    _signer.activeKeyId: await _signer.publicKeyBytes(),
+  };
+
+  @override
   Future<List<SignedTicket>> issue({
     required BookingRef bookingRef,
     required String departureId,

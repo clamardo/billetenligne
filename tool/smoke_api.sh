@@ -1797,6 +1797,23 @@ check "GET is not a way to swap a coach" "405" \
   "$(status -H "$OP_AUTH" "$BASE/console/v1/departures/$DEP/rescue")"
 
 echo
+echo "── the departure a scanner pins"
+
+# One download in the yard, and then the door works with the radio off
+# (ADR-0022). What is proven here is the gate in front of it: this response
+# carries the rotating secrets that make a screenshot detectably stale, so who
+# may ask for it matters as much as what it says.
+check "an anonymous device pins nothing" "401" \
+  "$(status "$BASE/console/v1/departures/$DEP/boarding")"
+check "a traveller cannot pin a coach" "403" \
+  "$(status -H "$AUTH" "$BASE/console/v1/departures/$DEP/boarding")"
+check "a conductor's request gets past the gate" "503" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/departures/$DEP/boarding")"
+check "POST is not a way to pin one" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/departures/$DEP/boarding" -H "$OP_AUTH")"
+
+echo
 echo "── moving the passengers onto another departure"
 
 rebook_as() {

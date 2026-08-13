@@ -520,6 +520,102 @@ final class ManifestDto {
   );
 }
 
+/// One seat on a pinned boarding manifest (ADR-0022).
+final class BoardingTicketDto {
+  const BoardingTicketDto({
+    required this.bookingRef,
+    required this.seatLabel,
+    required this.passengerName,
+    required this.rotatingSecret,
+    this.boardsAt,
+    this.alightsAt,
+  });
+
+  final String bookingRef;
+  final String seatLabel;
+  final String passengerName;
+
+  /// Base64, because this is bytes on a JSON wire. It seeds the freshness
+  /// code the traveller's screen regenerates every thirty seconds (ADR-0007),
+  /// which is what makes a screenshot detectably stale — and what makes this
+  /// response a credential rather than a passenger list.
+  final String rotatingSecret;
+
+  /// Where this passenger gets on and off, when they bought a piece of the
+  /// road (ADR-0025). Absent is the whole journey.
+  final String? boardsAt;
+  final String? alightsAt;
+
+  factory BoardingTicketDto.fromJson(
+    Map<String, Object?> json,
+  ) => BoardingTicketDto(
+    bookingRef: Wire.requireString(json['bookingRef'], 'bookingRef'),
+    seatLabel: Wire.requireString(json['seatLabel'], 'seatLabel'),
+    passengerName: Wire.requireString(json['passengerName'], 'passengerName'),
+    rotatingSecret: Wire.requireString(json['secret'], 'secret'),
+    boardsAt: json['boardsAt'] as String?,
+    alightsAt: json['alightsAt'] as String?,
+  );
+}
+
+/// The departure a scanner pins before the coach leaves the yard (ADR-0022).
+///
+/// Downloaded once, on whatever signal there is, and then the door works with
+/// the radio switched off: the verdict is a signature check against [keys], a
+/// lookup in [tickets] and the device's own redemption log.
+final class BoardingManifestDto {
+  const BoardingManifestDto({
+    required this.departureId,
+    required this.operatorCode,
+    required this.routeCode,
+    required this.departsAt,
+    required this.capacity,
+    required this.tickets,
+    required this.voided,
+    required this.keys,
+  });
+
+  final String departureId;
+  final String operatorCode;
+  final String routeCode;
+  final DateTime departsAt;
+  final int capacity;
+  final List<BoardingTicketDto> tickets;
+
+  /// `REF/SEAT` for every ticket voided since it was issued. Carried
+  /// explicitly because a signature stays valid forever: only the manifest
+  /// knows the money went back.
+  final List<String> voided;
+
+  /// Ticket-signing public keys by key id, base64. Shipped with the manifest
+  /// rather than compiled into the app, so a key can be rotated without a
+  /// store release.
+  final Map<int, String> keys;
+
+  factory BoardingManifestDto.fromJson(
+    Map<String, Object?> json,
+  ) => BoardingManifestDto(
+    departureId: Wire.requireString(json['departureId'], 'departureId'),
+    operatorCode: Wire.requireString(json['operatorCode'], 'operatorCode'),
+    routeCode: Wire.requireString(json['routeCode'], 'routeCode'),
+    departsAt: Wire.readInstant(json['departsAt'], field: 'departsAt'),
+    capacity: Wire.requireInt(json['capacity'], 'capacity'),
+    tickets: Wire.readList(
+      json['tickets'],
+      BoardingTicketDto.fromJson,
+      field: 'tickets',
+    ),
+    voided: [
+      for (final v in (json['voided'] as List? ?? const []))
+        Wire.requireString(v, 'voided'),
+    ],
+    keys: {
+      for (final e in (json['keys'] as Map? ?? const {}).entries)
+        int.parse(e.key.toString()): Wire.requireString(e.value, 'keys'),
+    },
+  );
+}
+
 /// What the guichet answers with: a paid booking and its tickets.
 final class CounterSaleDto {
   const CounterSaleDto({

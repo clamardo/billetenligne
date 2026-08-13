@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:bel_api/src/adapters/ed25519_ticket_issuer.dart';
 import 'package:bel_api/src/application/hold_seats.dart';
+import 'package:bel_api/src/application/ports/booking_store.dart';
 import 'package:bel_api/src/application/reserve_booking.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_booking_store.dart';
@@ -526,6 +527,110 @@ void main() {
     });
   });
 
+  group('the departure a scanner pins', () {
+    /// The scanner boards with the radio off (ADR-0022), so everything the
+    /// door needs has to be in one download made in the yard: the passengers,
+    /// the per-ticket secrets that make a screenshot stale, the keys to check
+    /// a signature with, and the tickets that stopped being valid after they
+    /// were signed.
+    test('carries the secrets, the keys and what has been voided', () async {
+      final road = await fixture.route(
+        code: 'PIN-LEG',
+        origin: 'BZV',
+        destination: 'OYO',
+      );
+      await fixture.stopsOn(road, const [(city: 'DOL', offsetMinutes: 180)]);
+      await fixture.priceSegment(
+        road,
+        fromPosition: 1,
+        toPosition: 2,
+        fareMinor: 5500,
+      );
+      final departureId = await fixture.departure(
+        seatLabels: const ['15A', '15B', '15C'],
+        onRoute: road,
+      );
+      final console = PostgresOperatorConsole(db, timeZone: PgFixture.timeZone);
+
+      Future<BookingRecord> buy(String seat, {String? from, String? to}) async {
+        final claimed = await hold(
+          departureId: departureId,
+          seatLabels: [seat],
+          userId: userId,
+          idempotencyKey: key(),
+          fromCity: from,
+          toCity: to,
+        );
+        final booking = await reserve(
+          holdId: claimed.valueOrNull!.id,
+          userId: userId,
+          passengers: [PassengerDto(fullName: 'Aline M.', seatLabel: seat)],
+        );
+        final record = booking.valueOrNull!;
+        await bookings.captureCash(
+          bookingId: record.id,
+          operatorId: PgFixture.operatorId,
+          stationId: stationId,
+          soldByUserId: null,
+          posting: Postings.cashSale(
+            operatorId: PgFixture.operatorId,
+            stationId: stationId,
+            fare: record.fare,
+            serviceFee: record.serviceFee,
+          ).valueOrNull!,
+        );
+        return record;
+      }
+
+      await buy('15A');
+      await buy('15B', from: 'DOL', to: 'OYO');
+      final refunded = await buy('15C');
+      await fixture.voidTicketsOf(refunded.id);
+
+      final pinned = await console.boardingManifest(
+        operatorId: PgFixture.operatorId,
+        departureId: departureId,
+      );
+
+      expect(pinned!.tickets.map((t) => t.seatLabel), ['15A', '15B']);
+      // A signature stays valid forever, so the refunded seat is named rather
+      // than merely missing: a device left to infer it from an absence boards
+      // somebody who has already had their money back.
+      expect(pinned.voided, ['${refunded.ref.value}/15C']);
+
+      // The secret is what makes a screenshot detectably stale. Without it on
+      // the device every freshness check passes, which is the same product as
+      // not having one.
+      expect(pinned.tickets.every((t) => t.rotatingSecret.isNotEmpty), isTrue);
+
+      final leg = pinned.tickets.firstWhere((t) => t.seatLabel == '15B');
+      expect(leg.boardsAt, 'DOL');
+      expect(leg.alightsAt, 'OYO');
+      expect(
+        pinned.tickets.firstWhere((t) => t.seatLabel == '15A').alightsAt,
+        isNull,
+      );
+    });
+
+    test("another operator's coach is not found", () async {
+      final departureId = await fixture.departure(
+        seatLabels: const ['16A'],
+        onRoute: roadId,
+      );
+
+      expect(
+        await PostgresOperatorConsole(
+          db,
+          timeZone: PgFixture.timeZone,
+        ).boardingManifest(
+          operatorId: '22222222-2222-2222-2222-222222222222',
+          departureId: departureId,
+        ),
+        isNull,
+      );
+    });
+  });
+
   group("the conductor's list names the leg", () {
     /// A manifest that says only "PNR" beside every seat is the reason a
     /// conductor lets a coach leave Dolisie half empty: 11A got off there and
@@ -557,7 +662,11 @@ void main() {
           timeZone: PgFixture.timeZone,
         );
 
-        Future<void> buy(String seat, {String? from, String? to}) async {
+        Future<BookingRecord> buy(
+          String seat, {
+          String? from,
+          String? to,
+        }) async {
           final claimed = await hold(
             departureId: departureId,
             seatLabels: [seat],
@@ -584,6 +693,7 @@ void main() {
               serviceFee: record.serviceFee,
             ).valueOrNull!,
           );
+          return record;
         }
 
         await buy('11A', from: 'DOL', to: 'OYO');

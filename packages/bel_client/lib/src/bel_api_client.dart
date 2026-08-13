@@ -1033,6 +1033,13 @@ final class BelApiClient {
         await _get('/console/v1/departures/$departureId/manifest'),
       );
 
+  /// The one request a scanner makes, in the yard, before the door opens
+  /// (ADR-0022). Everything after it is a local decision.
+  Future<BoardingManifestDto> pinForBoarding(String departureId) async =>
+      BoardingManifestDto.fromJson(
+        await _get('/console/v1/departures/$departureId/boarding'),
+      );
+
   /// Collect against a reservation made on a phone.
   Future<CounterSaleDto> collectPayment({
     required String paymentCode,

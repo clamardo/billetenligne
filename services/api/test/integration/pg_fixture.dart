@@ -609,6 +609,18 @@ final class PgFixture {
     return rows.first.toColumnMap()['n'] as int;
   }
 
+  /// Voids every ticket on a booking, the way a refund does.
+  ///
+  /// Written through the seed connection: the refund path that really does
+  /// this is tested where refunds are, and a manifest test that had to stand
+  /// one up would be a read test depending on a write path it never asks
+  /// anything about.
+  Future<void> voidTicketsOf(String bookingId) => _seed.execute(
+    Sql.named('UPDATE tickets SET voided_at = now() WHERE booking_id = @id'),
+    parameters: {'id': TypedValue(Type.uuid, bookingId)},
+    ignoreRows: true,
+  );
+
   Future<int> voidedTickets(String bookingId) async {
     final rows = await _seed.execute(
       Sql.named(
