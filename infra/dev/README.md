@@ -18,7 +18,8 @@ That is the whole setup. No cloud credentials, no network required (ADR-0020).
 ## Signing in locally
 
 The Auth emulator does not send SMS. Any phone number accepts the code
-**`123456`**. Seeded personas are listed in `seed/README.md`.
+**`123456`**. Seeded personas are listed in [`seed/README.md`](seed/README.md), which also
+explains the demo world and how to remove it.
 
 ## Working on the domain only
 

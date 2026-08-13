@@ -65,6 +65,7 @@ final class AutoReviewApplications {
       // every row in the table on every run is a bill nobody budgeted.
       final screening = await _screening.screen(
         operatorId: application.operatorId,
+        code: application.code,
         ownerName: application.facts.ownerName,
         ownerIdNumber: application.facts.ownerIdNumber,
       );

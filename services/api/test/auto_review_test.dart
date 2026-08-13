@@ -67,6 +67,7 @@ final class _Screen implements ApplicantScreening {
   @override
   Future<ScreeningOutcome> screen({
     required String operatorId,
+    required String code,
     String? ownerName,
     String? ownerIdNumber,
   }) async {
@@ -92,6 +93,7 @@ void main() {
     bool duplicate = false,
   }) => PendingApplication(
     operatorId: id,
+    code: 'SOT',
     legalName: 'Sotrapo SARL',
     facts: small(fleet: fleet),
     duplicate: duplicate,

@@ -8,6 +8,7 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
 
 import 'adapters/acs_notification_gateway.dart';
+import 'adapters/demo_applicant_screening.dart';
 import 'adapters/fake_auth_gateway.dart';
 import 'adapters/firebase_auth_gateway.dart';
 import 'adapters/logging_notification_gateway.dart';
@@ -389,11 +390,17 @@ final class Services {
       payments: paymentStore,
       autoReview: AutoReviewApplications(
         queue: PostgresReviewQueue(db),
-        // No screening contract exists, so this answers `notRun` and every
-        // application falls to a person. The automatic path is switched off
-        // by data rather than by dead code — the day a vendor is wired, this
-        // is the only line that changes.
-        screening: const NoApplicantScreening(),
+        // No screening contract exists, so the default answers `notRun` and
+        // every application falls to a person: the automatic path is switched
+        // off by data rather than by dead code, and the day a vendor is wired
+        // this is the only line that changes.
+        //
+        // `BEL__SCREENING=demo` clears **seeded companies only** — the marker
+        // is the operator's own `DEMO-` code, not the environment — so the
+        // flag surviving into a real deployment auto-approves nobody.
+        screening: env['BEL__SCREENING'] == 'demo'
+            ? const DemoApplicantScreening()
+            : const NoApplicantScreening(),
         clock: clock,
       ),
       payForBooking: PayForBooking(

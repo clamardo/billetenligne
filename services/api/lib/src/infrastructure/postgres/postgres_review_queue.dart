@@ -20,7 +20,8 @@ final class PostgresReviewQueue implements ReviewQueue {
       _db.transaction(const DbScope.worker(), (tx) async {
         final rows = await tx.execute(
           Sql.named('''
-            SELECT o.id, o.legal_name, o.trading_name, o.rccm_number, o.tax_id,
+            SELECT o.id, o.code,
+                   o.legal_name, o.trading_name, o.rccm_number, o.tax_id,
                    a.legal_form, a.registered_address, a.year_founded,
                    a.owner_name, a.owner_id_type, a.owner_id_number,
                    a.owner_phone, a.owner_email,
@@ -164,6 +165,7 @@ final class PostgresReviewQueue implements ReviewQueue {
   static PendingApplication _pending(Map<String, dynamic> r) =>
       PendingApplication(
         operatorId: (r['id'] as Object).toString(),
+        code: (r['code'] as String?) ?? '',
         legalName: (r['legal_name'] as String?) ?? '',
         duplicate: (r['duplicate'] as bool?) ?? false,
         priorOffboarding: (r['prior_offboarding'] as bool?) ?? false,

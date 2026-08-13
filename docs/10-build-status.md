@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-12 · after commit *The wallet that does not ring*
+**Updated:** 2026-08-12 · after commit *A world to walk through, and one command to take it away*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -109,6 +109,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **The road has stops** | ✅ done | The first half of segment selling. `route_stops` had sat in migration 0001 since the first week with nothing writing to it: a company running Brazzaville–Pointe-Noire through Dolisie had no way to say so, and a traveller no way to learn it. The console's route form now describes the whole road in one dialog, because a road and the places on it are one decision. **Times are minutes from the departure**, which is the figure on the timetable a dispatcher already holds. **Ordering is a rule**: the list is sorted by time and numbered by the server, because a segment will be a pair of positions in that sequence — two stops at the same minute are refused for the same reason. **Stops replace, never merge**; an empty list removes the last one, and omitting the field leaves the road alone so a caller saving a duration cannot erase one. **Set-down-only** is on the row, not buried in the dialog, and a stop serving nobody is refused outright. The traveller sees the towns on the search row as codes resolved through the city catalogue the client already holds, computed by a correlated subquery rather than a join — a join to a one-to-many would have multiplied the seat count the same statement produces. **Selling between two stops is not built**, and the wording says *via* rather than *arrêt desservi* everywhere, because a traveller told a coach "serves Dolisie" and then unable to buy a ticket there is worse off than one told nothing. 11 domain · 8 contract · 11 Postgres · 5 console · 1 traveller · 10 smoke tests, 1 schema guarantee |
 | **Document expiry enforces itself** | ✅ done | `03-operator-lifecycle.md` §3.3. `kyb_documents.expires_at` had sat unread since migration 0001, so an insurance certificate could lapse in March and the company keep selling in April. The ladder — T−60 notice, T−30 notice and a **console banner**, T−7 a daily reminder and an SMS to the **owner**, T−0 **no new sales**, T+7 suspension — is one domain object, shared by the worker that enforces it and the screens that explain it, because two implementations of "thirty days" disagree on the day it matters. The **latest copy of each kind wins**, so last year's lapsed certificate is history rather than a block. **Blocked ≠ suspended**: the pass lifts a block by itself when a renewal is verified; a suspension needs `operations` and a written reason. A block stops the **sale**, never the departure — tickets already sold are untouched, the coach runs, the scanner works — and the operator disappears from search rather than selling a seat we would refuse at checkout. It also closed an older hole: `bel_app` could write its own `status`, `commission_bps` and now `sales_blocked_at` under 0004's blanket grant, so `operators` moved to a column list and `verify_public.sql` executes it. Both readers exist: the operator's console banner from thirty days, behind no capability, and our **Conformité** screen — a calendar worked in the fortnight before the deadline, since after it the worker has already acted |
 | **Onboarding that reviews itself** | ✅ done | `03-operator-lifecycle.md` §2.3. The queue is worked oldest-first against a published 48-hour SLA, and the tail is mostly three-coach companies a reviewer has nothing to add to. Those now approve themselves; everything else arrives **pre-sorted with named reasons**. The bar is **exposure, not trust** — five coaches, six daily departures — and the safety net is the expiry ladder above: an operator approved here whose insurance lapses is blocked the day it does. Three bands rather than a score: `elevated` (screening hit · duplicate · prior offboarding) is never auto-approvable at any size. A licence with under ninety days left is a review, not an approval. The audit row carries `actor_type = 'system'` and a **NULL actor** — nobody decided — and a reviewer who reached the file first wins the race, because the activation is conditional on `under_review`. **Off by data, not by dead code:** there is no screening contract, so the port answers `notRun`, `notRun` is not `clear`, and every application still falls to a person while the sorting runs |
+| **A demo world, and the command that removes it** | ✅ done | `infra/dev/seed/README.md`. Several states this product branches on only arrive after months — paperwork three weeks from lapsing, an application small enough for the onboarding pass to approve on its own, a second operator on the same road to hand passengers to — so those paths were written and had never been watched working. Now five companies, eight people and a fortnight of departures exist at once, **built through the real adapters**: the wizard starts the applications, the platform console approves them with a reason that lands in the audit log, the operator console draws the roads and materialises the departures. Two of the five states are produced by the **worker** rather than the seed, so the demonstration is *run the pass and watch*. **The mark is the delete path**: a `DEMO-` code on every operator, a reserved address on every person, and a `--purge` that removes exactly those — because seeded data whose removal is untested is seeded data still in production a year later with a real ticket sold against it. The removal **order is read out of the foreign keys at runtime**, since the tables that hold money are RESTRICT on purpose and a hand-written list would be wrong one migration later. The seeder needs a **superuser connection the product does not have** — creating people is a write no surface holds a grant for (0012), and `audit_log` refuses DELETE by grant *and* by trigger (0004), for the owner too. The purge **suspends that guarantee rather than breaking it**: `DISABLE TRIGGER` takes an ACCESS EXCLUSIVE lock so nobody else can write an audit row meanwhile, and Postgres DDL is transactional so a purge that fails halfway rolls the trigger back on with everything else. That unmaking a world takes a deliberate act is the right shape, not an inconvenience. And the screening adapter that finally makes auto-approval approve somebody is keyed to the operator's own `DEMO-` code, **not to an environment flag**, so the flag surviving into production approves nobody |
 
 Thirteen items of it are built, out of order and deliberately. The follower page is
 what makes a disruption reach the person who would otherwise phone the agency,
@@ -278,22 +279,32 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 497 tests
+         packages/bel_contracts packages/bel_crypto     # 555 tests
 dart test packages/bel_client                           # 36 tests
 rm -rf services/api/build                               # see below — it matters
-dart test services/api -x integration -x storage        # 228 tests
+dart test services/api -x integration -x storage        # 236 tests
 cd packages/bel_design     && flutter test  # 67 component and contrast tests
 cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
-cd apps/traveller && flutter test        # 202 app tests, incl. real SQLite
-cd apps/console   && flutter test        # 100 console tests
-cd apps/admin     && flutter test        # 28 back-office tests
+cd apps/traveller && flutter test        # 224 app tests, incl. real SQLite
+cd apps/console   && flutter test        # 109 console tests
+cd apps/admin     && flutter test        # 35 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 20 scanner tests
-dart run tool/check_layers.dart          # the onion rule, 359 files
-./infra/migrations/check.sh              # 35 schema guarantees
-./tool/integration.sh                    # 352 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 329 checks, incl. the Dart client
+dart run tool/check_layers.dart          # the onion rule, 382 files
+./infra/migrations/check.sh              # 38 schema guarantees
+./tool/integration.sh                    # 417 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 356 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
+```
+
+And to look at it rather than read about it, against the dev stack:
+
+```bash
+docker compose -f infra/dev/docker-compose.yml up -d postgres
+./tool/demo.sh                                        # five companies, eight people
+dart run services/worker/bin/worker.dart onboarding   # approves Niari Express, flags the duplicate
+dart run services/worker/bin/worker.dart compliance   # stops Cars Lékana selling
+./tool/demo.sh --purge                                # and it is gone again
 ```
 
 Remove `services/api/build` before counting: `dart_frog build` copies the
@@ -301,15 +312,17 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,188 tests in total**, plus 329 smoke checks, 35 executed schema guarantees,
-352 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,292 tests in total**, plus 356 smoke checks, 38 executed schema guarantees,
+417 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.
 
-The schema-guarantee figure read **40** until this revision and was wrong: the
-suite prints one `OK` per executed guarantee and there are 31, of which one is
-new here. Nothing was removed; the number had simply never been re-counted.
+Every figure above was re-measured for this revision from a clean tree, which
+is why several moved at once: they had not been re-counted since the Orange
+Money push and the intervening slices each added their own. The
+schema-guarantee figure is one `OK` per executed guarantee, counted from the
+run rather than from the file.
 
 That total read **1,091** in an earlier revision of this document, and the
 number was wrong rather than the suite. `dart test services/api` had been

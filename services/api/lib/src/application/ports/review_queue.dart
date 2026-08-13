@@ -5,6 +5,7 @@ import 'package:bel_domain/bel_domain.dart';
 final class PendingApplication {
   const PendingApplication({
     required this.operatorId,
+    required this.code,
     required this.legalName,
     required this.facts,
     this.duplicate = false,
@@ -12,6 +13,13 @@ final class PendingApplication {
   });
 
   final String operatorId;
+
+  /// The operator's short code. Carried here for one reason: a demo
+  /// deployment has to be able to tell a seeded company from a real one
+  /// **without a flag anybody can leave switched on** — see
+  /// `DemoApplicantScreening`.
+  final String code;
+
   final String legalName;
   final ApplicationFacts facts;
 
@@ -82,6 +90,7 @@ final class NoReviewQueue implements ReviewQueue {
 abstract interface class ApplicantScreening {
   Future<ScreeningOutcome> screen({
     required String operatorId,
+    required String code,
     String? ownerName,
     String? ownerIdNumber,
   });
@@ -93,6 +102,7 @@ final class NoApplicantScreening implements ApplicantScreening {
   @override
   Future<ScreeningOutcome> screen({
     required String operatorId,
+    required String code,
     String? ownerName,
     String? ownerIdNumber,
   }) async => ScreeningOutcome.notRun;

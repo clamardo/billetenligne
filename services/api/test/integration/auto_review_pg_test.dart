@@ -21,6 +21,7 @@ final class _Screen implements ApplicantScreening {
   @override
   Future<ScreeningOutcome> screen({
     required String operatorId,
+    required String code,
     String? ownerName,
     String? ownerIdNumber,
   }) async => outcome;

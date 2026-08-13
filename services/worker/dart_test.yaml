@@ -1,0 +1,9 @@
+# The worker's whole suite runs against a real database, and says so.
+#
+# Declared here so `dart test` names the tag rather than warning about it —
+# and with the same 2x timeout the API's integration tag carries, because
+# these tests seed a world through the product's own adapters and a laptop
+# under load is not a reason to go red.
+tags:
+  integration:
+    timeout: 2x
