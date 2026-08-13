@@ -590,4 +590,179 @@ void main() {
       expect(row.capacity, 3);
     });
   });
+
+  // ── A piece of the road ────────────────────────────────────────────────────
+  //
+  // The search a traveller standing in Dolisie makes. Nothing on this road
+  // starts or ends there, so before ADR-0025 it returned an empty screen while
+  // three coaches a day went past the door — which is the trade every operator
+  // on the corridor already makes at the roadside, out of a notebook.
+  //
+  // Every row here is a leg the operator has *priced*. There is deliberately
+  // no pro-rata fallback: an unpriced pair is not on sale, which is what makes
+  // the whole feature arrive switched off rather than switched on wrong.
+  group('a leg somebody priced', () {
+    /// A road nobody else in this suite searches, so the rows below cannot
+    /// wander into another file's assertions. The integration database is
+    /// shared and absolute counts on a shared road are how a suite passes for
+    /// the wrong reason.
+    Future<String> corridor(
+      String code, {
+      Set<String> setDownOnly = const {},
+    }) async {
+      final road = await fixture.route(
+        code: code,
+        origin: 'BZV',
+        destination: 'OYO',
+      );
+      await fixture.stopsOn(road, const [
+        (city: 'DOL', offsetMinutes: 180),
+      ], setDownOnly: setDownOnly);
+      return road;
+    }
+
+    test('is found between two towns the route does not end at', () async {
+      final road = await corridor('LEG-FOUND');
+      await fixture.priceSegment(
+        road,
+        fromPosition: 1,
+        toPosition: 2,
+        fareMinor: 7000,
+      );
+      final departureId = await fixture.departure(
+        seatLabels: const ['1A', '1B'],
+        fromNow: const Duration(hours: 12),
+        onRoute: road,
+      );
+
+      final results = await catalogue.search(
+        query(
+          from: 'DOL',
+          to: 'OYO',
+          date: await fixture.localDateIn(const Duration(hours: 15)),
+        ),
+      );
+      final row = results.firstWhere((d) => d.id == departureId);
+
+      // An ordinary departure between the two towns asked for — which is the
+      // whole design of the wire here: no new shape, no new screen, and a
+      // client that has never heard of segments renders it correctly.
+      expect(row.originCity, 'DOL');
+      expect(row.destinationCity, 'OYO');
+      // The operator's price, never a fraction of the through fare invented
+      // by us. 7 000, not some share of 12 000.
+      expect(row.fare, const Money.xaf(7000));
+      // Boarding three hours after the coach left Brazzaville.
+      expect(
+        row.departsAt.difference(await fixture.departsAt(departureId)),
+        const Duration(hours: 3),
+      );
+      // And no town on the row that this passenger will never see.
+      expect(row.via, isEmpty);
+    });
+
+    test('an unpriced leg is not on sale', () async {
+      final road = await corridor('LEG-UNPRICED');
+      final departureId = await fixture.departure(
+        seatLabels: const ['1A'],
+        fromNow: const Duration(hours: 12),
+        onRoute: road,
+      );
+
+      final results = await catalogue.search(
+        query(
+          from: 'DOL',
+          to: 'OYO',
+          date: await fixture.localDateIn(const Duration(hours: 15)),
+        ),
+      );
+
+      expect(results.map((d) => d.id), isNot(contains(departureId)));
+    });
+
+    test('a withdrawn price takes the leg off sale', () async {
+      final road = await corridor('LEG-WITHDRAWN');
+      await fixture.priceSegment(
+        road,
+        fromPosition: 1,
+        toPosition: 2,
+        active: false,
+      );
+      final departureId = await fixture.departure(
+        seatLabels: const ['1A'],
+        fromNow: const Duration(hours: 12),
+        onRoute: road,
+      );
+
+      final results = await catalogue.search(
+        query(
+          from: 'DOL',
+          to: 'OYO',
+          date: await fixture.localDateIn(const Duration(hours: 15)),
+        ),
+      );
+
+      expect(results.map((d) => d.id), isNot(contains(departureId)));
+    });
+
+    test('a set-down-only stop cannot start one', () async {
+      // Priced anyway, directly through the seed connection: the console
+      // refuses to write this, and the search must refuse to act on it if it
+      // ever exists. A coach that only puts people down at Dolisie must not
+      // sell a ticket from Dolisie.
+      final road = await corridor('LEG-SETDOWN', setDownOnly: {'DOL'});
+      await fixture.priceSegment(road, fromPosition: 1, toPosition: 2);
+      final departureId = await fixture.departure(
+        seatLabels: const ['1A'],
+        fromNow: const Duration(hours: 12),
+        onRoute: road,
+      );
+
+      final results = await catalogue.search(
+        query(
+          from: 'DOL',
+          to: 'OYO',
+          date: await fixture.localDateIn(const Duration(hours: 15)),
+        ),
+      );
+
+      expect(results.map((d) => d.id), isNot(contains(departureId)));
+    });
+
+    test('a seat sold on the first half is free on the second', () async {
+      final road = await corridor('LEG-HALF');
+      await fixture.priceSegment(road, fromPosition: 0, toPosition: 1);
+      await fixture.priceSegment(road, fromPosition: 1, toPosition: 2);
+      final departureId = await fixture.departure(
+        seatLabels: const ['1A', '1B'],
+        fromNow: const Duration(hours: 12),
+        onRoute: road,
+      );
+
+      // Somebody takes 1A as far as Dolisie, and only that far.
+      await fixture.occupyLeg(departureId, '1A', from: 0, to: 1);
+
+      final boarding = await catalogue.search(
+        query(
+          from: 'DOL',
+          to: 'OYO',
+          date: await fixture.localDateIn(const Duration(hours: 15)),
+        ),
+      );
+      final leaving = await catalogue.search(
+        query(
+          from: 'BZV',
+          to: 'DOL',
+          date: await fixture.localDateIn(const Duration(hours: 12)),
+        ),
+      );
+
+      // Both seats are still for sale to somebody boarding at Dolisie: the
+      // one that was sold is empty from there on, which is the entire point
+      // of a range and is invisible to anything that asks `seats.state`.
+      expect(boarding.firstWhere((d) => d.id == departureId).seatsAvailable, 2);
+      // And one of them has gone for the leg that was actually sold.
+      expect(leaving.firstWhere((d) => d.id == departureId).seatsAvailable, 1);
+    });
+  });
 }

@@ -38,6 +38,28 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
         // — the hold transaction is what actually decides.
         final rows = await tx.execute(
           Sql.named('''
+            -- Every place a coach can be got on or off, numbered the way the
+            -- departure's own `road_span` numbers them: the origin is 0, each
+            -- `route_stops.sequence` follows, and the destination is last
+            -- (ADR-0025). The endpoints are not rows in `route_stops` and
+            -- have to be added here, which is also where their asymmetry
+            -- gets stated — nobody alights where the coach starts, and
+            -- nobody boards where it finishes.
+            WITH road AS (
+              SELECT r.id AS route_id, 0 AS position, r.origin_city AS city,
+                     0 AS offset_minutes, TRUE AS boards, FALSE AS alights
+                FROM routes r
+               UNION ALL
+              SELECT rs.route_id, rs.sequence, rs.city_code, rs.offset_minutes,
+                     rs.allows_boarding, rs.allows_alighting
+                FROM route_stops rs
+               UNION ALL
+              SELECT r.id,
+                     1 + (SELECT count(*)::int FROM route_stops x
+                           WHERE x.route_id = r.id),
+                     r.destination_city, r.duration_minutes, FALSE, TRUE
+                FROM routes r
+            )
             SELECT d.id,
                    d.operator_id,
                    COALESCE(o.trading_name, o.legal_name) AS operator_name,
@@ -47,8 +69,12 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                    -- night; a join over ninety days of departures on every
                    -- search is how a results screen gets slow (0027).
                    o.on_time_rate,
-                   r.origin_city,
-                   r.destination_city,
+                   -- The pair the traveller actually asked for. On a whole
+                   -- road these are the route's own ends; on a leg they are
+                   -- the towns the operator priced, and the row that comes
+                   -- back is an ordinary departure between them.
+                   COALESCE(leg.from_city, r.origin_city)    AS origin_city,
+                   COALESCE(leg.to_city, r.destination_city) AS destination_city,
                    -- Two joins to the same table, which is the honest shape:
                    -- a departure leaves one yard and arrives at another, and
                    -- in a two-terminal city they are the fact that decides
@@ -58,10 +84,16 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                    os.boarding_notes AS origin_notes,
                    ds.id AS destination_station_id,
                    ds.name AS destination_station_name,
-                   d.departs_at,
-                   d.arrives_at,
-                   d.fare_minor,
-                   d.currency,
+                   d.departs_at + make_interval(
+                     mins => COALESCE(leg.from_offset, 0)) AS departs_at,
+                   CASE WHEN leg.to_offset IS NULL THEN d.arrives_at
+                        ELSE d.departs_at
+                             + make_interval(mins => leg.to_offset) END
+                     AS arrives_at,
+                   -- The operator's price for that piece of road, never a
+                   -- fraction of the through fare we invented (ADR-0025).
+                   COALESCE(leg.fare_minor, d.fare_minor) AS fare_minor,
+                   COALESCE(leg.currency, d.currency)     AS currency,
                    d.capacity,
                    d.seat_selection_enabled,
                    d.mode,
@@ -72,12 +104,33 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                    -- statement is also computing — and `route_id` is
                    -- functionally dependent on the grouped primary key,
                    -- which `r.id` is not.
+                   -- Bounded by the leg, so a Dolisie–Pointe-Noire row does
+                   -- not advertise a town the passenger will never see.
                    (SELECT array_agg(rs.city_code ORDER BY rs.sequence)
                       FROM route_stops rs
-                     WHERE rs.route_id = d.route_id) AS via,
+                     WHERE rs.route_id = d.route_id
+                       AND rs.sequence > COALESCE(leg.from_position,
+                                                  lower(d.road_span))
+                       AND rs.sequence < COALESCE(leg.to_position,
+                                                  upper(d.road_span))) AS via,
+                   -- Asked of occupancy rather than of `seats.state`, because
+                   -- on a leg the state is the wrong question: a seat sold
+                   -- Brazzaville→Dolisie reads `partial` and is exactly what
+                   -- somebody boarding at Dolisie should be offered. A hold
+                   -- that has lapsed occupies nothing, here as everywhere.
                    COUNT(s.seat_label) FILTER (
-                     WHERE s.state = 'available'
-                        OR (s.state = 'held' AND s.held_until <= now())
+                     WHERE s.state <> 'blocked'
+                       AND NOT EXISTS (
+                         SELECT 1 FROM seat_occupancy oc
+                          WHERE oc.departure_id = d.id
+                            AND oc.seat_label = s.seat_label
+                            AND (oc.held_until IS NULL
+                                 OR oc.held_until > now())
+                            AND oc.span && int4range(
+                                  COALESCE(leg.from_position,
+                                           lower(d.road_span)),
+                                  COALESCE(leg.to_position,
+                                           upper(d.road_span))))
                    )::int             AS seats_available
               FROM departures d
               JOIN routes    r ON r.id = d.route_id
@@ -89,14 +142,45 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
               LEFT JOIN stations os ON os.id = d.origin_station_id
               LEFT JOIN stations ds ON ds.id = d.destination_station_id
               LEFT JOIN seats s ON s.departure_id = d.id
-             WHERE r.origin_city      = @from
-               AND r.destination_city = @to
-               AND (d.departs_at AT TIME ZONE @tz)::date = @date::date
+              -- The piece of this road that answers the question, when the
+              -- road's own ends do not. `LEFT JOIN LATERAL` and not a
+              -- subquery in the SELECT list, because six columns come out of
+              -- it and every one of them has to agree about which leg.
+              LEFT JOIN LATERAL (
+                SELECT sf.from_position, sf.to_position,
+                       sf.fare_minor, sf.currency,
+                       fs.city AS from_city, ts.city AS to_city,
+                       fs.offset_minutes AS from_offset,
+                       ts.offset_minutes AS to_offset
+                  FROM segment_fares sf
+                  JOIN road fs ON fs.route_id = sf.route_id
+                              AND fs.position = sf.from_position
+                  JOIN road ts ON ts.route_id = sf.route_id
+                              AND ts.position = sf.to_position
+                 WHERE sf.route_id = d.route_id
+                   AND sf.active
+                   AND fs.city = @from AND ts.city = @to
+                   -- A set-down-only stop can end a leg and cannot start
+                   -- one. The detail every naive model gets wrong.
+                   AND fs.boards AND ts.alights
+                 -- A road that visits a town twice has two answers; the
+                 -- earlier boarding is the one a traveller meant.
+                 ORDER BY sf.from_position
+                 LIMIT 1
+              ) leg ON TRUE
+             WHERE ((r.origin_city = @from AND r.destination_city = @to)
+                    OR leg.from_position IS NOT NULL)
+               AND ((d.departs_at + make_interval(
+                       mins => COALESCE(leg.from_offset, 0)))
+                     AT TIME ZONE @tz)::date = @date::date
                AND d.status <> 'cancelled'
                -- A coach that has left is not a search result. The traveller
                -- searching at 06:05 for the 06:00 needs the 09:00, not a row
-               -- they cannot buy.
-               AND d.departs_at > now()
+               -- they cannot buy — and on a leg it is the *boarding* time
+               -- that decides, because the coach left Brazzaville hours
+               -- before it reaches the town they are standing in.
+               AND d.departs_at + make_interval(
+                     mins => COALESCE(leg.from_offset, 0)) > now()
                AND (d.sales_close_at IS NULL OR d.sales_close_at > now())
                -- An operator whose insurance lapsed disappears from search
                -- rather than selling a seat and refusing it at checkout
@@ -112,15 +196,20 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                -- companies running the same 06:00 is broken the same way the
                -- ORDER BY breaks it.
                AND (@afterAt::timestamptz IS NULL
-                    OR (d.departs_at, d.id)
+                    OR (d.departs_at + make_interval(
+                          mins => COALESCE(leg.from_offset, 0)), d.id)
                        > (@afterAt::timestamptz, @afterId::uuid))
              GROUP BY d.id, o.trading_name, o.legal_name, o.accent_hue,
                       o.logo_asset, o.on_time_rate, r.origin_city,
-                      r.destination_city, os.id, ds.id
+                      r.destination_city, r.duration_minutes, os.id, ds.id,
+                      leg.from_position, leg.to_position, leg.fare_minor,
+                      leg.currency, leg.from_city, leg.to_city,
+                      leg.from_offset, leg.to_offset
              -- The id is part of the order, not decoration: without it two
              -- coaches leaving at the same minute have no defined order, and
              -- a keyset cursor over an undefined order skips rows.
-             ORDER BY d.departs_at, d.id
+             ORDER BY d.departs_at + make_interval(
+                        mins => COALESCE(leg.from_offset, 0)), d.id
              LIMIT @limit
           '''),
           parameters: {

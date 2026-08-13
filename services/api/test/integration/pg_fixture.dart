@@ -880,10 +880,14 @@ final class PgFixture {
   /// because the catalogue suite is about what a **traveller** can read and
   /// standing up a console adapter to arrange it would make a read test
   /// depend on a write path it never exercises.
+  /// [setDownOnly] names the stops the coach passes but will not pick up
+  /// from — the detail every naive model gets wrong, and the one the search
+  /// has to respect before it offers somebody a leg starting there.
   Future<void> stopsOn(
     String routeId,
-    List<({String city, int offsetMinutes})> stops,
-  ) async {
+    List<({String city, int offsetMinutes})> stops, {
+    Set<String> setDownOnly = const {},
+  }) async {
     await _seed.execute(
       Sql.named('DELETE FROM route_stops WHERE route_id = @route'),
       parameters: {'route': TypedValue(Type.uuid, routeId)},
@@ -895,14 +899,15 @@ final class PgFixture {
       await _seed.execute(
         Sql.named("""
           INSERT INTO route_stops
-            (route_id, city_code, sequence, offset_minutes)
-          VALUES (@route, @city, @sequence, @offset)
+            (route_id, city_code, sequence, offset_minutes, allows_boarding)
+          VALUES (@route, @city, @sequence, @offset, @boards)
         """),
         parameters: {
           'route': TypedValue(Type.uuid, routeId),
           'city': TypedValue(Type.text, stop.city),
           'sequence': TypedValue(Type.integer, sequence),
           'offset': TypedValue(Type.integer, stop.offsetMinutes),
+          'boards': TypedValue(Type.boolean, !setDownOnly.contains(stop.city)),
         },
         ignoreRows: true,
       );
@@ -931,6 +936,95 @@ final class PgFixture {
       },
     );
     return rows.first.toColumnMap()['id'].toString();
+  }
+
+  /// Puts a price on a piece of a road, the way the console does.
+  ///
+  /// Positions rather than city codes, because that is what the table holds
+  /// (ADR-0025): the origin is 0, each stop follows its own sequence, and the
+  /// destination is last. Written through the seed connection because the
+  /// catalogue suite is about what a **traveller** can read, and standing up
+  /// a console adapter to arrange it would make a read test depend on a write
+  /// path it never exercises.
+  Future<void> priceSegment(
+    String routeId, {
+    required int fromPosition,
+    required int toPosition,
+    int fareMinor = 6000,
+    bool active = true,
+  }) => _seed.execute(
+    Sql.named('''
+      INSERT INTO segment_fares (operator_id, route_id, from_position,
+                                 to_position, fare_minor, currency, active)
+      VALUES (@operator, @route, @from, @to, @fare, 'XAF', @active)
+      ON CONFLICT (route_id, from_position, to_position)
+      DO UPDATE SET fare_minor = EXCLUDED.fare_minor,
+                    active = EXCLUDED.active
+    '''),
+    parameters: {
+      'operator': TypedValue(Type.uuid, operatorId),
+      'route': TypedValue(Type.uuid, routeId),
+      'from': TypedValue(Type.integer, fromPosition),
+      'to': TypedValue(Type.integer, toPosition),
+      'fare': TypedValue(Type.bigInteger, fareMinor),
+      'active': TypedValue(Type.boolean, active),
+    },
+    ignoreRows: true,
+  );
+
+  /// Takes one seat for part of a road, without going through the sales path.
+  ///
+  /// Under a live hold, which is the shortest honest way to occupy half a
+  /// journey: the property under test is what a *reader* makes of occupancy
+  /// that covers one leg, and how it got there is not part of the question.
+  Future<void> occupyLeg(
+    String departureId,
+    String seatLabel, {
+    required int from,
+    required int to,
+  }) async {
+    final userId = await traveller(
+      'leg${DateTime.now().microsecondsSinceEpoch % 1000000}',
+    );
+    final hold = await _seed.execute(
+      Sql.named('''
+        INSERT INTO holds (operator_id, departure_id, user_id, seat_labels,
+                           expires_at, idempotency_key)
+        SELECT s.operator_id, @departure, @user, ARRAY[@label],
+               now() + INTERVAL '3 hours', @key
+          FROM seats s
+         WHERE s.departure_id = @departure AND s.seat_label = @label
+        RETURNING id
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, departureId),
+        'label': TypedValue(Type.text, seatLabel),
+        'user': TypedValue(Type.uuid, userId),
+        'key': TypedValue(
+          Type.text,
+          'leg-${DateTime.now().microsecondsSinceEpoch}',
+        ),
+      },
+    );
+
+    await _seed.execute(
+      Sql.named('''
+        INSERT INTO seat_occupancy (departure_id, seat_label, operator_id,
+                                    span, hold_id, held_until)
+        SELECT @departure, @label, s.operator_id, int4range(@from, @to),
+               @hold, now() + INTERVAL '3 hours'
+          FROM seats s
+         WHERE s.departure_id = @departure AND s.seat_label = @label
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, departureId),
+        'label': TypedValue(Type.text, seatLabel),
+        'from': TypedValue(Type.integer, from),
+        'to': TypedValue(Type.integer, to),
+        'hold': TypedValue(Type.uuid, hold.first.toColumnMap()['id']),
+      },
+      ignoreRows: true,
+    );
   }
 
   /// Which departure a booking is on now. The question the rebooking wave
@@ -1277,10 +1371,12 @@ final class PgFixture {
       Sql.named('''
         INSERT INTO departures
           (operator_id, route_id, seat_layout_id, departs_at, arrives_at,
-           capacity, fare_minor, currency, status)
+           capacity, fare_minor, currency, status, road_span)
         VALUES (@operator, @route, @layout,
                 now() + INTERVAL '30 days', now() + INTERVAL '31 days',
-                4, 12000, 'XAF', 'scheduled')
+                4, 12000, 'XAF', 'scheduled',
+                int4range(0, 1 + (SELECT count(*)::int FROM route_stops rs
+                                   WHERE rs.route_id = @route)))
         RETURNING id
       '''),
       parameters: {
@@ -1564,11 +1660,13 @@ final class PgFixture {
       Sql.named('''
         INSERT INTO departures
           (operator_id, route_id, seat_layout_id, departs_at, arrives_at,
-           capacity, fare_minor, currency, status)
+           capacity, fare_minor, currency, status, road_span)
         VALUES (@operator, @route, @layout,
                 now() + make_interval(secs => @offset),
                 now() + make_interval(secs => @offset) + INTERVAL '8 hours',
-                @capacity, @fare, 'XAF', @status::departure_status)
+                @capacity, @fare, 'XAF', @status::departure_status,
+                int4range(0, 1 + (SELECT count(*)::int FROM route_stops rs
+                                   WHERE rs.route_id = @route)))
         RETURNING id
       '''),
       parameters: {
@@ -1777,7 +1875,7 @@ final class PgFixture {
       Sql.named('''
         INSERT INTO departures
           (operator_id, route_id, seat_layout_id, departs_at, arrives_at,
-           capacity, fare_minor, currency)
+           capacity, fare_minor, currency, road_span)
         VALUES
           (@operator, @route, @layout,
            ((((now() AT TIME ZONE @tz)::date + make_interval(days => @days))
@@ -1785,7 +1883,9 @@ final class PgFixture {
            ((((now() AT TIME ZONE @tz)::date + make_interval(days => @days))
              + make_interval(hours => @hour)) AT TIME ZONE @tz)
              + INTERVAL '8 hours',
-           @capacity, @fare, 'XAF')
+           @capacity, @fare, 'XAF',
+           int4range(0, 1 + (SELECT count(*)::int FROM route_stops rs
+                              WHERE rs.route_id = @route)))
         RETURNING id
       '''),
       parameters: {
