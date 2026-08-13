@@ -23,7 +23,12 @@ final class LoggingNotificationGateway implements NotificationGateway {
     stdout.writeln(
       '[$channel → ${message.to}] '
       '${message.subject == null ? '' : '${message.subject}: '}'
-      '${message.body}',
+      '${message.body}'
+      // Not the bytes — a QR is 20 KB of base64 and a developer scrolling
+      // past it is a developer who stops reading this log.
+      '${message.attachments.isEmpty ? '' : ' '
+                '(+${message.attachments.length}: '
+                '${message.attachments.map((a) => a.name).join(', ')})'}',
     );
     return null;
   }

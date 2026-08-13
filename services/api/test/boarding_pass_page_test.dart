@@ -1,8 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:bel_api/src/application/ports/ticket_links.dart';
 import 'package:bel_api/src/infrastructure/web/boarding_pass_page.dart';
+import 'package:bel_api/src/infrastructure/web/qr_png.dart';
 import 'package:bel_api/src/infrastructure/web/qr_svg.dart';
+import 'package:bel_api/src/infrastructure/web/ticket_email.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:qr/qr.dart';
 import 'package:test/test.dart';
@@ -110,6 +113,85 @@ void main() {
       final svg = QrSvg.render('x', label: 'seat "12A" <b>');
       expect(svg, contains('&quot;12A&quot;'));
       expect(svg, isNot(contains('<b>')));
+    });
+  });
+
+  group('the QR travels to an inbox as a file', () {
+    // The one test that matters: a real zlib decoder has to accept the stream,
+    // and the pixels it yields have to be the encoder's grid. A PNG that only
+    // our own reader can read is a PNG nobody can scan.
+    test('a real decoder reads it back, module for module', () {
+      const payload = 'BEL1.eyJyIjoiTE5LMDAxIn0.c2ln';
+      const scale = 4;
+      final png = QrPng.render(payload, scale: scale);
+      final image = QrImage(
+        QrCode.fromData(
+          data: payload,
+          errorCorrectLevel: QrErrorCorrectLevel.M,
+        ),
+      );
+
+      expect(png.sublist(0, 8), [
+        0x89,
+        0x50,
+        0x4E,
+        0x47,
+        0x0D,
+        0x0A,
+        0x1A,
+        0x0A,
+      ]);
+
+      final chunks = _chunks(png);
+      final ihdr = chunks['IHDR']!;
+      final side = (image.moduleCount + 8) * scale;
+      expect(_be32(ihdr, 0), side);
+      expect(_be32(ihdr, 4), side);
+      expect(ihdr[8], 1, reason: 'one bit per pixel');
+      expect(ihdr[9], 0, reason: 'greyscale');
+
+      final raw = ZLibDecoder().convert(chunks['IDAT']!);
+      final rowBytes = (side + 7) ~/ 8;
+      expect(raw.length, (rowBytes + 1) * side);
+
+      bool pixel(int x, int y) {
+        final byte = raw[y * (rowBytes + 1) + 1 + (x >> 3)];
+        return (byte & (0x80 >> (x & 7))) == 0; // 0 is black
+      }
+
+      for (var row = 0; row < image.moduleCount; row++) {
+        for (var col = 0; col < image.moduleCount; col++) {
+          final x = (col + 4) * scale;
+          final y = (row + 4) * scale;
+          expect(
+            pixel(x, y),
+            image.isDark(row, col),
+            reason: 'module $row,$col',
+          );
+        }
+      }
+    });
+
+    test('the quiet zone is white all the way round', () {
+      final png = QrPng.render('x', scale: 2);
+      final chunks = _chunks(png);
+      final side = _be32(chunks['IHDR']!, 0);
+      final raw = ZLibDecoder().convert(chunks['IDAT']!);
+      final rowBytes = (side + 7) ~/ 8;
+
+      for (var y = 0; y < 8; y++) {
+        for (var i = 0; i < rowBytes; i++) {
+          expect(raw[y * (rowBytes + 1) + 1 + i], 0xFF);
+        }
+      }
+    });
+
+    // Every chunk carries a CRC, and a mail client that finds a bad one shows
+    // a broken image rather than a ticket.
+    test('every chunk checksums', () {
+      final png = QrPng.render('x');
+      // _chunks throws on a bad CRC.
+      expect(_chunks(png).keys, containsAll(['IHDR', 'IDAT', 'IEND']));
     });
   });
 
@@ -237,4 +319,115 @@ void main() {
       expect(html, isNot(contains('<svg')));
     });
   });
+
+  _emailTests();
+}
+
+void _emailTests() {
+  group('the ticket in an inbox', () {
+    String render({
+      String? stationName = 'Gare de Mikalou',
+      String? stationNotes = 'Portail vert',
+      List<EmailedSeat> seats = const [
+        EmailedSeat(seatLabel: '12A', passengerName: 'Aline Massamba'),
+      ],
+      String language = 'fr',
+    }) => TicketEmail.render(
+      originCity: 'Brazzaville',
+      destinationCity: 'Pointe-Noire',
+      operatorName: 'Océan du Nord',
+      date: '20/08',
+      time: '06h00',
+      reference: 'BEL-LNK001',
+      seats: seats,
+      url: 'https://blt.cg/b/abc123',
+      catalog: _catalog,
+      stationName: stationName,
+      stationNotes: stationNotes,
+      language: language,
+    );
+
+    test('carries everything somebody needs to board', () {
+      final html = render();
+      expect(html, contains('Brazzaville'));
+      expect(html, contains('Pointe-Noire'));
+      expect(html, contains('Océan du Nord'));
+      expect(html, contains('20/08'));
+      expect(html, contains('06h00'));
+      expect(html, contains('BEL-LNK001'));
+      expect(html, contains('12A'));
+      expect(html, contains('Aline Massamba'));
+      expect(html, contains('Gare de Mikalou'));
+      expect(html, contains('Portail vert'));
+      expect(html, contains('https://blt.cg/b/abc123'));
+    });
+
+    // A link that only exists inside a button is a link nobody can copy into
+    // another browser, which is what somebody does when the button does
+    // nothing in their mail client.
+    test('the URL is written out as well as linked', () {
+      final html = render();
+      expect('https://blt.cg/b/abc123'.allMatches(html).length, 2);
+    });
+
+    test('it says the codes are attached, in both languages', () {
+      expect(render(), contains('joints à ce message'));
+      expect(render(language: 'en'), contains('attached to this message'));
+    });
+
+    // No stylesheet survives Gmail.
+    test('every style is inline, because email has no stylesheet', () {
+      expect(render(), isNot(contains('<style')));
+      expect(render(), contains('style="'));
+    });
+
+    test('a yard nobody named prints no yard', () {
+      final html = render(stationName: null, stationNotes: null);
+      expect(html, isNot(contains('Gare de départ')));
+    });
+
+    test("a passenger's name cannot inject markup", () {
+      final html = render(
+        seats: const [EmailedSeat(seatLabel: '1A', passengerName: '<b>x</b>')],
+      );
+      expect(html, contains('&lt;b&gt;'));
+    });
+  });
+}
+
+int _be32(List<int> bytes, int at) =>
+    (bytes[at] << 24) |
+    (bytes[at + 1] << 16) |
+    (bytes[at + 2] << 8) |
+    bytes[at + 3];
+
+/// Chunk name to payload, verifying each CRC on the way through — so a
+/// malformed file fails here rather than in somebody's mail client.
+Map<String, Uint8List> _chunks(Uint8List png) {
+  final out = <String, Uint8List>{};
+  var at = 8;
+  while (at < png.length) {
+    final length = _be32(png, at);
+    final name = String.fromCharCodes(png.sublist(at + 4, at + 8));
+    final body = png.sublist(at + 8, at + 8 + length);
+    final crc = _be32(png, at + 8 + length);
+    if (crc != _crc32(png.sublist(at + 4, at + 8 + length))) {
+      throw StateError('bad CRC on $name');
+    }
+    out[name] = Uint8List.fromList([...?out[name], ...body]);
+    at += 12 + length;
+  }
+  return out;
+}
+
+int _crc32(List<int> bytes) {
+  var crc = 0xFFFFFFFF;
+  for (final byte in bytes) {
+    var c = (crc ^ byte) & 0xFF;
+    for (var k = 0; k < 8; k++) {
+      c = (c & 1) != 0 ? 0xEDB88320 ^ (c >> 1) : c >> 1;
+    }
+    crc = c ^ (crc >> 8);
+  }
+  return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF;
 }

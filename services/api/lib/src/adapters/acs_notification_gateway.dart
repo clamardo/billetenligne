@@ -96,19 +96,35 @@ final class AcsNotificationGateway implements NotificationGateway {
         SignInChannel.phone => _sendSms(message),
       };
 
-  Future<NotifyFailure?> _sendEmail(OutboundMessage message) => _post(
-    '/emails:send',
-    'api-version=2023-03-31',
-    {
-      'senderAddress': emailFrom,
-      'content': {'subject': message.subject ?? '', 'plainText': message.body},
-      'recipients': {
-        'to': [
-          {'address': message.to},
-        ],
-      },
-    },
-  );
+  Future<NotifyFailure?> _sendEmail(OutboundMessage message) =>
+      _post('/emails:send', 'api-version=2023-03-31', {
+        'senderAddress': emailFrom,
+        'content': {
+          'subject': message.subject ?? '',
+          'plainText': message.body,
+          // Sent alongside the plain text, never instead of it: a client that
+          // renders neither HTML nor images still shows a message somebody can
+          // act on.
+          if (message.html != null) 'html': message.html,
+        },
+        'recipients': {
+          'to': [
+            {'address': message.to},
+          ],
+        },
+        // Attached rather than inlined by content id, which this API version
+        // does not carry. A mail client shows an attached image anyway, and an
+        // attachment is the thing that is still there with the radio off.
+        if (message.attachments.isNotEmpty)
+          'attachments': [
+            for (final file in message.attachments)
+              {
+                'name': file.name,
+                'contentType': file.contentType,
+                'contentInBase64': base64Encode(file.bytes),
+              },
+          ],
+      });
 
   Future<NotifyFailure?> _sendSms(OutboundMessage message) {
     final from = smsFrom;

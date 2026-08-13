@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:bel_api/src/application/ports/notification_gateway.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_ticket_links.dart';
+import 'package:bel_api/src/infrastructure/web/qr_png.dart';
+import 'package:bel_api/src/infrastructure/web/ticket_email.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
@@ -228,13 +230,50 @@ final class OutboxDrain {
           return null;
         }
 
+        // The road as this booking bought it (ADR-0025): a passenger who
+        // bought Dolisie→Pointe-Noire is told Dolisie, at the hour the coach
+        // reaches Dolisie, and sent to the yard at Dolisie — not the terminus
+        // the coach happens to run to and the gate in Brazzaville it left
+        // from. The same numbering every other reader uses.
         final rows = await tx.execute(
           Sql.named('''
+            WITH road AS (
+              SELECT 0 AS position, r.origin_city AS city,
+                     d.origin_station_id AS station_id, 0 AS offset_minutes
+                FROM bookings b
+                JOIN departures d ON d.id = b.departure_id
+                JOIN routes r ON r.id = d.route_id
+               WHERE b.id = @id
+               UNION ALL
+              SELECT rs.sequence, rs.city_code, rs.station_id,
+                     rs.offset_minutes
+                FROM bookings b
+                JOIN departures d ON d.id = b.departure_id
+                JOIN route_stops rs ON rs.route_id = d.route_id
+               WHERE b.id = @id
+               UNION ALL
+              SELECT 1 + (SELECT count(*)::int FROM route_stops x
+                           WHERE x.route_id = d.route_id),
+                     r.destination_city, d.destination_station_id,
+                     (EXTRACT(EPOCH FROM (d.arrives_at - d.departs_at)) / 60)::int
+                FROM bookings b
+                JOIN departures d ON d.id = b.departure_id
+                JOIN routes r ON r.id = d.route_id
+               WHERE b.id = @id
+            )
             SELECT b.ref, u.language,
-                   r.origin_city, r.destination_city,
-                   to_char(d.departs_at AT TIME ZONE @tz, 'DD/MM')
+                   COALESCE(bp.city, r.origin_city) AS origin_city,
+                   COALESCE(ap.city, r.destination_city) AS destination_city,
+                   COALESCE(o.trading_name, o.legal_name) AS operator_name,
+                   os.name AS station_name,
+                   os.boarding_notes AS station_notes,
+                   to_char((d.departs_at
+                            + make_interval(mins => COALESCE(bp.offset_minutes, 0)))
+                           AT TIME ZONE @tz, 'DD/MM')
                      AS departs_date,
-                   to_char(d.departs_at AT TIME ZONE @tz, 'HH24"h"MI')
+                   to_char((d.departs_at
+                            + make_interval(mins => COALESCE(bp.offset_minutes, 0)))
+                           AT TIME ZONE @tz, 'HH24"h"MI')
                      AS departs_time,
                    (SELECT string_agg(bs.seat_label, ', '
                                       ORDER BY bs.seat_label)
@@ -243,7 +282,11 @@ final class OutboxDrain {
               FROM bookings b
               JOIN departures d ON d.id = b.departure_id
               JOIN routes r ON r.id = d.route_id
+              JOIN operators o ON o.id = b.operator_id
               LEFT JOIN user_accounts u ON u.id = b.purchaser_user_id
+              LEFT JOIN road bp ON bp.position = lower(b.road_span)
+              LEFT JOIN road ap ON ap.position = upper(b.road_span)
+              LEFT JOIN stations os ON os.id = bp.station_id
              WHERE b.id = @id AND b.state = 'confirmed'
           '''),
           parameters: {
@@ -266,33 +309,95 @@ final class OutboxDrain {
         );
         if (minted == null) return null;
 
-        final tr = CatalogTranslator(
-          _catalog,
-          l['language'] as String? ?? 'fr',
-        );
+        final language = l['language'] as String? ?? 'fr';
+        final tr = CatalogTranslator(_catalog, language);
+        final url = _links.urlFor(minted.token).toString();
+        final reference = 'BEL-${l['ref']}';
         final linkParams = <String, Object?>{
           'route': '${l['origin_city']}–${l['destination_city']}',
           'date': l['departs_date'],
           'time': l['departs_time'],
           'seat': l['seats'] ?? '',
-          'reference': 'BEL-${l['ref']}',
-          'url': _links.urlFor(minted.token).toString(),
+          'reference': reference,
+          'url': url,
         };
 
+        final text = channel == 'phone'
+            ? tr('sms.ticketLink.body', linkParams)
+            : tr('email.ticketLink.body', linkParams);
+
+        // An SMS is 160 characters and a link. It cannot carry a code, which
+        // is the whole reason the link exists.
+        if (channel == 'phone') {
+          return OutboundMessage(
+            channel: SignInChannel.phone,
+            to: sentTo,
+            body: text,
+            // No dedupe key: every press of "send it again" is a customer
+            // saying they did not get the last one, and the outbox row
+            // already carries its own uniqueness.
+          );
+        }
+
+        // The codes themselves, one file per live seat. A voided ticket is
+        // not attached at all: an image in somebody's inbox that boards
+        // nothing is worse than no image, because they only find out at the
+        // door.
+        final tickets = await tx.execute(
+          Sql.named('''
+            SELECT t.seat_label, t.payload,
+                   COALESCE(bs.passenger_name, '') AS passenger_name
+              FROM tickets t
+              LEFT JOIN booking_seats bs
+                     ON bs.booking_id = t.booking_id
+                    AND bs.seat_label = t.seat_label
+             WHERE t.booking_id = @id AND t.voided_at IS NULL
+             ORDER BY t.seat_label
+          '''),
+          parameters: {'id': TypedValue(Type.uuid, bookingId)},
+        );
+
+        final seats = [
+          for (final row in tickets)
+            (
+              label: row.toColumnMap()['seat_label']! as String,
+              name: row.toColumnMap()['passenger_name']! as String,
+              payload: row.toColumnMap()['payload']! as String,
+            ),
+        ];
+
         return OutboundMessage(
-          channel: channel == 'phone'
-              ? SignInChannel.phone
-              : SignInChannel.email,
+          channel: SignInChannel.email,
           to: sentTo,
-          subject: channel == 'phone'
-              ? null
-              : tr('email.ticketLink.subject', linkParams),
-          body: channel == 'phone'
-              ? tr('sms.ticketLink.body', linkParams)
-              : tr('email.ticketLink.body', linkParams),
-          // No dedupe key: every press of "send it again" is a customer
-          // saying they did not get the last one, and the outbox row already
-          // carries its own uniqueness.
+          subject: tr('email.ticketLink.subject', linkParams),
+          body: text,
+          html: TicketEmail.render(
+            originCity: l['origin_city']! as String,
+            destinationCity: l['destination_city']! as String,
+            operatorName: l['operator_name']! as String,
+            date: l['departs_date']! as String,
+            time: l['departs_time']! as String,
+            reference: reference,
+            stationName: l['station_name'] as String?,
+            stationNotes: l['station_notes'] as String?,
+            seats: [
+              for (final seat in seats)
+                EmailedSeat(seatLabel: seat.label, passengerName: seat.name),
+            ],
+            url: url,
+            catalog: _catalog,
+            language: language,
+          ),
+          attachments: [
+            for (final seat in seats)
+              OutboundAttachment(
+                // Named so the recipient can tell three codes apart without
+                // opening all three.
+                name: '$reference-${seat.label}.png',
+                contentType: 'image/png',
+                bytes: QrPng.render(seat.payload),
+              ),
+          ],
         );
 
       case 'disruption.declared':

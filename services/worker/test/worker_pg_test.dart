@@ -257,6 +257,27 @@ void main() {
         'seat': TypedValue(Type.text, seat),
       },
     );
+    // The ticket the capture would have issued. A booking with seats and no
+    // ticket is a state the product cannot reach — capture writes both in one
+    // transaction — and the drain now attaches what the ticket holds.
+    await seed.execute(
+      Sql.named('''
+        INSERT INTO tickets
+          (booking_id, operator_id, departure_id, seat_label, payload,
+           signature, key_id, rotating_secret)
+        VALUES (@b, @operator, @departure, @seat, @payload,
+                '\\x00'::bytea, 1, '\\x00'::bytea)
+      '''),
+      parameters: {
+        'b': TypedValue(Type.uuid, bookingId),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'departure': TypedValue(Type.uuid, departureId),
+        'seat': TypedValue(Type.text, seat),
+        'payload': TypedValue(Type.text, 'BEL1.$bookingId.$seat'),
+      },
+      ignoreRows: true,
+    );
+
     return bookingId;
   }
 
@@ -767,6 +788,111 @@ void main() {
         parameters: {'id': TypedValue(Type.uuid, bookingId)},
       );
       expect(queued.single.toColumnMap()['payload'], isNot(contains(token)));
+    });
+
+    test('the codes travel with the message, one file per seat', () async {
+      // ADR-0026. The link is what they open; the attachment is what they
+      // still have when they cannot open anything. An inbox works with the
+      // radio off, and the coach door at half past five is exactly where
+      // there is no signal.
+      final sent = FakeNotificationGateway();
+      final recording = OutboxDrain(
+        db: db,
+        notifications: sent,
+        catalog: CatalogLoader.fromDirectory(
+          Platform.environment['BEL_I18N_DIR'] ??
+              'packages/bel_localization/i18n',
+        ),
+        timeZone: 'Africa/Brazzaville',
+        links: PostgresTicketLinks(db, linkBase: Uri.parse('https://blt.cg')),
+      );
+
+      final bookingId = await aConfirmedBooking();
+      await seed.execute(
+        Sql.named('''
+          INSERT INTO outbox (aggregate, aggregate_id, event_type, payload,
+                              dedupe_key)
+          VALUES ('booking', @id, 'ticket.link',
+                  jsonb_build_object('bookingId', @id::text,
+                                     'channel', 'email',
+                                     'sentTo', 'walkin@example.cg'),
+                  @dedupe)
+        '''),
+        parameters: {
+          'id': TypedValue(Type.uuid, bookingId),
+          'dedupe': TypedValue(Type.text, unique('link')),
+        },
+        ignoreRows: true,
+      );
+
+      await recording.drain();
+
+      final message = sent.last;
+      final seats = await seed.execute(
+        Sql.named('''
+          SELECT seat_label FROM tickets
+           WHERE booking_id = @id AND voided_at IS NULL
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, bookingId)},
+      );
+
+      expect(message.attachments, hasLength(seats.length));
+      expect(message.attachments.first.contentType, 'image/png');
+      expect(message.attachments.first.name, endsWith('.png'));
+      // A real PNG, not a placeholder: the signature is the first thing a
+      // mail client looks at.
+      expect(message.attachments.first.bytes.take(4), [0x89, 0x50, 0x4E, 0x47]);
+      // Named per seat, so three codes in one inbox are three findable codes.
+      expect(
+        message.attachments.first.name,
+        contains(seats.first.toColumnMap()['seat_label'] as String),
+      );
+
+      // HTML in addition to the plain text, never instead of it.
+      expect(message.body, isNotEmpty);
+      expect(message.html, contains('<html'));
+      expect(message.html, contains('https://blt.cg/b/'));
+    });
+
+    // An SMS cannot carry an image, which is most of why the link exists.
+    test('an SMS carries the link and nothing attached to it', () async {
+      final sent = FakeNotificationGateway();
+      final recording = OutboxDrain(
+        db: db,
+        notifications: sent,
+        catalog: CatalogLoader.fromDirectory(
+          Platform.environment['BEL_I18N_DIR'] ??
+              'packages/bel_localization/i18n',
+        ),
+        timeZone: 'Africa/Brazzaville',
+        links: PostgresTicketLinks(db, linkBase: Uri.parse('https://blt.cg')),
+      );
+
+      final bookingId = await aConfirmedBooking();
+      await seed.execute(
+        Sql.named('''
+          INSERT INTO outbox (aggregate, aggregate_id, event_type, payload,
+                              dedupe_key)
+          VALUES ('booking', @id, 'ticket.link',
+                  jsonb_build_object('bookingId', @id::text,
+                                     'channel', 'phone',
+                                     'sentTo', '+242069000001'),
+                  @dedupe)
+        '''),
+        parameters: {
+          'id': TypedValue(Type.uuid, bookingId),
+          'dedupe': TypedValue(Type.text, unique('link')),
+        },
+        ignoreRows: true,
+      );
+
+      await recording.drain();
+
+      expect(sent.last.to, '+242069000001');
+      expect(sent.last.attachments, isEmpty);
+      expect(sent.last.html, isNull);
+      expect(sent.last.subject, isNull);
+      expect(sent.last.body, contains('https://blt.cg/b/'));
     });
 
     test('sending it again replaces the link rather than adding one', () async {

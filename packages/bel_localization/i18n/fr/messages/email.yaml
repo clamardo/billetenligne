@@ -30,6 +30,8 @@ email:
   # et qui n'a pas l'application : le lien ouvre le billet, le QR est dedans,
   # et il reste valable jusqu'au lendemain du voyage.
   ticketLink:
+    attached: "Les codes QR de vos billets sont joints à ce message — gardez-les, ils fonctionnent sans réseau."
+    open: "Ouvrir mon billet"
     subject: "Votre billet {reference} — {route}"
     body: |
       Votre billet est prêt.
@@ -40,8 +42,9 @@ email:
       Ouvrez votre billet ici :
       {url}
 
-      Présentez le code QR au contrôleur. Le lien reste valable jusqu'au
-      lendemain du voyage — gardez ce message.
+      Les codes QR sont joints à ce message : présentez-les au contrôleur.
+      Gardez ce message — les images fonctionnent sans réseau. Le lien, lui,
+      reste valable jusqu'au lendemain du voyage.
   # Un sujet qui dit ce qui s'est passe, pas ce qui est promis.
   seatAvailable:
     subject: "Des places se liberent: {route} le {date}"

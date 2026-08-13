@@ -30,6 +30,8 @@ email:
   # has no app: the link opens the ticket, the QR is on it, and it stays valid
   # until the day after the journey.
   ticketLink:
+    attached: "Your ticket QR codes are attached to this message — keep them, they work with no signal."
+    open: "Open my ticket"
     subject: "Your ticket {reference} — {route}"
     body: |
       Your ticket is ready.
@@ -40,8 +42,9 @@ email:
       Open your ticket here:
       {url}
 
-      Show the QR code to the conductor. The link stays valid until the day
-      after your journey — keep this message.
+      The QR codes are attached to this message: show them to the conductor.
+      Keep this message — the images work with no signal. The link stays valid
+      until the day after your journey.
   # A subject that says what happened, not what is promised.
   seatAvailable:
     subject: "Seats are free again: {route} on {date}"
