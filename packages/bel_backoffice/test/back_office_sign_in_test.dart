@@ -23,8 +23,7 @@ final class _Server extends http.BaseClient {
   /// assertion that matters most: a withheld session must not become one.
   /// The last body sent to one path. `bodies.last` would answer with the
   /// Firebase exchange that follows a successful sign-in.
-  String bodyFor(String path) =>
-      bodies[requests.lastIndexOf(path)];
+  String bodyFor(String path) => bodies[requests.lastIndexOf(path)];
 
   List<String> get exchangedTokens => [
     for (var i = 0; i < requests.length; i++)
@@ -61,7 +60,8 @@ final class _Server extends http.BaseClient {
 /// A real `FirebaseIdentityClient` over a fake socket rather than a fake
 /// client, because the thing worth asserting is *whether* the widget exchanged
 /// a token — and a stub would answer that question by construction.
-const _firebaseExchange = 'POST /identitytoolkit.googleapis.com'
+const _firebaseExchange =
+    'POST /identitytoolkit.googleapis.com'
     '/v1/accounts:signInWithCustomToken';
 
 /// The catalog is not what is under test. Keys are echoed back, which makes an
@@ -292,6 +292,40 @@ void main() {
 
       // And the codes are not shown until the factor is proven.
       expect(find.text('AAAAA-11111'), findsNothing);
+    });
+
+    testWidgets('the QR carries the provisioning URI, and the key stays', (
+      tester,
+    ) async {
+      server.on('POST /public/v1/auth/challenges', 200, challenge);
+      server.on(
+        'POST /public/v1/auth/sessions',
+        200,
+        '{"customToken":"ct-4","mustEnrolSecondFactor":true,'
+            '"account":$account,"isNewAccount":false}',
+      );
+      server.on(
+        'GET /public/v1/auth/second-factor',
+        200,
+        '{"enrolled":false,"required":true,"recoveryCodesRemaining":0}',
+      );
+      server.on('POST /public/v1/auth/second-factor', 201, enrolment);
+
+      await pumpSignIn(tester);
+      await signInWithCode(tester);
+
+      // The server's URI, unmodified. A client that rebuilt this string from
+      // the secret would be a second implementation of the issuer, the label
+      // and the digits — and the one that is wrong is the one that produces a
+      // factor which never matches.
+      final qr = tester.widget<ProvisioningQr>(find.byType(ProvisioningQr));
+      expect(qr.uri, 'otpauth://totp/BilletEnLigne:serge');
+
+      // Both, always. A back office is opened on a laptop far more often than
+      // this screen assumes, and an authenticator on that same machine cannot
+      // scan its own screen.
+      expect(find.text('JBSW Y3DP EHPK 3PXP JBSW Y3DP EHPK 3PXP'), findsOne);
+      expect(find.text('auth.enrol.step2Manual'), findsOneWidget);
     });
 
     testWidgets('confirming reveals the recovery codes, once', (tester) async {

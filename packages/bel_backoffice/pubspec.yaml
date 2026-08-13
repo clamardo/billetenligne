@@ -13,6 +13,11 @@ dependencies:
   flutter:
     sdk: flutter
   bel_client: ^0.1.0
+  # The same `package:qr` encoder the API draws a boarding pass with, wrapped
+  # in a widget that paints it. Not a second implementation: the API's PNG
+  # path is decoded module-by-module by a real zlib decoder in its own test,
+  # which is the independent check this screen used to be missing.
+  qr_flutter: ^4.1.0
   bel_contracts: ^0.1.0
   bel_design: ^0.1.0
 dev_dependencies:

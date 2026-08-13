@@ -182,10 +182,11 @@ These are true today and each one is a decision, not an oversight.
    environment that invokes `dart run bin/worker.dart` each night. Until that
    exists the passes are run by hand, and a night missed is a night nobody can
    book at the far edge of the window.
-3. **Search has no pagination and a hard `LIMIT 100`.** One route on one day
-   will not approach it. It becomes a real gap the moment the console can
-   create a hundred departures, and it is a silent truncation until then —
-   which is exactly the kind of cap worth writing down rather than discovering.
+3. ~~**Search has no pagination and a hard `LIMIT 100`.**~~ **Closed.** The
+   cap is gone and the page carries the cursor the next one starts at. Kept
+   in this list rather than deleted, because the shape of the gap is worth
+   remembering: it was a *silent* truncation, and a hundred-and-first
+   departure simply did not exist with nothing anywhere saying so.
 4. **The refresh token is persisted on a handset, and deliberately not on
    web.** The traveller app and the scanner hand `BelSession` a
    `SecureSessionStore` — the iOS Keychain and Keystore-backed
@@ -223,11 +224,16 @@ These are true today and each one is a decision, not an oversight.
    account that never signs in again keeps no factor;
    **the TOTP seed is not encrypted at rest** — a KMS key living in the same
    environment as the database is reassurance rather than a control;
-   and **there is no QR code** on the enrolment screen, because a QR encoder
-   is a few hundred lines of Reed–Solomon with no independent decoder here to
-   check it against, and a bug in one would ship as a code that scans cleanly
-   and produces a factor that never matches. The setup key is typed instead,
-   in groups of four, which every authenticator app accepts.
+   and ~~**there is no QR code** on the enrolment screen~~ — **closed.** That
+   one was argued from a fact that stopped being true: a QR encoder was said
+   to be Reed–Solomon with no independent decoder here to check it against,
+   and ADR-0026 built one whose test decodes real PNG output with a real zlib
+   decoder and compares every module. The screen now draws the server's
+   `otpauth://` URI with the same `package:qr` encoder, black on white in both
+   themes because the reader is a phone camera pointed at a screen. **The
+   typed key stays underneath it**, in groups of four: a back office is opened
+   on a laptop far more often than a QR assumes, and an authenticator running
+   on that same machine cannot scan its own screen.
 8. **A cover photo can be uploaded but has no control in the console.** The
    API takes one — same port, same sniffing, a bigger budget — and the
    storefront renders one when it is there. What is missing is the picker,
@@ -253,19 +259,23 @@ These are true today and each one is a decision, not an oversight.
    one in the console yet. Numbering is also chosen once for the whole layout
    rather than per section, which the model allows and no operator has asked
    for.
-11. **A ticket lives only in memory on the device.** It renders offline once
-   loaded — everything it needs travels inside the booking — but nothing is
-   persisted, so a cold start with no network shows an empty list rather than
-   yesterday's QR. Drift/SQLite on device is Phase 3, and until it lands
-   "works offline" means "works offline while the app is alive".
+11. ~~**A ticket lives only in memory on the device.**~~ **Closed**, and so is
+   its sibling on the scanner. The traveller app keeps its tickets in a
+   SQLite vault and the scanner keeps its boarding log in one, so a cold
+   start with no network shows yesterday's QR and a killed handset comes
+   back knowing who boarded. What is *not* persisted anywhere is the
+   scanner's device id: `BEL_DEVICE_ID` names a provisioned handset, and
+   without one it is unique per launch.
 12. **The catalog is copied, not shared, into the apps.** `bel_localization`
    is pure Dart — the API imports it — so it cannot declare Flutter assets,
    and Flutter refuses `..` in asset paths. `tool/sync_i18n.sh` copies it and
    `i18n_freshness_test` fails the build if a copy drifts.
 13. **A statement can be downloaded but not emailed.** `04-payments.md` §6.2
-   asks for both. The document exists and both surfaces serve it; what is
-   missing is an *attachment* on the ACS email adapter, which sends bodies
-   and nothing else today. Sending a link back to a login instead would be
+   asks for both. The document exists and both surfaces serve it. The stated
+   blocker — no attachment support on the ACS email adapter — **is gone**:
+   ADR-0026 added `OutboundAttachment` and the adapter sends files, because a
+   boarding pass had to travel as a PNG. So what is left is the wiring, not
+   the capability. Sending a link back to a login instead would still be
    worse than not sending: an operator who has to sign in to read what they
    were paid will phone us instead, which is the call the statement exists to
    prevent.
@@ -293,7 +303,7 @@ dart test packages/bel_client                           # 41 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 263 tests
 cd packages/bel_design     && flutter test  # 67 component and contrast tests
-cd packages/bel_backoffice && flutter test  # 10 sign-in and enrolment tests
+cd packages/bel_backoffice && flutter test  # 11 sign-in and enrolment tests
 cd packages/bel_secure_store && flutter test # 5 Keychain and Keystore tests
 cd apps/traveller && flutter test        # 230 app tests, incl. real SQLite
 cd apps/console   && flutter test        # 125 console tests
@@ -323,7 +333,7 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,418 tests in total**, plus 445 smoke checks, 44 executed schema guarantees,
+**1,419 tests in total**, plus 445 smoke checks, 44 executed schema guarantees,
 493 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
