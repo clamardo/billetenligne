@@ -103,10 +103,16 @@
       // file is right on one machine. If a device is already attached this
       // does nothing at all — which is the common case, and the case where
       // being asked to name an emulator is pure friction.
+      //
+      // `setsid`, because the emulator is a child of this shell and VS Code
+      // kills a task's process tree when the task ends. Without it the
+      // emulator appears, the task says "ready", the task exits and the
+      // emulator dies with it — which looks like an emulator that crashed on
+      // its own. A new session outlives the task that started it.
       "label": "dev: device ready",
       "detail": "Attaches an Android device, starting the first emulator if none is.",
       "type": "shell",
-      "command": "if adb devices | grep -qw device; then echo 'device already attached'; exit 0; fi; avd=$(flutter emulators 2>/dev/null | awk -F' *• *' '/•/ && $1 != \"Id\" {print $1; exit}'); if [ -z \"$avd\" ]; then echo 'no AVD — create one: flutter emulators --create'; exit 1; fi; echo \"starting $avd\"; flutter emulators --launch \"$avd\"; adb wait-for-device; until [ \"$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')\" = 1 ]; do sleep 2; done; echo 'emulator ready'",
+      "command": "if adb devices | grep -qw device; then echo 'device already attached'; exit 0; fi; avd=$(flutter emulators 2>/dev/null | awk -F' *• *' '/•/ && $1 != \"Id\" {print $1; exit}'); if [ -z \"$avd\" ]; then echo 'no AVD — create one: flutter emulators --create'; exit 1; fi; echo \"starting $avd\"; setsid flutter emulators --launch \"$avd\" </dev/null >/dev/null 2>&1 & disown; adb wait-for-device; until [ \"$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')\" = 1 ]; do sleep 2; done; echo 'emulator ready'",
       "options": { "cwd": "${workspaceFolder}" },
       "presentation": { "reveal": "always", "panel": "dedicated" },
       "problemMatcher": []
@@ -122,7 +128,7 @@
       "label": "android: emulator",
       "detail": "Starts an AVD and waits for it to finish booting.",
       "type": "shell",
-      "command": "flutter emulators --launch ${input:avd} || { echo 'no such AVD — run: flutter emulators'; exit 1; }; adb wait-for-device; until [ \"$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r')\" = 1 ]; do sleep 2; done; echo 'emulator ready'",
+      "command": "setsid flutter emulators --launch ${input:avd} </dev/null >/dev/null 2>&1 & disown; adb wait-for-device; until [ \"$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r')\" = 1 ]; do sleep 2; done; echo 'emulator ready'",
       "options": { "cwd": "${workspaceFolder}" },
       "presentation": { "reveal": "always", "panel": "dedicated" },
       "problemMatcher": []
