@@ -97,7 +97,7 @@ class _TicketReceiptState extends State<TicketReceipt> {
               SelectableText(
                 sale.ref,
                 textAlign: TextAlign.center,
-                style: kilo.text.display.copyWith(
+                style: kilo.text.codeHero.copyWith(
                   color: kilo.color.brandPrimary,
                 ),
               ),

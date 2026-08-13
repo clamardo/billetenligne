@@ -114,7 +114,7 @@ class _CoachTile extends StatelessWidget {
             children: [
               // The time first and biggest. It is what a conductor was told
               // this morning, and the only thing they are matching against.
-              Text(_hhmm(coach.departsAt), style: kilo.text.h1),
+              Text(_hhmm(coach.departsAt), style: kilo.text.time),
               SizedBox(width: kilo.space.s4),
               Expanded(
                 child: Column(

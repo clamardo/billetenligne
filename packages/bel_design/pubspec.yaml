@@ -14,3 +14,26 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+flutter:
+  # Bundled, never fetched. The design system has claimed since it was written
+  # that Inter ships with the app; it did not, and every surface has been
+  # rendering in whatever the platform happened to default to — which is most
+  # of why the product looked like a wireframe of itself.
+  #
+  # Variable fonts, one file per family: every weight from 100 to 900 comes out
+  # of a single 850 KB / 350 KB file, where static instances would need four
+  # files each to cover the same range and still not interpolate.
+  #
+  # Inter carries the interface — it was drawn for screens, its figures are
+  # unambiguous at 12 px, and it has the tabular set this product is built on.
+  # Fraunces carries the headlines: a warm, slightly wonky editorial serif that
+  # gives a page a voice. Both SIL Open Font Licence 1.1; the licences ship
+  # beside them because that is the condition of using them.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: fonts/Inter.ttf
+    - family: Fraunces
+      fonts:
+        - asset: fonts/Fraunces.ttf

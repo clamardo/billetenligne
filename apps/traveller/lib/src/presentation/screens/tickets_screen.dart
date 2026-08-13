@@ -224,7 +224,7 @@ class _BookingCard extends StatelessWidget {
                   child: Text(
                     '${_city(booking.originCity)} → '
                     '${_city(booking.destinationCity)}',
-                    style: kilo.text.body.copyWith(fontWeight: FontWeight.w600),
+                    style: KiloTypography.weight(kilo.text.body, FontWeight.w600),
                   ),
                 ),
                 // Ahead of every other badge on purpose. A traveller opening

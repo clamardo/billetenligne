@@ -75,7 +75,7 @@ final class ReservedScreen extends StatelessWidget {
                         // read in pieces and typed in pieces.
                         code.split('').join(' '),
                         textAlign: TextAlign.center,
-                        style: kilo.text.display.copyWith(
+                        style: kilo.text.codeHero.copyWith(
                           color: kilo.color.brandPrimary,
                           letterSpacing: 2,
                         ),

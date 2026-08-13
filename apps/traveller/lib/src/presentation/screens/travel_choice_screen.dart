@@ -365,7 +365,7 @@ final class TravelChosenScreen extends StatelessWidget {
                       SelectableText(
                         code.split('').join(' '),
                         textAlign: TextAlign.center,
-                        style: kilo.text.display.copyWith(
+                        style: kilo.text.codeHero.copyWith(
                           color: kilo.color.brandPrimary,
                           letterSpacing: 2,
                         ),

@@ -56,7 +56,7 @@ class VerdictScreen extends StatelessWidget {
                   Text(
                     style.word,
                     textAlign: TextAlign.center,
-                    style: kilo.text.display.copyWith(
+                    style: kilo.text.shout.copyWith(
                       color: style.foreground,
                       fontSize: 40,
                       height: 1.05,

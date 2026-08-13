@@ -326,7 +326,7 @@ final class CancelledScreen extends StatelessWidget {
                     // typed by somebody else.
                     Text(
                       code.split('').join(' '),
-                      style: kilo.text.display,
+                      style: kilo.text.codeHero,
                       textAlign: TextAlign.center,
                     ),
                     if (done.claimExpiresAt != null) ...[

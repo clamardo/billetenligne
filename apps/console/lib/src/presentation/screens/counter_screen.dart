@@ -627,7 +627,7 @@ class _CounterScreenState extends State<CounterScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SelectableText(code, style: dialogContext.kilo.text.display),
+            SelectableText(code, style: dialogContext.kilo.text.codeHero),
             SizedBox(height: dialogContext.kilo.space.s3),
             KMoney(issued.amount.format(), size: KMoneySize.hero),
             if (issued.claimExpiresAt != null) ...[

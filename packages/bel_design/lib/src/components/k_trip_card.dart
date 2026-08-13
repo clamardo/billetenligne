@@ -122,7 +122,7 @@ final class KTripCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.baseline,
                       textBaseline: TextBaseline.alphabetic,
                       children: [
-                        Text(departureTime, style: kilo.text.h1),
+                        Text(departureTime, style: kilo.text.timeHero),
                         SizedBox(width: kilo.space.s2),
                         Icon(
                           Icons.arrow_forward,
