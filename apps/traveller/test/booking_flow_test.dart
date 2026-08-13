@@ -225,6 +225,18 @@ final class _ScriptedGateway implements TravelGateway {
     return bookingsResult ?? [reserveResult ??= _demoBooking(const [])];
   }
 
+  /// What the claim answered, and the tokens it was asked to claim.
+  final List<String> claimed = [];
+  String claimAnswer = 'BEL-7QK4M2';
+  ApiFailure? claimFailure;
+
+  @override
+  Future<String> claimTicketLink(String token) async {
+    claimed.add(token);
+    if (claimFailure != null) throw claimFailure!;
+    return claimAnswer;
+  }
+
   // ── Cancelling ────────────────────────────────────────────────────────────
 
   /// What the server would answer. Settable, because "paid, 90% back, at a

@@ -246,6 +246,41 @@ void main() {
       expect(result.unknown, ['BEL-NOBODY/1A']);
     });
 
+    // ADR-0026. The counter sends a ticket and hears an address back; the
+    // traveller claims it and hears a reference. Neither answer is a link.
+    test('a ticket link is sent, and answers with no link', () async {
+      final transport = _ScriptedClient([
+        (202, '{"channel":"email","sentTo":"walkin@example.cg"}'),
+      ]);
+
+      final sent = await clientFor(transport, token: 'tok').sendTicketLink(
+        bookingRef: '7QK4M2',
+        channel: 'email',
+        sendTo: 'walkin@example.cg',
+      );
+
+      expect(
+        transport.requests.single.url.path,
+        '/console/v1/bookings/7QK4M2/ticket-link',
+      );
+      expect(sent.sentTo, 'walkin@example.cg');
+    });
+
+    test('and claiming one answers with the reference', () async {
+      final transport = _ScriptedClient([(200, '{"bookingRef":"BEL-7QK4M2"}')]);
+
+      final ref = await clientFor(
+        transport,
+        token: 'tok',
+      ).claimTicketLink('a-token');
+
+      expect(
+        transport.requests.single.url.path,
+        '/public/v1/tickets/a-token/claim',
+      );
+      expect(ref, 'BEL-7QK4M2');
+    });
+
     test('a refusal keeps its code, params and trace id', () async {
       final transport = _ScriptedClient([
         (

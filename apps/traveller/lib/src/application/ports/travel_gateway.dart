@@ -81,6 +81,14 @@ abstract interface class TravelGateway {
   /// follow-up call per ticket is a list that fails exactly there.
   Future<List<BookingDto>> bookings();
 
+  /// Hands a booking opened by link to the signed-in traveller (ADR-0026).
+  ///
+  /// The end of the walk-in's journey into the app: the counter created them
+  /// an unverified account from a typed number, and this is where somebody who
+  /// has actually signed in takes ownership of it. Answers the reference, so
+  /// the list can be reloaded and the right ticket opened.
+  Future<String> claimTicketLink(String token);
+
   // ── When the coach does not go ────────────────────────────────────────────
 
   /// What this passenger may do about a disrupted journey

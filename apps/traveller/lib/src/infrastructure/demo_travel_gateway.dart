@@ -396,6 +396,15 @@ final class DemoTravelGateway implements TravelGateway {
     return [if (_booking != null) _booking!, _disruptedTrip, _pastTrip];
   }
 
+  /// Demo mode has no counter and no links, so claiming answers with the trip
+  /// that is already in the list — the screen after the link is the thing
+  /// worth being able to look at without a database.
+  @override
+  Future<String> claimTicketLink(String token) async {
+    await Future<void>.delayed(latency);
+    return _disruptedTrip.ref;
+  }
+
   /// A trip that is being disrupted right now, so the choice screen
   /// (`08-disruption.md` §3.2) is reachable in demo mode without a dispatcher
   /// and a broken coach. The states nobody sees in development are the ones

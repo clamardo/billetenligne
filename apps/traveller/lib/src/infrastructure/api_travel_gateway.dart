@@ -61,6 +61,10 @@ final class ApiTravelGateway implements TravelGateway {
   Future<List<BookingDto>> bookings() => _client.bookings();
 
   @override
+  Future<String> claimTicketLink(String token) =>
+      _client.claimTicketLink(token);
+
+  @override
   Future<TravelChoicesDto> travelOptions(String bookingRef) =>
       _client.travelOptions(bookingRef);
 

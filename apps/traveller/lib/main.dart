@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:bel_client/bel_client.dart';
 import 'package:flutter/material.dart';
@@ -93,6 +94,17 @@ Future<void> main() async {
   // traveller is a stranger.
   await identity.restore();
 
+  // The app may have been launched *by* a ticket link (ADR-0026). Android's
+  // App Links hand the URL in as the initial route — no plugin channel, and it
+  // is here before the first frame, which is the difference between opening on
+  // the ticket and opening on the search screen and then jumping.
+  //
+  // Remembered rather than acted on: a walk-in opening their first link is
+  // usually not signed in yet, and the claim needs an account to claim for.
+  final tickets = TicketsFlow(gateway: gateway, vault: vault);
+  final token = _ticketLinkToken(PlatformDispatcher.instance.defaultRouteName);
+  if (token != null) tickets.rememberLink(token);
+
   runApp(
     TravellerApp(
       catalog: catalog,
@@ -113,7 +125,8 @@ Future<void> main() async {
             ? null
             : const String.fromEnvironment('BEL_CARD_RETURN_URL'),
       ),
-      tickets: TicketsFlow(gateway: gateway, vault: vault),
+      tickets: tickets,
+      openTicketsOnLaunch: token != null,
       currentUserId: () => identity.account?.id,
       // Only the card rail's hosted checkout uses this. `externalApplication`
       // rather than an in-app web view on purpose: a bank's 3-D Secure step
@@ -125,6 +138,19 @@ Future<void> main() async {
       language: language,
     ),
   );
+}
+
+/// The token in `/b/{token}`, or null for any other launch.
+///
+/// Parsed rather than pattern-matched on a prefix: `defaultRouteName` is `/`
+/// on an ordinary launch, and a route the app does not recognise must open the
+/// app normally rather than send somebody to a ticket that does not exist.
+String? _ticketLinkToken(String route) {
+  final uri = Uri.tryParse(route);
+  if (uri == null) return null;
+  final parts = uri.pathSegments;
+  if (parts.length != 2 || parts.first != 'b' || parts[1].isEmpty) return null;
+  return parts[1];
 }
 
 /// Which Firebase, and how to reach it.

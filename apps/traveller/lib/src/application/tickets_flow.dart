@@ -254,6 +254,12 @@ final class TicketsFlow {
   Future<void> loadCachedThen(String? userId) async {
     _userId = userId;
 
+    // A link the app was opened with, claimed the moment there is somebody to
+    // claim it for (ADR-0026). Here rather than at launch because a walk-in
+    // opening the link usually has to sign in first, and this is the one call
+    // that happens on the way into the ticket list either way.
+    if (userId != null) await _claimPendingLink();
+
     if (userId != null && _cached.isEmpty) {
       final stored = await _vault.read(userId);
       if (stored.isNotEmpty) {
@@ -267,6 +273,36 @@ final class TicketsFlow {
     }
 
     await _fetch();
+  }
+
+  /// A ticket link the app was opened with (ADR-0026).
+  ///
+  /// Remembered rather than acted on: the app is usually launched *by* the
+  /// link, before anybody has signed in, and claiming a booking needs an
+  /// account to claim it for.
+  String? _pendingLink;
+
+  /// The reference the last claim handed over, so the list can open on it.
+  String? claimedRef;
+
+  bool get hasPendingLink => _pendingLink != null;
+
+  void rememberLink(String token) => _pendingLink = token;
+
+  /// Takes the booking, once. Cleared whatever happens: a link that cannot be
+  /// claimed — already somebody else's, revoked while they signed in — must
+  /// not be retried on every visit to the list, and the traveller is not
+  /// stopped from seeing the tickets they do have.
+  Future<void> _claimPendingLink() async {
+    final token = _pendingLink;
+    if (token == null) return;
+    _pendingLink = null;
+
+    try {
+      claimedRef = await _gateway.claimTicketLink(token);
+    } on ApiFailure {
+      claimedRef = null;
+    }
   }
 
   /// Forgets every stored ticket. Called on sign-out, because the next person

@@ -47,6 +47,7 @@ final class TravellerApp extends StatelessWidget {
     required this.tickets,
     this.currentUserId,
     this.openUrl,
+    this.openTicketsOnLaunch = false,
     this.language = 'fr',
     super.key,
   });
@@ -69,6 +70,11 @@ final class TravellerApp extends StatelessWidget {
   /// opened without a plugin channel to stub.
   final void Function(String url)? openUrl;
 
+  /// The app was opened *by* a ticket link (ADR-0026), so it opens on the
+  /// ticket list rather than on the search screen. Landing anywhere else and
+  /// then jumping is the version of this that looks broken.
+  final bool openTicketsOnLaunch;
+
   final String language;
 
   @override
@@ -87,6 +93,7 @@ final class TravellerApp extends StatelessWidget {
         tickets: tickets,
         currentUserId: currentUserId,
         openUrl: openUrl,
+        openTicketsOnLaunch: openTicketsOnLaunch,
       ),
     ),
   );
@@ -100,6 +107,7 @@ class _Funnel extends StatefulWidget {
     required this.tickets,
     this.currentUserId,
     this.openUrl,
+    this.openTicketsOnLaunch = false,
   });
 
   final BookingFlow flow;
@@ -108,6 +116,7 @@ class _Funnel extends StatefulWidget {
   final TicketsFlow tickets;
   final String? Function()? currentUserId;
   final void Function(String url)? openUrl;
+  final bool openTicketsOnLaunch;
 
   @override
   State<_Funnel> createState() => _FunnelState();
@@ -163,6 +172,10 @@ class _FunnelState extends State<_Funnel> {
     // The city list is the first thing the search screen needs and the app
     // holds no copy of it.
     _flow.start();
+
+    // Opened by a ticket link: straight to the list, which claims the booking
+    // on the way in if somebody is signed in to claim it for.
+    if (widget.openTicketsOnLaunch) _openTickets();
   }
 
   @override

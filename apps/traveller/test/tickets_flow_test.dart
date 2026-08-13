@@ -112,6 +112,53 @@ void main() {
       },
     );
 
+    // ADR-0026. The app was opened by a ticket link, and the claim happens on
+    // the way into the list — which is where somebody who has just signed in
+    // arrives.
+    test('a link the app was opened with is claimed on the way in', () async {
+      flow.rememberLink('a-token');
+      expect(flow.hasPendingLink, isTrue);
+
+      await flow.loadCachedThen('user-1');
+
+      expect(gateway.claimed, ['a-token']);
+      expect(flow.claimedRef, 'BEL-7QK4M2');
+      expect(flow.hasPendingLink, isFalse);
+    });
+
+    // Nobody to claim it for yet: a walk-in opening their first link is not
+    // signed in, and the token has to survive the sign-in.
+    test('with nobody signed in it waits rather than failing', () async {
+      flow.rememberLink('a-token');
+
+      await flow.loadCachedThen(null);
+
+      expect(gateway.claimed, isEmpty);
+      expect(flow.hasPendingLink, isTrue);
+    });
+
+    // A link that cannot be claimed must not be retried on every visit, and
+    // must not stop somebody seeing the tickets they do have.
+    test('a refused claim is dropped, and the list still loads', () async {
+      flow.rememberLink('a-token');
+      gateway.claimFailure = const NetworkUnreachable();
+
+      await flow.loadCachedThen('user-1');
+
+      expect(flow.hasPendingLink, isFalse);
+      expect(flow.claimedRef, isNull);
+      expect(flow.step, isA<TicketsReady>());
+    });
+
+    test('a claim happens once, not on every visit to the list', () async {
+      flow.rememberLink('a-token');
+
+      await flow.loadCachedThen('user-1');
+      await flow.loadCachedThen('user-1');
+
+      expect(gateway.claimed, ['a-token']);
+    });
+
     test('the server-s answer replaces it, and is written back', () async {
       vault.rows['user-1'] = [
         _booking(id: 'old', departsAt: now.add(const Duration(hours: 2))),

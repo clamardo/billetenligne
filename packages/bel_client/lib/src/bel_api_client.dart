@@ -1105,6 +1105,19 @@ final class BelApiClient {
     }),
   );
 
+  /// Takes ownership of a booking opened by link (ADR-0026).
+  ///
+  /// The traveller is signed in by the time this is called: the counter's
+  /// unverified account is what it takes the booking from, and an account
+  /// somebody has actually signed in to is never re-pointed by a link.
+  Future<String> claimTicketLink(String token) async {
+    final body = await _postJson(
+      '/public/v1/tickets/${Uri.encodeComponent(token)}/claim',
+      const {},
+    );
+    return Wire.requireString(body['bookingRef'], 'bookingRef');
+  }
+
   /// Kills every live link on a booking — the ten seconds a vendor has when a
   /// customer says they forwarded it to the wrong person.
   Future<void> revokeTicketLinks(String bookingRef) =>
