@@ -39,15 +39,21 @@ final class MemoryRedemptionLog implements RedemptionLog, RedemptionOutbox {
   @override
   List<BoardingUploadDto> pending() => [
     for (final e in _scans.entries)
-      if (!e.value.synced)
-        BoardingUploadDto(
-          key: e.key,
-          scannedAt: e.value.at,
-          deviceId: e.value.deviceId,
-          mode: e.value.manual ? 'manual' : 'scan',
-          codeWasStale: e.value.codeWasStale,
-        ),
+      if (!e.value.synced) _row(e.key, e.value),
   ];
+
+  @override
+  List<BoardingUploadDto> recorded() => [
+    for (final e in _scans.entries) _row(e.key, e.value),
+  ];
+
+  static BoardingUploadDto _row(String key, _Scan scan) => BoardingUploadDto(
+    key: key,
+    scannedAt: scan.at,
+    deviceId: scan.deviceId,
+    mode: scan.manual ? 'manual' : 'scan',
+    codeWasStale: scan.codeWasStale,
+  );
 
   @override
   void markSynced(Iterable<String> keys) {

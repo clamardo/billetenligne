@@ -1,3 +1,4 @@
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 
 /// Everything the scanner knows about the departure being boarded.
@@ -12,7 +13,28 @@ final class BoardingSession {
     required this.deviceId,
     required Clock clock,
     this.preparer,
-  }) : _clock = clock;
+    List<BoardingUploadDto> resumed = const [],
+  }) : _clock = clock {
+    // A handset that was killed mid-boarding comes back knowing who is
+    // already on. The log survived; this is what turns it back into the
+    // number the conductor is watching.
+    for (final row in resumed) {
+      final at = row.key.indexOf('/');
+      if (at <= 0) continue;
+      final ref = row.key.substring(0, at);
+      final seat = row.key.substring(at + 1);
+      _boarded.add(
+        BoardedPassenger(
+          bookingRef: ref,
+          seatLabel: seat,
+          passengerName: manifest.lookup(ref, seat)?.passengerName ?? '',
+          at: row.scannedAt,
+          manual: row.mode == 'manual',
+          codeWasStale: row.codeWasStale,
+        ),
+      );
+    }
+  }
 
   final BoardingManifest manifest;
   final TicketVerifier verifier;

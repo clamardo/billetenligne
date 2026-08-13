@@ -22,6 +22,13 @@ dependencies:
   bel_design: ^0.1.0
   bel_domain: ^0.1.0
   bel_localization: ^0.1.0
+  # Where the boarding log lives between launches. `sqlite3` and hand-written
+  # SQL rather than an ORM — the same choice this repository makes against
+  # Postgres, and there is one table here. `sqlite3_flutter_libs` ships the
+  # engine, since neither Android nor iOS guarantees a usable one.
+  path_provider: ^2.1.0
+  sqlite3: ^2.4.0
+  sqlite3_flutter_libs: ^0.5.0
   # Camera + barcode decoding. Wraps MLKit on Android and Vision on iOS, both
   # of which decode a QR far faster than anything we would write, and both of
   # which run on-device with no network.

@@ -14,6 +14,7 @@ import 'src/application/simulated_scan.dart';
 import 'src/infrastructure/api_boarding_gateway.dart';
 import 'src/infrastructure/demo_boarding_gateway.dart';
 import 'src/infrastructure/memory_redemption_log.dart';
+import 'src/infrastructure/sqlite_redemption_log.dart';
 import 'src/presentation/l10n.dart';
 import 'src/presentation/pages/boarding_page.dart';
 import 'src/presentation/pages/coach_picker_page.dart';
@@ -37,12 +38,25 @@ Future<void> main() async {
   final catalog = await CatalogAssets.load();
   const apiUrl = String.fromEnvironment('BEL_API_URL');
 
+  // Where the boarding log lives between launches. A failure to open it is
+  // not a failure to start — the door still works, and the queue behaves as
+  // it did before this existed — but it is the difference between a killed
+  // app losing forty boardings and picking them up again, so it is tried
+  // first and the fallback is named rather than silent.
+  SqliteRedemptionStore? log;
+  try {
+    log = await SqliteRedemptionStore.open();
+  } on Object catch (e) {
+    debugPrint('boarding log unavailable, falling back to memory: $e');
+  }
+
   if (apiUrl.isEmpty) {
     runApp(
       ScannerApp(
         catalog: catalog,
         gateway: DemoBoardingGateway(),
         deviceId: 'demo-device',
+        log: log,
       ),
     );
     return;
@@ -68,6 +82,7 @@ Future<void> main() async {
       catalog: catalog,
       gateway: ApiBoardingGateway(client, clock: const SystemClock()),
       deviceId: _deviceId(),
+      log: log,
       session: session,
       client: client,
     ),
@@ -112,6 +127,7 @@ class ScannerApp extends StatelessWidget {
     required this.catalog,
     required this.gateway,
     required this.deviceId,
+    this.log,
     this.session,
     this.client,
     super.key,
@@ -120,6 +136,11 @@ class ScannerApp extends StatelessWidget {
   final TranslationCatalog catalog;
   final BoardingGateway gateway;
   final String deviceId;
+
+  /// Null when the handset could not open one, and in a widget test. The
+  /// coach is then boarded through an in-memory log, exactly as before —
+  /// working, and unable to survive being killed.
+  final SqliteRedemptionStore? log;
 
   /// Null in demo mode, where there is nobody to sign in and nothing to sign
   /// in to. Present otherwise, and then the way in is `bel_backoffice`'s
@@ -142,6 +163,7 @@ class ScannerApp extends StatelessWidget {
       home: _Root(
         gateway: gateway,
         deviceId: deviceId,
+        log: log,
         session: session,
         client: client,
       ),
@@ -153,12 +175,14 @@ class _Root extends StatefulWidget {
   const _Root({
     required this.gateway,
     required this.deviceId,
+    this.log,
     this.session,
     this.client,
   });
 
   final BoardingGateway gateway;
   final String deviceId;
+  final SqliteRedemptionStore? log;
   final BelSession? session;
   final BelApiClient? client;
 
@@ -185,7 +209,11 @@ class _RootState extends State<_Root> {
       );
     }
 
-    return _CoachFlow(gateway: widget.gateway, deviceId: widget.deviceId);
+    return _CoachFlow(
+      gateway: widget.gateway,
+      deviceId: widget.deviceId,
+      log: widget.log,
+    );
   }
 }
 
@@ -195,10 +223,11 @@ class _RootState extends State<_Root> {
 /// and a conductor must never be able to swipe back from the door into a list
 /// while somebody is standing in front of them.
 class _CoachFlow extends StatefulWidget {
-  const _CoachFlow({required this.gateway, required this.deviceId});
+  const _CoachFlow({required this.gateway, required this.deviceId, this.log});
 
   final BoardingGateway gateway;
   final String deviceId;
+  final SqliteRedemptionStore? log;
 
   @override
   State<_CoachFlow> createState() => _CoachFlowState();
@@ -223,7 +252,11 @@ class _CoachFlowState extends State<_CoachFlow> {
     setState(() => _failure = null);
     try {
       final coaches = await widget.gateway.coachesOn(DateTime.now());
-      if (mounted) setState(() => _coaches = coaches);
+      if (!mounted) return;
+      setState(() => _coaches = coaches);
+      // This request just proved there is signal, which is the only thing a
+      // stranded outbox was waiting for.
+      await _drainLeftovers();
     } on Object catch (e) {
       if (mounted) {
         setState(() {
@@ -232,6 +265,37 @@ class _CoachFlowState extends State<_CoachFlow> {
         });
       }
     }
+  }
+
+  /// Sends what an earlier boarding left behind.
+  ///
+  /// A conductor who finished a run and closed the app never taps *send*
+  /// again, so the rows would sit on the handset until somebody happened to
+  /// re-open that departure. This runs the moment the day's list arrives,
+  /// because arriving is proof of a network, and it names what went rather
+  /// than doing it silently — an operator asking why a coach shows nobody on
+  /// it deserves to have seen this.
+  Future<void> _drainLeftovers() async {
+    final store = widget.log;
+    if (store == null) return;
+
+    var settled = 0;
+    for (final departureId in store.departuresAwaitingSync()) {
+      final report = await BoardingSync(
+        gateway: widget.gateway,
+        outbox: store.forDeparture(departureId),
+        departureId: departureId,
+      ).drain();
+      settled += report.settled;
+    }
+
+    if (settled == 0 || !mounted) return;
+    final plural = settled > 1 ? 's' : '';
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text('$settled embarquement$plural en attente envoyé$plural.'),
+      ),
+    );
   }
 
   /// The last request before the door opens.
@@ -243,7 +307,20 @@ class _CoachFlowState extends State<_CoachFlow> {
 
     try {
       final pinned = await widget.gateway.pin(coach.id);
-      final log = MemoryRedemptionLog();
+      // Scoped to this coach: a conductor works two runs in a day, and the
+      // same seat label boards on both.
+      final RedemptionOutbox outbox;
+      final RedemptionLog log;
+      final store = widget.log;
+      if (store == null) {
+        final memory = MemoryRedemptionLog();
+        outbox = memory;
+        log = memory;
+      } else {
+        final persisted = store.forDeparture(coach.id);
+        outbox = persisted;
+        log = persisted;
+      }
 
       if (!mounted) return;
       setState(() {
@@ -260,10 +337,12 @@ class _CoachFlowState extends State<_CoachFlow> {
           preparer: pinned.preparer,
           deviceId: widget.deviceId,
           clock: const SystemClock(),
+          // A handset killed mid-boarding comes back knowing who is on.
+          resumed: outbox.recorded(),
         );
         _sync = BoardingSync(
           gateway: widget.gateway,
-          outbox: log,
+          outbox: outbox,
           departureId: coach.id,
         );
       });
@@ -279,9 +358,10 @@ class _CoachFlowState extends State<_CoachFlow> {
 
   /// Back to the list, but not over the top of an outbox.
   ///
-  /// Leaving drops the device's record of who boarded, so the queue is put in
-  /// front of the conductor first. They can still leave — a coach that has
-  /// gone is a coach that has gone — but not without being told.
+  /// The queue survives now, so this is a nudge rather than a warning: the
+  /// far end of the road is where there is signal, and a conductor who is
+  /// there is the person who can act on it. Leaving anyway costs nothing —
+  /// re-pinning the coach finds the same rows still waiting.
   Future<void> _leave() async {
     final sync = _sync;
     if (sync != null && sync.pendingCount > 0) {
@@ -290,12 +370,13 @@ class _CoachFlowState extends State<_CoachFlow> {
         builder: (context) => AlertDialog(
           title: Text('${sync.pendingCount} embarquements non envoyés'),
           content: const Text(
-            'Ils seront perdus si vous changez de car maintenant.',
+            'Ils restent sur le téléphone. Envoyez-les maintenant si vous '
+            'avez du réseau.',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Changer quand même'),
+              child: const Text('Plus tard'),
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
@@ -312,9 +393,10 @@ class _CoachFlowState extends State<_CoachFlow> {
         if (!mounted) return;
         if (!report.ok) {
           ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-            const SnackBar(content: Text('Envoi impossible. Rien changé.')),
+            const SnackBar(
+              content: Text('Envoi impossible. Ils restent en attente.'),
+            ),
           );
-          return;
         }
       }
     }

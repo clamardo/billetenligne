@@ -39,13 +39,29 @@ local emulator.
    leave the queue; a ticket this coach has never heard of will not start being
    on it, and a handset that retries forever is flat by eleven.
 
+## The log survives the app
+
+Boardings go into one SQLite table on the handset, not a `Map`. Android kills
+a backgrounded camera app under memory pressure — which is what a ten-minute
+boarding on a cheap handset produces — and an in-memory queue takes forty
+boardings with it. **First scan wins is the primary key**: `INSERT OR IGNORE`
+on `(departure_id, key)`, scoped per departure because a conductor works two
+runs in a day and the same 14A boards on both.
+
+A relaunch re-pins the coach and the counter comes back with it. Anything left
+over from an earlier run is sent the moment the day's list arrives, because
+arriving is proof of a network.
+
+The *session* is still in memory, here and in the console and the traveller
+app, so signing in is once per launch.
+
 ## Layout
 
 ```
 lib/src/
   application/     the session, the sync, in pure Dart — no Flutter, enforced by CI
     ports/         BoardingGateway, RedemptionOutbox
-  infrastructure/  the API gateway, the demo one, the redemption log
+  infrastructure/  the API gateway, the demo one, the redemption log (SQLite)
   presentation/    the picker, the door, the verdict
 ```
 
@@ -78,4 +94,5 @@ flutter test
 
 `boarding_test.dart` is the door against the demo coach; `wire_boarding_test.dart`
 is the door against a manifest that arrived as JSON, with a scripted transport
-and real signatures; `coach_picker_test.dart` is the screen between the two.
+and real signatures; `redemption_log_test.dart` is the queue against a real
+SQLite; `coach_picker_test.dart` is the screen between them.

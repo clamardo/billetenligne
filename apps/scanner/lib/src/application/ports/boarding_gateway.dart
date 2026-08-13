@@ -68,6 +68,13 @@ abstract interface class RedemptionOutbox {
   /// Boardings recorded on this device that the server has not acknowledged.
   List<BoardingUploadDto> pending();
 
+  /// Everything this device recorded for the coach, settled or not.
+  ///
+  /// What a relaunch is rebuilt from. Without it the conductor's counter
+  /// reads `0 / 60` on a handset that has already boarded forty people, and a
+  /// number that is wrong at the door is worse than no number.
+  List<BoardingUploadDto> recorded();
+
   /// Marks rows as settled. Idempotent, and safe to call with keys that were
   /// never pending.
   void markSynced(Iterable<String> keys);
