@@ -382,7 +382,7 @@ final class Services {
       // key would be a second thing to rotate and a second way to get it
       // wrong.
       secondFactor: SecondFactorSignIn(
-        factors: PostgresSecondFactors(db),
+        factors: PostgresSecondFactors(db, cipher: _seedCipher(env)),
         mac: const HmacSha256Authenticator(),
         signingKey: _codeKey(env),
         clock: clock,
@@ -717,6 +717,31 @@ final class Services {
     );
     final random = Random.secure();
     return List<int>.generate(32, (_) => random.nextInt(256));
+  }
+
+  /// The key the TOTP seeds are sealed with, or null.
+  ///
+  /// **Null is a supported state and it is not the same shape as
+  /// `AUTH_CODE_KEY`.** A missing sign-in key can be replaced with a random
+  /// one per process, because the worst it costs is a code that stops
+  /// verifying. A random key here would make every seed already in the table
+  /// undecryptable, which is every member of staff locked out of both back
+  /// offices. So an absent key means the seeds are stored in the clear —
+  /// which is what a local stack does, and what this system did before the
+  /// control existed — and it is said out loud, once, at startup.
+  ///
+  /// Rotating it is deliberately *not* silent: the adapter throws on a sealed
+  /// row it cannot open rather than treating it as absent, because a factor
+  /// that quietly reads as missing is a factor an attacker can re-enrol.
+  static SecretCipher? _seedCipher(Map<String, String> env) {
+    final cipher = SecretCipher.fromPassphrase(env['TOTP__ENCRYPTIONKEY']);
+    if (cipher == null) {
+      stderr.writeln(
+        'TOTP__ENCRYPTIONKEY is unset or shorter than 32 characters. '
+        'Second-factor seeds will be stored unencrypted.',
+      );
+    }
+    return cipher;
   }
 
   /// Fixed, and only ever reached by the fakes composition — the one that runs

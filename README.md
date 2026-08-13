@@ -10,42 +10,55 @@ The wedge is not the traveller — it is the operator's cash leakage. **Travelle
 
 ## Status
 
-**Phase 0 is complete. Phase 1 has a traveller app that browses and holds
-seats against a real database.** Open the app, search Brazzaville →
-Pointe-Noire, see real departures, pick a seat off a diagram, hold it with a
-countdown running. Fifty concurrent claims for the last seat produce exactly
-one ticket — proven against the lock manager that will actually arbitrate it,
-not against a fake. Payment is Phase 2, and the button says so.
+**Every engineering item through Phase 4 is built.** A traveller signs in with
+a one-time code, searches Brazzaville → Pointe-Noire, picks a seat off a
+diagram, holds it with a countdown running, pays — cash at an agency, MTN,
+Airtel or Orange Money, or a card — and gets an Ed25519-signed ticket that
+renders in airplane mode. A conductor boards them from a separate app with no
+network at all. An operator draws a seat layout, opens a route with its stops,
+publishes a timetable, sells segments of it, works refunds and reschedules,
+declares a breakdown and has another company carry their passengers. We
+approve them, watch their paperwork expire, and pay them under two-person
+control with the statement in their inbox.
 
-Per-feature detail, including what is deliberately unfinished:
-**[`docs/10-build-status.md`](docs/10-build-status.md)** — updated on every push.
+What is left is **not code**: production credentials from three telcos and a
+card processor, an Azure Communication Services sender, the two app stores,
+and a manual smoke on real SIMs with real money. Track those, and everything
+deliberately unfinished, in
+**[`docs/10-build-status.md`](docs/10-build-status.md)** — updated on every
+push, including the gaps.
 
 | | State |
 |---|---|
 | Product, architecture and design docs | ✅ `docs/` |
-| Architecture decision records (23) | ✅ `docs/adr/` |
-| `bel_domain` — money, market, policies, layouts, payment state machine | ✅ 78 tests |
-| `bel_localization` — FR/EN YAML catalog | ✅ 15 tests |
-| `bel_contracts` — wire format, error codes | ✅ 29 tests |
-| `bel_design` — Kilo tokens, components, contrast gates | ✅ 58 tests |
-| `services/api` — Dart Frog, middleware, **search, seat map, holds** | ✅ 71 tests + 43 smoke checks |
-| Database — schema, RLS, ledger, public sales boundary | ✅ 23 guarantees verified |
-| **Inventory and catalogue on real Postgres** | ✅ 28 integration tests |
-| `bel_client` — typed API client, retries, idempotency | ✅ 17 tests |
-| **`apps/traveller` — search, seat map, hold, release** | ✅ 28 tests |
-| Local dev stack | ✅ `infra/dev` |
+| Architecture decision records (26) | ✅ `docs/adr/` |
+| `bel_domain` · `bel_localization` · `bel_contracts` · `bel_crypto` | ✅ 601 tests |
+| `bel_design` — Kilo tokens, components, contrast gates | ✅ 67 tests |
+| `bel_backoffice` · `bel_secure_store` — shared sign-in, Keychain/Keystore | ✅ 16 tests |
+| `bel_client` — typed API client, retries, idempotency | ✅ 41 tests |
+| `services/api` — three surfaces, middleware, every route | ✅ 263 tests + 445 smoke checks |
+| `services/worker` — outbox, payment polling, sweeps, compliance | ✅ 67 tests on real Postgres |
+| Database — schema, RLS, ledger, public sales boundary | ✅ 45 guarantees verified |
+| Everything against real Postgres | ✅ 498 integration tests |
+| `apps/traveller` — search, seat map, pay, wallet, offline tickets | ✅ 230 tests |
+| `apps/scanner` — offline boarding, signed manifest, SQLite log | ✅ 47 tests |
+| `apps/console` — fleet, routes, timetables, refunds, payouts | ✅ 125 tests |
+| `apps/admin` — approvals, compliance, payouts, analytics | ✅ 35 tests |
+| Local dev stack, seeded demo world, VS Code debugger | ✅ `infra/dev`, `.vscode/` |
 | CI — analyze, format, layers, tests, schema, integration | ✅ `.github/workflows/ci.yml` |
-| Operator console, admin back office, payments | ⬜ Next |
+| Production deployment — containers, IaC, cron | ⬜ Next |
 
 ```bash
-dart test packages services/api                 # 272 tests, ~3 s, no containers
-cd packages/bel_design && flutter test          # Kilo components + contrast gates
-cd apps/traveller && flutter test               # the traveller funnel
-dart run tool/check_layers.dart                 # onion dependency rule, 108 files
-./infra/migrations/check.sh                     # 23 schema guarantees (needs Docker)
-./tool/integration.sh                           # the seat race, on real Postgres
-./tool/smoke_api.sh                             # 44 checks, incl. the Dart client
+dart test packages/bel_domain                   # 2 s, no containers
+dart run tool/check_layers.dart                 # onion dependency rule, 414 files
+./infra/migrations/check.sh                     # 45 schema guarantees (needs Docker)
+./tool/integration.sh                           # 498 tests on real Postgres
+./tool/smoke_api.sh                             # 445 checks, incl. the Dart client
 ```
+
+**1,425 tests in total**, plus the smoke checks, the schema guarantees, the
+integration suite and 10 tests against real Azurite. The full command list is
+in [`docs/10-build-status.md`](docs/10-build-status.md).
 
 ---
 
@@ -69,7 +82,7 @@ Six surfaces, one domain, one language.
 | | Decision | Why |
 |---|---|---|
 | **Market** | Congo-Brazzaville, XAF | The brief names Airtel + MTN, and MTN does not operate in the DRC. Country is configuration, not code. |
-| **Payments** | Mobile money is the *default*, not an option | Airtel Money and MTN MoMo pre-selected from the phone number's prefix. Card is a quiet second tab. Orange Money (45% share) is a fast follow. |
+| **Payments** | Mobile money is the *default*, not an option | Airtel Money, MTN MoMo and Orange Money pre-selected from the phone number's prefix; card is a quiet second tab. All four rails are built and behind `config/markets.yaml`, so enabling one is a file, not a release. |
 | **Language** | Dart end to end | The refund quote the traveller sees is computed by the same function the server charges with. They cannot disagree. |
 | **Architecture** | Onion, dependencies inward only | Enforced by CI, not by convention. `bel_domain` has zero dependencies and runs in 2 seconds. |
 | **Offline** | A product feature, not an optimisation | Tickets render in airplane mode. Boarding validation needs no network at all. |
@@ -79,7 +92,7 @@ Six surfaces, one domain, one language.
 | **Devices** | Android 5.0+, ≤ 15 MB APK, ≤ 2.5 s cold start on 2 GB | Enforced in CI. This is the market, not an edge case. |
 | **Design** | Forêt & Latérite + Inter | Built for direct equatorial sun on a scratched 720p panel. |
 
-Full reasoning: **[`docs/adr/`](docs/adr/)** — 23 records, each with the alternatives that were rejected and why.
+Full reasoning: **[`docs/adr/`](docs/adr/)** — 26 records, each with the alternatives that were rejected and why.
 
 ---
 
@@ -110,21 +123,24 @@ billetenligne/
 │  ├─ bel_localization/   YAML i18n catalog. Shared by apps AND server.
 │  ├─ bel_design/         "Kilo" design system.
 │  ├─ bel_contracts/      wire DTOs + error codes.
-│  ├─ bel_crypto/        Ed25519 + HMAC behind the domain's ports.
-│  └─ bel_client/         typed API client.                   (planned)
+│  ├─ bel_crypto/         Ed25519, HMAC, JWT, sealed secrets.
+│  ├─ bel_backoffice/     sign-in and TOTP enrolment, shared by console + admin.
+│  ├─ bel_secure_store/   the Keychain and the Keystore, behind one port.
+│  └─ bel_client/         typed API client.
 ├─ apps/
-│  ├─ traveller/          Flutter mobile — booking, wallet.    (planned)
-│  ├─ scanner/           Flutter mobile — boarding, offline.
-│  ├─ console/            Flutter Web — operator.             (planned)
-│  └─ admin/              Flutter Web — BilletEnLigne.        (planned)
+│  ├─ traveller/          Flutter mobile — booking, wallet, offline tickets.
+│  ├─ scanner/            Flutter mobile — boarding, offline, SQLite log.
+│  ├─ console/            Flutter Web — operator.
+│  └─ admin/              Flutter Web — BilletEnLigne.
 ├─ services/
-│  ├─ api/                Dart Frog — middleware, routes.
-│  └─ worker/             reconciliation, outbox, sweeps.     (planned)
+│  ├─ api/                Dart Frog — three surfaces, middleware, routes.
+│  └─ worker/             reconciliation, outbox, sweeps, compliance.
 ├─ infra/
 │  ├─ dev/                local stack — see its README
 │  └─ migrations/         schema + RLS + `check.sh`
+├─ .vscode/               launch configs for every process — see below
 ├─ config/markets.yaml    country facts: rails, prefixes, currency
-├─ tool/check_layers.dart the onion rule, enforced
+├─ tool/                  the onion rule, the suites, the dev loop
 └─ docs/                  product, architecture, ADRs
 ```
 
@@ -141,11 +157,25 @@ dart pub get
 # Domain work needs no containers at all
 dart test packages/bel_domain
 
-# Full local stack: Postgres, Firebase Auth emulator, Azurite, Mailpit
-cd infra/dev && cp .env.example .env && docker compose up
+# The full local loop
+cd infra/dev && cp .env.example .env && docker compose up -d && cd ../..
+./tool/migrate.sh     # a fresh volume carries the roles and no schema
+./tool/demo.sh        # five companies and twenty people on coaches
+./tool/api_dev.sh     # the API on :8080, hot reload, no env to type
 ```
 
-No cloud credentials and no network are required. The Firebase project is `demo-billetenligne`, which cannot reach the cloud, and `COMMS__CONNECTIONSTRING` is blank by default so SMS is logged and email lands in Mailpit — nobody's handset receives anything from your laptop.
+**In VS Code, none of that is typed.** `.vscode/launch.json` names every
+process — the API, the worker and each of the four apps — and the compound
+**Everything (API + worker + traveller)** brings up the containers, the
+schema, the demo world, the server, the drain and a handset in that order,
+with breakpoints in all of them. Two compounds need no containers at all: the
+traveller and scanner apps on their demo gateways, which is the configuration
+that works on an aeroplane.
+
+No cloud credentials and no network are required. The Firebase project is
+`demo-billetenligne`, which cannot reach the cloud, and `COMMS__CONNECTIONSTRING`
+is blank by default so SMS is logged and email lands in Mailpit — nobody's
+handset receives anything from your laptop.
 
 See [`infra/dev/README.md`](infra/dev/README.md).
 
@@ -155,13 +185,14 @@ See [`infra/dev/README.md`](infra/dev/README.md).
 
 Five layers, each answering a different question ([ADR-0021](docs/adr/0021-test-strategy.md)):
 
-| Layer | Question | Count | Budget |
+| Layer | Question | Count today | Budget |
 |---|---|---|---|
-| Domain unit | Is the rule right? | ~2000 | < 5 s |
-| Widget / golden | Does the screen render, in fr + en, at 3 text scales? | ~400 | < 60 s |
-| **Integration** | Does this component talk to Postgres / Firebase / the PSP correctly? | ~250 | ~2 min |
-| ↳ *running today* | Does one seat go to exactly one of fifty simultaneous buyers? | 28 | ~4 s |
-| **End-to-end** | Can a real person complete a real journey? | ~40 | ~15 min |
+| Domain and application unit | Is the rule right? | 905 | < 10 s |
+| Widget / golden | Does the screen render, in fr + en, at 3 text scales? | 520 | < 90 s |
+| **Integration** | Does this component talk to Postgres / Azurite / the PSP correctly? | 508 | ~2 min |
+| **HTTP smoke** | Is the route mounted, and does the typed client parse it? | 445 | ~40 s |
+| **Executed schema guarantees** | Does the *database* refuse what it must? | 45 | ~20 s |
+| End-to-end | Can a real person complete a real journey? | — | not built |
 | Manual smoke | Real SIM, real money, real sunlight | — | pre-release |
 
 Integration and E2E are deliberately **separate**: one names the broken component, the other tells you the journey is broken. Merged, you get E2E's flakiness with integration's volume. They share fixtures and the emulator stack — that is where the reuse belongs.

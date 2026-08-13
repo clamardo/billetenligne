@@ -1,3 +1,4 @@
+import 'package:bel_crypto/bel_crypto.dart';
 import 'package:postgres/postgres.dart';
 
 import '../../application/ports/second_factor.dart';
@@ -9,13 +10,29 @@ import '../db/database.dart';
 /// `user_totp` to that role and to no other. Resolving a second factor happens
 /// during sign-in, before the request has a tenant or a surface — the same
 /// reason `auth_challenges` lives there.
+///
+/// **The seed is sealed here rather than in the domain.** A TOTP seed is the
+/// one secret this system stores that it must be able to read back — the
+/// server recomputes a code from it every thirty seconds — so hashing it, the
+/// answer everywhere else, is not available. What is available is
+/// authenticated encryption under a key that is not in the database, which
+/// separates "somebody has a copy of the data" from "somebody has the
+/// environment". Those are different events, and keeping them different is the
+/// whole control; `SecretCipher` states what it is and is not worth.
+///
+/// `cipher` is nullable and that is a supported state: a local stack with no
+/// key stores seeds in the clear, and the API says so at startup. A key that
+/// appears later upgrades the rows as their owners sign in, which is why
+/// reading here also writes.
 final class PostgresSecondFactors implements SecondFactors {
-  const PostgresSecondFactors(this._db);
+  const PostgresSecondFactors(this._db, {SecretCipher? cipher})
+    : _cipher = cipher;
 
   final Database _db;
+  final SecretCipher? _cipher;
 
   static const _columns = '''
-    t.user_id, t.secret_base32, t.confirmed_at, t.last_window,
+    t.user_id, t.secret, t.confirmed_at, t.last_window,
     t.failed_attempts, t.locked_until,
     (SELECT count(*)::int FROM user_totp_recovery r
       WHERE r.user_id = t.user_id
@@ -30,7 +47,7 @@ final class PostgresSecondFactors implements SecondFactors {
           Sql.named('SELECT $_columns FROM user_totp t WHERE t.user_id = @id'),
           parameters: {'id': TypedValue(Type.uuid, userId)},
         );
-        return rows.isEmpty ? null : _read(rows.first.toColumnMap());
+        return rows.isEmpty ? null : _read(tx, rows.first.toColumnMap());
       });
 
   @override
@@ -45,10 +62,10 @@ final class PostgresSecondFactors implements SecondFactors {
     // whose phone still holds the old secret.
     final rows = await tx.execute(
       Sql.named('''
-        INSERT INTO user_totp (user_id, secret_base32)
+        INSERT INTO user_totp (user_id, secret)
         VALUES (@id, @secret)
         ON CONFLICT (user_id) DO UPDATE
-           SET secret_base32 = EXCLUDED.secret_base32,
+           SET secret = EXCLUDED.secret,
                last_window = NULL,
                created_at = now()
          WHERE user_totp.confirmed_at IS NULL
@@ -56,7 +73,7 @@ final class PostgresSecondFactors implements SecondFactors {
       '''),
       parameters: {
         'id': TypedValue(Type.uuid, userId),
-        'secret': TypedValue(Type.text, secretBase32),
+        'secret': TypedValue(Type.text, await _seal(secretBase32)),
       },
     );
     if (rows.isEmpty) return null;
@@ -95,7 +112,7 @@ final class PostgresSecondFactors implements SecondFactors {
       Sql.named('SELECT $_columns FROM user_totp t WHERE t.user_id = @id'),
       parameters: {'id': TypedValue(Type.uuid, userId)},
     );
-    return _read(read.first.toColumnMap());
+    return _read(tx, read.first.toColumnMap());
   });
 
   @override
@@ -210,7 +227,7 @@ final class PostgresSecondFactors implements SecondFactors {
       Sql.named('SELECT $_columns FROM user_totp t WHERE t.user_id = @id'),
       parameters: {'id': TypedValue(Type.uuid, userId)},
     );
-    return rows.isEmpty ? null : _read(rows.first.toColumnMap());
+    return rows.isEmpty ? null : _read(tx, rows.first.toColumnMap());
   });
 
   @override
@@ -222,13 +239,60 @@ final class PostgresSecondFactors implements SecondFactors {
         );
       });
 
-  static SecondFactor _read(Map<String, dynamic> row) => SecondFactor(
-    userId: row['user_id'].toString(),
-    secretBase32: row['secret_base32'] as String,
-    confirmedAt: row['confirmed_at'] as DateTime?,
-    lastWindow: row['last_window'] as int?,
-    unusedRecoveryCodes: (row['unused'] as int?) ?? 0,
-    failedAttempts: (row['failed_attempts'] as int?) ?? 0,
-    lockedUntil: row['locked_until'] as DateTime?,
-  );
+  Future<String> _seal(String secretBase32) async =>
+      _cipher == null ? secretBase32 : await _cipher.encrypt(secretBase32);
+
+  /// Hydrates a row, and upgrades it in passing.
+  ///
+  /// **Reading writes, and only in one direction.** A row stored before a key
+  /// existed carries no version prefix; it is returned as it stands — a reader
+  /// that threw would lock out everybody enrolled before the deploy — and
+  /// re-sealed in the same transaction, so the plaintext is gone the next time
+  /// its owner signs in. Nothing goes the other way: a sealed row with no key
+  /// configured throws rather than being unwrapped, because reverting a
+  /// control by losing an environment variable should be an outage, not a
+  /// silent downgrade.
+  Future<SecondFactor> _read(TxSession tx, Map<String, dynamic> row) async {
+    final stored = row['secret'] as String;
+    final cipher = _cipher;
+
+    final String secret;
+    if (cipher == null) {
+      if (SecretCipher.isSealed(stored)) {
+        throw StateError(
+          'A second factor is sealed and no key is configured. Set '
+          'TOTP__ENCRYPTIONKEY to the key these rows were written with.',
+        );
+      }
+      secret = stored;
+    } else {
+      secret = await cipher.decrypt(stored);
+      if (!SecretCipher.isSealed(stored)) {
+        await tx.execute(
+          Sql.named('''
+            UPDATE user_totp SET secret = @secret
+             WHERE user_id = @id AND secret = @was
+          '''),
+          parameters: {
+            'id': TypedValue(Type.uuid, row['user_id'].toString()),
+            'secret': TypedValue(Type.text, await cipher.encrypt(secret)),
+            // Guarded on the value we read, so two concurrent sign-ins do not
+            // each seal and leave the second overwriting the first.
+            'was': TypedValue(Type.text, stored),
+          },
+          ignoreRows: true,
+        );
+      }
+    }
+
+    return SecondFactor(
+      userId: row['user_id'].toString(),
+      secretBase32: secret,
+      confirmedAt: row['confirmed_at'] as DateTime?,
+      lastWindow: row['last_window'] as int?,
+      unusedRecoveryCodes: (row['unused'] as int?) ?? 0,
+      failedAttempts: (row['failed_attempts'] as int?) ?? 0,
+      lockedUntil: row['locked_until'] as DateTime?,
+    );
+  }
 }

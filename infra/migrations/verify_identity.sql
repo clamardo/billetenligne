@@ -228,3 +228,40 @@ BEGIN
   RAISE NOTICE 'OK  a retired recovery code is kept as evidence and refused as a key';
 END
 $$;
+
+-- ── The seed column tells the truth about what it holds ─────────────────────
+--
+-- 0041 renamed `secret_base32` to `secret` because the API now writes
+-- `v1.<nonce>.<ciphertext+tag>` into it. Asserted rather than assumed: the
+-- rename is guarded on the old name existing, so a schema that ran 0041 twice
+-- — or ran it against a database created after the rename — must still end up
+-- with exactly one of the two names, and it must be the new one.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'user_totp' AND column_name = 'secret_base32'
+  ) THEN
+    RAISE EXCEPTION 'FAIL: user_totp still promises base32 it no longer holds';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'user_totp' AND column_name = 'secret'
+  ) THEN
+    RAISE EXCEPTION 'FAIL: user_totp has nowhere to keep a seed';
+  END IF;
+
+  -- The length floor survived the rename. A sealed value is far longer than
+  -- sixteen characters, so this only ever catches a truncated one — which is
+  -- the case that would otherwise present as "your authenticator is wrong".
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'user_totp_secret_present'
+  ) THEN
+    RAISE EXCEPTION 'FAIL: a second factor can be stored with no seed in it';
+  END IF;
+
+  RAISE NOTICE 'OK  the TOTP seed column is named for what it actually holds';
+END
+$$;

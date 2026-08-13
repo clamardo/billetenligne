@@ -220,8 +220,16 @@ These are true today and each one is a decision, not an oversight.
    each stated rather than buried:
    **enrolment is compulsory on next sign-in rather than retroactive**, so an
    account that never signs in again keeps no factor;
-   **the TOTP seed is not encrypted at rest** — a KMS key living in the same
-   environment as the database is reassurance rather than a control;
+   ~~**the TOTP seed is not encrypted at rest**~~ — **closed**, and the
+   argument that held it open was half right: a key in the same environment is
+   no defence against somebody who has the environment, but that is not how
+   data usually leaves. A backup on a laptop, a restore into staging, a
+   read-only injection, a disk sold with a filesystem on it — each is the data
+   *without* the key, and separating the two is the control. Seeds are sealed
+   with AES-256-GCM under `TOTP__ENCRYPTIONKEY`; an absent key stores them in
+   the clear and says so at startup, and a sealed row that will not open is an
+   error rather than a missing factor, because a factor that reads as absent
+   is a factor an attacker can re-enrol;
    and ~~**there is no QR code** on the enrolment screen~~ — **closed.** That
    one was argued from a fact that stopped being true: a QR encoder was said
    to be Reed–Solomon with no independent decoder here to check it against,
@@ -294,7 +302,7 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 595 tests
+         packages/bel_contracts packages/bel_crypto     # 601 tests
 dart test packages/bel_client                           # 41 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 263 tests
@@ -307,8 +315,8 @@ cd apps/admin     && flutter test        # 35 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 47 scanner tests, incl. a manifest off the wire
 dart run tool/check_layers.dart          # the onion rule, 414 files
-./infra/migrations/check.sh              # 44 schema guarantees
-./tool/integration.sh                    # 494 tests on real Postgres, incl. the worker
+./infra/migrations/check.sh              # 45 schema guarantees
+./tool/integration.sh                    # 498 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 445 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
@@ -347,8 +355,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,419 tests in total**, plus 445 smoke checks, 44 executed schema guarantees,
-494 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,425 tests in total**, plus 445 smoke checks, 45 executed schema guarantees,
+498 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.

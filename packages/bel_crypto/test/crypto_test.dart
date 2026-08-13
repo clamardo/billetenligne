@@ -274,6 +274,8 @@ void main() {
       );
     });
   });
+
+  _secretCipherTests();
 }
 
 final class _Log implements RedemptionLog {
@@ -295,4 +297,81 @@ final class _Log implements RedemptionLog {
     BoardingManifest.keyFor(bookingRef, seatLabel),
     () => at,
   );
+}
+
+void _secretCipherTests() {
+  group('a secret the server has to be able to read', () {
+    // The passphrase is the shape the environment carries — 32 characters or
+    // more, exactly as `AUTH_CODE_KEY` asks for.
+    const key = 'development-only-totp-key-32-chars';
+    const seed = 'JBSWY3DPEHPK3PXP';
+
+    test('a sealed seed comes back, and does not look like itself', () async {
+      final cipher = SecretCipher.fromPassphrase(key)!;
+      final sealed = await cipher.encrypt(seed);
+
+      expect(sealed, startsWith('v1.'));
+      expect(sealed, isNot(contains(seed)));
+      expect(await cipher.decrypt(sealed), seed);
+    });
+
+    test('the same seed seals differently every time', () async {
+      final cipher = SecretCipher.fromPassphrase(key)!;
+      final a = await cipher.encrypt(seed);
+      final b = await cipher.encrypt(seed);
+
+      // A random nonce per write. Two staff who scanned the same QR — which
+      // happens, because a test fixture does it — must not produce two
+      // identical rows, or the table leaks equality it was never asked about.
+      expect(a, isNot(b));
+      expect(await cipher.decrypt(a), seed);
+      expect(await cipher.decrypt(b), seed);
+    });
+
+    test('another key is refused rather than answered wrongly', () async {
+      final sealed = await SecretCipher.fromPassphrase(key)!.encrypt(seed);
+      final other = SecretCipher.fromPassphrase(
+        'a-completely-different-key-of-32ch',
+      )!;
+
+      // Loud, not silent. A seed that quietly reads as absent would enrol
+      // somebody a second time and hand an attacker a factor.
+      expect(other.decrypt(sealed), throwsA(isA<Object>()));
+    });
+
+    test('an edited ciphertext is refused, not decrypted', () async {
+      final cipher = SecretCipher.fromPassphrase(key)!;
+      final sealed = await cipher.encrypt(seed);
+
+      // Flip one character of the body. GCM authenticates, so this is the
+      // difference between "somebody changed the row" and "somebody chose the
+      // seed".
+      final parts = sealed.split('.');
+      final body = parts[2];
+      final tampered =
+          '${parts[0]}.${parts[1]}.'
+          '${body[0] == 'A' ? 'B' : 'A'}${body.substring(1)}';
+
+      expect(cipher.decrypt(tampered), throwsA(isA<Object>()));
+    });
+
+    test('a row from before this existed is read as it stands', () async {
+      final cipher = SecretCipher.fromPassphrase(key)!;
+
+      // The reason the format carries a version. This control is being added
+      // to a table that already holds rows, and a reader that threw on them
+      // would lock out everybody enrolled before the deploy.
+      expect(await cipher.decrypt(seed), seed);
+      expect(SecretCipher.isSealed(seed), isFalse);
+      expect(SecretCipher.isSealed(await cipher.encrypt(seed)), isTrue);
+    });
+
+    test('a short passphrase produces no cipher at all', () {
+      // Null rather than a weak key: the caller has to decide what an unset
+      // key means, and the API makes that decision loudly at startup.
+      expect(SecretCipher.fromPassphrase('too-short'), isNull);
+      expect(SecretCipher.fromPassphrase(null), isNull);
+      expect(SecretCipher.fromPassphrase(key), isNotNull);
+    });
+  });
 }

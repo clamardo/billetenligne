@@ -1,8 +1,12 @@
 @Tags(['integration'])
 library;
 
+import 'dart:io';
+
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_second_factors.dart';
+import 'package:bel_crypto/bel_crypto.dart';
+import 'package:postgres/postgres.dart';
 import 'package:test/test.dart';
 
 import 'pg_fixture.dart';
@@ -20,7 +24,9 @@ import 'pg_fixture.dart';
 ///   * **a recovery code burns once**, by the same mechanism;
 ///   * **the lock counts on the factor**, so discarding a half-session and
 ///     asking for another does not refill the guess budget;
-///   * **an unconfirmed row is not a factor**, and cannot be confirmed twice.
+///   * **an unconfirmed row is not a factor**, and cannot be confirmed twice;
+///   * **the seed on disk is not the seed the app holds**, and a row written
+///     before the key existed is upgraded by being read.
 ///
 ///   ./tool/integration.sh
 void main() {
@@ -32,17 +38,41 @@ void main() {
   late PgFixture fixture;
   late Database db;
   late PostgresSecondFactors factors;
+  late Connection raw;
+
+  // The shape the environment carries. Thirty-two characters, hashed to a key
+  // — see `SecretCipher.fromPassphrase`.
+  final cipher = SecretCipher.fromPassphrase(
+    'integration-only-totp-key-32-chars',
+  )!;
 
   setUpAll(() async {
     fixture = await PgFixture.open();
     db = Database.open(PgFixture.appUrl);
-    factors = PostgresSecondFactors(db);
+    factors = PostgresSecondFactors(db, cipher: cipher);
+    // A second connection, outside the adapter, so a test can look at the
+    // bytes rather than at what the adapter says about them. That is the only
+    // way to prove a seed is sealed: the adapter hands back plaintext either
+    // way, which is exactly its job.
+    raw = await Connection.open(
+      _seedEndpoint(Platform.environment['SEED_DATABASE_URL']!),
+      settings: const ConnectionSettings(sslMode: SslMode.disable),
+    );
   });
 
   tearDownAll(() async {
+    await raw.close();
     await db.close();
     await fixture.close();
   });
+
+  Future<String> storedSeed(String userId) async {
+    final rows = await raw.execute(
+      Sql.named('SELECT secret FROM user_totp WHERE user_id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, userId)},
+    );
+    return rows.first.toColumnMap()['secret'] as String;
+  }
 
   var seq = 0;
   Future<String> person() =>
@@ -256,4 +286,81 @@ void main() {
     );
     expect((await factors.forUser(id))!.unusedRecoveryCodes, 1);
   });
+
+  group('the seed at rest', () {
+    const seed = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
+
+    test('what is written is not what was scanned', () async {
+      final id = await enrolled();
+
+      final stored = await storedSeed(id);
+      expect(stored, startsWith('v1.'));
+      // The literal check, not just the prefix. A format that carried the
+      // plaintext alongside a ciphertext would pass every other assertion
+      // here.
+      expect(stored, isNot(contains(seed)));
+
+      // And the adapter still hands back the thing an authenticator computes
+      // from. If this broke, every member of staff would be locked out and no
+      // other test in this file would notice.
+      expect((await factors.forUser(id))!.secretBase32, seed);
+    });
+
+    test('a row from before the key is upgraded by being read', () async {
+      // Exactly the state a deploy lands in: rows written by the adapter as
+      // it was yesterday.
+      final plain = PostgresSecondFactors(db);
+      final id = await person();
+      await plain.beginEnrolment(
+        userId: id,
+        secretBase32: seed,
+        recoveryHashes: const [],
+      );
+      expect(await storedSeed(id), seed);
+
+      // One read through the sealed adapter, and it is gone from the table —
+      // without the person noticing, and without the value changing.
+      expect((await factors.forUser(id))!.secretBase32, seed);
+      expect(await storedSeed(id), startsWith('v1.'));
+      expect((await factors.forUser(id))!.secretBase32, seed);
+    });
+
+    test('a sealed row with no key is an error, not a missing factor', () async {
+      final id = await enrolled();
+      final blind = PostgresSecondFactors(db);
+
+      // The failure mode this refuses: a factor that reads as absent is a
+      // factor an attacker can enrol again. Losing the key must be an outage.
+      expect(blind.forUser(id), throwsA(isA<StateError>()));
+    });
+
+    test('the wrong key is refused rather than answered wrongly', () async {
+      final id = await enrolled();
+      final other = PostgresSecondFactors(
+        db,
+        cipher: SecretCipher.fromPassphrase(
+          'a-completely-different-key-of-32ch',
+        ),
+      );
+
+      expect(other.forUser(id), throwsA(isA<Object>()));
+    });
+  });
+}
+
+/// The seeding connection, parsed the same way `PgFixture` parses it.
+///
+/// A second connection *outside* the adapter, because proving a seed is sealed
+/// means looking at the bytes: the adapter hands back plaintext either way,
+/// which is precisely its job.
+Endpoint _seedEndpoint(String url) {
+  final uri = Uri.parse(url);
+  final auth = uri.userInfo.split(':');
+  return Endpoint(
+    host: uri.host,
+    port: uri.port == 0 ? 5432 : uri.port,
+    database: uri.pathSegments.first,
+    username: auth.first,
+    password: auth.length > 1 ? auth[1] : null,
+  );
 }
