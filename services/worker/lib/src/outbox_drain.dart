@@ -693,12 +693,16 @@ final class OutboxDrain {
           Sql.named('''
             SELECT b.ref, u.phone_e164, u.email, u.language,
                    o.trading_name, o.legal_name,
-                   f.amount_minor, f.currency, f.claim_code
+                   f.amount_minor, f.currency, f.claim_code, f.disburse_to,
+                   COALESCE(p.processing_hours, 72) AS processing_hours
               FROM refunds f
               JOIN bookings b ON b.id = f.booking_id
               JOIN operators o ON o.id = f.operator_id
               LEFT JOIN user_accounts u ON u.id = b.purchaser_user_id
-             WHERE f.booking_id = @booking AND f.claim_code IS NOT NULL
+              LEFT JOIN refund_policies p
+                     ON p.id = b.refund_policy_id
+                    AND p.version = b.refund_policy_version
+             WHERE f.booking_id = @booking
              ORDER BY f.created_at DESC
              LIMIT 1
           '''),
@@ -717,14 +721,86 @@ final class OutboxDrain {
         final currency =
             Currency.byCode(b['currency'] as String) ?? Currency.xaf;
         final language = b['language'] as String? ?? 'fr';
+        final amount = Money(
+          b['amount_minor'] as int,
+          currency,
+        ).format(locale: language);
 
-        final body = t('sms.refundClaim.body', {
+        // Two sentences, and the difference is what the person does next: walk
+        // into an agency with a code, or wait. Sending the wrong one of the
+        // two is worse than sending nothing — a code somebody presents at a
+        // counter that has no money for them is a wasted journey across a
+        // city, and a promised transfer that needs a counter is the same
+        // journey, made late.
+        final claimCode = b['claim_code'] as String?;
+        final body = claimCode != null
+            ? t('sms.refundClaim.body', {
+                'amount': amount,
+                'operator': b['trading_name'] ?? b['legal_name'] ?? '',
+                'code': claimCode,
+                'reference': 'BEL-${b['ref']}',
+              })
+            : t('sms.refundOnItsWay.body', {
+                'amount': amount,
+                'destination': _maskedWallet(b['disburse_to'] as String?),
+                'hours': '${b['processing_hours']}',
+                'reference': 'BEL-${b['ref']}',
+              });
+
+        return OutboundMessage(
+          channel: phone != null ? SignInChannel.phone : SignInChannel.email,
+          to: to,
+          subject: phone != null ? null : body,
+          body: body,
+          eventId: 'booking.refunded:$bookingId',
+        );
+
+      // The money actually left. A separate event from `booking.refunded`
+      // because it is a separate fact — one says a refund was agreed, this
+      // says a wallet was credited — and a product that conflates them is a
+      // product where "refunded" means nothing.
+      case 'refund.sent':
+        final bookingId = payload['bookingId'];
+        if (bookingId is! String) return null;
+
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT b.ref, u.phone_e164, u.email, u.language,
+                   f.amount_minor, f.currency, f.disburse_to,
+                   COALESCE(p.processing_hours, 72) AS processing_hours
+              FROM refunds f
+              JOIN bookings b ON b.id = f.booking_id
+              LEFT JOIN user_accounts u ON u.id = b.purchaser_user_id
+              LEFT JOIN refund_policies p
+                     ON p.id = b.refund_policy_id
+                    AND p.version = b.refund_policy_version
+             WHERE f.booking_id = @booking AND f.state = 'completed'
+             ORDER BY f.completed_at DESC
+             LIMIT 1
+          '''),
+          parameters: {'booking': TypedValue(Type.uuid, bookingId)},
+        );
+
+        if (rows.isEmpty) return null;
+        final b = rows.first.toColumnMap();
+
+        final phone = b['phone_e164'] as String?;
+        final email = b['email'] as String?;
+        final to = phone ?? email;
+        if (to == null) return null;
+
+        final language = b['language'] as String? ?? 'fr';
+        final t = CatalogTranslator(_catalog, language);
+        final currency =
+            Currency.byCode(b['currency'] as String) ?? Currency.xaf;
+
+        final body = t('sms.refundIssued.body', {
           'amount': Money(
             b['amount_minor'] as int,
             currency,
           ).format(locale: language),
-          'operator': b['trading_name'] ?? b['legal_name'] ?? '',
-          'code': b['claim_code'],
+          'destination': _maskedWallet(b['disburse_to'] as String?),
+          'hours': '${b['processing_hours']}',
           'reference': 'BEL-${b['ref']}',
         });
 
@@ -733,7 +809,7 @@ final class OutboxDrain {
           to: to,
           subject: phone != null ? null : body,
           body: body,
-          eventId: 'booking.refunded:$bookingId',
+          eventId: 'refund.sent:$bookingId',
         );
 
       // The traveller cancelled their own booking (§8.2). What the message
@@ -1104,5 +1180,16 @@ final class OutboxDrain {
       for (final p in parts.skip(1))
         p.isEmpty ? p : p[0].toUpperCase() + p.substring(1),
     ].join();
+  }
+
+  /// The last four digits, and nothing else.
+  ///
+  /// The whole number in an SMS is a number sitting in a message thread on a
+  /// handset that gets lent, resold and shoulder-surfed. Four digits is enough
+  /// for the recipient to recognise their own wallet and not enough for
+  /// anybody else to use it.
+  static String _maskedWallet(String? msisdn) {
+    if (msisdn == null || msisdn.length < 4) return '••••';
+    return '••••${msisdn.substring(msisdn.length - 4)}';
   }
 }

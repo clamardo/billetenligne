@@ -32,14 +32,14 @@ push, including the gaps.
 |---|---|
 | Product, architecture and design docs | ✅ `docs/` |
 | Architecture decision records (26) | ✅ `docs/adr/` |
-| `bel_domain` · `bel_localization` · `bel_contracts` · `bel_crypto` | ✅ 601 tests |
+| `bel_domain` · `bel_localization` · `bel_contracts` · `bel_crypto` | ✅ 603 tests |
 | `bel_design` — Kilo tokens, components, contrast gates | ✅ 67 tests |
 | `bel_backoffice` · `bel_secure_store` — shared sign-in, Keychain/Keystore | ✅ 16 tests |
 | `bel_client` — typed API client, retries, idempotency | ✅ 41 tests |
 | `services/api` — three surfaces, middleware, every route | ✅ 263 tests + 445 smoke checks |
-| `services/worker` — outbox, payment polling, sweeps, compliance | ✅ 67 tests on real Postgres |
+| `services/worker` — outbox, payments, refunds, sweeps, compliance | ✅ 74 tests on real Postgres |
 | Database — schema, RLS, ledger, public sales boundary | ✅ 45 guarantees verified |
-| Everything against real Postgres | ✅ 498 integration tests |
+| Everything against real Postgres | ✅ 505 integration tests |
 | `apps/traveller` — search, seat map, pay, wallet, offline tickets | ✅ 230 tests |
 | `apps/scanner` — offline boarding, signed manifest, SQLite log | ✅ 47 tests |
 | `apps/console` — fleet, routes, timetables, refunds, payouts | ✅ 125 tests |
@@ -52,11 +52,11 @@ push, including the gaps.
 dart test packages/bel_domain                   # 2 s, no containers
 dart run tool/check_layers.dart                 # onion dependency rule, 414 files
 ./infra/migrations/check.sh                     # 45 schema guarantees (needs Docker)
-./tool/integration.sh                           # 498 tests on real Postgres
+./tool/integration.sh                           # 505 tests on real Postgres
 ./tool/smoke_api.sh                             # 445 checks, incl. the Dart client
 ```
 
-**1,425 tests in total**, plus the smoke checks, the schema guarantees, the
+**1,427 tests in total**, plus the smoke checks, the schema guarantees, the
 integration suite and 10 tests against real Azurite. The full command list is
 in [`docs/10-build-status.md`](docs/10-build-status.md).
 
@@ -187,9 +187,9 @@ Five layers, each answering a different question ([ADR-0021](docs/adr/0021-test-
 
 | Layer | Question | Count today | Budget |
 |---|---|---|---|
-| Domain and application unit | Is the rule right? | 905 | < 10 s |
+| Domain and application unit | Is the rule right? | 907 | < 10 s |
 | Widget / golden | Does the screen render, in fr + en, at 3 text scales? | 520 | < 90 s |
-| **Integration** | Does this component talk to Postgres / Azurite / the PSP correctly? | 508 | ~2 min |
+| **Integration** | Does this component talk to Postgres / Azurite / the PSP correctly? | 515 | ~2 min |
 | **HTTP smoke** | Is the route mounted, and does the typed client parse it? | 445 | ~40 s |
 | **Executed schema guarantees** | Does the *database* refuse what it must? | 45 | ~20 s |
 | End-to-end | Can a real person complete a real journey? | — | not built |

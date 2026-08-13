@@ -11,7 +11,10 @@ import 'package:bel_api/src/infrastructure/postgres/postgres_operator_console.da
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
+import 'package:bel_api/src/adapters/fake_disbursement_gateway.dart';
+import 'package:bel_api/src/application/ports/payment_gateway.dart';
 import 'package:bel_worker/src/compliance_watch.dart';
+import 'package:bel_worker/src/disbursement_pass.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_ticket_links.dart';
 import 'package:bel_worker/src/outbox_drain.dart';
 import 'package:bel_worker/src/reliability.dart';
@@ -1234,17 +1237,18 @@ void main() {
       final departureId = await aDeparture();
       final bookingId = await aConfirmedBookingOn(departureId, seat: '4D');
 
-      // No claim code: the money goes back down the rail it came from, which
-      // is a separately funded float that does not exist yet. The row says
-      // what is owed and the message must not say it has been sent.
+      // No claim code: the money goes back down the rail it came from. It has
+      // been approved and not yet sent, and the message must say the second
+      // thing — "envoyé" for money still sitting with us is the sentence that
+      // brings somebody to a counter for nothing.
       await seed.execute(
         Sql.named('''
           INSERT INTO refunds
             (booking_id, operator_id, amount_minor, currency, rate_bps,
-             destination, state, involuntary, requested_by, approved_by,
-             reason)
+             destination, state, involuntary, disburse_to, requested_by,
+             approved_by, reason)
           VALUES (@booking, @operator, 8100, 'XAF', 9000, 'source',
-                  'approved', FALSE, @actor, @actor,
+                  'approved', FALSE, '242066004455', @actor, @actor,
                   'cancelled by the traveller')
         '''),
         parameters: {
@@ -2302,6 +2306,222 @@ void main() {
       // it found, a second run over the same rows finds fewer.
       expect(first.affected, greaterThanOrEqualTo(1));
       expect(second.affected, lessThan(first.affected));
+    });
+  });
+
+  group('a refund that goes back down the rail', () {
+    /// A booking somebody paid for with a wallet, and the captured intent that
+    /// says which one. The intent is the whole fixture: `disburse_to` is read
+    /// from it at approval, and a booking without one is the counter path.
+    Future<String> aWalletBooking({String wallet = '242066001122'}) async {
+      final departure = await aDeparture();
+      final bookingId = await aConfirmedBookingOn(departure);
+      await seed.execute(
+        Sql.named('''
+          INSERT INTO payment_intents
+            (booking_id, operator_id, rail_id, msisdn, amount_minor, currency,
+             state, terminal_at, idempotency_key)
+          VALUES (@booking, @operator, 'cg.fake_money', @wallet, 12300, 'XAF',
+                  'captured', now(), @key)
+        '''),
+        parameters: {
+          'booking': TypedValue(Type.uuid, bookingId),
+          'operator': TypedValue(Type.uuid, operatorId),
+          'wallet': TypedValue(Type.text, wallet),
+          'key': TypedValue(Type.text, unique('cap')),
+        },
+        ignoreRows: true,
+      );
+      return bookingId;
+    }
+
+    /// An approved refund owed to that wallet — the state the refund desk and
+    /// the cancellation path both leave behind.
+    Future<String> anApprovedRefund(
+      String bookingId, {
+      String wallet = '242066001122',
+    }) async {
+      final rows = await seed.execute(
+        Sql.named('''
+          INSERT INTO refunds
+            (booking_id, operator_id, amount_minor, currency, rate_bps,
+             destination, state, disburse_to, reason)
+          VALUES (@booking, @operator, 8400, 'XAF', 7000, 'source',
+                  'approved', @wallet, 'cancelled by the traveller')
+          RETURNING id
+        '''),
+        parameters: {
+          'booking': TypedValue(Type.uuid, bookingId),
+          'operator': TypedValue(Type.uuid, operatorId),
+          'wallet': TypedValue(Type.text, wallet),
+        },
+      );
+      return rows.first.toColumnMap()['id'] as String;
+    }
+
+    Future<Map<String, dynamic>> refundRow(String id) async {
+      final rows = await seed.execute(
+        Sql.named('''
+          SELECT state::text AS state, claim_code, destination, completed_at,
+                 disbursement_intent_id
+            FROM refunds WHERE id = @id
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, id)},
+      );
+      return rows.first.toColumnMap();
+    }
+
+    Future<int> floatBalance(String refundId) async {
+      final rows = await seed.execute(
+        Sql.named('''
+          SELECT COALESCE(SUM(CASE WHEN direction = 'credit'
+                                   THEN amount_minor ELSE 0 END), 0)::int AS c
+            FROM ledger_entries
+           WHERE refund_id = @id AND account LIKE 'psp:%:disbursement'
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, refundId)},
+      );
+      return rows.first.toColumnMap()['c'] as int;
+    }
+
+    DisbursementPass passWith(FakeDisbursementGateway rail) => DisbursementPass(
+      db: db,
+      rails: {'cg.fake_money': rail},
+    );
+
+    test('asking is not paying: one pass sends, and posts nothing', () async {
+      final booking = await aWalletBooking();
+      final refund = await anApprovedRefund(booking);
+      final rail = FakeDisbursementGateway(railId: 'cg.fake_money');
+
+      await passWith(rail).run();
+
+      final row = await refundRow(refund);
+      expect(rail.sent, [refund]);
+      expect(row['state'], 'processing');
+      expect(row['disbursement_intent_id'], isNotNull);
+      // The heart of it. A rail can accept a transfer and fail it a minute
+      // later; a ledger that recorded the asking would show a float draining
+      // on money that never left, and an operator's payable settled against it.
+      expect(await floatBalance(refund), 0);
+    });
+
+    test('the money leaves when the rail says it left', () async {
+      final booking = await aWalletBooking();
+      final refund = await anApprovedRefund(booking);
+      final rail = FakeDisbursementGateway(railId: 'cg.fake_money');
+
+      await passWith(rail).run(); // sends
+      await passWith(rail).run(); // asks, and this time the answer is yes
+
+      final row = await refundRow(refund);
+      expect(row['state'], 'completed');
+      expect(row['completed_at'], isNotNull);
+      expect(await floatBalance(refund), 8400);
+    });
+
+    test('sending twice is not sending twice', () async {
+      final booking = await aWalletBooking();
+      final refund = await anApprovedRefund(booking);
+      final rail = FakeDisbursementGateway(railId: 'cg.fake_money');
+
+      await passWith(rail).run();
+      await passWith(rail).run();
+      await passWith(rail).run();
+
+      // The claim moves the row out of `approved` in the statement that reads
+      // it, so a second pass finds nothing to send. If this ever fails,
+      // somebody has been paid twice out of a float a person has to fund.
+      expect(rail.sent, [refund]);
+    });
+
+    test('a barred wallet becomes a code, not a dead row', () async {
+      final booking = await aWalletBooking();
+      final refund = await anApprovedRefund(booking);
+      final rail = FakeDisbursementGateway(railId: 'cg.fake_money')
+        ..script(
+          refund,
+          const PaymentOutcome(
+            state: PaymentState.failed,
+            failureCode: PaymentFailureCode.subscriberBarred,
+          ),
+        );
+
+      await passWith(rail).run();
+
+      final row = await refundRow(refund);
+      // The traveller is owed the money either way; the only question is how
+      // they get it. `failed` would be a debt on our books, a person out of
+      // pocket, and nobody told.
+      expect(row['state'], 'claim_issued');
+      expect(row['destination'], 'agencyCash');
+      expect(row['claim_code'], isNotNull);
+      expect(await floatBalance(refund), 0);
+    });
+
+    test('a failure after acceptance falls back too', () async {
+      final booking = await aWalletBooking();
+      final refund = await anApprovedRefund(booking);
+      final rail = FakeDisbursementGateway(railId: 'cg.fake_money');
+
+      await passWith(rail).run();
+      // Accepted, then refused — the case a fake that settled instantly could
+      // never produce, and the reason this fake does not.
+      rail.script(
+        refund,
+        const PaymentOutcome(
+          state: PaymentState.failed,
+          failureCode: PaymentFailureCode.pspUnavailable,
+        ),
+      );
+      await passWith(rail).run();
+
+      final row = await refundRow(refund);
+      expect(row['state'], 'claim_issued');
+      expect(row['claim_code'], isNotNull);
+      expect(await floatBalance(refund), 0);
+    });
+
+    test('a rail with no payout side is a counter, not a wait', () async {
+      final booking = await aWalletBooking();
+      final refund = await anApprovedRefund(booking);
+
+      // Orange Money and a card both land here: nothing can send this, ever.
+      // Leaving it in `processing` for a pass that will never handle it is the
+      // failure mode this refuses.
+      await DisbursementPass(db: db, rails: const {}).run();
+
+      expect((await refundRow(refund))['state'], 'claim_issued');
+    });
+
+    test('the traveller is told, and told the right thing', () async {
+      final booking = await aWalletBooking();
+      final refund = await anApprovedRefund(booking);
+      final rail = FakeDisbursementGateway(railId: 'cg.fake_money');
+
+      await passWith(rail).run();
+      await passWith(rail).run();
+      expect((await refundRow(refund))['state'], 'completed');
+
+      final sent = FakeNotificationGateway();
+      await OutboxDrain(
+        db: db,
+        notifications: sent,
+        catalog: CatalogLoader.fromDirectory(
+          Platform.environment['BEL_I18N_DIR'] ??
+              'packages/bel_localization/i18n',
+        ),
+        timeZone: 'Africa/Brazzaville',
+      ).drain();
+
+      final message = sent.sent.firstWhere(
+        (m) => m.body.contains('1122'),
+        orElse: () => throw StateError('nothing said the refund had been sent'),
+      );
+      // Four digits, and no more. The whole number in a message thread on a
+      // handset that gets lent and resold is a number somebody else reads.
+      expect(message.body, contains('••••1122'));
+      expect(message.body, isNot(contains('242066001122')));
     });
   });
 }

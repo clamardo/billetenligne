@@ -22,6 +22,9 @@ import 'adapters/fake_payment_gateway.dart';
 import 'adapters/hosted_checkout_gateway.dart';
 import 'adapters/orange_money_gateway.dart';
 import 'adapters/mtn_momo_gateway.dart';
+import 'adapters/mtn_momo_disbursement_gateway.dart';
+import 'adapters/airtel_money_disbursement_gateway.dart';
+import 'adapters/fake_disbursement_gateway.dart';
 import 'application/ports/booking_store.dart';
 import 'application/ports/ticket_issuer.dart';
 import 'application/ports/city_catalogue.dart';
@@ -34,6 +37,7 @@ import 'application/ports/self_cancellation.dart';
 import 'application/ports/ticket_links.dart';
 import 'application/ports/trip_sharing.dart';
 import 'application/ports/operator_console.dart';
+import 'application/ports/disbursement_gateway.dart';
 import 'application/ports/payment_gateway.dart';
 import 'application/ports/payment_store.dart';
 import 'application/ports/operator_applications.dart';
@@ -130,6 +134,7 @@ final class Services {
     required this.payForBooking,
     required this.autoReview,
     required this.railIds,
+    required this.payoutRails,
     required this.checkoutRails,
     required this.market,
     required this.authGateway,
@@ -283,6 +288,15 @@ final class Services {
   /// operator's verified accounts before anything is offered, so a rail we
   /// cannot reach is absent rather than present-and-broken.
   final Set<String> railIds;
+
+  /// The rails this deployment can pay *out* on, keyed by the same rail id.
+  ///
+  /// A different map from the collection one and usually a smaller one: a
+  /// payout is a separate product with separate credentials on MTN, needs the
+  /// merchant PIN on Airtel, and does not exist at all on Orange Money or on a
+  /// card. Read by the worker's disbursement pass; a refund whose rail is
+  /// absent here goes to a counter rather than nowhere.
+  final Map<String, DisbursementGateway> payoutRails;
 
   /// Of those, the ones that answer with a page instead of ringing a handset.
   ///
@@ -445,6 +459,7 @@ final class Services {
         reschedules: reschedules,
       ),
       railIds: rails.keys.toSet(),
+      payoutRails: _payoutRailsFrom(env, market),
       checkoutRails: {
         for (final entry in rails.entries)
           if (!entry.value.pushesToHandset) entry.key,
@@ -639,6 +654,13 @@ final class Services {
         gateways: fakeRails,
       ),
       railIds: fakeRails.keys.toSet(),
+      // The fakes composition has no database, so nothing here will ever ask
+      // it to send a refund. Present rather than empty so the shape is the
+      // same in both compositions and a caller cannot be written against a
+      // null that only exists on one path.
+      payoutRails: {
+        'cg.fake_money': FakeDisbursementGateway(railId: 'cg.fake_money'),
+      },
       checkoutRails: {
         for (final entry in fakeRails.entries)
           if (!entry.value.pushesToHandset) entry.key,
@@ -870,6 +892,70 @@ final class Services {
     // run. The fake rail keeps the funnel walkable rather than leaving a
     // payment screen with nothing on it.
     if (rails.isEmpty) rails['cg.fake_money'] = FakePaymentGateway();
+
+    return rails;
+  }
+
+  /// The payout side of the rails, keyed the same way.
+  ///
+  /// **Deliberately a different map with different credentials.** On MTN a
+  /// payout is a separate product with its own subscription key and its own
+  /// API user; on Airtel it needs the merchant wallet PIN, RSA-encrypted,
+  /// which nothing else here holds. Configuring collections does not
+  /// configure payouts and must not appear to.
+  ///
+  /// **Missing rails are the normal case and the map says so by omission.**
+  /// Orange Money's Web Payment product has no disbursement API at all, and a
+  /// card refund would go back to a PAN this system has never seen. Those
+  /// refunds go to a counter, which is where every refund went before this
+  /// existed — the worker asks this map and falls back rather than waiting on
+  /// a rail that is never going to appear.
+  static Map<String, DisbursementGateway> _payoutRailsFrom(
+    Map<String, String> env,
+    Market market,
+  ) {
+    final rails = <String, DisbursementGateway>{};
+
+    // Not `MTN__SUBSCRIPTIONKEY`. The Disbursements product is subscribed to
+    // separately, and the collection key here is a 401 on every call.
+    final mtnKey = env['MTN__DISBURSEMENTKEY'] ?? '';
+    if (mtnKey.isNotEmpty) {
+      rails['cg.mtn_momo'] = MtnMomoDisbursementGateway(
+        baseUrl: Uri.parse(
+          env['MTN__BASEURL'] ?? 'https://sandbox.momodeveloper.mtn.com',
+        ),
+        subscriptionKey: mtnKey,
+        apiUser: env['MTN__DISBURSEMENTUSER'] ?? env['MTN__APIUSER'] ?? '',
+        apiKey: env['MTN__DISBURSEMENTAPIKEY'] ?? env['MTN__APIKEY'] ?? '',
+        targetEnvironment: env['MTN__TARGETENVIRONMENT'] ?? 'sandbox',
+        callbackUrl: '${env['PUBLIC_BASE_URL'] ?? ''}/hooks/refunds/mtn',
+      );
+    }
+
+    // The PIN is the gate, not the client id: Airtel shares OAuth credentials
+    // between collections and disbursements, so without it this map would
+    // gain a rail that answers 403 on the one call that moves money.
+    final airtelPin = env['AIRTEL__DISBURSEMENTPIN'] ?? '';
+    if (airtelPin.isNotEmpty && (env['AIRTEL__CLIENTID'] ?? '').isNotEmpty) {
+      rails['cg.airtel_money'] = AirtelMoneyDisbursementGateway(
+        baseUrl: Uri.parse(
+          env['AIRTEL__BASEURL'] ?? 'https://openapiuat.airtel.africa',
+        ),
+        clientId: env['AIRTEL__CLIENTID']!,
+        clientSecret: env['AIRTEL__CLIENTSECRET'] ?? '',
+        country: market.code,
+        currency: market.currency.code,
+        encryptedPin: airtelPin,
+      );
+    }
+
+    // The fake pays out of nothing, and only where the fake rail collects.
+    // Opt-in by the same absence rule the collection map uses: it appears
+    // when no telco does, so a local stack can walk the whole refund and a
+    // deployment with half its credentials cannot silently "send" money.
+    if (rails.isEmpty) {
+      rails['cg.fake_money'] = FakeDisbursementGateway(railId: 'cg.fake_money');
+    }
 
     return rails;
   }

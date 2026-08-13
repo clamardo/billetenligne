@@ -6,6 +6,7 @@ import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart' hide Result;
 
+import 'refund_wallet.dart';
 import 'seat_occupancy.dart';
 
 /// The traveller cancelling their own booking, against Postgres (§8.2).
@@ -387,7 +388,16 @@ final class PostgresSelfCancellation implements SelfCancellation {
       return (done: null, refusal: const NothingToCancel());
     }
 
-    final atCounter = kind == CancellationKind.claimAtCounter;
+    // Where a `source` refund goes, read now and copied onto the row. Null is
+    // an ordinary answer — a ticket paid in notes, or a card whose PAN we have
+    // never seen — and it turns the refund into a claim rather than a row
+    // nobody can pay.
+    final wallet = kind == CancellationKind.toSource
+        ? await refundWalletFor(tx, bookingId)
+        : null;
+    final atCounter =
+        kind == CancellationKind.claimAtCounter ||
+        (kind == CancellationKind.toSource && wallet == null);
     final claimCode = atCounter ? _claimCode() : null;
 
     final refund = await tx.execute(
@@ -395,12 +405,12 @@ final class PostgresSelfCancellation implements SelfCancellation {
         INSERT INTO refunds
           (booking_id, operator_id, amount_minor, currency, rate_bps,
            destination, state, involuntary, claim_code, claim_expires_at,
-           requested_by, approved_by, reason)
+           disburse_to, requested_by, approved_by, reason)
         VALUES (@booking, @operator, @amount, @currency, @rate, @destination,
                 @state::refund_state, FALSE, @claim,
                 CASE WHEN @claim::text IS NULL THEN NULL
                      ELSE now() + interval '90 days' END,
-                @actor, @actor, 'cancelled by the traveller')
+                @wallet, @actor, @actor, 'cancelled by the traveller')
         RETURNING id, claim_code, claim_expires_at
       '''),
       parameters: {
@@ -413,11 +423,12 @@ final class PostgresSelfCancellation implements SelfCancellation {
           Type.text,
           atCounter ? 'agencyCash' : 'source',
         ),
-        // `approved` and not `paid`: a disbursement back down a mobile-money
-        // rail is a separately funded float and a different API, and it is
-        // not built. The row says what is owed; nothing here claims it moved.
+        // `approved` and not `completed`: the debt is posted here, the money
+        // leaves when the worker's disbursement pass gets an answer from the
+        // rail. Nothing in this transaction claims it moved.
         'state': TypedValue(Type.text, atCounter ? 'claim_issued' : 'approved'),
         'claim': TypedValue(Type.text, claimCode),
+        'wallet': TypedValue(Type.text, wallet),
         'actor': TypedValue(Type.uuid, userId),
       },
     );

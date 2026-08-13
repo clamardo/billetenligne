@@ -285,6 +285,54 @@ void _refundPostings() {
       );
     });
 
+    test('sending it down the rail empties a float, not a till', () {
+      final entries = Postings.refundDisbursed(
+        operatorId: 'op-1',
+        bookingId: 'b-1',
+        rail: 'cg.mtn_momo',
+        amount: const Money.xaf(8400),
+      ).valueOrNull!.entries;
+
+      // **Not `psp:<rail>:clearing`.** Every mobile-money operator funds
+      // payouts separately from what it collects, so netting a refund against
+      // the day's takings would describe a movement that did not happen and
+      // hide the one that did — the float going down, which is the number
+      // somebody has to watch to know when to top it up.
+      expect(
+        entries
+            .firstWhere((e) => e.direction == LedgerDirection.credit)
+            .account,
+        'psp:cg.mtn_momo:disbursement',
+      );
+      expect(
+        entries.firstWhere((e) => e.direction == LedgerDirection.debit).account,
+        'payable:refund:b-1',
+      );
+    });
+
+    test('approve then send leaves the refund debt at zero, too', () {
+      // The same property as the counter path, across the other pair. Both
+      // ways of paying somebody back must extinguish exactly what was raised.
+      final approved = Postings.refundApproved(
+        operatorId: 'op-1',
+        bookingId: 'b-1',
+        fromOperator: const Money.xaf(8100),
+        fromServiceFee: const Money.xaf(300),
+      ).valueOrNull!;
+      final sent = Postings.refundDisbursed(
+        operatorId: 'op-1',
+        bookingId: 'b-1',
+        rail: 'cg.airtel_money',
+        amount: const Money.xaf(8400),
+      ).valueOrNull!;
+
+      var balance = 0;
+      for (final entry in [...approved.entries, ...sent.entries]) {
+        if (entry.account == 'payable:refund:b-1') balance += entry.signedMinor;
+      }
+      expect(balance, 0);
+    });
+
     test('approve then claim leaves the refund debt at zero', () {
       // The property that matters across the pair: what we owe the traveller
       // is created and extinguished exactly, with nothing stranded.

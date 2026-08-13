@@ -8,6 +8,7 @@ import 'package:bel_api/src/infrastructure/postgres/postgres_ticket_links.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_api/src/composition.dart';
 import 'package:bel_worker/src/compliance_watch.dart';
+import 'package:bel_worker/src/disbursement_pass.dart';
 import 'package:bel_worker/src/outbox_drain.dart';
 import 'package:bel_worker/src/payment_poller.dart';
 import 'package:bel_worker/src/reliability.dart';
@@ -67,6 +68,11 @@ Future<int> main(List<String> args) async {
   final services = Services.resolve();
 
   final sweepers = Sweepers(db);
+  final disbursements = DisbursementPass(
+    db: db,
+    rails: services.payoutRails,
+    clock: services.clock,
+  );
   final compliance = ComplianceWatch(db);
   final seatAlerts = SeatAlertPass(db);
   final reliability = Reliability(db);
@@ -106,6 +112,11 @@ Future<int> main(List<String> args) async {
     // difference between a traveller boarding and a traveller who paid and
     // cannot.
     'payments': poller.poll,
+    // Then money going the other way, and before the drain on purpose: a
+    // refund that settles this pass sends its message the same run rather
+    // than the next one, and "your money is on its way" is a sentence people
+    // wait for.
+    'refunds': disbursements.run,
     // Then the drain — the only other pass a traveller notices.
     'outbox': drain.drain,
     // Then the one pass here that creates rather than tidies. After the two

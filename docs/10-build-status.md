@@ -58,7 +58,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Operator onboarding — the wizard** | ✅ done | Self-signup, §2.2. The application **is** the operator in its early lifecycle states, so the review queue, the audit trail and the six decisions all work unchanged. An applicant is a member of the public: INSERT on `operators` pinned by policy to `application_draft`, UPDATE granted on four columns, and the one transition they cause through a SECURITY DEFINER function that also writes the audit row. **Activation creates the `org_owner`** — the line that removes the phone call. Documents are declared, not photographed; the reason is a schema guarantee. 15 domain · 11 Postgres · 12 smoke · 7 console · 3 back-office tests |
 | **Refund policy wizard** | ✅ done | Operators answer questions; `RefundPolicy.describe()` writes the sentences, in both languages, from the same numbers the server executes (ADR-0015 rule 3). Policies are append-only **by grant** — a booking stores `(policy_id, version)` at sale time and is judged by that version forever. Bands in the wrong order are refused, because tiers match in order and a shortest-first list silently answers everything with its most generous rate |
 | **Scheduled materialisation** | ✅ done | A rolling 21-day sales horizon, extended by the worker rather than by a dispatcher remembering. Enumerates active patterns of active operators across every tenant under the worker's platform scope, then materialises each one back under its own tenant — so the pass sees everything and writes nothing outside the operator it is writing for. Idempotent by the same unique key the console's button relies on, so a run that half-finished is fixed by running it again. A backlog past the batch limit is reported in the pass name, never silently dropped. 6 Postgres tests |
-| **Cash refunds** | ✅ done | Quote, approve, collect. Approval moves a debt rather than undoing a sale: the retained share stays credited to the operator. The ticket voids at approval, the seat goes back on sale in the same transaction, and the claim code is single-use by statement. `source` disbursement down a rail is **not** built and stops at `approved`. 5 domain · 8 Postgres · 12 smoke · 5 widget tests |
+| **Refunds, both ways** | ✅ done | Quote, approve, and then either a counter or a wallet. Approval moves a debt rather than undoing a sale: the retained share stays credited to the operator. The ticket voids at approval, the seat goes back on sale in the same transaction, and the claim code is single-use by statement. **`source` now disburses**: the worker sends it down the rail it came up and posts to the ledger only when the rail says the money left, falling back to a counter when it refuses or when there is no wallet to send to. 7 domain · 8 Postgres · 7 worker · 12 smoke · 5 widget tests |
 | Email on ACS | ✅ done | Signed requests, logging fallback; **only the sign-in code routes through it so far** |
 | **A bound on codes per host** | ✅ done | The per-destination cooldown cannot see one host walking a list of a thousand addresses, and every one of those is a message we pay for. Thirty per hour per source, env-tunable, and **deliberately loose** — carrier-grade NAT means one address here is routinely one building, so this is a cost control before it is a security control. The address is never stored: an HMAC of it under the same key the codes are hashed with. The rightmost `X-Forwarded-For` hop, not the leftmost, because the leftmost is whatever the caller typed. 5 unit · 1 Postgres · 4 smoke tests |
 | SMS / push on ACS + Firebase | 🔨 in progress | Port, templates, drain and channel plumbing all done; **no provisioned sender number, so the API refuses the phone channel with a 503**. What is no longer missing is the *switch*: `/public/v1/market` announces which channels the deployment can deliver on, the traveller app renders the option from that announcement, and a smoke check asserts the announcement and the route agree. The day a number is provisioned is a config push, not a release |
@@ -201,15 +201,16 @@ These are true today and each one is a decision, not an oversight.
    under the 160-character gate. What is missing is a provisioned ACS sender
    number, so `COMMS__SMSFROM` is blank and the API answers 503 for that
    channel rather than accepting it and leaving somebody waiting (ADR-0024).
-6. **A passenger's refund is a claim at a counter, never money pushed back.**
-   The choice screen (§3.2) and the console's refund desk both end at an
-   agency claim with a code, because `source` disbursement down a mobile-money
-   rail is not built and stops at `approved`. That is honest rather than
-   convenient — a promise the counter has to refuse is worse than a counter
-   somebody can walk into — but it does mean a traveller in Pointe-Noire whose
-   coach failed collects at an agency rather than on their phone, and the
-   sentence on the screen has to keep saying so until the disbursement half
-   exists.
+6. ~~**A passenger's refund is a claim at a counter, never money pushed
+   back.**~~ **Closed.** A `source` refund is now sent down the rail it came
+   up: the worker's `refunds` pass opens a disbursement intent, asks MTN or
+   Airtel to transfer, and posts to the ledger only when the rail says the
+   money left. What is still a counter, and always will be, is a refund with
+   nowhere to send anything — a ticket paid in notes, a card whose PAN this
+   system has never seen, and Orange Money, whose Web Payment product has no
+   disbursement API at all. **A rail that refuses also becomes a counter**
+   rather than a `failed` row: the traveller is owed the money either way, and
+   a dead row is a debt on our books with nobody told.
 7. **Back-office sign-in is an emailed code plus TOTP, not a password plus
    TOTP.** ADR-0013 specifies email + password + mandatory TOTP; the
    authenticator half now exists on both surfaces and the password half does
@@ -302,7 +303,7 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 601 tests
+         packages/bel_contracts packages/bel_crypto     # 603 tests
 dart test packages/bel_client                           # 41 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 263 tests
@@ -316,7 +317,7 @@ cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 47 scanner tests, incl. a manifest off the wire
 dart run tool/check_layers.dart          # the onion rule, 414 files
 ./infra/migrations/check.sh              # 45 schema guarantees
-./tool/integration.sh                    # 498 tests on real Postgres, incl. the worker
+./tool/integration.sh                    # 505 tests on real Postgres, incl. the worker
 ./tool/smoke_api.sh                      # 445 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
@@ -355,8 +356,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,425 tests in total**, plus 445 smoke checks, 45 executed schema guarantees,
-498 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,427 tests in total**, plus 445 smoke checks, 45 executed schema guarantees,
+505 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.

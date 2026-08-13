@@ -12,6 +12,7 @@ import 'package:postgres/postgres.dart';
 
 import '../../application/ports/operator_console.dart';
 import '../db/database.dart';
+import 'refund_wallet.dart';
 import 'seat_occupancy.dart';
 
 /// The console, on the tenant surface.
@@ -1392,13 +1393,22 @@ final class PostgresOperatorConsole implements OperatorConsole {
     if (posting.valueOrNull == null) return null;
 
     final destination = quote.destination;
-    // A claim is the counter path. `source` — a disbursement back down a
-    // mobile-money rail — is a different API with a separately funded float
-    // and is not built, so it stops at `approved` and says so rather than
-    // pretending money moved.
+    // `source` goes back down the rail it came up, and the worker sends it.
+    // Where it goes is read **now** and copied onto the row: a traveller who
+    // changes handsets on Thursday must not redirect Tuesday's approved
+    // refund.
+    final wallet = destination == RefundDestination.source
+        ? await refundWalletFor(tx, bookingId)
+        : null;
+
+    // A claim is the counter path — and it is also the honest answer when
+    // there is nowhere to send anything. A ticket bought with notes has no
+    // wallet and a card has a PAN we have never seen, so a `source` policy
+    // over one of those becomes a claim rather than a row nobody can pay.
     final wantsClaim =
         destination == RefundDestination.agencyCash ||
-        destination == RefundDestination.travellerChoice;
+        destination == RefundDestination.travellerChoice ||
+        (destination == RefundDestination.source && wallet == null);
     final claimCode = wantsClaim ? _claimCode() : null;
 
     final refund = await tx.execute(
@@ -1406,12 +1416,12 @@ final class PostgresOperatorConsole implements OperatorConsole {
         INSERT INTO refunds
           (booking_id, operator_id, amount_minor, currency, rate_bps,
            destination, state, involuntary, claim_code, claim_expires_at,
-           requested_by, approved_by, reason)
+           disburse_to, requested_by, approved_by, reason)
         VALUES (@booking, @operator, @amount, @currency, @rate, @destination,
                 @state::refund_state, @involuntary, @claim,
                 CASE WHEN @claim::text IS NULL THEN NULL
                      ELSE now() + interval '90 days' END,
-                @actor, @actor, @reason)
+                @wallet, @actor, @actor, @reason)
         RETURNING id, state::text AS state, claim_code, claim_expires_at
       '''),
       parameters: {
@@ -1420,7 +1430,17 @@ final class PostgresOperatorConsole implements OperatorConsole {
         'amount': TypedValue(Type.bigInteger, quote.refundable.minor),
         'currency': TypedValue(Type.text, quote.refundable.currency.code),
         'rate': TypedValue(Type.integer, quote.rateBps),
-        'destination': TypedValue(Type.text, destination.name),
+        // Named for where it actually goes. A row that says `source` and
+        // carries a claim code is a row a support agent has to reconcile by
+        // reading the state column, which is how the wrong sentence gets
+        // read out to somebody at a counter.
+        'destination': TypedValue(
+          Type.text,
+          wantsClaim && destination == RefundDestination.source
+              ? RefundDestination.agencyCash.name
+              : destination.name,
+        ),
+        'wallet': TypedValue(Type.text, wallet),
         'state': TypedValue(
           Type.text,
           wantsClaim ? 'claim_issued' : 'approved',

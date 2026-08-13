@@ -6,6 +6,7 @@ import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart' hide Result;
 
+import 'refund_wallet.dart';
 import 'seat_occupancy.dart';
 
 /// The passenger's own choice, against Postgres (`08-disruption.md` §3.2).
@@ -602,16 +603,29 @@ final class PostgresPassengerChoices implements PassengerChoices {
       return (applied: null, refusal: const NothingDisrupted());
     }
 
-    final claimCode = _claimCode();
+    // **Back to the handset if there is one.** This is the case the
+    // disbursement pass exists for: somebody standing at a roadside in
+    // Pointe-Noire whose coach has failed, told their money is safe. Sending
+    // them to an agency counter was the honest answer while there was no way
+    // to push money out, and it is the wrong one now that there is. A ticket
+    // paid in notes still has nowhere to go, and still gets a code.
+    final wallet = await refundWalletFor(tx, bookingId);
+    final claimCode = wallet == null ? _claimCode() : null;
     final refund = await tx.execute(
       Sql.named('''
         INSERT INTO refunds
           (booking_id, operator_id, amount_minor, currency, rate_bps,
            destination, state, involuntary, claim_code, claim_expires_at,
-           requested_by, approved_by, reason)
+           disburse_to, requested_by, approved_by, reason)
         VALUES (@booking, @operator, @amount, @currency, 10000,
-                'agencyCash', 'claim_issued', TRUE, @claim,
-                now() + interval '90 days', @actor, @actor,
+                CASE WHEN @wallet::text IS NULL THEN 'agencyCash'
+                     ELSE 'source' END,
+                CASE WHEN @wallet::text IS NULL THEN 'claim_issued'
+                     ELSE 'approved' END::refund_state,
+                TRUE, @claim,
+                CASE WHEN @claim::text IS NULL THEN NULL
+                     ELSE now() + interval '90 days' END,
+                @wallet, @actor, @actor,
                 'passenger choice after disruption')
         RETURNING id
       '''),
@@ -621,6 +635,7 @@ final class PostgresPassengerChoices implements PassengerChoices {
         'amount': TypedValue(Type.bigInteger, refundable.minor),
         'currency': TypedValue(Type.text, refundable.currency.code),
         'claim': TypedValue(Type.text, claimCode),
+        'wallet': TypedValue(Type.text, wallet),
         'actor': TypedValue(Type.uuid, userId),
       },
     );

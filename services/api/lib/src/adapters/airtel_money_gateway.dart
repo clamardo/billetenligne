@@ -72,10 +72,10 @@ final class AirtelMoneyGateway implements PaymentGateway {
           // what `pushesToHandset` promises the caller — so an absent
           // number here is a wiring mistake and says so rather than
           // sending a prompt to nowhere.
-          'msisdn': _national(_requirePayer(request)),
+          'msisdn': nationalNumber(_requirePayer(request)),
         },
         'transaction': {
-          'amount': _amount(request.amount),
+          'amount': amountFor(request.amount),
           'country': country,
           'currency': request.amount.currency.code,
           // Ours. Echoed on the callback, which is how an untrusted callback
@@ -84,7 +84,7 @@ final class AirtelMoneyGateway implements PaymentGateway {
         },
       });
 
-      final status = _statusCode(response.body);
+      final status = statusCodeOf(response.body);
 
       // `TIP` / `TS` means the prompt is out. The traveller has not typed
       // anything yet, so this is pending and not a capture.
@@ -106,7 +106,7 @@ final class AirtelMoneyGateway implements PaymentGateway {
 
       return PaymentOutcome(
         state: PaymentState.failed,
-        failureCode: _failureCode(status, response.body),
+        failureCode: failureCodeFor(status, response.body),
         railTransactionId: _transactionId(response.body),
         raw: response.body,
       );
@@ -150,7 +150,7 @@ final class AirtelMoneyGateway implements PaymentGateway {
         ),
         'TF' => PaymentOutcome(
           state: PaymentState.failed,
-          failureCode: _failureCode(_statusCode(response.body), response.body),
+          failureCode: failureCodeFor(statusCodeOf(response.body), response.body),
           raw: response.body,
         ),
         'TA' || 'TIP' => PaymentOutcome(
@@ -169,7 +169,11 @@ final class AirtelMoneyGateway implements PaymentGateway {
   }
 
   /// Airtel's result codes, mapped onto our taxonomy.
-  static PaymentFailureCode _failureCode(
+  ///
+  /// Public because the Disbursements resource answers with the same status
+  /// envelope and the same message vocabulary; two copies of this table would
+  /// drift on the day Airtel adds a message to one of them.
+  static PaymentFailureCode failureCodeFor(
     String status,
     Map<String, Object?> body,
   ) {
@@ -197,7 +201,7 @@ final class AirtelMoneyGateway implements PaymentGateway {
         : PaymentFailureCode.pspUnavailable;
   }
 
-  static String _statusCode(Map<String, Object?> body) =>
+  static String statusCodeOf(Map<String, Object?> body) =>
       '${_statusField(body, 'code') ?? _statusField(body, 'result_code') ?? ''}'
           .toUpperCase();
 
@@ -225,7 +229,7 @@ final class AirtelMoneyGateway implements PaymentGateway {
   /// We store `242061234567`; this sends `061234567`. Sending the stored form
   /// produces a subscriber-not-found that looks, to everybody reading the
   /// log, like the traveller mistyped their number.
-  static String _national(String e164) {
+  static String nationalNumber(String e164) {
     const countryCode = '242';
     return e164.startsWith(countryCode)
         ? e164.substring(countryCode.length)
@@ -233,7 +237,7 @@ final class AirtelMoneyGateway implements PaymentGateway {
   }
 
   /// Whole units. XAF has no minor unit, so 9 300 francs is `9300`.
-  static num _amount(Money amount) {
+  static num amountFor(Money amount) {
     if (amount.currency.exponent == 0) return amount.minor;
     var divisor = 1;
     for (var i = 0; i < amount.currency.exponent; i++) {

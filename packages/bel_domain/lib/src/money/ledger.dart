@@ -15,6 +15,13 @@ abstract final class LedgerAccount {
   /// Money a rail holds for us, not yet settled into the bank.
   static String pspClearing(String rail) => 'psp:$rail:clearing';
 
+  /// The float a rail pays *out* of, which is not the account it collects
+  /// into. Every mobile-money operator funds disbursement separately —
+  /// different credentials, a balance somebody has to top up — so netting a
+  /// refund against the day's takings would describe a movement that did not
+  /// happen and hide the one that did: the float going down.
+  static String pspDisbursement(String rail) => 'psp:$rail:disbursement';
+
   /// Physical cash in a vendor's drawer. Scoped to the station, because a
   /// till is reconciled by the person who closes it and "the operator's cash"
   /// is not a thing anybody can count.
@@ -307,6 +314,42 @@ abstract final class Postings {
     ),
     LedgerEntry.credit(
       LedgerAccount.till(operatorId, stationId),
+      amount,
+      operatorId: operatorId,
+    ),
+  ]);
+
+  /// A refund sent back down the rail it came up (ADR-0015 rule 5, the other
+  /// half).
+  ///
+  /// ```
+  /// DR  payable:refund:<booking>          8 400
+  ///     CR  psp:<rail>:disbursement             8 400
+  /// ```
+  ///
+  /// The mirror of [refundPaidInCash], and the same shape: the debt raised at
+  /// approval is settled, and the money comes from somewhere real. What
+  /// differs is where — a till somebody counts, or a float somebody funds.
+  ///
+  /// **Posted when the rail says the money left, never when it is asked to
+  /// send it.** A disbursement can sit pending for minutes and can fail after
+  /// being accepted; a ledger that recorded the request would show a float
+  /// draining on transfers that never happened, and the operator's payable
+  /// settled against money still sitting with us.
+  static Result<LedgerTransaction, DomainFailure> refundDisbursed({
+    required String operatorId,
+    required String bookingId,
+    required String rail,
+    required Money amount,
+  }) => LedgerTransaction.balanced([
+    LedgerEntry.debit(
+      LedgerAccount.payableRefund(bookingId),
+      amount,
+      operatorId: operatorId,
+      memo: 'refund sent on $rail',
+    ),
+    LedgerEntry.credit(
+      LedgerAccount.pspDisbursement(rail),
       amount,
       operatorId: operatorId,
     ),

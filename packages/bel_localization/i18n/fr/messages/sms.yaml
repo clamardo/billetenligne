@@ -17,11 +17,16 @@ sms:
   refundIssued:
     body: "Remboursement de {amount} envoye sur {destination}. Delai indicatif {hours}h. Ref {reference}."
   # Le remboursement choisi par le passager lui-meme apres une perturbation
-  # (08-disruption.md §3.2). Il part en espece a l'agence : le versement par
-  # rail n'existe pas encore, et promettre autre chose serait mentir. Le code
-  # part par SMS parce qu'un code affiche une seule fois est un code perdu.
+  # (08-disruption.md §3.2), quand il n'y a pas de portefeuille ou vers lequel
+  # renvoyer l'argent : billet paye en especes, ou par carte. Le code part par
+  # SMS parce qu'un code affiche une seule fois est un code perdu.
   refundClaim:
     body: "Remboursement de {amount} accepte. Retirez-le dans une agence {operator} avec le code {code}. Ref {reference}."
+  # Et quand il y a un portefeuille : le versement est parti vers le rail, la
+  # confirmation arrive quand l'operateur mobile l'a credite. Ne dit pas
+  # "recu" — c'est le message refundIssued qui le dira.
+  refundOnItsWay:
+    body: "Remboursement de {amount} accepte. Il repart vers {destination}, sous {hours}h. Ref {reference}."
   # L'annulation faite par le voyageur lui-meme (01-feature-spec.md §8.2).
   # Deux versions, et la difference porte sur ce qu'il doit faire ensuite :
   # l'une donne un code a presenter au guichet, l'autre annonce un delai.

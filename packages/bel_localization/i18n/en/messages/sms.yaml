@@ -16,11 +16,16 @@ sms:
   refundIssued:
     body: "Refund of {amount} sent to {destination}. Expect it within {hours}h. Ref {reference}."
   # The refund the passenger chose themselves after a disruption
-  # (08-disruption.md §3.2). It is collected in cash at an agency: rail
-  # disbursement does not exist yet, and promising otherwise would be a lie.
-  # The code goes by SMS because a code shown once is a code somebody loses.
+  # (08-disruption.md §3.2), when there is no wallet to send it back to: a
+  # ticket paid in cash, or by card. The code goes by SMS because a code shown
+  # once is a code somebody loses.
   refundClaim:
     body: "Refund of {amount} approved. Collect it at any {operator} agency with code {code}. Ref {reference}."
+  # And when there is a wallet: the transfer has left for the rail, and the
+  # confirmation comes when the mobile operator has credited it. It does not
+  # say "received" — refundIssued is the message that will.
+  refundOnItsWay:
+    body: "Refund of {amount} approved. It is on its way back to {destination}, within {hours}h. Ref {reference}."
   # The traveller cancelling their own booking (01-feature-spec.md §8.2). Two
   # versions, and what differs is what they have to do next: one carries a
   # code for a counter, the other a window. Neither says "sent" until the

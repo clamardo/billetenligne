@@ -144,7 +144,7 @@ final class MtnMomoGateway implements PaymentGateway {
         ),
         'FAILED' => PaymentOutcome(
           state: PaymentState.failed,
-          failureCode: _failureCode('${response.body['reason']}'),
+          failureCode: failureCodeFor('${response.body['reason']}'),
           raw: response.body,
         ),
         // An unrecognised status is not a failure. MTN adds values; treating
@@ -163,7 +163,11 @@ final class MtnMomoGateway implements PaymentGateway {
   /// Every one of these has its own sentence and its own recovery in the app
   /// (`04-payments.md` §5) — "Payment failed. Try again." is what this mapping
   /// exists to prevent.
-  static PaymentFailureCode _failureCode(String reason) =>
+  ///
+  /// Public because the Disbursements product answers with the same vocabulary
+  /// under a different base path, and two copies of this table would drift on
+  /// the day MTN adds a reason to one of them.
+  static PaymentFailureCode failureCodeFor(String reason) =>
       switch (reason.toUpperCase()) {
         'NOT_ENOUGH_FUNDS' => PaymentFailureCode.insufficientFunds,
         'PAYER_LIMIT_REACHED' => PaymentFailureCode.limitExceeded,
@@ -179,13 +183,26 @@ final class MtnMomoGateway implements PaymentGateway {
         _ => PaymentFailureCode.pspUnavailable,
       };
 
-  static PaymentFailureCode _refusalCode(_Response response) {
-    final code = '${response.body['code'] ?? ''}';
-    if (code.isNotEmpty) return _failureCode(code);
-    return response.status == HttpStatus.badRequest
+  static PaymentFailureCode _refusalCode(_Response response) =>
+      refusalCodeFor(status: response.status, body: response.body);
+
+  /// A refusal made before the handset was ever involved. Shared with the
+  /// Disbursements adapter for the same reason [failureCodeFor] is.
+  static PaymentFailureCode refusalCodeFor({
+    required int status,
+    required Map<String, Object?> body,
+  }) {
+    final code = '${body['code'] ?? ''}';
+    if (code.isNotEmpty) return failureCodeFor(code);
+    return status == HttpStatus.badRequest
         ? PaymentFailureCode.subscriberNotFound
         : PaymentFailureCode.pspUnavailable;
   }
+
+  /// The amount as MTN wants it: a decimal string, with no minor unit on XAF.
+  /// Public for the Disbursements adapter, which must format it identically —
+  /// `"93.00"` where `"9300"` was meant pays ninety-three francs, and succeeds.
+  static String amountFor(Money amount) => _amount(amount);
 
   /// MTN wants a decimal string even for a zero-decimal currency.
   ///
