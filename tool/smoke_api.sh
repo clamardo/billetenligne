@@ -1002,6 +1002,51 @@ check "a set-down-only stop gets past validation" "503" \
 check "a stops field that is not a list is refused" "400" \
   "$(route_status "{$road,\"stops\":\"DOL\"}")"
 
+# ── And a piece of it, priced ───────────────────────────────────────────────
+#
+# ADR-0025. A segment is sellable only when the operator has priced it, so
+# this list is the whole feature switch: no pro-rata fallback, no flag, and an
+# unpriced pair simply is not offered. Cities on the wire and positions in the
+# database — the server resolves one into the other, which is also where the
+# boarding rules get applied.
+stopped='"stops":[{"cityCode":"DOL","offsetMinutes":180}]'
+
+check "a priced leg gets past validation" "503" \
+  "$(route_status "{$road,$stopped,\"segments\":[{\"fromCity\":\"BZV\",\"toCity\":\"DOL\",\"fareMinor\":6000}]}")"
+# Present and empty is a real answer — "this road sells end to end only" — and
+# it is how the last leg comes off sale.
+check "an empty price list gets past validation" "503" \
+  "$(route_status "{$road,$stopped,\"segments\":[]}")"
+
+# The whole road already has a price, on the timetable. Two places to set one
+# price is one place too many.
+whole="$(route_post "{$road,$stopped,\"segments\":[{\"fromCity\":\"BZV\",\"toCity\":\"PNR\",\"fareMinor\":12000}]}")"
+check "pricing the whole road is refused by name" "yes" \
+  "$(grep -q '"reason":"whole_road"' <<<"$whole" && echo yes || echo no)"
+
+# The rules of the road survive being priced: a set-down-only stop can end a
+# segment and cannot start one, and the refusal says which town.
+setdown='"stops":[{"cityCode":"DOL","offsetMinutes":180,"allowsBoarding":false}]'
+boarding="$(route_post "{$road,$setdown,\"segments\":[{\"fromCity\":\"DOL\",\"toCity\":\"PNR\",\"fareMinor\":6000}]}")"
+check "boarding where the operator only sets down is refused" "yes" \
+  "$(grep -q '"reason":"no_boarding"' <<<"$boarding" && echo yes || echo no)"
+check "and it names the town" "yes" \
+  "$(grep -q '"city":"DOL"' <<<"$boarding" && echo yes || echo no)"
+
+# A town this road never passes, and a journey the coach runs the other way.
+check "a leg between towns not on the road is refused" "400" \
+  "$(route_status "{$road,$stopped,\"segments\":[{\"fromCity\":\"OWA\",\"toCity\":\"PNR\",\"fareMinor\":6000}]}")"
+check "a leg running the wrong way is refused" "400" \
+  "$(route_status "{$road,$stopped,\"segments\":[{\"fromCity\":\"PNR\",\"toCity\":\"DOL\",\"fareMinor\":6000}]}")"
+# A free seat is a mistake, not a price — caught where the person who typed it
+# is standing, rather than by the ledger three tables downstream.
+check "a leg priced at nothing is refused" "400" \
+  "$(route_status "{$road,$stopped,\"segments\":[{\"fromCity\":\"BZV\",\"toCity\":\"DOL\",\"fareMinor\":0}]}")"
+check "the same leg priced twice is refused" "400" \
+  "$(route_status "{$road,$stopped,\"segments\":[{\"fromCity\":\"BZV\",\"toCity\":\"DOL\",\"fareMinor\":6000},{\"fromCity\":\"BZV\",\"toCity\":\"DOL\",\"fareMinor\":6500}]}")"
+check "a segments field that is not a list is refused" "400" \
+  "$(route_status "{$road,\"segments\":\"BZV~DOL\"}")"
+
 # ── Refund policies refuse what would be unenforceable ──────────────────────
 #
 # ADR-0015 rule 1 is the rule most systems get wrong: a booking is judged by

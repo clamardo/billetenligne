@@ -138,4 +138,88 @@ void main() {
     expect(Segment.at(2, 5).span, '[2,5)');
     expect(Segment.at(2, 5).legs, 3);
   });
+
+  group('what an operator has priced', () {
+    Result<SegmentPricing, InvalidSegment> price(
+      List<({String from, String to, Money fare})> asked,
+    ) => SegmentPricing.of(
+      asked,
+      itinerary: road,
+      originCity: 'BZV',
+      destinationCity: 'PNR',
+    );
+
+    test('nothing priced is the ordinary case, not an absence of data', () {
+      // Which is what makes the whole model shippable: until this list has
+      // something in it, every departure sells its whole road for its whole
+      // fare exactly as it always has.
+      expect(price(const []).valueOrNull, SegmentPricing.empty);
+      expect(SegmentPricing.empty.isEmpty, isTrue);
+    });
+
+    test('a priced leg can be looked up by the piece it covers', () {
+      final list = price(const [
+        (from: 'BZV', to: 'DOL', fare: Money.xaf(6000)),
+        (from: 'DOL', to: 'PNR', fare: Money.xaf(7000)),
+      ]).valueOrNull!;
+
+      expect(list.fareFor(Segment.at(0, 1)), const Money.xaf(6000));
+      expect(list.fareFor(Segment.at(1, 3)), const Money.xaf(7000));
+      // Not priced is not zero, and the difference is whether it is on sale.
+      expect(list.fareFor(Segment.at(0, 2)), isNull);
+    });
+
+    test('the list comes back in road order, whatever order it was typed', () {
+      final list = price(const [
+        (from: 'DOL', to: 'PNR', fare: Money.xaf(7000)),
+        (from: 'BZV', to: 'MDG', fare: Money.xaf(9000)),
+        (from: 'BZV', to: 'DOL', fare: Money.xaf(6000)),
+      ]).valueOrNull!;
+
+      expect(
+        [for (final p in list.prices) p.segment.span],
+        ['[0,1)', '[0,2)', '[1,3)'],
+      );
+    });
+
+    test(
+      'the whole road is refused, because the timetable already prices it',
+      () {
+        // Two places to set one price is one place too many, and the day they
+        // disagree a traveller is quoted one and charged the other.
+        final refused = price(const [
+          (from: 'BZV', to: 'PNR', fare: Money.xaf(12000)),
+        ]).failureOrNull!;
+        expect(refused.reason, 'whole_road');
+      },
+    );
+
+    test('the same piece cannot carry two prices', () {
+      final refused = price(const [
+        (from: 'BZV', to: 'DOL', fare: Money.xaf(6000)),
+        (from: 'BZV', to: 'DOL', fare: Money.xaf(6500)),
+      ]).failureOrNull!;
+      expect(refused.reason, 'already_priced');
+    });
+
+    test('a free seat is a mistake, not a price', () {
+      // Caught here, where the person who typed it is standing, rather than
+      // by the ledger three tables downstream.
+      expect(
+        price(const [
+          (from: 'BZV', to: 'DOL', fare: Money.xaf(0)),
+        ]).failureOrNull!.reason,
+        'not_positive',
+      );
+    });
+
+    test('and a piece nobody can board is still refused when priced', () {
+      // Pricing does not override the road. Madingou sets down only.
+      final refused = price(const [
+        (from: 'MDG', to: 'PNR', fare: Money.xaf(4000)),
+      ]).failureOrNull!;
+      expect(refused.reason, 'no_boarding');
+      expect(refused.cityCode, 'MDG');
+    });
+  });
 }

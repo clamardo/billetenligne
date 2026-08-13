@@ -679,6 +679,7 @@ final class BelApiClient {
     String? id,
     int? distanceKm,
     List<RouteStopDto>? stops,
+    List<SegmentFareDto>? segments,
   }) async => RouteDto.fromJson(
     await _postJson('/console/v1/routes', {
       'code': code,
@@ -691,6 +692,10 @@ final class BelApiClient {
       // the stops alone; an empty list erases them, which is how the last
       // one is removed.
       if (stops != null) 'stops': [for (final stop in stops) stop.toJson()],
+      // Same rule, one line down: absent leaves the price list alone, an
+      // empty list is how the last leg comes off sale (ADR-0025).
+      if (segments != null)
+        'segments': [for (final fare in segments) fare.toJson()],
     }),
   );
 

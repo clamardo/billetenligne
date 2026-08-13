@@ -67,6 +67,7 @@ final class UnavailableOperatorConsole implements OperatorConsole {
     String? id,
     int? distanceKm,
     Itinerary? stops,
+    SegmentPricing? segments,
   }) async => _refuse();
 
   @override

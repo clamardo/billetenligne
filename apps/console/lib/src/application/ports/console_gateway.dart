@@ -171,8 +171,9 @@ abstract interface class ConsoleGateway {
 
   /// Opens a road, or changes one.
   ///
-  /// [stops] replaces the road's intermediate stops. Null leaves them as they
-  /// are; an empty list is how the last one is removed.
+  /// [stops] replaces the road's intermediate stops, and [segments] the
+  /// pieces of it that are on sale. Null leaves either as it is; an empty
+  /// list is how the last one is removed.
   Future<RouteDto> saveRoute({
     required String code,
     required String originCity,
@@ -180,6 +181,7 @@ abstract interface class ConsoleGateway {
     required int durationMinutes,
     String? id,
     List<RouteStopDto>? stops,
+    List<SegmentFareDto>? segments,
   });
 
   Future<List<CityDto>> cities();

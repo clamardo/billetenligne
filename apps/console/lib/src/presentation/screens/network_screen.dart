@@ -314,6 +314,10 @@ final class NetworkScreen extends StatelessWidget {
       for (final stop in existing?.stops ?? const <RouteStopDto>[])
         _StopDraft.from(stop),
     ];
+    final segments = <_SegmentDraft>[
+      for (final fare in existing?.segments ?? const <SegmentFareDto>[])
+        _SegmentDraft.from(fare),
+    ];
 
     final saved = await showDialog<bool>(
       context: context,
@@ -483,6 +487,125 @@ final class NetworkScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+
+                  // ── What a piece of the road costs (ADR-0025) ──
+                  //
+                  // Only once there is somewhere to stop: a road with no
+                  // stops has no pieces, and an empty price table on every
+                  // two-city road would be a control nobody can use asking a
+                  // question nobody has.
+                  //
+                  // A price is what puts a leg on sale. There is deliberately
+                  // no pro-rata fallback anywhere behind this form, so the
+                  // absence of a row here is the absence of the option — and
+                  // saying so once, next to the table, is cheaper than a
+                  // support conversation about why Dolisie is not bookable.
+                  if (stops.isNotEmpty) ...[
+                    SizedBox(height: dialogContext.kilo.space.s4),
+                    Text(
+                      dialogContext.t('console.network.segments'),
+                      style: dialogContext.kilo.text.label,
+                    ),
+                    SizedBox(height: dialogContext.kilo.space.s1),
+                    Text(
+                      dialogContext.t('console.network.segmentsHelp'),
+                      style: dialogContext.kilo.text.bodySm.copyWith(
+                        color: dialogContext.kilo.color.contentSecondary,
+                      ),
+                    ),
+                    SizedBox(height: dialogContext.kilo.space.s2),
+
+                    for (final (index, leg) in segments.indexed)
+                      Padding(
+                        padding: EdgeInsets.only(
+                          bottom: dialogContext.kilo.space.s2,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: DropdownButtonFormField<String>(
+                                initialValue: leg.from,
+                                decoration: InputDecoration(
+                                  labelText: dialogContext.t(
+                                    'console.network.segmentFrom',
+                                  ),
+                                ),
+                                items: [
+                                  for (final town in _townsOn(
+                                    origin,
+                                    destination,
+                                    stops,
+                                  ))
+                                    DropdownMenuItem(
+                                      value: town,
+                                      child: Text(town),
+                                    ),
+                                ],
+                                onChanged: (value) => setState(
+                                  () => leg.from = value ?? leg.from,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: dialogContext.kilo.space.s2),
+                            Expanded(
+                              flex: 3,
+                              child: DropdownButtonFormField<String>(
+                                initialValue: leg.to,
+                                decoration: InputDecoration(
+                                  labelText: dialogContext.t(
+                                    'console.network.segmentTo',
+                                  ),
+                                ),
+                                items: [
+                                  for (final town in _townsOn(
+                                    origin,
+                                    destination,
+                                    stops,
+                                  ))
+                                    DropdownMenuItem(
+                                      value: town,
+                                      child: Text(town),
+                                    ),
+                                ],
+                                onChanged: (value) =>
+                                    setState(() => leg.to = value ?? leg.to),
+                              ),
+                            ),
+                            SizedBox(width: dialogContext.kilo.space.s2),
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                controller: leg.fare,
+                                decoration: InputDecoration(
+                                  labelText: dialogContext.t(
+                                    'console.network.segmentFare',
+                                  ),
+                                ),
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () =>
+                                  setState(() => segments.removeAt(index)),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    TextButton.icon(
+                      icon: const Icon(Icons.add),
+                      label: Text(
+                        dialogContext.t('console.network.addSegment'),
+                      ),
+                      onPressed: () => setState(
+                        () => segments.add(
+                          _SegmentDraft(from: origin, to: stops.first.city),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -528,8 +651,28 @@ final class NetworkScreen extends StatelessWidget {
             allowsAlighting: stop.alighting,
           ),
       ],
+      // Same rule as the stops: always sent, empty included, because an empty
+      // list is how the last leg comes off sale.
+      segments: [
+        for (final leg in segments)
+          SegmentFareDto(
+            fromCity: leg.from,
+            toCity: leg.to,
+            fareMinor: int.tryParse(leg.fare.text.trim()) ?? 0,
+          ),
+      ],
     );
   }
+
+  /// Every town on the road as it is currently drawn, in order — including
+  /// stops the operator has just typed and not yet saved. Reading the saved
+  /// road instead would offer a price for a stop that does not exist yet, or
+  /// refuse one for a stop that does.
+  static List<String> _townsOn(
+    String origin,
+    String destination,
+    List<_StopDraft> stops,
+  ) => [origin, for (final stop in stops) stop.city, destination];
 
   /// Opening a yard: a city, a name, and how to find it.
   ///
@@ -623,4 +766,19 @@ final class _StopDraft {
   final TextEditingController offset;
   bool boarding = true;
   bool alighting = true;
+}
+
+/// One priced leg while it is being typed.
+final class _SegmentDraft {
+  _SegmentDraft({required this.from, required this.to, int fareMinor = 0})
+    : fare = TextEditingController(text: fareMinor == 0 ? '' : '$fareMinor');
+
+  _SegmentDraft.from(SegmentFareDto priced)
+    : from = priced.fromCity,
+      to = priced.toCity,
+      fare = TextEditingController(text: '${priced.fareMinor}');
+
+  String from;
+  String to;
+  final TextEditingController fare;
 }

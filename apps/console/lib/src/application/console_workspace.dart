@@ -759,6 +759,7 @@ final class ConsoleWorkspace {
     required int durationMinutes,
     String? id,
     List<RouteStopDto>? stops,
+    List<SegmentFareDto>? segments,
   }) => _run(() async {
     await _gateway.saveRoute(
       code: code,
@@ -767,6 +768,7 @@ final class ConsoleWorkspace {
       durationMinutes: durationMinutes,
       id: id,
       stops: stops,
+      segments: segments,
     );
     _notice = 'route.saved|$code';
     await _loadSection();

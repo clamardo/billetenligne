@@ -2078,6 +2078,95 @@ void main() {
       );
     });
   });
+
+  group('a piece of a road, priced', () {
+    test('cities go up, positions come back', () {
+      // A console form is two dropdowns of town names; a position is an index
+      // into a road the client does not own and must not be able to guess
+      // wrong. The server resolves one into the other (ADR-0025).
+      const sent = SegmentFareDto(
+        fromCity: 'BZV',
+        toCity: 'DOL',
+        fareMinor: 6000,
+      );
+
+      expect(sent.toJson().containsKey('fromPosition'), isFalse);
+      // No currency on the way up. The currency of a road is not the
+      // client's to choose — the server attaches the market's, exactly as a
+      // timetable fare has always worked.
+      expect(sent.toJson()['fareMinor'], 6000);
+      expect(sent.toJson().containsKey('fare'), isFalse);
+
+      final back = roundTrip(
+        const SegmentFareDto(
+          fromCity: 'BZV',
+          toCity: 'DOL',
+          fareMinor: 6000,
+          fromPosition: 0,
+          toPosition: 1,
+        ).toJson,
+        SegmentFareDto.fromJson,
+      );
+
+      expect(back.fromCity, 'BZV');
+      expect(back.fareMinor, 6000);
+      expect(back.fromPosition, 0);
+      expect(back.toPosition, 1);
+    });
+
+    // Decoded from a literal rather than round-tripped: `RouteDto` has no
+    // `toJson`, on purpose — the server composes this payload itself, and a
+    // second encoder in the contracts package would be a second definition of
+    // the route wire format, drifting from the first the day a field is added.
+    Map<String, Object?> routeJson({List<Object?> segments = const []}) => {
+      'id': 'r-1',
+      'code': 'BZV-PNR',
+      'originCity': 'BZV',
+      'destinationCity': 'PNR',
+      'durationMinutes': 450,
+      'active': true,
+      'stops': [
+        const RouteStopDto(cityCode: 'DOL', offsetMinutes: 180).toJson(),
+      ],
+      'segments': segments,
+    };
+
+    test('a road with nothing priced sells end to end only', () {
+      // Empty is the ordinary case and not an absence of data: there is no
+      // pro-rata fallback, so an unpriced pair is simply not offered.
+      final back = RouteDto.fromJson(
+        jsonDecode(jsonEncode(routeJson())) as Map<String, Object?>,
+      );
+
+      expect(back.stops, hasLength(1));
+      expect(back.segments, isEmpty);
+    });
+
+    test('and one with a priced leg carries it beside the stops', () {
+      final back = RouteDto.fromJson(
+        jsonDecode(
+              jsonEncode(
+                routeJson(
+                  segments: [
+                    const SegmentFareDto(
+                      fromCity: 'BZV',
+                      toCity: 'DOL',
+                      fareMinor: 6000,
+                      fromPosition: 0,
+                      toPosition: 1,
+                    ).toJson(),
+                  ],
+                ),
+              ),
+            )
+            as Map<String, Object?>,
+      );
+
+      expect(back.segments.single.toCity, 'DOL');
+      expect(back.segments.single.fareMinor, 6000);
+      expect(back.segments.single.fromPosition, 0);
+    });
+  });
 }
 
 /// Reads the string constants declared on [ErrorCode] straight from source,

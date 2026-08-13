@@ -273,7 +273,10 @@ final class _ScriptedConsole implements ConsoleGateway {
   /// actually sent rather than what it drew.
   List<RouteStopDto>? savedStops;
 
-  @override
+  /// And what it priced. Null and empty are different answers — one leaves
+  /// the list alone, the other takes every leg off sale.
+  List<SegmentFareDto>? savedSegments;
+
   @override
   Future<RouteDto> saveRoute({
     required String code,
@@ -282,9 +285,11 @@ final class _ScriptedConsole implements ConsoleGateway {
     required int durationMinutes,
     String? id,
     List<RouteStopDto>? stops,
+    List<SegmentFareDto>? segments,
   }) async {
     saved.add('route:$code');
     savedStops = stops;
+    savedSegments = segments;
     return RouteDto(
       id: id ?? 'r-1',
       code: code,
@@ -293,6 +298,16 @@ final class _ScriptedConsole implements ConsoleGateway {
       durationMinutes: durationMinutes,
       active: true,
       stops: stops ?? const [],
+      segments: [
+        for (final fare in segments ?? const <SegmentFareDto>[])
+          SegmentFareDto(
+            fromCity: fare.fromCity,
+            toCity: fare.toCity,
+            fareMinor: fare.fareMinor,
+            fromPosition: 0,
+            toPosition: 1,
+          ),
+      ],
     );
   }
 
@@ -300,6 +315,10 @@ final class _ScriptedConsole implements ConsoleGateway {
   Future<List<CityDto>> cities() async => const [
     CityDto(code: 'BZV', name: 'Brazzaville'),
     CityDto(code: 'PNR', name: 'Pointe-Noire'),
+    // A third town, so a road can have something between its endpoints: a
+    // stop dropdown offering only the two ends cannot describe a road that
+    // passes through anywhere.
+    CityDto(code: 'DOL', name: 'Dolisie'),
   ];
 
   @override
@@ -1454,7 +1473,10 @@ void main() {
   });
 
   group('the towns on the road', () {
-    _ScriptedConsole roads({List<RouteStopDto> stops = const []}) =>
+    _ScriptedConsole roads({
+      List<RouteStopDto> stops = const [],
+      List<SegmentFareDto> segments = const [],
+    }) =>
         _ScriptedConsole(capabilities: const ['booking.read', 'route.manage'])
           ..routeList = [
             RouteDto(
@@ -1465,6 +1487,7 @@ void main() {
               durationMinutes: 450,
               active: true,
               stops: stops,
+              segments: segments,
             ),
           ];
 
@@ -1544,6 +1567,104 @@ void main() {
 
       expect(gateway.savedStops, hasLength(1));
       expect(gateway.savedStops!.single.offsetMinutes, 315);
+    });
+
+    testWidgets('a road with no stops is offered no legs to price', (
+      tester,
+    ) async {
+      // A road with no stops has no pieces. An empty price table on every
+      // two-city road would be a control nobody can use, asking a question
+      // nobody has.
+      await pump(tester, roads());
+      await tester.tap(find.text('Lignes'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Modifier cette ligne'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tronçons en vente'), findsNothing);
+    });
+
+    testWidgets('the form says out loud that no price means no sale', (
+      tester,
+    ) async {
+      final gateway = roads(
+        stops: const [RouteStopDto(cityCode: 'DOL', offsetMinutes: 180)],
+      );
+      await pump(tester, gateway);
+      await tester.tap(find.text('Lignes'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Modifier cette ligne'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tronçons en vente'), findsOneWidget);
+      // Cheaper than a support conversation about why Dolisie is not
+      // bookable: there is no pro-rata fallback anywhere behind this form.
+      expect(
+        find.textContaining('Rien n\'est calculé au prorata'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a priced leg is sent with the road', (tester) async {
+      final gateway = roads(
+        stops: const [RouteStopDto(cityCode: 'DOL', offsetMinutes: 180)],
+      );
+      await pump(tester, gateway);
+      await tester.tap(find.text('Lignes'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Modifier cette ligne'));
+      await tester.pumpAndSettle();
+
+      final add = find.text('Ajouter un tronçon');
+      await tester.ensureVisible(add);
+      await tester.pumpAndSettle();
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+
+      final price = find.widgetWithText(TextField, 'Prix (FCFA)');
+      await tester.ensureVisible(price);
+      await tester.pumpAndSettle();
+      await tester.enterText(price, '6000');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Enregistrer'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.savedSegments, hasLength(1));
+      expect(gateway.savedSegments!.single.fareMinor, 6000);
+      // Towns on the wire, positions in the database: a console form is two
+      // dropdowns of names, and a position is an index into a road the
+      // client does not own (ADR-0025).
+      expect(gateway.savedSegments!.single.fromCity, 'BZV');
+      expect(gateway.savedSegments!.single.toCity, 'DOL');
+    });
+
+    testWidgets('and an emptied list is still sent, so a leg can come off', (
+      tester,
+    ) async {
+      final gateway = roads(
+        stops: const [RouteStopDto(cityCode: 'DOL', offsetMinutes: 180)],
+        segments: const [
+          SegmentFareDto(fromCity: 'BZV', toCity: 'DOL', fareMinor: 6000),
+        ],
+      );
+      await pump(tester, gateway);
+      await tester.tap(find.text('Lignes'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Modifier cette ligne'));
+      await tester.pumpAndSettle();
+
+      // The delete button on the priced row, not the one on the stop.
+      final remove = find.byIcon(Icons.delete_outline).last;
+      await tester.ensureVisible(remove);
+      await tester.pumpAndSettle();
+      await tester.tap(remove);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Enregistrer'));
+      await tester.pumpAndSettle();
+
+      // Empty, not null: omitting the field would leave the price standing
+      // and make the one screen that can withdraw a leg unable to.
+      expect(gateway.savedSegments, isEmpty);
     });
 
     testWidgets('removing the last stop still sends a list', (tester) async {

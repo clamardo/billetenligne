@@ -290,10 +290,16 @@ console:
     # fiche horaire, l'autre oblige à faire un calcul avant de savoir si ce
     # qu'on a tapé est juste.
     stops: "Arrêts intermédiaires"
-    stopsHelp: "Les villes traversées, en minutes après le départ. Décochez « montée » pour une gare où l'on ne fait que déposer. La vente entre deux arrêts n'est pas encore ouverte : ces arrêts s'affichent, ils ne se vendent pas."
+    stopsHelp: "Les villes traversées, en minutes après le départ. Décochez « montée » pour une gare où l'on ne fait que déposer."
     addStop: "Ajouter un arrêt"
     removeStop: "Retirer cet arrêt"
     stopOffset: "Min. après le départ"
+    segments: "Tronçons en vente"
+    segmentsHelp: "Un tronçon ne se vend que s'il a un prix ici. Rien n'est calculé au prorata : sans ligne, la place ne part qu'en trajet complet."
+    addSegment: "Ajouter un tronçon"
+    segmentFrom: "De"
+    segmentTo: "À"
+    segmentFare: "Prix (FCFA)"
     allowsBoarding: "Montée autorisée"
     allowsAlighting: "Descente autorisée"
     boardingOnly: "montée seule"

@@ -289,10 +289,16 @@ console:
     # dispatcher holds, and the other one is arithmetic they have to do
     # before they can tell whether what they typed is right.
     stops: "Intermediate stops"
-    stopsHelp: "The towns on the road, in minutes after departure. Untick \"boarding\" for a yard where people are only set down. Selling between two stops is not open yet: these stops are shown, not sold."
+    stopsHelp: "The towns on the road, in minutes after departure. Untick \"boarding\" for a yard where people are only set down."
     addStop: "Add a stop"
     removeStop: "Remove this stop"
     stopOffset: "Min. after departure"
+    segments: "Legs on sale"
+    segmentsHelp: "A leg is on sale only if it has a price here. Nothing is worked out pro rata: with no row, the seat sells end to end only."
+    addSegment: "Add a leg"
+    segmentFrom: "From"
+    segmentTo: "To"
+    segmentFare: "Price (FCFA)"
     allowsBoarding: "Boarding allowed"
     allowsAlighting: "Alighting allowed"
     boardingOnly: "boarding only"

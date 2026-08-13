@@ -246,49 +246,52 @@ final class PostgresOperatorConsole implements OperatorConsole {
   // ── Network ───────────────────────────────────────────────────────────────
 
   @override
-  Future<List<RouteSummary>> routes(String operatorId) =>
-      _db.transaction(DbScope.tenant(operatorId), (tx) async {
-        final rows = await tx.execute(
-          Sql.named('''
+  Future<List<RouteSummary>> routes(String operatorId) => _db.transaction(
+    DbScope.tenant(operatorId),
+    (tx) async {
+      final rows = await tx.execute(
+        Sql.named('''
             SELECT id, code, origin_city, destination_city, duration_minutes,
                    active
               FROM routes WHERE operator_id = @operator ORDER BY code
           '''),
-          parameters: {'operator': TypedValue(Type.uuid, operatorId)},
-        );
+        parameters: {'operator': TypedValue(Type.uuid, operatorId)},
+      );
 
-        if (rows.isEmpty) return const [];
+      if (rows.isEmpty) return const [];
 
-        // One query for every road's stops rather than one per road. A
-        // company with thirty routes is a company whose console would
-        // otherwise open with thirty round trips.
-        final stops = await _stopsFor(tx, [
-          for (final row in rows) row.toColumnMap()['id'].toString(),
-        ]);
+      // One query for every road's stops rather than one per road. A
+      // company with thirty routes is a company whose console would
+      // otherwise open with thirty round trips.
+      final ids = [for (final row in rows) row.toColumnMap()['id'].toString()];
+      final stops = await _stopsFor(tx, ids);
+      final priced = await _segmentsFor(tx, ids);
 
-        return [
-          for (final row in rows)
-            () {
-              final map = row.toColumnMap();
-              final id = map['id'].toString();
-              final found = stops[id] ?? const <_Stop>[];
-              return RouteSummary(
-                id: id,
-                code: map['code'] as String,
-                originCity: map['origin_city'] as String,
-                destinationCity: map['destination_city'] as String,
-                durationMinutes: map['duration_minutes'] as int,
-                active: map['active'] as bool,
-                stops: [for (final s in found) s.stop],
-                stopStationNames: {
-                  for (final s in found)
-                    if (s.stop.stationId != null && s.stationName != null)
-                      s.stop.stationId!: s.stationName!,
-                },
-              );
-            }(),
-        ];
-      });
+      return [
+        for (final row in rows)
+          () {
+            final map = row.toColumnMap();
+            final id = map['id'].toString();
+            final found = stops[id] ?? const <_Stop>[];
+            return RouteSummary(
+              id: id,
+              code: map['code'] as String,
+              originCity: map['origin_city'] as String,
+              destinationCity: map['destination_city'] as String,
+              durationMinutes: map['duration_minutes'] as int,
+              active: map['active'] as bool,
+              stops: [for (final s in found) s.stop],
+              stopStationNames: {
+                for (final s in found)
+                  if (s.stop.stationId != null && s.stationName != null)
+                    s.stop.stationId!: s.stationName!,
+              },
+              segments: priced[id] ?? SegmentPricing.empty,
+            );
+          }(),
+      ];
+    },
+  );
 
   /// The stops of several roads at once, in order, with their yards' names.
   Future<Map<String, List<_Stop>>> _stopsFor(
@@ -338,6 +341,7 @@ final class PostgresOperatorConsole implements OperatorConsole {
     String? id,
     int? distanceKm,
     Itinerary? stops,
+    SegmentPricing? segments,
   }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
     if (originCity == destinationCity) return null;
 
@@ -410,8 +414,45 @@ final class PostgresOperatorConsole implements OperatorConsole {
       }
     }
 
+    // Replaced wholesale, in the same transaction as the road it prices, and
+    // for the same reason the stops are: a route form is a whole description
+    // of a road, so an empty list is how the last price is withdrawn. Omitted
+    // entirely leaves the list alone, so a caller saving a duration cannot
+    // take a road off sale by not mentioning it.
+    if (segments != null) {
+      await tx.execute(
+        Sql.named('DELETE FROM segment_fares WHERE route_id = @route'),
+        parameters: {'route': TypedValue(Type.uuid, routeId)},
+        ignoreRows: true,
+      );
+
+      for (final price in segments.prices) {
+        await tx.execute(
+          Sql.named('''
+            INSERT INTO segment_fares
+              (operator_id, route_id, from_position, to_position,
+               fare_minor, currency)
+            VALUES (@operator, @route, @from, @to, @minor, @currency)
+          '''),
+          parameters: {
+            'operator': TypedValue(Type.uuid, operatorId),
+            'route': TypedValue(Type.uuid, routeId),
+            // Positions, not city codes: a road that visits the same town
+            // twice is unusual and not impossible, and a pair of codes
+            // cannot say which visit was meant (ADR-0025).
+            'from': TypedValue(Type.integer, price.segment.from),
+            'to': TypedValue(Type.integer, price.segment.to),
+            'minor': TypedValue(Type.bigInteger, price.fare.minor),
+            'currency': TypedValue(Type.text, price.fare.currency.code),
+          },
+          ignoreRows: true,
+        );
+      }
+    }
+
     final saved = await _stopsFor(tx, [routeId]);
     final found = saved[routeId] ?? const <_Stop>[];
+    final priced = await _segmentsFor(tx, [routeId]);
 
     return RouteSummary(
       id: routeId,
@@ -426,8 +467,55 @@ final class PostgresOperatorConsole implements OperatorConsole {
           if (s.stop.stationId != null && s.stationName != null)
             s.stop.stationId!: s.stationName!,
       },
+      segments: priced[routeId] ?? SegmentPricing.empty,
     );
   });
+
+  /// What several roads have been priced at, in one query. Same reasoning as
+  /// [_stopsFor]: a company with thirty routes is a company whose console
+  /// would otherwise open with thirty round trips.
+  Future<Map<String, SegmentPricing>> _segmentsFor(
+    TxSession tx,
+    List<String> routeIds,
+  ) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT route_id, from_position, to_position, fare_minor, currency
+          FROM segment_fares
+         WHERE route_id = ANY(@ids::uuid[]) AND active
+         ORDER BY route_id, from_position, to_position
+      '''),
+      parameters: {'ids': TypedValue(Type.textArray, routeIds)},
+    );
+
+    final byRoute = <String, List<SegmentPrice>>{};
+    for (final row in rows) {
+      final map = row.toColumnMap();
+      byRoute
+          .putIfAbsent(map['route_id'].toString(), () => [])
+          .add(
+            SegmentPrice(
+              segment: Segment.at(
+                map['from_position'] as int,
+                map['to_position'] as int,
+              ),
+              fare: Money(
+                map['fare_minor'] as int,
+                Currency.byCode((map['currency'] as String).trim())!,
+              ),
+            ),
+          );
+    }
+
+    // Read back rather than re-validated: these rows were checked against the
+    // road when they were written, and a price list that refused to load
+    // because somebody later moved a stop would take a road off sale without
+    // anybody deciding to.
+    return {
+      for (final entry in byRoute.entries)
+        entry.key: SegmentPricing.fromRows(entry.value),
+    };
+  }
 
   // ── Stations ──────────────────────────────────────────────────────────────
 

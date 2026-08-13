@@ -134,6 +134,55 @@ final class VehicleDto {
 ///
 /// The two flags are the detail every naive model gets wrong: a yard people
 /// are only ever set down at must not be offerable as a place to get on.
+/// A piece of a road the operator sells, and what it costs (ADR-0025).
+///
+/// **Cities on the wire, positions in the database.** A console form is two
+/// dropdowns of town names; a position is an index into a road the client
+/// does not own and must not be able to guess wrong. The server resolves one
+/// into the other, which is also where the boarding rules are applied — so a
+/// client that offers a set-down-only stop as an origin is told, rather than
+/// quietly writing a segment nobody can use.
+final class SegmentFareDto {
+  const SegmentFareDto({
+    required this.fromCity,
+    required this.toCity,
+    required this.fareMinor,
+    this.fromPosition,
+    this.toPosition,
+  });
+
+  final String fromCity;
+  final String toCity;
+
+  /// Minor units, and no currency — the same shape a timetable fare travels
+  /// in, for the same reason: **the currency of a road is not the client's to
+  /// choose.** The server attaches the market's, so a console that thought it
+  /// was pricing in euros cannot put a euro row on an XAF road.
+  final int fareMinor;
+
+  /// Sent by the server, ignored on the way up. Reading them lets a console
+  /// tell two visits to the same town apart; writing them would let a client
+  /// name a piece of a road it had not looked at.
+  final int? fromPosition;
+  final int? toPosition;
+
+  Map<String, Object?> toJson() => Wire.compact({
+    'fromCity': fromCity,
+    'toCity': toCity,
+    'fareMinor': fareMinor,
+    'fromPosition': fromPosition,
+    'toPosition': toPosition,
+  });
+
+  factory SegmentFareDto.fromJson(Map<String, Object?> json) => SegmentFareDto(
+    fromCity: Wire.requireString(json['fromCity'], 'fromCity'),
+    toCity: Wire.requireString(json['toCity'], 'toCity'),
+    fareMinor: Wire.requireInt(json['fareMinor'], 'fareMinor'),
+    fromPosition: json['fromPosition'] as int?,
+    toPosition: json['toPosition'] as int?,
+  );
+}
+
 final class RouteStopDto {
   const RouteStopDto({
     required this.cityCode,
@@ -207,6 +256,7 @@ final class RouteDto {
     required this.durationMinutes,
     required this.active,
     this.stops = const [],
+    this.segments = const [],
   });
 
   final String id;
@@ -220,6 +270,11 @@ final class RouteDto {
   /// case and not an absence of data — most roads in this market are two
   /// cities and a road between them.
   final List<RouteStopDto> stops;
+
+  /// The pieces of this road that are on sale. Empty is the ordinary case
+  /// and means the road sells end to end only — there is deliberately no
+  /// pro-rata fallback, so an unpriced pair is simply not offered.
+  final List<SegmentFareDto> segments;
 
   factory RouteDto.fromJson(Map<String, Object?> json) => RouteDto(
     id: Wire.requireString(json['id'], 'id'),
@@ -238,6 +293,11 @@ final class RouteDto {
       json['stops'] ?? const [],
       RouteStopDto.fromJson,
       field: 'stops',
+    ),
+    segments: Wire.readList(
+      json['segments'] ?? const [],
+      SegmentFareDto.fromJson,
+      field: 'segments',
     ),
   );
 }

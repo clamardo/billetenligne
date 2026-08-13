@@ -62,6 +62,7 @@ final class RouteSummary {
     required this.active,
     this.stops = const [],
     this.stopStationNames = const {},
+    this.segments = SegmentPricing.empty,
   });
 
   final String id;
@@ -79,6 +80,10 @@ final class RouteSummary {
   /// adapter rather than by the handler, because it is one join and the
   /// alternative is a request per stop.
   final Map<String, String> stopStationNames;
+
+  /// The pieces of this road the operator has put a price on (ADR-0025).
+  /// Empty is the ordinary case and means the road sells end to end only.
+  final SegmentPricing segments;
 }
 
 /// A place a coach actually leaves from.
@@ -273,6 +278,7 @@ abstract interface class OperatorConsole {
     String? id,
     int? distanceKm,
     Itinerary? stops,
+    SegmentPricing? segments,
   });
 
   /// Every terminal this operator uses, closed ones included: the console

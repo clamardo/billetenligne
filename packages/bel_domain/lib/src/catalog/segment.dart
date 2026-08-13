@@ -1,3 +1,4 @@
+import '../money/money.dart';
 import '../shared/failure.dart';
 import '../shared/result.dart';
 import 'itinerary.dart';
@@ -7,7 +8,8 @@ final class InvalidSegment extends DomainFailure {
   const InvalidSegment(this.reason, {this.cityCode});
 
   /// One of `not_on_road`, `same_place`, `wrong_way`, `no_boarding`,
-  /// `no_alighting`. A key, never a sentence (ADR-0008).
+  /// `no_alighting` — and, when pricing, `whole_road`, `already_priced`,
+  /// `not_positive`. A key, never a sentence (ADR-0008).
   final String reason;
   final String? cityCode;
 
@@ -127,4 +129,104 @@ final class Segment {
 
   @override
   String toString() => 'Segment($span)';
+}
+
+/// What an operator charges for a piece of a road (ADR-0025).
+final class SegmentPrice {
+  const SegmentPrice({required this.segment, required this.fare});
+
+  final Segment segment;
+  final Money fare;
+}
+
+/// Every piece of one road an operator has put a price on.
+///
+/// **A segment is sellable only when it is priced**, and there is deliberately
+/// no pro-rata fallback: a fare is a commercial decision, and an operator who
+/// finds we invented one will find it on the day a passenger paid it. Which is
+/// also the property that made the whole model shippable — until this list has
+/// something in it, every departure sells its whole road for its whole fare
+/// exactly as it always has.
+///
+/// Validated against the road rather than against itself, because "Madingou →
+/// Pointe-Noire" is only a mistake once you know Madingou is set-down-only.
+final class SegmentPricing {
+  const SegmentPricing._(this.prices);
+
+  /// In road order, then by length. The order a price list is read in.
+  final List<SegmentPrice> prices;
+
+  static const empty = SegmentPricing._([]);
+
+  bool get isEmpty => prices.isEmpty;
+
+  /// The price for a piece, or null if the operator has not sold it.
+  Money? fareFor(Segment segment) {
+    for (final price in prices) {
+      if (price.segment == segment) return price.fare;
+    }
+    return null;
+  }
+
+  /// Rows already checked against a road, read back out of storage.
+  ///
+  /// Deliberately not re-validated: these were checked when they were
+  /// written, and a price list that refused to load because somebody later
+  /// moved a stop would take a road off sale without anybody deciding to.
+  static SegmentPricing fromRows(List<SegmentPrice> rows) => SegmentPricing._(
+    [...rows]..sort((a, b) {
+      final start = a.segment.from.compareTo(b.segment.from);
+      return start != 0 ? start : a.segment.to.compareTo(b.segment.to);
+    }),
+  );
+
+  static Result<SegmentPricing, InvalidSegment> of(
+    List<({String from, String to, Money fare})> asked, {
+    required Itinerary itinerary,
+    required String originCity,
+    required String destinationCity,
+  }) {
+    if (asked.isEmpty) return const Ok(empty);
+
+    final whole = Segment.wholeRoad(itinerary);
+    final priced = <SegmentPrice>[];
+    final seen = <String>{};
+
+    for (final ask in asked) {
+      final resolved = Segment.between(
+        itinerary: itinerary,
+        originCity: originCity,
+        destinationCity: destinationCity,
+        from: ask.from,
+        to: ask.to,
+      );
+      if (resolved case Err(:final failure)) return Err(failure);
+      final segment = resolved.valueOrNull!;
+
+      // The through fare lives on the timetable, where it has always lived.
+      // Two places to set one price is one place too many, and the day they
+      // disagree a traveller is quoted one and charged the other.
+      if (segment == whole) {
+        return Err(InvalidSegment('whole_road', cityCode: ask.from));
+      }
+      if (!seen.add(segment.span)) {
+        return Err(InvalidSegment('already_priced', cityCode: ask.from));
+      }
+      // A free seat is not a price, it is a mistake — and it fails the
+      // ledger's positive-amount check three tables downstream, where the
+      // message means nothing to the person who typed it.
+      if (ask.fare.minor <= 0) {
+        return Err(InvalidSegment('not_positive', cityCode: ask.from));
+      }
+
+      priced.add(SegmentPrice(segment: segment, fare: ask.fare));
+    }
+
+    priced.sort((a, b) {
+      final start = a.segment.from.compareTo(b.segment.from);
+      return start != 0 ? start : a.segment.to.compareTo(b.segment.to);
+    });
+
+    return Ok(SegmentPricing._(priced));
+  }
 }

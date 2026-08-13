@@ -25,7 +25,9 @@ import 'package:dart_frog/dart_frog.dart';
 Future<Response> onRequest(RequestContext context) async {
   final trace = context.read<String>();
   final scope = context.read<TenantScope>();
-  final console = context.read<Services>().console;
+  final services = context.read<Services>();
+  final console = services.console;
+  final market = services.market;
 
   switch (context.request.method) {
     case HttpMethod.get:
@@ -100,6 +102,61 @@ Future<Response> onRequest(RequestContext context) async {
         itinerary = built.valueOrNull;
       }
 
+      // Same rule as the stops, one line down: absent leaves the price list
+      // alone, present — even empty — is the whole list, which is how the
+      // last segment is taken off sale. Validated against the road the same
+      // request is describing, never against the one already stored: an
+      // operator moving a stop and pricing the new leg in one save must not
+      // be checked against yesterday's road.
+      SegmentPricing? pricing;
+      if (body.containsKey('segments')) {
+        final raw = body['segments'];
+        if (raw is! List) return _badRequest(trace, 'segments');
+
+        final List<SegmentFareDto> parsed;
+        try {
+          parsed = [
+            for (final entry in raw)
+              SegmentFareDto.fromJson((entry as Map).cast<String, Object?>()),
+          ];
+        } on Object {
+          return _badRequest(trace, 'segments');
+        }
+
+        final built = SegmentPricing.of(
+          [
+            for (final fare in parsed)
+              (
+                from: fare.fromCity,
+                to: fare.toCity,
+                // The market's currency, never the client's: pricing a
+                // Congolese road in euros is not a choice a console gets to
+                // make, and the timetable fare has always worked this way.
+                fare: Money(fare.fareMinor, market.currency),
+              ),
+          ],
+          itinerary: itinerary ?? Itinerary.empty,
+          originCity: origin,
+          destinationCity: destination,
+        );
+
+        // The domain's own reason again. "Madingou only sets down" is a
+        // sentence the console can write; "segments is invalid" is one
+        // somebody has to guess at.
+        if (built.failureOrNull case final refusal?) {
+          return Response.json(
+            statusCode: HttpStatus.badRequest,
+            body: ApiError(
+              code: refusal.code,
+              params: refusal.params,
+              traceId: trace,
+            ).toJson(),
+            headers: {BelHeaders.traceId: trace},
+          );
+        }
+        pricing = built.valueOrNull;
+      }
+
       final saved = await console.saveRoute(
         operatorId: scope.operatorId,
         code: code.trim().toUpperCase(),
@@ -109,6 +166,7 @@ Future<Response> onRequest(RequestContext context) async {
         id: body['id'] as String?,
         distanceKm: body['distanceKm'] as int?,
         stops: itinerary,
+        segments: pricing,
       );
 
       // Null means the endpoints are the same city. The database refuses it
@@ -142,7 +200,32 @@ Map<String, Object?> _routeJson(RouteSummary route) => {
             : route.stopStationNames[stop.stationId],
       ).toJson(),
   ],
+  'segments': [
+    for (final price in route.segments.prices)
+      SegmentFareDto(
+        // Back into town names, because that is what a console shows and a
+        // position is an index into a road the client does not own.
+        fromCity: _townAt(route, price.segment.from),
+        toCity: _townAt(route, price.segment.to),
+        fareMinor: price.fare.minor,
+        fromPosition: price.segment.from,
+        toPosition: price.segment.to,
+      ).toJson(),
+  ],
 };
+
+/// The town at a position on this road. Origin, then the stops in order, then
+/// the destination — the same sequence a segment is a pair of indices into.
+String _townAt(RouteSummary route, int position) {
+  final points = [
+    route.originCity,
+    for (final stop in route.stops) stop.cityCode,
+    route.destinationCity,
+  ];
+  return position >= 0 && position < points.length
+      ? points[position]
+      : route.destinationCity;
+}
 
 Response _badRequest(String trace, String field) => Response.json(
   statusCode: HttpStatus.badRequest,

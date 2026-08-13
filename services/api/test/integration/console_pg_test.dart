@@ -601,6 +601,76 @@ void main() {
       expect(untouched!.stops.single.cityCode, 'DOL');
     });
 
+    test('a piece of the road can be priced, and comes back priced', () async {
+      final stops = road(const [
+        RouteStop(cityCode: 'DOL', offsetMinutes: 315),
+      ]);
+      final code = unique('RS');
+
+      final saved = await console.saveRoute(
+        operatorId: operatorId,
+        code: code,
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        durationMinutes: 450,
+        stops: stops,
+        segments: SegmentPricing.of(
+          const [(from: 'BZV', to: 'DOL', fare: Money.xaf(6000))],
+          itinerary: stops,
+          originCity: 'BZV',
+          destinationCity: 'PNR',
+        ).valueOrNull,
+      );
+
+      expect(saved!.segments.prices, hasLength(1));
+      // Positions, not city codes: a road that visits the same town twice
+      // cannot be described by a pair of names (ADR-0025).
+      expect(saved.segments.prices.single.segment, Segment.at(0, 1));
+      expect(saved.segments.prices.single.fare, const Money.xaf(6000));
+
+      final read = (await console.routes(
+        operatorId,
+      )).firstWhere((r) => r.code == code);
+      expect(read.segments.fareFor(Segment.at(0, 1)), const Money.xaf(6000));
+    });
+
+    test('an empty price list is how a leg comes off sale', () async {
+      final stops = road(const [
+        RouteStop(cityCode: 'DOL', offsetMinutes: 315),
+      ]);
+      final code = unique('RS');
+
+      Future<RouteSummary> priced(SegmentPricing? list) => console
+          .saveRoute(
+            operatorId: operatorId,
+            code: code,
+            originCity: 'BZV',
+            destinationCity: 'PNR',
+            durationMinutes: 450,
+            stops: stops,
+            segments: list,
+          )
+          .then((r) => r!);
+
+      await priced(
+        SegmentPricing.of(
+          const [(from: 'BZV', to: 'DOL', fare: Money.xaf(6000))],
+          itinerary: stops,
+          originCity: 'BZV',
+          destinationCity: 'PNR',
+        ).valueOrNull,
+      );
+
+      // Omitted leaves it alone — a caller saving a duration must not be able
+      // to take a road off sale by not mentioning its prices.
+      final untouched = await priced(null);
+      expect(untouched.segments.prices, hasLength(1));
+
+      // Present and empty is the whole list, which is the withdrawal.
+      final withdrawn = await priced(SegmentPricing.empty);
+      expect(withdrawn.segments.isEmpty, isTrue);
+    });
+
     test('a stop can name one of this operator’s yards', () async {
       final yard = await fixture.station('DOL', 'Gare de Dolisie');
 
