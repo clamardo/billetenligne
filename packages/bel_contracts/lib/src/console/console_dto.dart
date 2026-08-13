@@ -560,11 +560,6 @@ final class BoardingTicketDto {
       );
 }
 
-/// The departure a scanner pins before the coach leaves the yard (ADR-0022).
-///
-/// Downloaded once, on whatever signal there is, and then the door works with
-/// the radio switched off: the verdict is a signature check against [keys], a
-/// lookup in [tickets] and the device's own redemption log.
 /// One coach on the conductor's list (ADR-0022).
 ///
 /// Deliberately not the dispatcher's board row: no held seats, no load factor,
@@ -629,6 +624,11 @@ final class BoardingDepartureDto {
       );
 }
 
+/// The departure a scanner pins before the coach leaves the yard (ADR-0022).
+///
+/// Downloaded once, on whatever signal there is, and then the door works with
+/// the radio switched off: the verdict is a signature check against [keys], a
+/// lookup in [tickets] and the device's own redemption log.
 final class BoardingManifestDto {
   const BoardingManifestDto({
     required this.departureId,

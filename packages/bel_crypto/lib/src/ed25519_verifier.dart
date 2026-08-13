@@ -10,7 +10,8 @@ import 'package:cryptography/cryptography.dart';
 /// **Devices carry public keys only.** The signing key never leaves the
 /// server's KMS. [keyId] selects among them so rotation is seamless: old keys
 /// are retained until the last ticket signed with them has departed.
-final class Ed25519TicketVerifier implements SignatureVerifier {
+final class Ed25519TicketVerifier
+    implements SignatureVerifier, SignaturePreparer {
   Ed25519TicketVerifier(this._publicKeys);
 
   /// keyId -> 32-byte public key.
@@ -39,6 +40,7 @@ final class Ed25519TicketVerifier implements SignatureVerifier {
   /// In the scanner this is called on the single payload just decoded, which
   /// keeps the whole scan under the two-second budget while leaving the domain
   /// a pure, testable function.
+  @override
   Future<void> prepare({
     required List<int> message,
     required List<int> signature,

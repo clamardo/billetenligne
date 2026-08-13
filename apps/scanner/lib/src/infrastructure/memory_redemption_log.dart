@@ -1,4 +1,7 @@
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
+
+import '../application/ports/boarding_gateway.dart';
 
 /// Local record of who has boarded.
 ///
@@ -9,7 +12,7 @@ import 'package:bel_domain/bel_domain.dart';
 /// The important property is that **the first scan wins**. A conductor who
 /// double-taps must see the original time, because that is the one a dispute
 /// is settled with.
-final class MemoryRedemptionLog implements RedemptionLog {
+final class MemoryRedemptionLog implements RedemptionLog, RedemptionOutbox {
   final Map<String, _Scan> _scans = {};
 
   @override
@@ -33,18 +36,20 @@ final class MemoryRedemptionLog implements RedemptionLog {
 
   /// Rows waiting to sync. Queued through the outbox, never sent inline —
   /// boarding must not pause for the network.
-  List<Map<String, Object?>> pending() => [
+  @override
+  List<BoardingUploadDto> pending() => [
     for (final e in _scans.entries)
       if (!e.value.synced)
-        {
-          'key': e.key,
-          'scannedAt': e.value.at.toUtc().toIso8601String(),
-          'deviceId': e.value.deviceId,
-          'mode': e.value.manual ? 'manual' : 'scan',
-          'codeWasStale': e.value.codeWasStale,
-        },
+        BoardingUploadDto(
+          key: e.key,
+          scannedAt: e.value.at,
+          deviceId: e.value.deviceId,
+          mode: e.value.manual ? 'manual' : 'scan',
+          codeWasStale: e.value.codeWasStale,
+        ),
   ];
 
+  @override
   void markSynced(Iterable<String> keys) {
     for (final k in keys) {
       _scans[k]?.synced = true;

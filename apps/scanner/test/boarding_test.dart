@@ -307,7 +307,7 @@ void main() {
 
       final pending = log.pending();
       expect(pending, hasLength(1));
-      expect(pending.single['mode'], 'scan');
+      expect(pending.single.mode, 'scan');
 
       log.markSynced([BoardingManifest.keyFor('7QK4M2', '14A')]);
       expect(log.pending(), isEmpty);

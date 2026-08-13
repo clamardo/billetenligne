@@ -11,12 +11,22 @@ final class BoardingSession {
     required this.log,
     required this.deviceId,
     required Clock clock,
+    this.preparer,
   }) : _clock = clock;
 
   final BoardingManifest manifest;
   final TicketVerifier verifier;
   final RedemptionLog log;
   final String deviceId;
+
+  /// Does the async half of the signature check, one payload at a time.
+  ///
+  /// Null in a test or a demo whose payloads were prepared when they were
+  /// built. Never null against a real coach: the device has never seen the
+  /// traveller's signature until the camera reads it, so without this every
+  /// genuine ticket in the field would come back `invalid`.
+  final SignaturePreparer? preparer;
+
   final Clock _clock;
 
   final List<BoardedPassenger> _boarded = [];
@@ -36,6 +46,25 @@ final class BoardingSession {
     for (final entry in manifest.entries.values)
       if (log.scannedAt(entry.bookingRef, entry.seatLabel) == null) entry,
   ];
+
+  /// Prepares a raw scan so [scan] can answer synchronously.
+  ///
+  /// Awaited by the one place that receives a scan, immediately before the
+  /// decision. A payload that will not decode is left alone — [scan] refuses
+  /// it a microsecond later, and this is not the place to say so twice.
+  Future<void> warm(String raw) async {
+    final preparer = this.preparer;
+    if (preparer == null) return;
+
+    final data = TicketPayload.decode(raw).valueOrNull;
+    if (data == null) return;
+
+    await preparer.prepare(
+      message: data.payload.signingBytes(),
+      signature: data.signature,
+      keyId: data.payload.keyId,
+    );
+  }
 
   /// Scan a QR. The verdict is a pure local decision; recording it is the only
   /// side effect, and only when it boards.

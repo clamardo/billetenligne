@@ -18,6 +18,27 @@ abstract interface class SignatureVerifier {
   });
 }
 
+/// The async half of a signature check, done before the decision is made.
+///
+/// [SignatureVerifier.verify] is deliberately synchronous: a conductor
+/// boarding sixty passengers cannot wait on a future per scan, and the
+/// verdict itself is a pure function of bytes the device already holds. Real
+/// Ed25519, though, is async in every library worth using.
+///
+/// So the work is split. The scanner calls [prepare] on the one payload it
+/// has just decoded — a few milliseconds, off the decision path — and the
+/// verdict that follows is instant and pure.
+///
+/// A demo or a test that has already prepared its payloads needs no preparer
+/// at all, which is why every caller treats one as optional.
+abstract interface class SignaturePreparer {
+  Future<void> prepare({
+    required List<int> message,
+    required List<int> signature,
+    required int keyId,
+  });
+}
+
 abstract interface class MessageAuthenticator {
   List<int> hmacSha256({required List<int> key, required List<int> message});
 

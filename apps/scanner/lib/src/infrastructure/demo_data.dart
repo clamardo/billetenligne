@@ -182,6 +182,7 @@ final class DemoDeparture {
       manifest: BoardingManifest(
         departureId: departureId,
         operatorCode: 'ODN',
+        routeCode: 'BZV>PNR',
         departsAt: departure,
         pinnedAt: DateTime.now().toUtc().subtract(const Duration(minutes: 12)),
         entries: entries,

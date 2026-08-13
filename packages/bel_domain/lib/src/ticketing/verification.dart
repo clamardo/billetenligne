@@ -90,6 +90,7 @@ final class BoardingManifest {
     required this.operatorCode,
     required this.departsAt,
     required this.entries,
+    this.routeCode,
     this.voidedTicketRefs = const {},
     this.pinnedAt,
   });
@@ -97,6 +98,11 @@ final class BoardingManifest {
   final String departureId;
   final String operatorCode;
   final DateTime departsAt;
+
+  /// `BZV>PNR`, for the one line of context the conductor gets at the top of
+  /// the screen. Optional because the verdict never depends on it — a
+  /// manifest with no route code still boards people.
+  final String? routeCode;
 
   /// Booking ref + seat, so a passenger with two seats is two entries.
   final Map<String, ManifestEntry> entries;

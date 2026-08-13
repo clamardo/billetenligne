@@ -13,6 +13,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # The way in, shared with the console and the admin app: one implementation
+  # of the second-factor obligation, not three (ADR-0013).
+  bel_backoffice: ^0.1.0
+  bel_client: ^0.1.0
+  bel_contracts: ^0.1.0
   bel_crypto: ^0.1.0
   bel_design: ^0.1.0
   bel_domain: ^0.1.0
@@ -26,6 +31,30 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  # Fingerprints the bundled catalog against the source (i18n_freshness_test).
+  crypto: ^3.0.0
+  # A scripted transport, so the wire tests exercise this app against a
+  # response rather than against a server.
+  http: ^1.2.0
 
 flutter:
   uses-material-design: true
+  assets:
+    # Copied from packages/bel_localization/i18n by tool/sync_i18n.sh. Only
+    # the sign-in reads it — every other string in this app is written where
+    # it is shown — but a shared screen speaks in catalog keys, and a screen
+    # rendering `auth.email.label` at a coach door is not a screen anybody can
+    # sign in through.
+    - assets/i18n/
+    - assets/i18n/fr/
+    - assets/i18n/fr/pages/
+    - assets/i18n/fr/errors/
+    - assets/i18n/fr/enums/
+    - assets/i18n/fr/messages/
+    - assets/i18n/fr/reference/
+    - assets/i18n/en/
+    - assets/i18n/en/pages/
+    - assets/i18n/en/errors/
+    - assets/i18n/en/enums/
+    - assets/i18n/en/messages/
+    - assets/i18n/en/reference/
