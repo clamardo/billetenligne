@@ -118,22 +118,29 @@
       // operator surface that invents its own tenant teaches the opposite of
       // what the surface is for. Both default to `localhost:8080` and the
       // Auth emulator with no defines at all.
+      // `chrome` opens a browser window itself. The pinned port is what makes
+      // the address worth writing down: without it Flutter picks a fresh one
+      // every run, so the tab you left open yesterday is pointing at nothing
+      // and the URL cannot go in a bookmark or a bug report.
       "name": "Console (Chrome)",
       "type": "dart",
       "request": "launch",
       "program": "${workspaceFolder}/apps/console/lib/main.dart",
       "cwd": "${workspaceFolder}/apps/console",
       "preLaunchTask": "apps: i18n",
-      "deviceId": "chrome"
+      "deviceId": "chrome",
+      "toolArgs": ["--web-port=5000", "--web-hostname=localhost"]
     },
     {
+      // http://localhost:5001, for the same reason as above.
       "name": "Admin back office (Chrome)",
       "type": "dart",
       "request": "launch",
       "program": "${workspaceFolder}/apps/admin/lib/main.dart",
       "cwd": "${workspaceFolder}/apps/admin",
       "preLaunchTask": "apps: i18n",
-      "deviceId": "chrome"
+      "deviceId": "chrome",
+      "toolArgs": ["--web-port=5001", "--web-hostname=localhost"]
     }
   ],
   "compounds": [
