@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:bel_api/src/adapters/ed25519_ticket_issuer.dart';
 import 'package:bel_api/src/application/hold_seats.dart';
 import 'package:bel_api/src/application/ports/booking_store.dart';
+import 'package:bel_api/src/application/ports/operator_console.dart';
 import 'package:bel_api/src/application/reserve_booking.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_booking_store.dart';
@@ -611,6 +612,135 @@ void main() {
         isNull,
       );
     });
+
+    test('what the door did comes back, once, whatever the retries', () async {
+      final departureId = await fixture.departure(
+        seatLabels: const ['17A', '17B'],
+        onRoute: roadId,
+      );
+      final console = PostgresOperatorConsole(db, timeZone: PgFixture.timeZone);
+
+      Future<BookingRecord> buy(String seat) async {
+        final claimed = await hold(
+          departureId: departureId,
+          seatLabels: [seat],
+          userId: userId,
+          idempotencyKey: key(),
+        );
+        final booking = await reserve(
+          holdId: claimed.valueOrNull!.id,
+          userId: userId,
+          passengers: [PassengerDto(fullName: 'Aline M.', seatLabel: seat)],
+        );
+        final record = booking.valueOrNull!;
+        await bookings.captureCash(
+          bookingId: record.id,
+          operatorId: PgFixture.operatorId,
+          stationId: stationId,
+          soldByUserId: null,
+          posting: Postings.cashSale(
+            operatorId: PgFixture.operatorId,
+            stationId: stationId,
+            fare: record.fare,
+            serviceFee: record.serviceFee,
+          ).valueOrNull!,
+        );
+        return record;
+      }
+
+      final boarded = await buy('17A');
+      await buy('17B');
+
+      final at = DateTime.utc(2026, 8, 15, 5, 52);
+      final first = await console.recordBoardings(
+        operatorId: PgFixture.operatorId,
+        departureId: departureId,
+        scannedByUserId: null,
+        boardings: [
+          Boarding(
+            bookingRef: boarded.ref.value,
+            seatLabel: '17A',
+            scannedAt: at,
+            mode: 'scan',
+            deviceId: 'handset-1',
+          ),
+          // A ticket this coach has never heard of — a device pinned to the
+          // wrong departure, or a reference typed by hand at the roadside.
+          Boarding(
+            bookingRef: 'BEL-NOBODY',
+            seatLabel: '1A',
+            scannedAt: at,
+            mode: 'manual',
+          ),
+        ],
+      );
+
+      expect(first.recorded, ['${boarded.ref.value}/17A']);
+      expect(first.unknown, ['BEL-NOBODY/1A']);
+
+      // The same outbox again, five minutes later, because the reply was lost
+      // on the way back. It must read as accepted — a device told "no" by a
+      // successful write is a device that keeps trying until the battery goes
+      // — and it must not move the time somebody actually boarded.
+      final retry = await console.recordBoardings(
+        operatorId: PgFixture.operatorId,
+        departureId: departureId,
+        scannedByUserId: null,
+        boardings: [
+          Boarding(
+            bookingRef: boarded.ref.value,
+            seatLabel: '17A',
+            scannedAt: at.add(const Duration(minutes: 5)),
+            mode: 'scan',
+            deviceId: 'handset-2',
+          ),
+        ],
+      );
+
+      expect(retry.recorded, ['${boarded.ref.value}/17A']);
+      expect(retry.unknown, isEmpty);
+
+      final manifest = await console.manifest(
+        operatorId: PgFixture.operatorId,
+        departureId: departureId,
+      );
+      expect(manifest!.boarded, 1);
+      final row = manifest.rows.firstWhere((r) => r.seatLabel == '17A');
+      expect(row.boardedAt, at);
+    });
+
+    test(
+      "a boarding cannot be recorded against another operator's coach",
+      () async {
+        final departureId = await fixture.departure(
+          seatLabels: const ['18A'],
+          onRoute: roadId,
+        );
+
+        final result =
+            await PostgresOperatorConsole(
+              db,
+              timeZone: PgFixture.timeZone,
+            ).recordBoardings(
+              operatorId: '22222222-2222-2222-2222-222222222222',
+              departureId: departureId,
+              scannedByUserId: null,
+              boardings: [
+                Boarding(
+                  bookingRef: 'BEL-7QK4M2',
+                  seatLabel: '18A',
+                  scannedAt: DateTime.utc(2026, 8, 15, 6),
+                  mode: 'scan',
+                ),
+              ],
+            );
+
+        // Not an error: a stranger learns nothing about whether the departure
+        // or the reference exists. It simply records nothing.
+        expect(result.recorded, isEmpty);
+        expect(result.unknown, ['BEL-7QK4M2/18A']);
+      },
+    );
 
     test("another operator's coach is not found", () async {
       final departureId = await fixture.departure(

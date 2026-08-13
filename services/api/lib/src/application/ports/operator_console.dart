@@ -278,6 +278,32 @@ final class BoardingTicket {
   final String? alightsAt;
 }
 
+/// One boarding a device recorded while it was offline.
+final class Boarding {
+  const Boarding({
+    required this.bookingRef,
+    required this.seatLabel,
+    required this.scannedAt,
+    required this.mode,
+    this.deviceId,
+    this.codeWasStale = false,
+  });
+
+  final String bookingRef;
+  final String seatLabel;
+
+  /// The device's clock. It is the only one that was there, and a boarding
+  /// stamped with the hour it happened to sync is evidence of nothing.
+  final DateTime scannedAt;
+
+  /// `scan` or `manual`.
+  final String mode;
+  final String? deviceId;
+  final bool codeWasStale;
+
+  String get key => '$bookingRef/$seatLabel';
+}
+
 /// Everything an operator configures and runs.
 ///
 /// One port for the whole console surface, unlike the traveller side where
@@ -410,6 +436,26 @@ abstract interface class OperatorConsole {
   Future<Manifest?> manifest({
     required String operatorId,
     required String departureId,
+  });
+
+  /// Records what a device did at the door, once it has signal again
+  /// (ADR-0022).
+  ///
+  /// **Idempotent, and the first scan wins.** The device retries an outbox it
+  /// could not empty, two conductors may work two doors of the same coach,
+  /// and the row that settles a dispute is the earliest one — so a second
+  /// write for the same ticket is dropped rather than allowed to overwrite
+  /// the time somebody actually boarded.
+  ///
+  /// Returns what was accepted and what this coach has never heard of. Both
+  /// leave the device's outbox: a ticket that is not on this departure will
+  /// not start being on it, and an outbox that retries forever is a handset
+  /// flat by eleven.
+  Future<({List<String> recorded, List<String> unknown})> recordBoardings({
+    required String operatorId,
+    required String departureId,
+    required String? scannedByUserId,
+    required List<Boarding> boardings,
   });
 
   /// Everything a scanner needs to board this coach with the radio switched

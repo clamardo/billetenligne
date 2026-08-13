@@ -41,7 +41,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Double-entry ledger** | ✅ done | Chart of accounts in the domain; balance proven by the `ledger_txn_balances` view |
 | **Ticket issue** | ✅ done | Issued inside the capture transaction, Ed25519-signed, under 300 bytes |
 | Ticket delivery to the app | ✅ done | Issued, queued for SMS by the outbox, and rendered in the app: QR, live 30-second code, one ticket per seat |
-| Boarding scanner (standalone app) | 🔨 app done, still pins a fixture | Camera, five verdicts, offline, debug simulator. **The manifest it pins now exists on the server**: `GET /console/v1/departures/{id}/boarding`, behind `boarding.scan` — the passengers, their rotating secrets, the ticket-signing public keys and every ticket voided since it was signed, in one download made in the yard. Keys ship with it rather than compiled into the app, so one can be rotated without a store release. No phone numbers: the dispatcher's manifest has them because somebody in an office rings a passenger, and a conductor's handset is the most easily lost device the company owns. What is left is the app end — sign-in, pinning it over the wire, and posting the redemptions back |
+| Boarding scanner (standalone app) | 🔨 app done, still pins a fixture | Camera, five verdicts, offline, debug simulator. **The manifest it pins now exists on the server**: `GET /console/v1/departures/{id}/boarding`, behind `boarding.scan` — the passengers, their rotating secrets, the ticket-signing public keys and every ticket voided since it was signed, in one download made in the yard. Keys ship with it rather than compiled into the app, so one can be rotated without a store release. No phone numbers: the dispatcher's manifest has them because somebody in an office rings a passenger, and a conductor's handset is the most easily lost device the company owns. **And the redemptions come back**: `POST /console/v1/departures/{id}/redemptions` empties the device's outbox — a batch, idempotent, first-scan-wins, stamped with **the device's clock** rather than ours, because the hour a boarding synced is evidence of nothing. The answer names what landed and what this coach has never heard of, and both leave the outbox: a ticket that is not on this departure will not start being on it, and a handset that retries forever is flat by eleven. What is left is the app end — signing a conductor in, pinning over the wire, and emptying that outbox from the device |
 | **Traveller app — browse and hold** | ✅ done | Onboardingless search → results → seat map → hold → release. 45 tests |
 | **Identity — sign in with an emailed code** | ✅ done | Challenge → Firebase custom token → ID token. Server, client and app. ADR-0024 |
 | **TOTP on both back-office surfaces** | ✅ done | RFC 6238, proved against the RFC's own Appendix B vectors. Travellers are never asked; staff with nothing enrolled sign in and land on the enrolment screen and nowhere else. Replay refused by a conditional `UPDATE` on `last_window`, and three simultaneous identical codes produce one sign-in. Shared by both apps via `bel_backoffice`. 22 unit · 15 vector · 17 integration · 10 widget tests |
@@ -282,8 +282,8 @@ These are true today and each one is a decision, not an oversight.
 # invocation fails to load about half the suites on this machine, and running
 # them separately is also what melos does.
 dart test packages/bel_domain packages/bel_localization \
-         packages/bel_contracts packages/bel_crypto     # 591 tests
-dart test packages/bel_client                           # 37 tests
+         packages/bel_contracts packages/bel_crypto     # 592 tests
+dart test packages/bel_client                           # 38 tests
 rm -rf services/api/build                               # see below — it matters
 dart test services/api -x integration -x storage        # 236 tests
 cd packages/bel_design     && flutter test  # 67 component and contrast tests
@@ -293,10 +293,10 @@ cd apps/console   && flutter test        # 123 console tests
 cd apps/admin     && flutter test        # 35 back-office tests
 cd apps/console   && flutter build web   # the console is a web build
 cd apps/scanner && flutter test          # 25 scanner tests, incl. the verdict screen
-dart run tool/check_layers.dart          # the onion rule, 389 files
+dart run tool/check_layers.dart          # the onion rule, 390 files
 ./infra/migrations/check.sh              # 42 schema guarantees
-./tool/integration.sh                    # 466 tests on real Postgres, incl. the worker
-./tool/smoke_api.sh                      # 396 checks, incl. the Dart client
+./tool/integration.sh                    # 469 tests on real Postgres, incl. the worker
+./tool/smoke_api.sh                      # 404 checks, incl. the Dart client
 ./tool/storage.sh                        # 10 tests against real Azurite
 ```
 
@@ -316,8 +316,8 @@ whole workspace into it, and `dart test services/api` then runs every suite
 twice — and, worse, runs a *stale copy* of a package's tests, which is how a
 green suite reported a failure in a file that no longer existed.
 
-**1,350 tests in total**, plus 396 smoke checks, 42 executed schema guarantees,
-466 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
+**1,352 tests in total**, plus 404 smoke checks, 42 executed schema guarantees,
+469 further tests against real Postgres and 10 against real Azurite. The smoke run now includes the *typed client* against the running
 server — curl proves the HTTP surface, but only the client proves that the URL
 it builds is the route dart_frog mounted and that the JSON parses into the DTOs
 the screens render. Both halves of that seam have broken here before.

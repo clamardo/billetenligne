@@ -1188,6 +1188,82 @@ final class PostgresOperatorConsole implements OperatorConsole {
     );
   });
 
+  @override
+  Future<({List<String> recorded, List<String> unknown})> recordBoardings({
+    required String operatorId,
+    required String departureId,
+    required String? scannedByUserId,
+    required List<Boarding> boardings,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final recorded = <String>[];
+    final unknown = <String>[];
+
+    for (final b in boardings) {
+      // One statement resolves the ticket and writes the boarding, so a
+      // reference that belongs to another coach cannot be recorded against
+      // this one by a device that got confused about which departure it was
+      // pinned to. `DO NOTHING` is the first-scan-wins rule: a retry, or a
+      // second door, must not overwrite the time somebody actually boarded.
+      final done = await tx.execute(
+        Sql.named('''
+          INSERT INTO redemptions
+            (ticket_id, departure_id, operator_id, scanned_at, device_id,
+             scanned_by, mode, code_was_stale, synced_at)
+          SELECT t.id, b.departure_id, b.operator_id, @at, @device,
+                 @by, @mode::redemption_mode, @stale, now()
+            FROM tickets t
+            JOIN bookings b ON b.id = t.booking_id
+           WHERE b.departure_id = @departure
+             AND b.operator_id = @operator
+             AND b.ref = @ref
+             AND t.seat_label = @seat
+             AND t.voided_at IS NULL
+          ON CONFLICT (ticket_id) DO NOTHING
+          RETURNING ticket_id
+        '''),
+        parameters: {
+          'departure': TypedValue(Type.uuid, departureId),
+          'operator': TypedValue(Type.uuid, operatorId),
+          'ref': TypedValue(Type.text, b.bookingRef),
+          'seat': TypedValue(Type.text, b.seatLabel),
+          'at': TypedValue(Type.timestampTz, b.scannedAt.toUtc()),
+          'device': TypedValue(Type.text, b.deviceId),
+          'by': TypedValue(Type.uuid, scannedByUserId),
+          'mode': TypedValue(Type.text, b.mode),
+          'stale': TypedValue(Type.boolean, b.codeWasStale),
+        },
+      );
+
+      if (done.isNotEmpty) {
+        recorded.add(b.key);
+        continue;
+      }
+
+      // Nothing written: either it is already there — which is a success from
+      // the device's point of view, and the whole reason a retry is safe — or
+      // this coach has never heard of the ticket.
+      final existing = await tx.execute(
+        Sql.named('''
+          SELECT 1
+            FROM redemptions r
+            JOIN tickets t ON t.id = r.ticket_id
+            JOIN bookings b ON b.id = t.booking_id
+           WHERE r.departure_id = @departure
+             AND b.ref = @ref AND t.seat_label = @seat
+        '''),
+        parameters: {
+          'departure': TypedValue(Type.uuid, departureId),
+          'ref': TypedValue(Type.text, b.bookingRef),
+          'seat': TypedValue(Type.text, b.seatLabel),
+        },
+      );
+
+      (existing.isEmpty ? unknown : recorded).add(b.key);
+    }
+
+    return (recorded: recorded, unknown: unknown);
+  });
+
   // ── Getting paid ──────────────────────────────────────────────────────────
 
   // ── Refunds ───────────────────────────────────────────────────────────────

@@ -1040,6 +1040,18 @@ final class BelApiClient {
         await _get('/console/v1/departures/$departureId/boarding'),
       );
 
+  /// Empties a device's boarding outbox. Idempotent, so a retry after a lost
+  /// reply is safe — which is the only reason a device on this network can
+  /// afford to keep trying.
+  Future<BoardingUploadResultDto> uploadBoardings({
+    required String departureId,
+    required List<BoardingUploadDto> boardings,
+  }) async => BoardingUploadResultDto.fromJson(
+    await _postJson('/console/v1/departures/$departureId/redemptions', {
+      'boardings': [for (final b in boardings) b.toJson()],
+    }),
+  );
+
   /// Collect against a reservation made on a phone.
   Future<CounterSaleDto> collectPayment({
     required String paymentCode,

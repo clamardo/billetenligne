@@ -45,20 +45,43 @@ final class PostgresOperatorApplications implements OperatorApplications {
     }
 
     final id = await _newId(tx);
-    final code = operatorCodeFrom(legalName, _entropy());
 
-    await tx.execute(
-      Sql.named('''
-        INSERT INTO operators (id, code, legal_name, market_code, status)
-        VALUES (@id, @code, @name, @market, 'application_draft')
-      '''),
-      parameters: {
-        'id': TypedValue(Type.uuid, id),
-        'code': code,
-        'name': legalName.trim(),
-        'market': marketCode,
-      },
-    );
+    // The code is a stem plus three characters, and the stem is the first six
+    // letters of the name — which on this market is a genuine collision
+    // source rather than a theoretical one: half the companies on the
+    // Brazzaville–Pointe-Noire road are called *Trans* something. So a
+    // duplicate is **retried**, not raised. The alternative is a 500 on the
+    // signup form of the second company to be named like the first, and a
+    // support conversation nobody can explain.
+    //
+    // A savepoint per attempt because a failed statement poisons the whole
+    // transaction otherwise, and everything after this insert — the
+    // application row, the applicant's read — is part of it.
+    var attempts = 0;
+    while (true) {
+      attempts++;
+      await tx.execute('SAVEPOINT operator_code');
+      try {
+        await tx.execute(
+          Sql.named('''
+            INSERT INTO operators (id, code, legal_name, market_code, status)
+            VALUES (@id, @code, @name, @market, 'application_draft')
+          '''),
+          parameters: {
+            'id': TypedValue(Type.uuid, id),
+            'code': operatorCodeFrom(legalName, _entropy()),
+            'name': legalName.trim(),
+            'market': marketCode,
+          },
+          ignoreRows: true,
+        );
+        break;
+      } on ServerException catch (e) {
+        // 23505 is a unique violation. Anything else is not ours to swallow.
+        if (e.code != '23505' || attempts >= 8) rethrow;
+        await tx.execute('ROLLBACK TO SAVEPOINT operator_code');
+      }
+    }
 
     await tx.execute(
       Sql.named('''

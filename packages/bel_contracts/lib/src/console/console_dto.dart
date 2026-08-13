@@ -546,16 +546,18 @@ final class BoardingTicketDto {
   final String? boardsAt;
   final String? alightsAt;
 
-  factory BoardingTicketDto.fromJson(
-    Map<String, Object?> json,
-  ) => BoardingTicketDto(
-    bookingRef: Wire.requireString(json['bookingRef'], 'bookingRef'),
-    seatLabel: Wire.requireString(json['seatLabel'], 'seatLabel'),
-    passengerName: Wire.requireString(json['passengerName'], 'passengerName'),
-    rotatingSecret: Wire.requireString(json['secret'], 'secret'),
-    boardsAt: json['boardsAt'] as String?,
-    alightsAt: json['alightsAt'] as String?,
-  );
+  factory BoardingTicketDto.fromJson(Map<String, Object?> json) =>
+      BoardingTicketDto(
+        bookingRef: Wire.requireString(json['bookingRef'], 'bookingRef'),
+        seatLabel: Wire.requireString(json['seatLabel'], 'seatLabel'),
+        passengerName: Wire.requireString(
+          json['passengerName'],
+          'passengerName',
+        ),
+        rotatingSecret: Wire.requireString(json['secret'], 'secret'),
+        boardsAt: json['boardsAt'] as String?,
+        alightsAt: json['alightsAt'] as String?,
+      );
 }
 
 /// The departure a scanner pins before the coach leaves the yard (ADR-0022).
@@ -592,28 +594,108 @@ final class BoardingManifestDto {
   /// store release.
   final Map<int, String> keys;
 
-  factory BoardingManifestDto.fromJson(
-    Map<String, Object?> json,
-  ) => BoardingManifestDto(
-    departureId: Wire.requireString(json['departureId'], 'departureId'),
-    operatorCode: Wire.requireString(json['operatorCode'], 'operatorCode'),
-    routeCode: Wire.requireString(json['routeCode'], 'routeCode'),
-    departsAt: Wire.readInstant(json['departsAt'], field: 'departsAt'),
-    capacity: Wire.requireInt(json['capacity'], 'capacity'),
-    tickets: Wire.readList(
-      json['tickets'],
-      BoardingTicketDto.fromJson,
-      field: 'tickets',
-    ),
-    voided: [
-      for (final v in (json['voided'] as List? ?? const []))
-        Wire.requireString(v, 'voided'),
-    ],
-    keys: {
-      for (final e in (json['keys'] as Map? ?? const {}).entries)
-        int.parse(e.key.toString()): Wire.requireString(e.value, 'keys'),
-    },
-  );
+  factory BoardingManifestDto.fromJson(Map<String, Object?> json) =>
+      BoardingManifestDto(
+        departureId: Wire.requireString(json['departureId'], 'departureId'),
+        operatorCode: Wire.requireString(json['operatorCode'], 'operatorCode'),
+        routeCode: Wire.requireString(json['routeCode'], 'routeCode'),
+        departsAt: Wire.readInstant(json['departsAt'], field: 'departsAt'),
+        capacity: Wire.requireInt(json['capacity'], 'capacity'),
+        tickets: Wire.readList(
+          json['tickets'],
+          BoardingTicketDto.fromJson,
+          field: 'tickets',
+        ),
+        voided: [
+          for (final v in (json['voided'] as List? ?? const []))
+            Wire.requireString(v, 'voided'),
+        ],
+        keys: {
+          for (final e in (json['keys'] as Map? ?? const {}).entries)
+            int.parse(e.key.toString()): Wire.requireString(e.value, 'keys'),
+        },
+      );
+}
+
+/// One boarding a device recorded while it was offline.
+///
+/// The device's own outbox row, near enough: `key` is `REF/SEAT`, which is
+/// how the scanner has always indexed a ticket, so the shape that queues on
+/// the handset is the shape that goes up.
+final class BoardingUploadDto {
+  const BoardingUploadDto({
+    required this.key,
+    required this.scannedAt,
+    required this.mode,
+    this.deviceId,
+    this.codeWasStale = false,
+  });
+
+  final String key;
+
+  /// The device's clock, not the server's. It is the only clock that was
+  /// there, and a boarding stamped with the hour it happened to sync is
+  /// evidence of nothing.
+  final DateTime scannedAt;
+
+  /// `scan` or `manual`. Manual is the dead-phone path, counted so an
+  /// operator can see how often it happens — a spike is usually a real
+  /// problem somewhere else.
+  final String mode;
+
+  final String? deviceId;
+
+  /// Recorded, never a refusal. Leaving a paying passenger at the roadside
+  /// because two clocks disagreed is not an acceptable outcome (ADR-0007).
+  final bool codeWasStale;
+
+  Map<String, Object?> toJson() => {
+    'key': key,
+    'scannedAt': Wire.instant(scannedAt),
+    'mode': mode,
+    if (deviceId != null) 'deviceId': deviceId,
+    if (codeWasStale) 'codeWasStale': true,
+  };
+
+  factory BoardingUploadDto.fromJson(Map<String, Object?> json) =>
+      BoardingUploadDto(
+        key: Wire.requireString(json['key'], 'key'),
+        scannedAt: Wire.readInstant(json['scannedAt'], field: 'scannedAt'),
+        mode: Wire.requireString(json['mode'], 'mode'),
+        deviceId: json['deviceId'] as String?,
+        codeWasStale: json['codeWasStale'] == true,
+      );
+}
+
+/// What the server did with an upload.
+///
+/// Two lists rather than a count, because the device acts differently on
+/// each: `recorded` comes out of the outbox, and `unknown` comes out of it
+/// too — a ticket this coach has never heard of will not start existing on
+/// the next retry, and an outbox that retries forever is a battery flat by
+/// eleven.
+final class BoardingUploadResultDto {
+  const BoardingUploadResultDto({
+    required this.recorded,
+    required this.unknown,
+  });
+
+  final List<String> recorded;
+  final List<String> unknown;
+
+  Map<String, Object?> toJson() => {'recorded': recorded, 'unknown': unknown};
+
+  factory BoardingUploadResultDto.fromJson(Map<String, Object?> json) =>
+      BoardingUploadResultDto(
+        recorded: [
+          for (final k in (json['recorded'] as List? ?? const []))
+            Wire.requireString(k, 'recorded'),
+        ],
+        unknown: [
+          for (final k in (json['unknown'] as List? ?? const []))
+            Wire.requireString(k, 'unknown'),
+        ],
+      );
 }
 
 /// What the guichet answers with: a paid booking and its tickets.

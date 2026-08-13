@@ -1,6 +1,8 @@
 @Tags(['integration'])
 library;
 
+import 'dart:math';
+
 import 'package:bel_api/src/application/ports/operator_applications.dart';
 import 'package:bel_api/src/application/ports/platform_console.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
@@ -115,6 +117,41 @@ void main() {
         );
       },
     );
+
+    test('two companies with the same name both get a code', () async {
+      // The stem is the first six letters of the name, and on this road half
+      // the companies are called *Trans* something — so two applications
+      // colliding on the three characters after it is a Tuesday, not a
+      // theoretical risk. The second one must get a code, not a 500 on the
+      // signup form.
+      final colliding = PostgresOperatorApplications(
+        db,
+        random: _SameCodeTwice(),
+      );
+
+      final first = await colliding.start(
+        userId: await applicantAccount(),
+        legalName: 'Trans Niari Express',
+        marketCode: 'CG',
+      );
+      final secondApplicant = await applicantAccount();
+      final second = await colliding.start(
+        userId: secondApplicant,
+        legalName: 'Trans Niari Express',
+        marketCode: 'CG',
+      );
+
+      // Same stem, different tail: they are visibly the same kind of company
+      // and unmistakably not the same company.
+      expect(
+        first.valueOrNull!.code.substring(0, 6),
+        second.valueOrNull!.code.substring(0, 6),
+      );
+      expect(first.valueOrNull!.code, isNot(second.valueOrNull!.code));
+      // And the rest of the transaction survived the retry: the application
+      // row is there, which is what the applicant's own screen reads.
+      expect(await applications.mine(userId: secondApplicant), isNotNull);
+    });
 
     test(
       'a second application is refused while the first is in flight',
@@ -344,4 +381,23 @@ void main() {
       expect(again.valueOrNull!.status, 'application_draft');
     });
   });
+}
+
+/// Hands out the same three characters for the first two applications, so the
+/// collision the retry exists for happens on purpose rather than one run in
+/// forty.
+final class _SameCodeTwice implements Random {
+  var _calls = 0;
+
+  @override
+  int nextInt(int max) {
+    final call = _calls++;
+    return (call < 6 ? 0 : call) % max;
+  }
+
+  @override
+  bool nextBool() => false;
+
+  @override
+  double nextDouble() => 0;
 }

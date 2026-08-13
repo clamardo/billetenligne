@@ -124,6 +124,14 @@ final class UnavailableOperatorConsole implements OperatorConsole {
   }) async => _refuse();
 
   @override
+  Future<({List<String> recorded, List<String> unknown})> recordBoardings({
+    required String operatorId,
+    required String departureId,
+    required String? scannedByUserId,
+    required List<Boarding> boardings,
+  }) async => _refuse();
+
+  @override
   Future<BoardingManifestData?> boardingManifest({
     required String operatorId,
     required String departureId,

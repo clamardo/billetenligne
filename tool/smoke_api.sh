@@ -1814,6 +1814,44 @@ check "POST is not a way to pin one" "405" \
      "$BASE/console/v1/departures/$DEP/boarding" -H "$OP_AUTH")"
 
 echo
+echo "── the outbox coming back from the door"
+
+boarding_post() {
+  curl -s -o /dev/null -w '%{http_code}' -X POST \
+    "$BASE/console/v1/departures/$DEP/redemptions" -H "$1" \
+    -H 'Content-Type: application/json' -d "$2"
+}
+
+check "an anonymous device records nothing" "401" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+     "$BASE/console/v1/departures/$DEP/redemptions" \
+     -H 'Content-Type: application/json' -d '{"boardings":[]}')"
+check "a traveller cannot say who boarded" "403" \
+  "$(boarding_post "$AUTH" '{"boardings":[]}')"
+# `REF/SEAT` is how the scanner has indexed a ticket since the first manifest.
+# A key with no seat names a whole booking, and a booking is not what boards:
+# a party of three is three people, two of whom may have missed the coach.
+check "a key with no seat in it is refused" "400" \
+  "$(boarding_post "$OP_AUTH" \
+     '{"boardings":[{"key":"BEL-7QK4M2","scannedAt":"2026-08-15T05:52:00Z","mode":"scan"}]}')"
+check "a mode nobody knows is refused" "400" \
+  "$(boarding_post "$OP_AUTH" \
+     '{"boardings":[{"key":"BEL-7QK4M2/14A","scannedAt":"2026-08-15T05:52:00Z","mode":"telepathy"}]}')"
+# The device's clock is what gets recorded, so it has to be there: a boarding
+# stamped with the hour it happened to sync is evidence of nothing.
+check "a boarding with no time is refused" "400" \
+  "$(boarding_post "$OP_AUTH" '{"boardings":[{"key":"BEL-7QK4M2/14A","mode":"scan"}]}')"
+check "a well-formed outbox gets past validation" "503" \
+  "$(boarding_post "$OP_AUTH" \
+     '{"boardings":[{"key":"BEL-7QK4M2/14A","scannedAt":"2026-08-15T05:52:00Z","mode":"scan","deviceId":"handset-1"}]}')"
+# An empty outbox is an ordinary sync, not a malformed request: a device with
+# nothing to say still says it, which is how it learns it has signal again.
+check "an empty outbox is accepted, not refused" "503" \
+  "$(boarding_post "$OP_AUTH" '{"boardings":[]}')"
+check "GET is not a way to record a boarding" "405" \
+  "$(status -H "$OP_AUTH" "$BASE/console/v1/departures/$DEP/redemptions")"
+
+echo
 echo "── moving the passengers onto another departure"
 
 rebook_as() {

@@ -217,6 +217,35 @@ void main() {
       expect(pinned.voided, ['BEL-3RT9P1/3A']);
     });
 
+    test('empties a boarding outbox and hears which rows landed', () async {
+      final transport = _ScriptedClient([
+        (200, '{"recorded":["BEL-7QK4M2/14A"],"unknown":["BEL-NOBODY/1A"]}'),
+      ]);
+
+      final result = await clientFor(transport, token: 'tok').uploadBoardings(
+        departureId: 'dep-1',
+        boardings: [
+          BoardingUploadDto(
+            key: 'BEL-7QK4M2/14A',
+            scannedAt: DateTime.utc(2026, 8, 15, 5, 52),
+            mode: 'scan',
+            deviceId: 'handset-1',
+          ),
+        ],
+      );
+
+      expect(
+        transport.requests.single.url.path,
+        '/console/v1/departures/dep-1/redemptions',
+      );
+      expect(transport.bodies.single, contains('BEL-7QK4M2/14A'));
+      expect(result.recorded, ['BEL-7QK4M2/14A']);
+      // Both lists leave the outbox. A ticket this coach never heard of will
+      // not start being on it, and a device that retries forever is flat by
+      // eleven.
+      expect(result.unknown, ['BEL-NOBODY/1A']);
+    });
+
     test('a refusal keeps its code, params and trace id', () async {
       final transport = _ScriptedClient([
         (

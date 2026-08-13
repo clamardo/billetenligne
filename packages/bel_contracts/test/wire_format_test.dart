@@ -2269,6 +2269,29 @@ void main() {
       expect(back.capacity, 49);
     });
 
+    test('an outbox row goes up in the shape it queued in', () {
+      final sent = BoardingUploadDto(
+        key: 'BEL-7QK4M2/14A',
+        scannedAt: DateTime.utc(2026, 8, 15, 5, 52),
+        mode: 'scan',
+        deviceId: 'handset-1',
+      ).toJson();
+
+      expect(sent['key'], 'BEL-7QK4M2/14A');
+      expect(sent['scannedAt'], '2026-08-15T05:52:00.000Z');
+      // Absent rather than false: a stale code is the exception a conductor
+      // overrode, and every ordinary boarding carrying `false` would be a
+      // flag nobody reads.
+      expect(sent.containsKey('codeWasStale'), isFalse);
+
+      final back = BoardingUploadResultDto.fromJson(
+        jsonDecode('{"recorded":["BEL-7QK4M2/14A"],"unknown":[]}')
+            as Map<String, Object?>,
+      );
+      expect(back.recorded, ['BEL-7QK4M2/14A']);
+      expect(back.unknown, isEmpty);
+    });
+
     test('a whole-road ticket carries no leg', () {
       final back = BoardingManifestDto.fromJson(
         jsonDecode(
