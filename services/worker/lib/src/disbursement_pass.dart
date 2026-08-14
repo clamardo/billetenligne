@@ -231,10 +231,7 @@ final class DisbursementPass {
           // Silence for long enough is its own answer, and the counter is
           // where it goes — the same rule the collection poller applies, and
           // for the same reason.
-          if (_clock
-              .now()
-              .difference(row['created_at'] as DateTime)
-              .inHours >=
+          if (_clock.now().difference(row['created_at'] as DateTime).inHours >=
               24) {
             await _fallBackToCounter(
               refundId: refundId,

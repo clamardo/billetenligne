@@ -80,9 +80,7 @@ final class Jwt {
     return Jwt._(
       header: _decodeSegment(parts[0], 'header'),
       claims: _decodeSegment(parts[1], 'payload'),
-      signingInput: Uint8List.fromList(
-        ascii.encode('${parts[0]}.${parts[1]}'),
-      ),
+      signingInput: Uint8List.fromList(ascii.encode('${parts[0]}.${parts[1]}')),
       // An empty third part is legal and is what the Firebase emulator
       // produces (ADR-0020). It is not a parse failure; it is a token that
       // will fail every signature check that is not explicitly unsigned.

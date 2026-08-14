@@ -74,7 +74,9 @@ final class RsaPrivateKey {
 
     final wrapped = outer.elements[2];
     if (wrapped is! ASN1OctetString) {
-      throw const FormatException('PrivateKeyInfo.privateKey is not an OCTET STRING');
+      throw const FormatException(
+        'PrivateKeyInfo.privateKey is not an OCTET STRING',
+      );
     }
 
     // RSAPrivateKey ::= SEQUENCE { version, modulus, publicExponent,

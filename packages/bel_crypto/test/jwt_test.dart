@@ -123,7 +123,8 @@ void main() {
       // This is exactly what the Firebase emulator issues (ADR-0020). It has
       // to parse — otherwise local development cannot sign in at all — and it
       // has to be distinguishable, which is what the empty signature is for.
-      final token = '${_segment({'alg': 'none', 'typ': 'JWT'})}'
+      final token =
+          '${_segment({'alg': 'none', 'typ': 'JWT'})}'
           '.${_segment({'sub': 'uid-7'})}.';
 
       final jwt = Jwt.decode(token);
@@ -140,9 +141,9 @@ void main() {
     test('refuses a segment that is not base64url JSON', () {
       expect(() => Jwt.decode('!!!.b.c'), throwsA(isA<JwtMalformed>()));
       expect(
-        () => Jwt.decode('${_segment({'alg': 'RS256'})}.${Jwt.base64UrlEncode(
-          utf8.encode('["not","an","object"]'),
-        )}.'),
+        () => Jwt.decode(
+          '${_segment({'alg': 'RS256'})}.${Jwt.base64UrlEncode(utf8.encode('["not","an","object"]'))}.',
+        ),
         throwsA(isA<JwtMalformed>()),
       );
     });

@@ -2384,10 +2384,8 @@ void main() {
       return rows.first.toColumnMap()['c'] as int;
     }
 
-    DisbursementPass passWith(FakeDisbursementGateway rail) => DisbursementPass(
-      db: db,
-      rails: {'cg.fake_money': rail},
-    );
+    DisbursementPass passWith(FakeDisbursementGateway rail) =>
+        DisbursementPass(db: db, rails: {'cg.fake_money': rail});
 
     test('asking is not paying: one pass sends, and posts nothing', () async {
       final booking = await aWalletBooking();

@@ -18,8 +18,14 @@
 import 'dart:io';
 
 const _sentinels = [
-  '#FF00E0', '#FF00E1', '#FF00E2', '#FF00E3',
-  '#FF00E4', '#FF00E5', '#FF00E6', '#FF00E7',
+  '#FF00E0',
+  '#FF00E1',
+  '#FF00E2',
+  '#FF00E3',
+  '#FF00E4',
+  '#FF00E5',
+  '#FF00E6',
+  '#FF00E7',
 ];
 
 const _assets = 'packages/bel_design/assets';
@@ -43,8 +49,9 @@ void main() {
   _emit(buffer, 'KSceneArt', 'scenes', '''
 /// Full-bleed hero artwork, drawn wide and cropped with `BoxFit.cover`.''');
 
-  File('packages/bel_design/lib/src/art/kilo_art.g.dart')
-      .writeAsStringSync(buffer.toString());
+  File(
+    'packages/bel_design/lib/src/art/kilo_art.g.dart',
+  ).writeAsStringSync(buffer.toString());
   _emitServer();
   stdout.writeln('artwork written for bel_design and services/api');
 }
@@ -91,13 +98,16 @@ void _emitServer() {
     ..writeln('  /// The drawing, wired to the page.')
     ..writeln('  static String css(String svg) {')
     ..writeln('    var out = svg;')
-    ..writeln('    palette.forEach((from, to) => out = out.replaceAll(from, to));')
+    ..writeln(
+      '    palette.forEach((from, to) => out = out.replaceAll(from, to));',
+    )
     ..writeln('    return out;')
     ..writeln('  }')
     ..writeln('}');
 
-  File('services/api/lib/src/infrastructure/web/artwork.g.dart')
-      .writeAsStringSync(out.toString());
+  File(
+    'services/api/lib/src/infrastructure/web/artwork.g.dart',
+  ).writeAsStringSync(out.toString());
 }
 
 /// The custom property each sentinel becomes.
@@ -119,9 +129,11 @@ const _cssVars = [
 ];
 
 List<File> _files(String dir) =>
-    Directory('$_assets/$dir').listSync().whereType<File>().where(
-          (f) => f.path.endsWith('.svg'),
-        ).toList()
+    Directory('$_assets/$dir')
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.svg'))
+        .toList()
       ..sort((a, b) => a.path.compareTo(b.path));
 
 void _emit(StringBuffer out, String enumName, String dir, String doc) {
@@ -155,10 +167,9 @@ String _minify(String svg) => svg
     .trim();
 
 void _check(String path, String svg) {
-  final colours = RegExp('#[0-9A-Fa-f]{3,8}')
-      .allMatches(svg)
-      .map((m) => m[0]!.toUpperCase())
-      .toSet();
+  final colours = RegExp(
+    '#[0-9A-Fa-f]{3,8}',
+  ).allMatches(svg).map((m) => m[0]!.toUpperCase()).toSet();
   final stray = colours.where((c) => !_sentinels.contains(c)).toList();
   if (stray.isNotEmpty) {
     stderr.writeln('$path uses non-token colours: ${stray.join(', ')}');

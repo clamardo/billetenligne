@@ -303,7 +303,6 @@ void main() {
     });
   });
 
-
   group('the road', () {
     /// A gateway that has pinned dep-1, plus the road it came back with.
     Future<({ApiBoardingGateway gateway, List<WaypointDto> road})> pinRoad(

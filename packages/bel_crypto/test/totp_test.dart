@@ -83,12 +83,7 @@ void main() {
     test('a wrong code, a short code and a padded one are all refused', () {
       for (final presented in ['000000', '12345', ' 1234567 ', '']) {
         expect(
-          Totp.windowOf(
-            presented: presented,
-            secret: seed,
-            now: now,
-            mac: mac,
-          ),
+          Totp.windowOf(presented: presented, secret: seed, now: now, mac: mac),
           isNull,
           reason: presented,
         );

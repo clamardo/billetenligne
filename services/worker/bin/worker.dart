@@ -115,9 +115,7 @@ Future<int> main(List<String> args) async {
     // and two settings for one host is how one of them goes stale.
     links: PostgresTicketLinks(
       db,
-      linkBase: Uri.parse(
-        env['BEL__SHAREBASEURL'] ?? 'https://blt.cg',
-      ),
+      linkBase: Uri.parse(env['BEL__SHAREBASEURL'] ?? 'https://blt.cg'),
     ),
   );
 
