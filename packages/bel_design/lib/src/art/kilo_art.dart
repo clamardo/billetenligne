@@ -43,6 +43,33 @@ final class KArtPalette {
   factory KArtPalette.of(BuildContext context, {Color? brand, Color? accent}) =>
       KArtPalette.from(context.kilo.color, brand: brand, accent: accent);
 
+  /// The drawing laid **on** a company's own colour rather than beside it.
+  ///
+  /// Two things make this different from the ordinary palette. The full-bleed
+  /// background rectangle is painted in [ground] — the header's own accent —
+  /// so it disappears into the colour behind it and the drawing reads as
+  /// shapes rather than as a picture pasted on. Everything else is plain
+  /// white or plain black, because `_hex` drops the alpha channel: a
+  /// translucent token here would arrive at the SVG opaque and bury the
+  /// accent completely. The transparency comes from the `fill-opacity` values
+  /// already in the drawing and from the opacity the caller wraps it in.
+  ///
+  /// The storefront does the same thing in CSS, where rgba() is available and
+  /// the values can be written directly. This exists so the console's preview
+  /// shows the operator what a visitor will actually see: a preview that
+  /// renders a flat colour while the public page renders a landscape is a
+  /// preview that lies about the one thing it is for.
+  factory KArtPalette.silhouette(Color ground) => KArtPalette(
+    ink: const Color(0xFF000000),
+    muted: const Color(0xFFFFFFFF),
+    brand: const Color(0xFFFFFFFF),
+    brandWash: ground,
+    accent: const Color(0xFFFFFFFF),
+    accentWash: const Color(0xFFFFFFFF),
+    surface: const Color(0xFFFFFFFF),
+    hairline: const Color(0xFFFFFFFF),
+  );
+
   final Color ink;
   final Color muted;
   final Color brand;

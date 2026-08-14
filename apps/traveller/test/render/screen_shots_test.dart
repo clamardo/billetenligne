@@ -108,6 +108,31 @@ void main() {
     });
   }
 
+  // The hue the ink fix is about. `laterite` is a light ochre: white on it is
+  // 3.17:1, which is enough for the route name across the top and not enough
+  // for the date under it — the line somebody reads at a coach door. This
+  // band is drawn in the dark ink, and it is worth being able to look at.
+  testWidgets('ticket on the one hue that does not carry white', (
+    tester,
+  ) async {
+    final booking = _booking(hue: 'laterite');
+    await shoot(
+      tester,
+      'traveller-ticket-laterite',
+      Localized(
+        catalog: catalog,
+        initialLanguage: 'fr',
+        child: TicketScreen(
+          booking: booking,
+          ticket: booking.tickets.single,
+          seatIndex: 0,
+          onClose: () {},
+        ),
+      ),
+      size: const Size(400, 900),
+    );
+  });
+
   for (final b in [KiloBrightness.light, KiloBrightness.dark]) {
     testWidgets('results ${b.name}', (tester) async {
       await shoot(
@@ -140,7 +165,7 @@ void main() {
   }
 }
 
-BookingDto _booking() {
+BookingDto _booking({String hue = 'indigo'}) {
   final departsAt = DateTime.utc(2026, 8, 15, 6);
   return BookingDto(
     id: 'shot',
@@ -148,7 +173,7 @@ BookingDto _booking() {
     state: 'confirmed',
     departureId: 'dep-shot',
     operatorName: 'Ocean du Nord',
-    operatorAccentHue: 'indigo',
+    operatorAccentHue: hue,
     originCity: 'Brazzaville',
     destinationCity: 'Pointe-Noire',
     departsAt: departsAt,

@@ -279,7 +279,7 @@ class _Expressive extends StatelessWidget {
           destination: 'PNR',
           subtitle: 'sam. 15 août · 06 h 00',
           footnote: 'Ocean du Nord · voiture 2, place 14',
-          accent: Color(0xFF6B2D5C),
+          accent: AccentHue.prune,
         ),
         const SizedBox(height: 24),
         const KSectionHeader(

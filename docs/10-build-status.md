@@ -540,6 +540,60 @@ four components, and two catalog keys.
 
 ---
 
+## What the accent-ink push changed, and what it cost
+
+This one started as a cosmetic errand and turned into a shipped accessibility
+defect.
+
+The console's vitrine preview is where an operator decides what their public
+page looks like. Since the artwork push, that public page has drawn a
+landscape behind the company's name when no cover photograph is set. The
+preview drew a slab of flat colour. A preview that disagrees with the page it
+previews is worse than no preview, so the same drawing went into
+`KBrandHeader` — and that is where the real problem surfaced.
+
+**The eight curated hues are documented as chosen so white carries on all of
+them. One does not.** The test that guarded the claim asked for 3.0:1, which
+is the WCAG threshold for *large* text. `laterite` is a light ochre and white
+on it is 3.17:1, so it passed. The route name across the top of a ticket band
+is large text and was always fine. The date under it, and the operator's name
+under that, are not large text — and they are the lines somebody reads at a
+coach door with a conductor waiting and a queue behind them. Every ticket sold
+by an operator who chose that hue has been under the line for its small copy
+since the set shipped.
+
+**A hue names its own ink now.** Seven keep white; `laterite` takes the dark
+ink at 5.57:1. The test asks for 4.5:1 against whichever was chosen, which is
+the threshold the copy on that band actually needs.
+
+`KTicketHeader` takes an `AccentHue` rather than a `Color`. The band needs the
+ink that goes with the hue, and deriving one from the other by reverse lookup
+is a table that quietly answers `foret` the first time somebody passes a
+colour that is not in the set.
+
+**The drawing does not go behind the text, and turning its opacity down is not
+an alternative.** That is arithmetic rather than taste: `brique` carries its
+ink at 5.09:1 and is already under 4.5 once its ground is lightened by about a
+fifteenth — fainter than a drawing anybody would bother keeping. So the
+company's flat colour is laid back over the left of the band with a gradient,
+and the landscape fills the part nothing is written on. The contrast suite
+asserts both halves, including the one that says the scrim is load-bearing.
+
+Two details in the silhouette palette are worth keeping written down. The
+drawing's own full-bleed background rectangle is painted **in the accent**, so
+it vanishes into the header rather than sitting on it as a rectangle of
+another colour. And the transparency comes from an `Opacity` wrapper rather
+than from translucent tokens, because the sentinel substitution writes
+six-digit hex: an alpha written into a token is dropped on the way in, and the
+first attempt buried the accent under an opaque grey landscape. The shot
+showed that immediately, which is the entire argument for the shots.
+
+**What it cost:** 8 contrast tests rewritten, 2 component tests, one traveller
+shot of the hue in question, and one changed component signature.
+
+
+---
+
 ## What the console-shots push changed, and what it cost
 
 The traveller app got a render harness during the design pass, and the

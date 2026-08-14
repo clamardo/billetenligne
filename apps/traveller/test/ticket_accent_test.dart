@@ -39,7 +39,7 @@ void main() {
     await tester.pump();
 
     final header = tester.widget<KTicketHeader>(find.byType(KTicketHeader));
-    expect(header.accent, AccentHue.indigo.color);
+    expect(header.accent, AccentHue.indigo);
   });
 
   testWidgets('an operator who never opened the vitrine gets the house green', (

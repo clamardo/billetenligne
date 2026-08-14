@@ -532,20 +532,30 @@ void main() {
       expect(find.byType(KMonogram), findsNothing);
     });
 
-    testWidgets('no cover means the pattern, and no scrim over nothing', (
+    testWidgets('no cover means the drawing, and the text stays off it', (
       tester,
     ) async {
       await tester.pumpWidget(
         host(
-          const KBrandHeader(title: 'Océan du Nord', accent: AccentHue.ocean),
+          const KBrandHeader(title: 'Océan du Nord', accent: AccentHue.brique),
         ),
       );
 
-      // The ordinary case. A storefront that looks empty without a
-      // photograph is a broken design, so the generated pattern is the
-      // design rather than a placeholder for one.
+      // The ordinary case, and the one the public storefront has drawn as a
+      // landscape since the artwork push. This used to assert there was no
+      // scrim at all, which was right when there was nothing to scrim.
       expect(find.byType(CustomPaint), findsWidgets);
-      expect(scrim, findsNothing);
+      expect(scrim, findsOneWidget);
+
+      // And it is the company's own colour laid back over the drawing, not a
+      // dimming wash: the point is to give the date a ground the operator's
+      // ink reads on, and `brique` is under 4.5:1 the moment that ground is
+      // lightened at all.
+      final box = tester.widget<DecoratedBox>(scrim);
+      final gradient =
+          (box.decoration as BoxDecoration).gradient! as LinearGradient;
+      expect(gradient.colors.first, AccentHue.brique.color);
+      expect(gradient.colors.last.a, 0);
     });
 
     testWidgets('a cover is painted under a scrim, never over the title', (

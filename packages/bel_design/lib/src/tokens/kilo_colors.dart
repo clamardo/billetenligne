@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
 /// Which of the three Kilo themes a palette represents.
@@ -183,6 +185,36 @@ enum AccentHue {
 
   const AccentHue(this.color);
   final Color color;
+
+  /// What to write **on** this hue.
+  ///
+  /// Not always white. `laterite` is a light ochre and white on it is 3.17:1
+  /// — enough for a 26-point route name and not enough for the date under it,
+  /// which is the line a conductor actually reads at a coach door. The band's
+  /// small copy was held to the large-text threshold for as long as this set
+  /// has existed. Picking the ink by contrast rather than assuming it puts
+  /// every one of the eight over 4.5:1: seven keep white, and `laterite` gets
+  /// the dark ink at 5.57:1.
+  Color get ink =>
+      _contrast(color, _white) >= _contrast(color, _ink) ? _white : _ink;
+
+  static const _white = Color(0xFFFCFAF7);
+  static const _ink = Color(0xFF141A17);
+
+  static double _contrast(Color a, Color b) {
+    final la = _luminance(a);
+    final lb = _luminance(b);
+    return ((la > lb ? la : lb) + 0.05) / ((la > lb ? lb : la) + 0.05);
+  }
+
+  static double _luminance(Color c) {
+    double channel(double v) => v <= 0.03928
+        ? v / 12.92
+        : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
+    return 0.2126 * channel(c.r) +
+        0.7152 * channel(c.g) +
+        0.0722 * channel(c.b);
+  }
 
   /// Falls back to the house hue rather than throwing. An accent that fails
   /// to parse is a storefront that should still render — the row came from a

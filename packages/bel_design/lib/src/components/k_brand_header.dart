@@ -1,6 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import '../art/kilo_art.dart';
 
 import '../kilo_theme.dart';
 import '../tokens/kilo_colors.dart';
@@ -65,7 +68,7 @@ final class KBrandHeader extends StatelessWidget {
   /// the pattern.
   ///
   /// **Behind a scrim, and that is not decoration.** The title and tagline are
-  /// drawn in [_onAccent], a colour verified against the accent and against
+  /// drawn in the accent's own readable ink, verified against the accent and
   /// plein soleil — not against somebody's photograph of a white minibus at
   /// noon. The scrim is what keeps the one contrast guarantee this component
   /// makes true when a caller hands it an image nobody reviewed.
@@ -96,6 +99,43 @@ final class KBrandHeader extends StatelessWidget {
           CustomPaint(
             painter: _PatternPainter(pattern: pattern, accent: accent.color),
           ),
+          // No photograph, so the drawing. The public storefront has done
+          // this since the artwork push — an operator who has never uploaded
+          // a cover still gets a landscape rather than a slab of colour — and
+          // until now the console previewed the slab. A preview that
+          // disagrees with the page it is previewing is worse than none.
+          if (cover == null) ...[
+            // Wrapped in an opacity rather than drawn in translucent colours:
+            // the substitution writes 6-digit hex, so alpha has to come from
+            // somewhere the SVG understands.
+            Opacity(
+              opacity: 0.45,
+              child: SvgPicture.string(
+                KArtPalette.silhouette(
+                  accent.color,
+                ).paint(KSceneArt.journey.source),
+                fit: BoxFit.cover,
+                alignment: Alignment.center,
+              ),
+            ),
+            // And the text does not sit on the drawing. Lowering the opacity
+            // does not fix this: `brique` carries its ink at 5.09:1 and falls
+            // under 4.5 once its ground is lightened by about a fifteenth, so
+            // there is no setting of that dial where a date on a landscape is
+            // legible on all eight hues. The left of the band goes back to
+            // being the company's flat colour, and the drawing fills what
+            // nothing is written on.
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [accent.color, accent.color.withValues(alpha: 0)],
+                  stops: const [0.52, 0.86],
+                ),
+              ),
+            ),
+          ],
           if (cover != null) ...[
             cover!,
             // Weighted towards the bottom, where the tagline sits, and never
@@ -142,7 +182,7 @@ final class KBrandHeader extends StatelessWidget {
                       Text(
                         title,
                         style: (compact ? kilo.text.h3 : kilo.text.h1).copyWith(
-                          color: _onAccent,
+                          color: accent.ink,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -150,7 +190,7 @@ final class KBrandHeader extends StatelessWidget {
                       if (tagline != null && tagline!.isNotEmpty && !compact)
                         Text(
                           tagline!,
-                          style: kilo.text.body.copyWith(color: _onAccent),
+                          style: kilo.text.body.copyWith(color: accent.ink),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -159,7 +199,9 @@ final class KBrandHeader extends StatelessWidget {
                           padding: EdgeInsets.only(top: kilo.space.s1),
                           child: Text(
                             footnote!,
-                            style: kilo.text.caption.copyWith(color: _onAccent),
+                            style: kilo.text.caption.copyWith(
+                              color: accent.ink,
+                            ),
                           ),
                         ),
                     ],
@@ -176,7 +218,6 @@ final class KBrandHeader extends StatelessWidget {
   /// White, on every one of the eight. That is not a coincidence — it is the
   /// property the closed set exists to have, and it is asserted in the
   /// contrast tests rather than assumed here.
-  static const _onAccent = Color(0xFFFFFFFF);
 }
 
 /// A generated tile for an operator with no logo.

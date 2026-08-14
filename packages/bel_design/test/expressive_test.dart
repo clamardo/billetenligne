@@ -47,7 +47,7 @@ void main() {
           const KTicketHeader(
             origin: 'A',
             destination: 'B',
-            accent: Color(0xFF6B2D5C),
+            accent: AccentHue.prune,
           ),
         ),
       );

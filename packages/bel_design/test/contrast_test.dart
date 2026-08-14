@@ -121,12 +121,39 @@ void main() {
         );
       });
 
-      test('${hue.name} carries white content on a filled band', () {
+      // The old form of this test asked for 3.0 against white, which is the
+      // WCAG threshold for *large* text. The band's route name is large; the
+      // date under it and the operator's name under that are not, and they
+      // are the lines somebody reads at a coach door. `laterite` is a light
+      // ochre where white is 3.17:1 — it passed, and the date on it was never
+      // legible enough. The hue names its own ink now, and this is held to
+      // the small-copy threshold.
+      test('${hue.name} carries its own ink at small sizes', () {
         expect(
-          contrastRatio(const Color(0xFFFFFFFF), hue.color),
-          greaterThanOrEqualTo(3.0),
-          reason: '${hue.name} band with white text',
+          contrastRatio(hue.ink, hue.color),
+          greaterThanOrEqualTo(4.5),
+          reason: '${hue.name} band, small copy in ${hue.ink}',
         );
+      });
+
+      // And the drawing behind it does not eat that, because it is not
+      // behind it: the header lays the accent back over the left of the band
+      // and the landscape fills what is left. Turning the drawing's opacity
+      // down instead does not work, and this is the arithmetic that says so.
+      // `brique` starts at 5.09:1 and is already under the line once its
+      // ground is lightened by a fifteenth — fainter than a drawing anybody
+      // would bother keeping.
+      test('${hue.name} reads on the scrim, and would not without it', () {
+        expect(
+          contrastRatio(hue.ink, hue.color),
+          greaterThanOrEqualTo(4.5),
+          reason: '${hue.name} on the scrim',
+        );
+
+        if (hue == AccentHue.brique) {
+          final washed = Color.lerp(hue.color, const Color(0xFFFFFFFF), 0.07)!;
+          expect(contrastRatio(hue.ink, washed), lessThan(4.5));
+        }
       });
     }
   });

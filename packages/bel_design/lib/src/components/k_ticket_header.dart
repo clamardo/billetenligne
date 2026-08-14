@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../art/kilo_pattern.dart';
 import '../kilo_theme.dart';
+import '../tokens/kilo_colors.dart';
 
 /// The top of a ticket: the operator's colour, their woven motif, the two
 /// towns, and a torn edge.
@@ -33,20 +34,28 @@ final class KTicketHeader extends StatelessWidget {
   final String? subtitle;
   final String? footnote;
 
-  /// The operator's own hue. Falls back to the house green, which is what an
-  /// operator who has never opened the vitrine gets — and it must still look
-  /// deliberate, because that is most of them on day one.
-  final Color? accent;
+  /// The operator's own hue, one of the curated eight. Null is the ordinary
+  /// case — an operator who has never opened their vitrine — and falls back
+  /// to the running theme's brand, which must still look deliberate because
+  /// on day one that is most of them.
+  ///
+  /// The hue itself rather than its colour: the band needs the ink that goes
+  /// with it, and deriving one from the other by reverse lookup is a table
+  /// that silently answers `foret` the day somebody passes a colour that is
+  /// not in the set.
+  final AccentHue? accent;
   final KPatternMotif motif;
   final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     final kilo = context.kilo;
-    final colour = accent ?? kilo.color.brandPrimary;
-    // Not `onBrandPrimary`: the accent is one of eight curated hues, and the
-    // set is chosen so white carries on all of them.
-    const ink = Color(0xFFFFFFFF);
+    final colour = accent?.color ?? kilo.color.brandPrimary;
+    // Not white, and not `onBrandPrimary`. Seven of the eight hues carry
+    // white; `laterite` is a light ochre where white is 3.17:1 — fine for the
+    // 26-point route name and not for the date under it, which is the line
+    // somebody actually reads at a coach door. The hue names its own ink.
+    final ink = accent?.ink ?? kilo.color.contentInverse;
 
     return ClipRRect(
       borderRadius: BorderRadius.vertical(top: kilo.radius.lg),
@@ -104,7 +113,7 @@ final class KTicketHeader extends StatelessWidget {
                   if (trailing != null) ...[
                     SizedBox(width: kilo.space.s3),
                     IconTheme(
-                      data: const IconThemeData(color: ink),
+                      data: IconThemeData(color: ink),
                       child: DefaultTextStyle(
                         style: kilo.text.bodySm.copyWith(color: ink),
                         child: trailing!,
