@@ -1,20 +1,16 @@
 # The build context is the whole repository, because the server is four path
 # packages and a route tree. What it does not need is everything that makes
-# that repository large: the Flutter apps' build output, the analyzer's cache,
-# and the design shots.
+# that repository large: the analyzer's cache, the design shots, and every
+# build directory except the two web bundles the console and back-office
+# images are made of.
 #
-# Written down because the alternative is a 1 GB context uploaded to the
-# daemon on every build, most of it artefacts of the last one.
+# Written down because the alternative is a gigabyte uploaded to the daemon on
+# every build, most of it artefacts of the last one.
 .git
-.dart_tool
 **/.dart_tool
-build
 **/build
-apps
-packages/bel_design
-packages/bel_backoffice
-packages/bel_secure_store
-packages/bel_client
+!apps/console/build/web
+!apps/admin/build/web
 docs
 brand
 infra/dev/firebase-data

@@ -490,6 +490,61 @@ figure here has been re-measured from a clean tree.
 
 ---
 
+## What the web-images push changed, and what it cost
+
+The console and the back office are Flutter web apps that had never been built
+for the web outside a `flutter run`. Now they are two images: a bundle behind
+unprivileged nginx, 140 MB each, most of which is canvaskit.
+
+**They are environment-specific, and that is not a mistake.** `BEL_API_URL`,
+`BEL_FIREBASE_PROJECT` and `BEL_FIREBASE_API_KEY` are `String.fromEnvironment`
+in Dart. That is compile-time by definition: a Flutter web app has no
+environment to read at runtime. So the values are baked in, an image built for
+staging is a staging image, and its tag has to say so. The alternative — a
+bundle that fetches a config file before it can do anything — is one more
+request on the critical path of a login and one more thing to get wrong.
+
+**A build with neither a Firebase key nor an emulator is refused.** The
+console's Firebase config defaults to `localhost:9099`, which is exactly right
+for `flutter run -d chrome` and catastrophic in a deployment: the bundle ships
+pointing at an emulator that is not there, and every sign-in fails with a
+network error instead of a message. `tool/images.sh --web` will not build one.
+
+**The nginx config exists mostly to prevent one thing.** nginx inherits
+`add_header` only into blocks that declare none of their own. `try_files`
+rewrites every deep link to `/index.html`, so a `location = /index.html` block
+that sets a cache header silently drops the *entire* security set for most
+requests. The first version of this file did exactly that: no CSP and no frame
+refusal on every route but the root, verified by curl after the fact. The
+cache policy is a `map` now and every header is set once, at the server level.
+
+Each image is started and asked for a deep link, because a 404 on refresh is
+nginx's default answer to a single-page app and refreshing a deep link is the
+commonest thing anybody does to one.
+
+**One bug in the checking, which is worth more than the checks.** The bundle
+check is `curl … | grep -qF "$url"`, and it failed on a bundle that provably
+contained the URL: under `set -o pipefail`, `grep -q` exits at the first match,
+closes the pipe, `curl` dies of SIGPIPE, and the pipeline fails **because the
+match succeeded**. Every such check in the script now captures into a variable
+first. The same shape was already sitting in the API's catalog check, passing
+only because the response was small enough for curl to finish first.
+
+**What this push found and did not fix.** The API sends no CORS headers at
+all — there is no `Access-Control-Allow-Origin` anywhere in the tree. A
+console served from `console.blt.cg` calling an API on `blt.cg` is blocked by
+the browser before the request is made, and so is `flutter run -d chrome` on
+`localhost:5000` calling `localhost:8080`. That is every deployment of these
+two images and the local development loop as well. It is named here rather
+than quietly worked around, and closed in the next slice.
+
+**What it cost:** one Dockerfile, one nginx config, a `.dockerignore` that
+re-includes exactly two build directories, and about ninety lines of
+`tool/images.sh`.
+
+
+---
+
 ## What the images push changed, and what it cost
 
 Until this push, everything this system does was reachable only from a working
