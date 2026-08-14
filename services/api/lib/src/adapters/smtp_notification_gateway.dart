@@ -145,18 +145,38 @@ final class SmtpNotificationGateway implements NotificationGateway {
 
     headers
       ..write('Content-Type: multipart/mixed; boundary="$boundary"\r\n\r\n')
-      ..write('--$boundary\r\n')
-      ..write('Content-Type: text/plain; charset=utf-8\r\n')
-      ..write('Content-Transfer-Encoding: base64\r\n\r\n')
-      ..write(_wrap(base64.encode(utf8.encode(message.body))))
-      ..write('\r\n');
+      ..write('--$boundary\r\n');
 
+    // **`alternative`, nested inside the `mixed`.** The plain text and the
+    // HTML are two renderings of one message and the client must show exactly
+    // one of them; listing both as siblings of the attachments — which is what
+    // this did — makes Gmail show the text *and* the HTML, one after the
+    // other, so every styled message arrived with a plain-text copy of itself
+    // stapled underneath. The attachments stay in the outer `mixed`, because a
+    // QR is genuinely a second part rather than a second version.
     if (message.html != null) {
+      final alt = '${boundary}alt';
       headers
-        ..write('--$boundary\r\n')
+        ..write('Content-Type: multipart/alternative; boundary="$alt"\r\n\r\n')
+        ..write('--$alt\r\n')
+        ..write('Content-Type: text/plain; charset=utf-8\r\n')
+        ..write('Content-Transfer-Encoding: base64\r\n\r\n')
+        ..write(_wrap(base64.encode(utf8.encode(message.body))))
+        ..write('\r\n')
+        // Last, because a client that understands both shows the final part
+        // it can render — which is the whole convention `alternative` rests
+        // on, and the reason order is not cosmetic here.
+        ..write('--$alt\r\n')
         ..write('Content-Type: text/html; charset=utf-8\r\n')
         ..write('Content-Transfer-Encoding: base64\r\n\r\n')
         ..write(_wrap(base64.encode(utf8.encode(message.html!))))
+        ..write('\r\n')
+        ..write('--$alt--\r\n');
+    } else {
+      headers
+        ..write('Content-Type: text/plain; charset=utf-8\r\n')
+        ..write('Content-Transfer-Encoding: base64\r\n\r\n')
+        ..write(_wrap(base64.encode(utf8.encode(message.body))))
         ..write('\r\n');
     }
 

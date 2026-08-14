@@ -209,6 +209,7 @@ final class OutboxDrain {
         };
 
         return OutboundMessage(
+          language: t.language,
           channel: phone != null ? SignInChannel.phone : SignInChannel.email,
           to: to,
           subject: phone != null ? null : t('email.booking.subject', params),
@@ -333,6 +334,7 @@ final class OutboxDrain {
         // is the whole reason the link exists.
         if (channel == 'phone') {
           return OutboundMessage(
+            language: tr.language,
             channel: SignInChannel.phone,
             to: sentTo,
             body: text,
@@ -370,6 +372,7 @@ final class OutboxDrain {
         ];
 
         return OutboundMessage(
+          language: tr.language,
           channel: SignInChannel.email,
           to: sentTo,
           subject: tr('email.ticketLink.subject', linkParams),
@@ -479,6 +482,7 @@ final class OutboxDrain {
         );
 
         return OutboundMessage(
+          language: t.language,
           channel: phone != null ? SignInChannel.phone : SignInChannel.email,
           to: to,
           subject: phone != null ? null : summary,
@@ -539,6 +543,7 @@ final class OutboxDrain {
         });
 
         return OutboundMessage(
+          language: t.language,
           channel: phone != null ? SignInChannel.phone : SignInChannel.email,
           to: to,
           subject: phone != null ? null : body,
@@ -604,6 +609,7 @@ final class OutboxDrain {
         });
 
         return OutboundMessage(
+          language: t.language,
           channel: phone != null ? SignInChannel.phone : SignInChannel.email,
           to: to,
           subject: phone != null ? null : body,
@@ -674,6 +680,7 @@ final class OutboxDrain {
         });
 
         return OutboundMessage(
+          language: t.language,
           channel: phone != null ? SignInChannel.phone : SignInChannel.email,
           to: to,
           subject: phone != null ? null : body,
@@ -748,6 +755,7 @@ final class OutboxDrain {
               });
 
         return OutboundMessage(
+          language: t.language,
           channel: phone != null ? SignInChannel.phone : SignInChannel.email,
           to: to,
           subject: phone != null ? null : body,
@@ -805,6 +813,7 @@ final class OutboxDrain {
         });
 
         return OutboundMessage(
+          language: t.language,
           channel: phone != null ? SignInChannel.phone : SignInChannel.email,
           to: to,
           subject: phone != null ? null : body,
@@ -872,6 +881,7 @@ final class OutboxDrain {
               });
 
         return OutboundMessage(
+          language: t.language,
           channel: phone != null ? SignInChannel.phone : SignInChannel.email,
           to: to,
           subject: phone != null ? null : body,
@@ -924,6 +934,7 @@ final class OutboxDrain {
         };
 
         return OutboundMessage(
+          language: t.language,
           channel: phone != null ? SignInChannel.phone : SignInChannel.email,
           to: to,
           subject: phone != null
@@ -1009,6 +1020,7 @@ final class OutboxDrain {
         };
 
         return OutboundMessage(
+          language: t.language,
           channel: phone != null ? SignInChannel.phone : SignInChannel.email,
           to: to,
           subject: phone != null ? null : t('email.$key.subject', params),
@@ -1079,6 +1091,7 @@ final class OutboxDrain {
         };
 
         return OutboundMessage(
+          language: t.language,
           channel: SignInChannel.email,
           to: to,
           subject: t('email.payoutStatement.subject', params),
@@ -1132,6 +1145,7 @@ final class OutboxDrain {
         final params = <String, Object?>{'operator': o['name'] ?? ''};
 
         return OutboundMessage(
+          language: t.language,
           channel: phone != null ? SignInChannel.phone : SignInChannel.email,
           to: to,
           subject: phone != null

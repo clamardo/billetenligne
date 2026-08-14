@@ -13,6 +13,7 @@ import 'adapters/fake_auth_gateway.dart';
 import 'adapters/firebase_auth_gateway.dart';
 import 'adapters/logging_notification_gateway.dart';
 import 'adapters/smtp_notification_gateway.dart';
+import 'adapters/styled_email_gateway.dart';
 import 'adapters/unavailable_operator_console.dart';
 import 'adapters/memory_idempotency_store.dart';
 import 'application/hold_seats.dart';
@@ -783,17 +784,25 @@ final class Services {
   }
 
   static NotificationGateway _notifications(Map<String, String> env) =>
-      AcsNotificationGateway.tryParse(
-        env['COMMS__CONNECTIONSTRING'],
-        emailFrom: env['COMMS__EMAILFROM'],
-        smsFrom: env['COMMS__SMSFROM'],
-      ) ??
-      SmtpNotificationGateway.tryParse(
-        env['SMTP__HOST'],
-        port: env['SMTP__PORT'],
-        emailFrom: env['COMMS__EMAILFROM'],
-      ) ??
-      const LoggingNotificationGateway();
+      // Wrapped once, around whichever gateway this deployment got. The
+      // chrome is a property of the message rather than of the transport, so
+      // putting it here means a stack on SMTP and a stack on ACS send the
+      // same-looking mail — and the logging gateway a developer reads shows
+      // what was actually sent.
+      StyledEmailGateway(
+        AcsNotificationGateway.tryParse(
+              env['COMMS__CONNECTIONSTRING'],
+              emailFrom: env['COMMS__EMAILFROM'],
+              smsFrom: env['COMMS__SMSFROM'],
+            ) ??
+            SmtpNotificationGateway.tryParse(
+              env['SMTP__HOST'],
+              port: env['SMTP__PORT'],
+              emailFrom: env['COMMS__EMAILFROM'],
+            ) ??
+            const LoggingNotificationGateway(),
+        catalog: _catalog,
+      );
 
   /// Keys the HMAC that stands in for a stored code.
   ///
@@ -856,7 +865,8 @@ final class Services {
   /// rule 3), which is why this lives here and not in the adapter: an adapter
   /// that reached for a template would have to know a language, and there
   /// would then be two places words can come from.
-  static ({String? subject, String body}) _renderSignInMessage({
+  static ({String? subject, String body, String? heading, String? highlight})
+  _renderSignInMessage({
     required SignInChannel channel,
     required String language,
     required String code,
@@ -869,8 +879,20 @@ final class Services {
       SignInChannel.email => (
         subject: t('email.otp.subject', params),
         body: t('email.otp.body', params),
+        // A heading of its own, because the subject carries the code so the
+        // inbox list is useful — and the styled message already sets the code
+        // in 32px directly underneath.
+        heading: t('email.otp.heading'),
+        highlight: code,
       ),
-      SignInChannel.phone => (subject: null, body: t('sms.otp.body', params)),
+      SignInChannel.phone => (
+        subject: null,
+        body: t('sms.otp.body', params),
+        // No chrome on an SMS. There is nothing to emphasise in 160
+        // characters that the characters themselves do not already say.
+        heading: null,
+        highlight: null,
+      ),
     };
   }
 

@@ -16,6 +16,9 @@ final class OutboundMessage {
     this.html,
     this.attachments = const [],
     this.eventId,
+    this.language = 'fr',
+    this.heading,
+    this.highlight,
   });
 
   final SignInChannel channel;
@@ -45,6 +48,45 @@ final class OutboundMessage {
   /// once, now" — which is honest for a sign-in code, whose whole value is
   /// that it is fresh.
   final String? eventId;
+
+  /// The language [body] was already rendered in.
+  ///
+  /// Carried rather than re-derived because the chrome around the words needs
+  /// it too — a footer in French under a Lingala body would be a second place
+  /// language is decided, which is exactly what this port exists to prevent.
+  final String language;
+
+  /// The sentence at the top of the styled message, when the subject would
+  /// make a poor one.
+  ///
+  /// Usually null, and then the subject is used — for most messages the line
+  /// that made somebody open it is the right line to open with. A sign-in
+  /// code is the exception: its subject carries the code so the inbox list is
+  /// useful, and repeating it above a copy of it set in 32px is how a short
+  /// message ends up saying the same six digits three times.
+  final String? heading;
+
+  /// One short string worth setting in large type: the sign-in code.
+  ///
+  /// **A hint about emphasis, not a second copy of the message.** It always
+  /// appears in [body] as well, because the plain text has to stand alone —
+  /// this only tells the chrome which few characters somebody is squinting
+  /// for. Null for every message whose point is a sentence rather than a
+  /// value.
+  final String? highlight;
+
+  OutboundMessage withHtml(String html) => OutboundMessage(
+    channel: channel,
+    to: to,
+    body: body,
+    subject: subject,
+    html: html,
+    attachments: attachments,
+    eventId: eventId,
+    language: language,
+    heading: heading,
+    highlight: highlight,
+  );
 }
 
 /// A file travelling with a message.

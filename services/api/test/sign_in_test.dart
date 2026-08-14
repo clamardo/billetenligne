@@ -47,12 +47,17 @@ void main() {
 
   /// Renders something recognisable without loading a catalog from disk. The
   /// real renderer is exercised by the smoke suite, against the real YAML.
-  ({String? subject, String body}) render({
+  ({String? subject, String body, String? heading, String? highlight}) render({
     required SignInChannel channel,
     required String language,
     required String code,
     required int minutes,
-  }) => (subject: 'code:$code', body: '$language/$code/$minutes');
+  }) => (
+    subject: 'code:$code',
+    body: '$language/$code/$minutes',
+    heading: null,
+    highlight: code,
+  );
 
   SignIn build({Random? random, int? maxPerSource}) => SignIn(
     challenges: challenges,

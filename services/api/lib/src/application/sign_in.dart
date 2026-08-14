@@ -111,7 +111,8 @@ final class SignedIn {
 /// stays testable without a catalog on disk, and so the *server* remains the
 /// only place prose is produced (ADR-0008).
 typedef RenderMessage =
-    ({String? subject, String body}) Function({
+    ({String? subject, String body, String? heading, String? highlight})
+    Function({
       required SignInChannel channel,
       required String language,
       required String code,
@@ -302,6 +303,9 @@ final class SignIn {
         to: destination,
         subject: message.subject,
         body: message.body,
+        language: language,
+        heading: message.heading,
+        highlight: message.highlight,
       ),
     );
 

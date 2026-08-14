@@ -66,7 +66,12 @@ void main() {
             required String language,
             required String code,
             required int minutes,
-          }) => (subject: 'code:$code', body: code),
+          }) => (
+            subject: 'code:$code',
+            body: code,
+            heading: null,
+            highlight: code,
+          ),
       mac: const HmacSha256Authenticator(),
       codeKey: utf8.encode('an-integration-key-of-32-characters'),
     );
@@ -297,7 +302,12 @@ void main() {
               required String language,
               required String code,
               required int minutes,
-            }) => (subject: 'code:$code', body: code),
+            }) => (
+              subject: 'code:$code',
+              body: code,
+              heading: null,
+              highlight: code,
+            ),
         mac: const HmacSha256Authenticator(),
         codeKey: utf8.encode('an-integration-key-of-32-characters'),
         maxPerSource: 3,

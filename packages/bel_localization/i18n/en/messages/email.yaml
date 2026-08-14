@@ -6,8 +6,17 @@
 # Brevity is still right — plenty of people read this on a five-inch screen
 # over 2G.
 email:
+  # The chrome every e-mail is drawn in (`email_shell.dart`). These two lines
+  # are the only ones in the catalog that speak for the product rather than
+  # for an event: they appear under every message.
+  shell:
+    preview: "BilletEnLigne"
+    footer: |
+      Automatic message from BilletEnLigne. Please do not reply.
+      You are receiving it because a booking or an account is linked to this address.
   otp:
     subject: "Your BilletEnLigne code: {code}"
+    heading: "Your sign-in code"
     body: |
       Your BilletEnLigne sign-in code is {code}.
 

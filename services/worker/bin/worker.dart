@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:bel_api/src/adapters/acs_notification_gateway.dart';
 import 'package:bel_api/src/adapters/logging_notification_gateway.dart';
 import 'package:bel_api/src/adapters/smtp_notification_gateway.dart';
+import 'package:bel_api/src/adapters/styled_email_gateway.dart';
 import 'package:bel_api/src/application/ports/notification_gateway.dart';
 import 'package:bel_api/src/infrastructure/config/dev_env.dart';
 import 'package:bel_api/src/infrastructure/config/env.dart';
@@ -85,22 +86,33 @@ Future<void> main(List<String> args) async {
   // Blank connection string is a supported state (ADR-0019): messages go to
   // the log rather than a handset, so a developer can watch the drain work
   // without anybody receiving anything.
-  final NotificationGateway notifications =
-      AcsNotificationGateway.tryParse(
-        env['COMMS__CONNECTIONSTRING'],
-        emailFrom: env['COMMS__EMAILFROM'],
-        smsFrom: env['COMMS__SMSFROM'],
-      ) ??
-      // The local mail catcher, so a statement drained by the worker arrives
-      // as a readable message with its PDF attached rather than as a line of
-      // log saying a PDF existed. Same order as the API, and for the same
-      // reason: ACS wins wherever it is configured.
-      SmtpNotificationGateway.tryParse(
-        env['SMTP__HOST'],
-        port: env['SMTP__PORT'],
-        emailFrom: env['COMMS__EMAILFROM'],
-      ) ??
-      const LoggingNotificationGateway();
+  // Loaded before the gateway rather than inside the drain, because the
+  // chrome around a message needs the same catalog the words came from.
+  final catalog = CatalogLoader.fromDirectory(
+    env['BEL_I18N_DIR'] ?? 'packages/bel_localization/i18n',
+  );
+
+  // Wrapped exactly as the API wraps it: almost every e-mail this product
+  // sends leaves from here, so a chrome applied only on the API side would
+  // style the sign-in code and nothing else.
+  final NotificationGateway notifications = StyledEmailGateway(
+    AcsNotificationGateway.tryParse(
+          env['COMMS__CONNECTIONSTRING'],
+          emailFrom: env['COMMS__EMAILFROM'],
+          smsFrom: env['COMMS__SMSFROM'],
+        ) ??
+        // The local mail catcher, so a statement drained by the worker arrives
+        // as a readable message with its PDF attached rather than as a line of
+        // log saying a PDF existed. Same order as the API, and for the same
+        // reason: ACS wins wherever it is configured.
+        SmtpNotificationGateway.tryParse(
+          env['SMTP__HOST'],
+          port: env['SMTP__PORT'],
+          emailFrom: env['COMMS__EMAILFROM'],
+        ) ??
+        const LoggingNotificationGateway(),
+    catalog: catalog,
+  );
 
   // The same composition the API uses, so the worker polls through exactly
   // the adapters that opened the intents — a second wiring here would be a
@@ -128,9 +140,7 @@ Future<void> main(List<String> args) async {
   final drain = OutboxDrain(
     db: db,
     notifications: notifications,
-    catalog: CatalogLoader.fromDirectory(
-      env['BEL_I18N_DIR'] ?? 'packages/bel_localization/i18n',
-    ),
+    catalog: catalog,
     // Every time in every message is rendered in this zone. The market's, not
     // the host's: a container in Europe would otherwise tell a traveller in
     // Brazzaville that their 06:00 coach leaves at 05:00.

@@ -6,8 +6,17 @@
 # coûte pas au segment. Rester bref reste une bonne idée — beaucoup de gens
 # liront ça sur un écran de 5 pouces en 2G.
 email:
+  # L'habillage commun a tous les e-mails (`email_shell.dart`). Ces deux
+  # lignes sont les seules du catalogue qui parlent au nom du produit plutot
+  # que d'un evenement : elles apparaissent sous chaque message.
+  shell:
+    preview: "BilletEnLigne"
+    footer: |
+      Message automatique de BilletEnLigne. Merci de ne pas y répondre.
+      Vous le recevez parce qu'une réservation ou un compte est lié à cette adresse.
   otp:
     subject: "Votre code BilletEnLigne : {code}"
+    heading: "Votre code de connexion"
     body: |
       Votre code de connexion BilletEnLigne est {code}.
 
