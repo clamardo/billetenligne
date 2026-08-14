@@ -18,6 +18,7 @@ import 'adapters/memory_idempotency_store.dart';
 import 'application/hold_seats.dart';
 import 'infrastructure/web/app_link_claims.dart';
 import 'infrastructure/web/store_listings.dart';
+import 'infrastructure/web/web_origins.dart';
 import 'infrastructure/config/ticket_signing_key.dart';
 import 'adapters/airtel_money_gateway.dart';
 import 'adapters/ed25519_ticket_issuer.dart';
@@ -154,6 +155,7 @@ final class Services {
     this.mailChannel = 'log',
     required this.appLinks,
     required this.stores,
+    required this.webOrigins,
     Database? database,
   }) : _database = database;
 
@@ -357,6 +359,10 @@ final class Services {
   /// who wants the console. Blank until those addresses exist.
   final StoreListings stores;
 
+  /// Which browser origins may call this API. Empty by default, and empty
+  /// means none — the handset apps and the scanner send no `Origin` at all.
+  final WebOrigins webOrigins;
+
   final Database? _database;
 
   factory Services.resolve({
@@ -507,6 +513,7 @@ final class Services {
       smsConfigured: (env['COMMS__SMSFROM'] ?? '').isNotEmpty,
       appLinks: AppLinkIdentity.from(env),
       stores: StoreListings.from(env),
+      webOrigins: WebOrigins.from(env),
       database: db,
     );
   }
@@ -710,6 +717,7 @@ final class Services {
       smsConfigured: true,
       appLinks: AppLinkIdentity.from(const {}),
       stores: StoreListings.from(environment ?? const {}),
+      webOrigins: WebOrigins.from(environment ?? const {}),
     );
   }
 

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bel_api/src/composition.dart';
+import 'package:bel_api/src/middleware/cors.dart';
 import 'package:bel_api/src/middleware/problem.dart';
 import 'package:bel_api/src/ports/auth_gateway.dart';
 import 'package:bel_contracts/bel_contracts.dart';
@@ -29,7 +30,12 @@ Handler middleware(Handler handler) => handler
     .use(provider<AuthGateway>((_) => _authGateway))
     .use(provider<Services>((_) => _services))
     .use(_errorBoundary())
-    .use(_traceId());
+    .use(_traceId())
+    // Outermost of all: a preflight must be answered before routing, and a
+    // 401 or a 500 needs the header as much as a 200 does — without it the
+    // browser hides the response and the console says "network error" for
+    // what was actually "your session expired". See `middleware/cors.dart`.
+    .use(cors(_services.webOrigins));
 
 /// Resolved once, at startup. Postgres when DATABASE_URL is set, fakes
 /// otherwise — see composition.dart for why that fallback exists.

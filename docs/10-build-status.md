@@ -490,6 +490,65 @@ figure here has been re-measured from a clean tree.
 
 ---
 
+## What the CORS push changed, and what it cost
+
+The previous slice named this and did not fix it. This is the fix.
+
+**There was no `Access-Control-Allow-Origin` header anywhere in this API.**
+Not a wrong one — none. The operator console and the back office are Flutter
+web apps, and a browser decides whether a page may call an API on another
+origin *before the request leaves the tab*. `console.blt.cg` calling `blt.cg`
+is blocked. So is `flutter run -d chrome` on `localhost:5000` calling
+`localhost:8080`, which is the local development loop.
+
+**Why nothing caught it.** Every test in this repository builds its own
+request. The Dart client is not a browser. The handset apps and the scanner
+are not browsers and send no `Origin` at all. CORS is enforced by exactly one
+kind of client and this repository had never pointed one at itself — which is
+also why the fix is nine checks in `tool/smoke_api.sh` over a real socket
+rather than a unit test that would have agreed with whatever it was told.
+
+**An allow-list, never a wildcard.** `BEL__WEBORIGINS` is a comma-separated
+list of exact origins, it is empty by default, and empty means no browser may
+call this API at all. `*` is the one-line version and it is wrong here for a
+specific reason: every interesting route is behind a bearer token, and a
+wildcard invites any page on the internet to try one.
+
+An allowed origin is echoed back **verbatim**, because a browser compares the
+header to its own origin character for character. Nothing is derived from the
+request except the lookup key — a normalized scheme-and-authority — which is
+what makes a reflected-origin bug impossible here rather than merely absent.
+The scheme and the port are part of the identity: `http://console.blt.cg` is
+not `https://console.blt.cg`, and allowing the plain-HTTP twin of an HTTPS
+console is how a token ends up on the wire.
+
+**Outermost of all the middleware, and for two failure modes rather than for
+tidiness.** A preflight is an `OPTIONS` to a route that has no `OPTIONS`
+handler; answering it after routing makes it a 405 with no CORS headers, which
+a browser reports as an opaque CORS failure with no further detail. And a 401
+or a 500 needs the header as much as a 200 does — without it the browser hides
+the response body, and the console shows *network error* for what was actually
+*your session expired*.
+
+Two decisions in the opposite direction. `Access-Control-Allow-Credentials` is
+**absent**, because this API authenticates with a bearer token in a header and
+never with a cookie; allowing credentials would opt every origin on the list
+into sending them. And the allowed-headers list is **named rather than
+reflected**: echoing back whatever the caller asked for is the header
+equivalent of `*`.
+
+`Access-Control-Expose-Headers` carries the trace id, the idempotency-replay
+flag, the ETag, `Content-Disposition` and `Retry-After`. A page that cannot
+read the trace id cannot report the bug; one that cannot read the replay flag
+cannot tell a retried POST from a second charge.
+
+**What it cost:** one config value, one middleware, 10 unit tests, 9 smoke
+checks, and two lines in `infra/dev/.env.example` that make the local console
+work in a browser for the first time.
+
+
+---
+
 ## What the web-images push changed, and what it cost
 
 The console and the back office are Flutter web apps that had never been built

@@ -95,8 +95,14 @@ echo "── starting on :$PORT"
 # halves of the switch are needed to reach a card here — the market file has
 # to announce the rail and the deployment has to have something behind it —
 # and the checks below prove each half separately.
+# `BEL__WEBORIGINS` is the console's own address in a local stack. The two
+# Flutter web apps are the only clients of this API that are browsers, and
+# whether a browser may call it at all is decided by a header no unit test
+# sends and no test client needs — which is exactly why it went missing for
+# the whole life of the console.
 (cd "$API_DIR" && exec env BEL_ENV_FILE=none PORT="$PORT" BEL_SIGNIN_MAX_PER_SOURCE=6 \
   BEL_MARKETS_FILE=/tmp/bel-smoke-markets-card.yaml \
+  BEL__WEBORIGINS=http://localhost:5000,https://console.blt.cg \
   CARD__SANDBOX=1 ORANGE__SANDBOX=1 \
   dart build/bin/server.dart >/tmp/bel-smoke.log 2>&1) &
 server_pid=$!
@@ -909,6 +915,57 @@ check "the storefront is cacheable" "yes" \
      | grep -qi '^cache-control: public, max-age=300' && echo yes || echo no)"
 check "the vitrine editor is closed to anonymous" "401" \
   "$(status "$BASE/console/v1/vitrine")"
+
+# ── the browser the console runs in ─────────────────────────────────────────
+#
+# The console and the back office are Flutter web apps, and a browser decides
+# whether they may call this API before the request leaves the tab. That
+# decision is made entirely by headers, which means **no unit test and no Dart
+# client can see it** — they build their own requests and no browser is
+# involved. It is the reason there was no `Access-Control-Allow-Origin` header
+# anywhere in this API for the whole life of the console.
+check "an allowed origin is echoed back exactly" "http://localhost:5000" \
+  "$(curl -sD - -o /dev/null -H 'Origin: http://localhost:5000' "$BASE/public/v1/market" \
+     | tr -d '\r' | grep -i '^access-control-allow-origin:' | cut -d' ' -f2)"
+# Echoed, never `*`: every interesting route here is behind a bearer token,
+# and a wildcard invites any page on the internet to try one.
+check "an origin nobody configured gets nothing" "yes" \
+  "$(curl -sD - -o /dev/null -H 'Origin: https://evil.example' "$BASE/public/v1/market" \
+     | grep -qi 'access-control-allow-origin' && echo no || echo yes)"
+check "and the answer says it depends on who asked" "yes" \
+  "$(curl -sD - -o /dev/null -H 'Origin: http://localhost:5000' "$BASE/public/v1/market" \
+     | tr -d '\r' | grep -qi '^vary: origin' && echo yes || echo no)"
+# The preflight goes to a route with no OPTIONS handler. Answered before
+# routing or it is a 405 with no CORS headers, which a browser reports as an
+# opaque CORS failure with no further detail.
+check "a preflight is answered, not routed" "204" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS \
+     -H 'Origin: http://localhost:5000' \
+     -H 'Access-Control-Request-Method: POST' \
+     -H 'Access-Control-Request-Headers: authorization' \
+     "$BASE/public/v1/holds")"
+check "and it names the header every signed-in call carries" "yes" \
+  "$(curl -sD - -o /dev/null -X OPTIONS -H 'Origin: http://localhost:5000' \
+     -H 'Access-Control-Request-Method: POST' "$BASE/public/v1/holds" \
+     | grep -qi 'access-control-allow-headers:.*[Aa]uthorization' && echo yes || echo no)"
+check "and the idempotency key, without which a POST cannot be retried" "yes" \
+  "$(curl -sD - -o /dev/null -X OPTIONS -H 'Origin: http://localhost:5000' \
+     -H 'Access-Control-Request-Method: POST' "$BASE/public/v1/holds" \
+     | grep -qi 'access-control-allow-headers:.*[Ii]dempotency-[Kk]ey' && echo yes || echo no)"
+# A 401 needs the header as much as a 200 does: without it the browser hides
+# the response and the console says "network error" for "your session expired".
+check "a refusal is readable by the page that caused it" "yes" \
+  "$(curl -sD - -o /dev/null -H 'Origin: http://localhost:5000' \
+     -H 'Authorization: Bearer nonsense' "$BASE/console/v1/vitrine" \
+     | grep -qi 'access-control-allow-origin' && echo yes || echo no)"
+check "the trace id can be read by the page that has to report it" "yes" \
+  "$(curl -sD - -o /dev/null -H 'Origin: http://localhost:5000' "$BASE/public/v1/market" \
+     | grep -qi 'access-control-expose-headers:.*[Tt]race' && echo yes || echo no)"
+# Bearer tokens in a header, never a cookie. Allowing credentials would opt
+# every origin on that list into sending them.
+check "no origin is invited to send cookies" "yes" \
+  "$(curl -sD - -o /dev/null -H 'Origin: http://localhost:5000' "$BASE/public/v1/market" \
+     | grep -qi 'access-control-allow-credentials' && echo no || echo yes)"
 
 # ── The address on the poster ───────────────────────────────────────────────
 #
