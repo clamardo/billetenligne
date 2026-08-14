@@ -591,10 +591,15 @@ in the same face as its table rows is a console where nothing stands out —
 which is the complaint this entire pass exists to answer. Nine screens are on
 it.
 
-**What it did not build:** the back office has no render harness of its own.
-Its six screens changed only their header component, and the change is the
-same one the console shots verified, so a second harness would have been built
-to look at a change already looked at. It is the obvious next one.
+**Built straight after:** the back office got the same harness — five shots,
+light and dark, over the queue, the payouts and the unreconciled payments.
+Nothing was wrong with it. That is worth writing down rather than quietly
+moving on: the console's three defects were not a house style, they were three
+defects, and the surface where somebody suspends a company and approves other
+people's money renders correctly in both themes with the chips, the risk
+banding and the raised-over-sunken relationship all reading as intended. The
+gateway was extracted the same way the console's was, so both suites share one
+fake.
 
 **What it cost:** 7 console shots, 2 console tests, 4 design tests, one new
 component, and one shared test fixture where there had been a private one.

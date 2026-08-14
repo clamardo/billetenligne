@@ -1,5 +1,4 @@
 import 'package:bel_admin/src/application/admin_workspace.dart';
-import 'package:bel_admin/src/application/ports/admin_gateway.dart';
 import 'package:bel_admin/src/presentation/app.dart';
 import 'package:bel_client/bel_client.dart';
 import 'package:bel_contracts/bel_contracts.dart';
@@ -10,221 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'catalog_fixture.dart';
-
-/// A gateway the test drives directly, and which records what it was asked.
-///
-/// It records the **reason** on every call, because that is the property this
-/// surface exists to have: an action with no attributable actor and no stated
-/// reason is the thing ADR-0011 forbids, and a test that only checks the
-/// screen renders would not notice it going missing.
-final class _ScriptedAdmin implements AdminGateway {
-  _ScriptedAdmin({required this.capabilities});
-
-  List<String> capabilities;
-  ApiFailure? identityFailure;
-
-  List<AdminOperatorDto> roster = const [];
-  List<UnresolvedPaymentDto> queue = const [];
-  List<PayoutRunDto> runs = const [];
-  FunnelDto funnelResult = const FunnelDto(days: []);
-  AdminOperatorDetailDto? file;
-
-  /// `call:argument:…:reason`, in order.
-  final calls = <String>[];
-
-  @override
-  Future<AdminIdentityDto> identity() async {
-    if (identityFailure != null) throw identityFailure!;
-    return AdminIdentityDto(
-      userId: 'u-1',
-      role: 'operations',
-      capabilities: capabilities,
-      fullName: 'Sarah N.',
-    );
-  }
-
-  @override
-  Future<List<AdminOperatorDto>> operators({
-    Set<String> statuses = const {},
-    required String reason,
-  }) async {
-    calls.add('operators:${statuses.length}:$reason');
-    return roster;
-  }
-
-  @override
-  Future<AdminOperatorDetailDto> operatorDetail(
-    String id, {
-    required String reason,
-  }) async {
-    calls.add('detail:$id:$reason');
-    return file!;
-  }
-
-  @override
-  Future<AdminOperatorDto> decide({
-    required String operatorId,
-    required String decision,
-    required String reason,
-    String? detail,
-  }) async {
-    calls.add('decide:$operatorId:$decision:$reason:${detail ?? ''}');
-    return roster.first;
-  }
-
-  @override
-  Future<AdminOperatorDto> setCommission({
-    required String operatorId,
-    required int commissionBps,
-    required String reason,
-  }) async {
-    calls.add('commission:$operatorId:$commissionBps:$reason');
-    return roster.first;
-  }
-
-  @override
-  Future<List<UnresolvedPaymentDto>> unresolvedPayments({
-    required String reason,
-  }) async {
-    calls.add('payments:$reason');
-    return queue;
-  }
-
-  @override
-  Future<FunnelDto> funnel({
-    required String reason,
-    int days = 14,
-    String? operatorId,
-  }) async {
-    calls.add('funnel:$days:$reason');
-    return funnelResult;
-  }
-
-  /// Nothing dated by default. A test that wants the calendar sets this.
-  List<ComplianceDto> calendar = const [];
-
-  @override
-  Future<List<ComplianceDto>> compliance({
-    required String reason,
-    int withinDays = 60,
-  }) async {
-    calls.add('compliance:$withinDays:$reason');
-    return calendar;
-  }
-
-  @override
-  Future<List<PayoutRunDto>> payouts({required String reason}) async {
-    calls.add('payouts:$reason');
-    return runs;
-  }
-
-  @override
-  Future<PayoutRunDto> preparePayout({
-    required String operatorId,
-    required DateTime periodStart,
-    required DateTime periodEnd,
-    required String reason,
-  }) async {
-    calls.add('prepare:$operatorId:$reason');
-    return runs.first;
-  }
-
-  @override
-  Future<PayoutRunDto> decidePayout({
-    required String runId,
-    required String decision,
-    required String reason,
-    String? paymentReference,
-  }) async {
-    calls.add('payout:$runId:$decision:$reason:${paymentReference ?? ''}');
-    return _run(
-      state: decision == 'release' ? 'paid' : 'approved',
-      reference: paymentReference,
-    );
-  }
-
-  @override
-  Future<UnresolvedPaymentDto> resolvePayment({
-    required String intentId,
-    required String outcome,
-    required String reason,
-    String? evidence,
-    String? failureCode,
-  }) async {
-    calls.add(
-      'resolve:$intentId:$outcome:$reason:${evidence ?? ''}:'
-      '${failureCode ?? ''}',
-    );
-    return queue.first;
-  }
-}
-
-PayoutRunDto _run({
-  String state = 'draft',
-  int net = 3516000,
-  String? reference,
-}) => PayoutRunDto(
-  id: 'pay-1',
-  operatorId: 'op-1',
-  operatorName: 'Océan du Nord',
-  periodStart: DateTime.utc(2026, 8, 1),
-  periodEnd: DateTime.utc(2026, 8, 8),
-  onlineSalesCount: 412,
-  onlineGross: const Money.xaf(3708000),
-  cashSalesCount: 188,
-  cashGross: const Money.xaf(1692000),
-  commission: const Money.xaf(185400),
-  serviceFees: const Money.xaf(180000),
-  refunds: const Money.xaf(126000),
-  payable: const Money.xaf(3708000),
-  tills: const Money.xaf(192000),
-  net: Money.xaf(net),
-  state: state,
-  preparedAt: DateTime.utc(2026, 8, 8, 9),
-  destination: 'MoMo ****4471',
-  reference: reference,
-);
-
-AdminOperatorDto _operator({
-  String status = 'under_review',
-  int commissionBps = 500,
-  DateTime? createdAt,
-  String? riskBand,
-  List<String> riskReasons = const [],
-}) => AdminOperatorDto(
-  id: 'op-1',
-  code: 'ODN',
-  legalName: 'Océan du Nord SARL',
-  tradingName: 'Océan du Nord',
-  status: status,
-  marketCode: 'CG',
-  createdAt: createdAt ?? DateTime.utc(2026, 8, 1),
-  commissionBps: commissionBps,
-  rccmNumber: 'CG-BZV-01-2019-B12-00042',
-  documentCount: 2,
-  expiringDocumentCount: 1,
-  vehicleCount: 14,
-  routeCount: 3,
-  staffCount: 9,
-  riskBand: riskBand,
-  riskReasons: riskReasons,
-);
-
-UnresolvedPaymentDto _payment() => UnresolvedPaymentDto(
-  intentId: 'pi-1',
-  state: 'indeterminate',
-  railId: 'mtn',
-  amount: const Money.xaf(12300),
-  payerMsisdn: '+242061234567',
-  createdAt: DateTime.utc(2026, 8, 10, 6),
-  bookingId: 'bk-1',
-  bookingRef: 'BEL-7QK4M2',
-  bookingState: 'pending_payment',
-  operatorId: 'op-1',
-  operatorName: 'Océan du Nord',
-  pollAttempts: 4,
-  travellerPhone: '+242069876543',
-);
+import 'scripted_admin.dart';
 
 void main() {
   late TranslationCatalog catalog;
@@ -233,7 +18,7 @@ void main() {
 
   Future<AdminWorkspace> pump(
     WidgetTester tester,
-    _ScriptedAdmin gateway,
+    ScriptedAdmin gateway,
   ) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
@@ -254,7 +39,7 @@ void main() {
     testWidgets('a reviewer who may reconcile sees all three', (tester) async {
       await pump(
         tester,
-        _ScriptedAdmin(
+        ScriptedAdmin(
           capabilities: const [
             'platform.operator.review',
             'platform.payment.reconcile',
@@ -270,7 +55,7 @@ void main() {
     testWidgets('a viewer sees no queue at all', (tester) async {
       await pump(
         tester,
-        _ScriptedAdmin(capabilities: const ['booking.read', 'finance.read']),
+        ScriptedAdmin(capabilities: const ['booking.read', 'finance.read']),
       );
 
       // Not greyed, not 403ing on tap. Absent (ADR-0011).
@@ -283,7 +68,7 @@ void main() {
     ) async {
       await pump(
         tester,
-        _ScriptedAdmin(capabilities: const [])
+        ScriptedAdmin(capabilities: const [])
           ..identityFailure = const NetworkUnreachable(),
       );
 
@@ -304,11 +89,11 @@ void main() {
     testWidgets('the checklist is the applicant\'s, not a second one', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['platform.operator.review'],
-      )..roster = [_operator()];
+      )..roster = [adminOperator()];
       gateway.file = AdminOperatorDetailDto(
-        operator: _operator(),
+        operator: adminOperator(),
         submittedAt: DateTime.utc(2026, 8, 2),
         application: const ApplicationFacts(
           legalName: 'Océan du Nord SARL',
@@ -337,11 +122,11 @@ void main() {
     testWidgets('a settlement account in somebody else\'s name is flagged', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['platform.operator.review'],
-      )..roster = [_operator()];
+      )..roster = [adminOperator()];
       gateway.file = AdminOperatorDetailDto(
-        operator: _operator(),
+        operator: adminOperator(),
         application: const ApplicationFacts(
           legalName: 'Océan du Nord SARL',
           settlementAccountName: 'Trans Bony Voyages',
@@ -361,10 +146,10 @@ void main() {
     testWidgets('an operator onboarded before self-signup shows no card', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['platform.operator.review'],
-      )..roster = [_operator()];
-      gateway.file = AdminOperatorDetailDto(operator: _operator());
+      )..roster = [adminOperator()];
+      gateway.file = AdminOperatorDetailDto(operator: adminOperator());
 
       final workspace = await pump(tester, gateway);
       await workspace.open('op-1');
@@ -381,10 +166,10 @@ void main() {
     testWidgets('every decision is disabled until one is typed', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['platform.operator.review'],
-      )..roster = [_operator()];
-      gateway.file = AdminOperatorDetailDto(operator: _operator());
+      )..roster = [adminOperator()];
+      gateway.file = AdminOperatorDetailDto(operator: adminOperator());
 
       final workspace = await pump(tester, gateway);
       await workspace.open('op-1');
@@ -419,9 +204,9 @@ void main() {
     testWidgets('the workspace refuses a write with a blank reason', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['platform.operator.review'],
-      )..roster = [_operator()];
+      )..roster = [adminOperator()];
 
       final workspace = await pump(tester, gateway);
       await workspace.decide(operatorId: 'op-1', decision: 'approve');
@@ -436,13 +221,13 @@ void main() {
     testWidgets('an application under review offers approve, not reinstate', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const [
           'platform.operator.review',
           'platform.operator.suspend',
         ],
-      )..roster = [_operator()];
-      gateway.file = AdminOperatorDetailDto(operator: _operator());
+      )..roster = [adminOperator()];
+      gateway.file = AdminOperatorDetailDto(operator: adminOperator());
 
       final workspace = await pump(tester, gateway);
       await workspace.open('op-1');
@@ -455,8 +240,8 @@ void main() {
     });
 
     testWidgets('a suspended operator offers only reinstate', (tester) async {
-      final suspended = _operator(status: 'suspended');
-      final gateway = _ScriptedAdmin(
+      final suspended = adminOperator(status: 'suspended');
+      final gateway = ScriptedAdmin(
         capabilities: const [
           'platform.operator.review',
           'platform.operator.suspend',
@@ -474,8 +259,8 @@ void main() {
     });
 
     testWidgets('a rejected file offers nothing, and says so', (tester) async {
-      final rejected = _operator(status: 'rejected');
-      final gateway = _ScriptedAdmin(
+      final rejected = adminOperator(status: 'rejected');
+      final gateway = ScriptedAdmin(
         capabilities: const [
           'platform.operator.review',
           'platform.operator.suspend',
@@ -492,10 +277,10 @@ void main() {
   });
 
   testWidgets('a decision carries the reason and the detail', (tester) async {
-    final gateway = _ScriptedAdmin(
+    final gateway = ScriptedAdmin(
       capabilities: const ['platform.operator.review'],
-    )..roster = [_operator()];
-    gateway.file = AdminOperatorDetailDto(operator: _operator());
+    )..roster = [adminOperator()];
+    gateway.file = AdminOperatorDetailDto(operator: adminOperator());
 
     final workspace = await pump(tester, gateway);
     await workspace.open('op-1');
@@ -524,13 +309,13 @@ void main() {
   testWidgets('the commission is basis points, whatever the field says', (
     tester,
   ) async {
-    final gateway = _ScriptedAdmin(
+    final gateway = ScriptedAdmin(
       capabilities: const [
         'platform.operator.review',
         'platform.operator.offboard',
       ],
-    )..roster = [_operator()];
-    gateway.file = AdminOperatorDetailDto(operator: _operator());
+    )..roster = [adminOperator()];
+    gateway.file = AdminOperatorDetailDto(operator: adminOperator());
 
     final workspace = await pump(tester, gateway);
     await workspace.open('op-1');
@@ -552,9 +337,9 @@ void main() {
 
   group('the queue arrives pre-sorted', () {
     testWidgets('an unassessed file wears no band at all', (tester) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['platform.operator.review'],
-      )..roster = [_operator()];
+      )..roster = [adminOperator()];
 
       await pump(tester, gateway);
 
@@ -567,9 +352,9 @@ void main() {
 
     testWidgets('a sorted file names its reasons, not a count', (tester) async {
       final gateway =
-          _ScriptedAdmin(capabilities: const ['platform.operator.review'])
+          ScriptedAdmin(capabilities: const ['platform.operator.review'])
             ..roster = [
-              _operator(
+              adminOperator(
                 riskBand: 'elevated',
                 riskReasons: const ['duplicate_operator', 'fleet_too_large'],
               ),
@@ -591,9 +376,9 @@ void main() {
     });
 
     testWidgets('an automatic approval has nothing to explain', (tester) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['platform.operator.review'],
-      )..roster = [_operator(status: 'active', riskBand: 'low')];
+      )..roster = [adminOperator(status: 'active', riskBand: 'low')];
 
       await pump(tester, gateway);
 
@@ -626,7 +411,7 @@ void main() {
     testWidgets('a row names the company, the paper and the days', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['platform.operator.review'],
       )..calendar = [standing(stage: 'urgent', days: 5)];
 
@@ -644,7 +429,7 @@ void main() {
       tester,
     ) async {
       final gateway =
-          _ScriptedAdmin(capabilities: const ['platform.operator.review'])
+          ScriptedAdmin(capabilities: const ['platform.operator.review'])
             ..calendar = [
               standing(
                 stage: 'blocked',
@@ -667,7 +452,7 @@ void main() {
     });
 
     testWidgets('widening the window is a fresh read', (tester) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['platform.operator.review'],
       );
 
@@ -687,7 +472,7 @@ void main() {
     testWidgets('an empty calendar is an answer, not a blank', (tester) async {
       final workspace = await pump(
         tester,
-        _ScriptedAdmin(capabilities: const ['platform.operator.review']),
+        ScriptedAdmin(capabilities: const ['platform.operator.review']),
       );
       workspace.openSection(AdminSection.compliance);
       await tester.pumpAndSettle();
@@ -700,8 +485,8 @@ void main() {
     testWidgets('the whole statement is in the row, cash included', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(capabilities: const ['finance.read'])
-        ..runs = [_run()];
+      final gateway = ScriptedAdmin(capabilities: const ['finance.read'])
+        ..runs = [payoutRun()];
 
       final workspace = await pump(tester, gateway);
       workspace.openSection(AdminSection.payouts);
@@ -718,8 +503,8 @@ void main() {
     testWidgets('an analyst may read the queue and not move it', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(capabilities: const ['finance.read'])
-        ..runs = [_run()];
+      final gateway = ScriptedAdmin(capabilities: const ['finance.read'])
+        ..runs = [payoutRun()];
 
       final workspace = await pump(tester, gateway);
       workspace.openSection(AdminSection.payouts);
@@ -735,9 +520,9 @@ void main() {
     });
 
     testWidgets('approving says the money has not gone yet', (tester) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['finance.read', 'payout.approve'],
-      )..runs = [_run()];
+      )..runs = [payoutRun()];
 
       final workspace = await pump(tester, gateway);
       workspace.openSection(AdminSection.payouts);
@@ -757,9 +542,9 @@ void main() {
     });
 
     testWidgets('the money cannot be sent without a reference', (tester) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['finance.read', 'payout.approve'],
-      )..runs = [_run(state: 'approved')];
+      )..runs = [payoutRun(state: 'approved')];
 
       final workspace = await pump(tester, gateway);
       workspace.openSection(AdminSection.payouts);
@@ -795,9 +580,9 @@ void main() {
     testWidgets('an operator who owes us is not offered a transfer', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['finance.read', 'payout.approve'],
-      )..runs = [_run(net: -54000)];
+      )..runs = [payoutRun(net: -54000)];
 
       final workspace = await pump(tester, gateway);
       workspace.openSection(AdminSection.payouts);
@@ -815,9 +600,9 @@ void main() {
     testWidgets('reask needs no evidence — it asks the rail, not a human', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['platform.payment.reconcile'],
-      )..queue = [_payment()];
+      )..queue = [unresolvedPayment()];
 
       final workspace = await pump(tester, gateway);
       workspace.openSection(AdminSection.payments);
@@ -836,9 +621,9 @@ void main() {
     testWidgets('declaring a payment captured demands what was seen', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['platform.payment.reconcile'],
-      )..queue = [_payment()];
+      )..queue = [unresolvedPayment()];
 
       final workspace = await pump(tester, gateway);
       workspace.openSection(AdminSection.payments);
@@ -875,9 +660,9 @@ void main() {
     testWidgets('a failure carries a code from the rails\' own taxonomy', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['platform.payment.reconcile'],
-      )..queue = [_payment()];
+      )..queue = [unresolvedPayment()];
 
       final workspace = await pump(tester, gateway);
       workspace.openSection(AdminSection.payments);
@@ -922,7 +707,7 @@ void main() {
     );
 
     testWidgets('the screen says what it does not measure', (tester) async {
-      final gateway = _ScriptedAdmin(capabilities: const ['finance.read'])
+      final gateway = ScriptedAdmin(capabilities: const ['finance.read'])
         ..funnelResult = FunnelDto(
           days: [day('2026-08-10', held: 40, reserved: 20, paid: 15)],
         );
@@ -945,7 +730,7 @@ void main() {
     testWidgets('a ten point fall is on the screen, not in a mailbox', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(capabilities: const ['finance.read'])
+      final gateway = ScriptedAdmin(capabilities: const ['finance.read'])
         ..funnelResult = FunnelDto(
           days: [
             day('2026-08-10', held: 10, reserved: 8, paid: 5),
@@ -963,7 +748,7 @@ void main() {
     testWidgets('a quiet day is drawn as quiet, not as a collapse', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(capabilities: const ['finance.read'])
+      final gateway = ScriptedAdmin(capabilities: const ['finance.read'])
         ..funnelResult = FunnelDto(days: [day('2026-08-10')]);
 
       final workspace = await pump(tester, gateway);
@@ -977,7 +762,7 @@ void main() {
     testWidgets('the window is a choice, and it is asked of the server', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(capabilities: const ['finance.read'])
+      final gateway = ScriptedAdmin(capabilities: const ['finance.read'])
         ..funnelResult = const FunnelDto(days: []);
 
       final workspace = await pump(tester, gateway);
@@ -995,7 +780,7 @@ void main() {
     testWidgets('a reviewer who cannot read finance never sees the tab', (
       tester,
     ) async {
-      final gateway = _ScriptedAdmin(
+      final gateway = ScriptedAdmin(
         capabilities: const ['platform.operator.review'],
       );
 
@@ -1009,9 +794,9 @@ void main() {
   testWidgets('the queue asks the server for exactly the pending statuses', (
     tester,
   ) async {
-    final gateway = _ScriptedAdmin(
+    final gateway = ScriptedAdmin(
       capabilities: const ['platform.operator.review'],
-    )..roster = [_operator()];
+    )..roster = [adminOperator()];
 
     await pump(tester, gateway);
 
