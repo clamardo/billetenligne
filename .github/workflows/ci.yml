@@ -192,6 +192,21 @@ jobs:
             exit 1
           fi
 
+      # A key in both files is a key whose value comes from whichever is
+      # applied second — which is the Secret, silently, and only in the
+      # cluster. The split between them is a judgement about what is a secret,
+      # and a duplicate means somebody made it twice and differently.
+      - name: No key is in both the config map and the secret
+        run: |
+          both="$(comm -12 \
+            <(grep -oE '^  [A-Z][A-Z0-9_]*:' infra/k8s/configmap.yaml | tr -d ' :' | LC_ALL=C sort) \
+            <(grep -oE '^  [A-Z][A-Z0-9_]*:' infra/k8s/secrets.example.yaml | tr -d ' :' | LC_ALL=C sort))"
+          if [ -n "$both" ]; then
+            echo "keys defined in both places:"
+            echo "$both"
+            exit 1
+          fi
+
       # Three promises the manifests make that are invisible in a render and
       # expensive to discover on a cluster. Each one shipped broken.
       - name: Nothing runs as the default service account

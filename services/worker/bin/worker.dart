@@ -5,6 +5,7 @@ import 'package:bel_api/src/adapters/logging_notification_gateway.dart';
 import 'package:bel_api/src/adapters/smtp_notification_gateway.dart';
 import 'package:bel_api/src/application/ports/notification_gateway.dart';
 import 'package:bel_api/src/infrastructure/config/dev_env.dart';
+import 'package:bel_api/src/infrastructure/config/env.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_ticket_links.dart';
 import 'package:bel_localization/bel_localization.dart';
@@ -64,7 +65,9 @@ Future<void> main(List<String> args) async {
   // The same gap-filling the API does, for the same reason: the worker is
   // started by a shell script, a launch configuration and a cron trigger, and
   // exactly one of those is guaranteed to have sourced the env file.
-  final env = DevEnv.fill(Platform.environment);
+  // Empty is unset here too — the worker reads the same ConfigMap and the
+  // same Secret as the API, and `env['X'] ?? default` reads `""` as an answer.
+  final env = Env.present(DevEnv.fill(Platform.environment));
   final url = env['DATABASE_URL'];
   if (url == null || url.isEmpty) {
     stderr.writeln(

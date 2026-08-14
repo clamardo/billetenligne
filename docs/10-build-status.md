@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-14 · after commit *Two replicas on one node is one replica*
+**Updated:** 2026-08-14 · after commit *Most of what was in the secret was not a secret*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -489,6 +489,51 @@ counted with `services/api/build` present, so a stale copy of every package's
 tests was counted again as if it were the API's own — the exact trap the
 paragraph above warns about, walked into by whoever wrote the warning. Every
 figure here has been re-measured from a clean tree.
+
+---
+
+## What the secret-split push changed, and what it cost
+
+`secrets.example.yaml` held thirty-one keys, and most of them were not
+secrets.
+
+**A secret is a value that would let somebody act as us.** A hostname, a
+container name, a Firebase project id and an SMS sender number are none of
+those, and eleven of them were in there. Keeping them there cost three real
+things. They could not be reviewed in a pull request — the Secret is not in
+this repository, so *which MTN host is production pointed at* was answerable
+only by somebody with cluster access. Changing one meant a secret-rotation
+ceremony for an edit that is a URL. And a Secret that is mostly configuration
+is a Secret people get casual about, which is the opposite of the point.
+
+**Moving them found a real bug**, and it is the reason this is a push rather
+than a tidy-up. Everything downstream reads `env['X'] ?? 'a default'`, and a
+Kubernetes ConfigMap is a map of strings with **no way to say *no value***. A
+key listed before its value exists arrives as `MTN__BASEURL: ""`, the `??`
+reads an empty string as an answer, and `Uri.parse('')` replaces the sandbox
+host with a relative URI — so every call to that rail fails against nothing,
+with an error about a hostname it never had. That is not hypothetical: it is
+what the template looks like at every point before a deployment has
+credentials, which is now.
+
+`Env.present` drops empty values once, at startup, in both processes. Absent
+and empty are the same intent arriving differently, and they are made the same
+in one place rather than at each of the forty that read one. Three tests,
+including the one that says a value made of spaces is still a value —
+trimming would be a second rule that silently rewrites what somebody typed.
+
+A CI check keeps the split honest: a key in both files takes its value from
+whichever is applied second, silently, and only in the cluster.
+
+**What it cost:** eleven keys moved, one 5-line helper, 3 tests, 1 CI check.
+
+**What is honestly not done:** the secrets that remain still reach the cluster
+in a `kubectl apply` from somebody's terminal. Secret Manager exists in the
+project and nothing reads from it; the workload identity that would is
+created and holds no roles. And the ConfigMap is committed with one
+deployment's answers in it — a second environment needs an overlay, and there
+is no second environment.
+
 
 ---
 

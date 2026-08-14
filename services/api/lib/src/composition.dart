@@ -61,6 +61,7 @@ import 'application/reserve_booking.dart';
 import 'application/search_departures.dart';
 import 'application/second_factor_sign_in.dart';
 import 'application/sign_in.dart';
+import 'infrastructure/config/env.dart';
 import 'infrastructure/config/dev_env.dart';
 import 'infrastructure/config/market_catalog.dart';
 import 'infrastructure/db/database.dart';
@@ -383,7 +384,8 @@ final class Services {
     // Without this, a launcher whose env file quietly did not apply gets the
     // in-memory composition, a 200 from `/health`, invented departures and a
     // sign-in code on stdout, with nothing anywhere saying so.
-    final env = DevEnv.fill(environment ?? Platform.environment);
+    // Empty is unset — a ConfigMap cannot say "no value", only "". See `Env`.
+    final env = Env.present(DevEnv.fill(environment ?? Platform.environment));
     final market = marketCatalog(env).defaultMarket;
     final url = env['DATABASE_URL'];
 

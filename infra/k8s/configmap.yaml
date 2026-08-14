@@ -44,9 +44,44 @@ data:
   BEL__CONSOLEURL: "https://console.blt.cg"
 
   # Email works; the phone channel is announced only once a sender number
-  # exists (ADR-0019). `COMMS__SMSFROM` lives in the Secret with the rest of
-  # the Communication Services configuration.
+  # exists (ADR-0019).
   COMMS__EMAILFROM: "billets@blt.cg"
+  COMMS__SMSFROM: ""
+
+  # ── not secrets, though they arrived as ones ──────────────────────────────
+  #
+  # A secret is a value that would let somebody act as us. A hostname, a
+  # container name, a project id and a sender number are none of those, and
+  # every one of these started in the Secret next door.
+  #
+  # Keeping them there cost three things. They could not be reviewed in a pull
+  # request — the Secret is not in this repository, so "which MTN host is
+  # production pointed at" was answerable only by somebody with cluster
+  # access. Changing one meant a secret-rotation ceremony for an edit that is
+  # a URL. And a Secret that is mostly configuration is a Secret people get
+  # casual about, which is the opposite of the point.
+  #
+  # **A blank here is an unset variable**, and that is a decision taken in the
+  # code rather than a property of Kubernetes. A ConfigMap is a map of strings
+  # and has no way to say *no value*, while everything downstream reads
+  # `env['X'] ?? 'a default'` — so a blank would replace a working sandbox
+  # host with `Uri.parse('')` and every call to that rail would fail against
+  # nothing. `Env.present` drops the empties at startup, in both processes, so
+  # the key can be listed here before the value exists.
+  FIREBASE_PROJECT_ID: ""
+  STORAGE__ACCOUNT: ""
+  STORAGE__CONTAINER: "bel-assets"
+  STORAGE__ENDPOINT: ""
+
+  # The rails' hosts. Sandbox and production are different addresses, and
+  # which one a deployment is pointed at is exactly the sort of thing that
+  # should be visible in a diff rather than in a terminal.
+  MTN__BASEURL: ""
+  MTN__TARGETENVIRONMENT: ""
+  AIRTEL__BASEURL: ""
+  ORANGE__BASEURL: ""
+  ORANGE__COUNTRY: "CG"
+  CARD__BASEURL: ""
 
   # Which rails this market announces. The file is in the image; naming it
   # here would mean a rail switch needed a rebuild.
