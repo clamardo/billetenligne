@@ -108,6 +108,21 @@ class _AdminShellState extends State<AdminShell> {
                         lightLabel: context.t('common.theme.light'),
                         darkLabel: context.t('common.theme.dark'),
                       ),
+                      // Beside the theme toggle. This app has no settings
+                      // screen either, and every language is written in its
+                      // own name from the catalog's manifest.
+                      KLanguageMenu(
+                        tooltip: context.t('common.language'),
+                        current: context.language,
+                        languages: [
+                          for (final language in context.languages)
+                            (
+                              code: language.code,
+                              nativeName: language.nativeName,
+                            ),
+                        ],
+                        onChanged: context.setLanguage,
+                      ),
                       if (widget.onManageSecondFactor != null)
                         IconButton(
                           icon: const Icon(Icons.lock_outline),

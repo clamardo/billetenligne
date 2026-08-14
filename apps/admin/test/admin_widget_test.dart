@@ -18,14 +18,23 @@ void main() {
 
   Future<AdminWorkspace> pump(
     WidgetTester tester,
-    ScriptedAdmin gateway,
-  ) async {
+    ScriptedAdmin gateway, {
+    String language = 'fr',
+    void Function(String code)? onLanguage,
+  }) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
 
     final workspace = AdminWorkspace(gateway: gateway);
-    await tester.pumpWidget(AdminApp(catalog: catalog, workspace: workspace));
+    await tester.pumpWidget(
+      AdminApp(
+        catalog: catalog,
+        workspace: workspace,
+        language: language,
+        onLanguage: onLanguage,
+      ),
+    );
     await tester.pumpAndSettle();
     return workspace;
   }
@@ -34,6 +43,43 @@ void main() {
     w.setReason('dossier complet, RCCM vérifié');
     await tester.pumpAndSettle();
   }
+
+  group('the language this back office is read in', () {
+    // It passed the literal `'fr'` in three places and asked nobody.
+
+    testWidgets('choosing one repaints the back office and is handed out', (
+      tester,
+    ) async {
+      final chosen = <String>[];
+      await pump(
+        tester,
+        ScriptedAdmin(capabilities: const ['platform.operator.review']),
+        onLanguage: chosen.add,
+      );
+
+      await tester.tap(find.byTooltip('Langue'));
+      await tester.pumpAndSettle();
+
+      // Written in its own name, from the catalog's manifest.
+      expect(find.text('English'), findsOneWidget);
+      await tester.tap(find.text('English'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Applications'), findsWidgets);
+      expect(chosen, ['en']);
+    });
+
+    testWidgets('it opens in the language it was handed', (tester) async {
+      // What the composition root passes after resolving the browser's own
+      // preference list against the catalog.
+      await pump(
+        tester,
+        ScriptedAdmin(capabilities: const ['platform.operator.review']),
+        language: 'en',
+      );
+      expect(find.text('Operators'), findsWidgets);
+    });
+  });
 
   group('the rail is built from capabilities', () {
     testWidgets('a reviewer who may reconcile sees all three', (tester) async {

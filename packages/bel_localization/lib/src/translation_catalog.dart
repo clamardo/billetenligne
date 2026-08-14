@@ -42,6 +42,44 @@ final class TranslationCatalog {
     return null;
   }
 
+  /// The best language we carry for somebody who prefers [preferred], in
+  /// their own order of preference.
+  ///
+  /// **The one place a locale becomes a language.** A handset and a browser
+  /// both hand out BCP-47 tags — `en-GB`, `fr-CA`, `pt_BR` — and this catalog
+  /// is keyed by folder name. Four apps were each deciding that on their own:
+  /// three said `'fr'` and asked nobody, and the fourth read `dart:io` and
+  /// compared the string to `en`, which answers French for `en-GB` if the
+  /// separator is an underscore and throws outright on the web, where
+  /// `Platform` does not exist.
+  ///
+  /// Each tag is resolved in turn — exact code, then primary subtag — and the
+  /// first that lands wins, because the list is somebody's order of preference
+  /// and it outranks how precisely they wrote any one entry. A Quebecois
+  /// browser asking for `fr-CA` and then `en` reads French; `de-DE, en-GB`
+  /// reads English. Case and separator are not part of a language, so `EN_gb`
+  /// is somebody who reads English.
+  ///
+  /// [defaultLanguage] when nothing matches, which is the honest answer rather
+  /// than a guess: French is what this market reads and what every string in
+  /// this catalog is written in first (ADR-0008).
+  String bestMatch(Iterable<String> preferred) {
+    for (final raw in preferred) {
+      final tag = raw.trim().toLowerCase().replaceAll('_', '-');
+      if (tag.isEmpty) continue;
+
+      // The primary subtag, which for a tag with no region is the tag itself —
+      // so this is one comparison covering both, rather than two passes.
+      final primary = tag.split('-').first;
+      for (final language in languages) {
+        final code = language.code.toLowerCase();
+        if (code == tag || code == primary) return language.code;
+      }
+    }
+
+    return defaultLanguage;
+  }
+
   /// The flat key/value map for a language, falling back to the default.
   Map<String, String> strings(String code) =>
       _byLanguage[code] ?? _byLanguage[defaultLanguage]!;

@@ -1,9 +1,12 @@
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:bel_client/bel_client.dart';
 import 'package:flutter/material.dart';
 
 import 'src/application/admin_workspace.dart';
 import 'src/infrastructure/api_admin_gateway.dart';
 import 'src/presentation/l10n.dart';
+import 'src/infrastructure/language_preference.dart';
 import 'src/infrastructure/theme_preference.dart';
 import 'src/presentation/sign_in.dart';
 
@@ -20,6 +23,17 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final catalog = await CatalogAssets.load();
+
+  // The browser's own preference list, resolved against the catalog, rather
+  // than the literal `'fr'` that stood here. `PlatformDispatcher` rather than
+  // `dart:io`: this is a web app, and `Platform` does not exist here at all.
+  // A stored choice beats the browser, because a preference that lasts until
+  // the tab closes is not a preference.
+  final language =
+      await loadLanguage() ??
+      catalog.bestMatch(
+        PlatformDispatcher.instance.locales.map((l) => l.toLanguageTag()),
+      );
   const apiUrl = String.fromEnvironment(
     'BEL_API_URL',
     defaultValue: 'http://localhost:8080',
@@ -38,13 +52,26 @@ Future<void> main() async {
   final client = BelApiClient(
     baseUrl: Uri.parse(apiUrl),
     token: session.token,
-    language: 'fr',
+    language: language,
   );
 
   runApp(
     AdminRoot(
       mode: await loadThemeMode(),
       catalog: catalog,
+      language: language,
+      // Three places: the tree has already repainted, the preference store
+      // survives a reload, and the account row is what the server writes this
+      // reviewer's own e-mails in tomorrow (ADR-0019 rule 3). Best-effort on
+      // the last, like `touch`.
+      onLanguage: (code) async {
+        await saveLanguage(code);
+        try {
+          await client.setLanguage(code);
+        } on Object {
+          // Nothing to tell them. The screen already changed.
+        }
+      },
       session: session,
       client: client,
       buildWorkspace: () => AdminWorkspace(gateway: ApiAdminGateway(client)),

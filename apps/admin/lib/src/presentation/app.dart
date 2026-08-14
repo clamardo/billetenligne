@@ -25,6 +25,7 @@ final class AdminApp extends StatelessWidget {
     required this.catalog,
     required this.workspace,
     this.language = 'fr',
+    this.onLanguage,
     this.onManageSecondFactor,
     this.mode,
     super.key,
@@ -33,6 +34,10 @@ final class AdminApp extends StatelessWidget {
   final TranslationCatalog catalog;
   final AdminWorkspace workspace;
   final String language;
+
+  /// Persists a language choice. Null in tests, where a switch holds for the
+  /// run and no further.
+  final void Function(String code)? onLanguage;
 
   /// Opens the authenticator screen. Null in tests and in any composition
   /// that has no client to enrol against — the shell omits the entry rather
@@ -48,6 +53,7 @@ final class AdminApp extends StatelessWidget {
   Widget build(BuildContext context) => Localized(
     catalog: catalog,
     initialLanguage: language,
+    onChanged: onLanguage,
     child: KiloModeScope(
       notifier: mode ?? _fallback,
       child: ListenableBuilder(

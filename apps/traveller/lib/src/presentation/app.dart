@@ -82,7 +82,7 @@ final class TravellerApp extends StatelessWidget {
 
   /// Persists a language choice and tells the server about it. Null in tests
   /// and in the demo build, where a switch holds for the run and no further.
-  final Future<void> Function(String code)? onLanguage;
+  final void Function(String code)? onLanguage;
 
   /// The theme choice, held outside the widget tree so it survives a rebuild
   /// and can be written to disk by whoever composed the app. Absent in tests
@@ -94,6 +94,7 @@ final class TravellerApp extends StatelessWidget {
   Widget build(BuildContext context) => Localized(
     catalog: catalog,
     initialLanguage: language,
+    onChanged: onLanguage,
     child: KiloModeScope(
       notifier: mode ?? _fallback,
       child: ListenableBuilder(
@@ -111,7 +112,6 @@ final class TravellerApp extends StatelessWidget {
             tickets: tickets,
             currentUserId: currentUserId,
             openUrl: openUrl,
-            onLanguage: onLanguage,
             mode: mode,
             openTicketsOnLaunch: openTicketsOnLaunch,
           ),
@@ -134,7 +134,6 @@ class _Funnel extends StatefulWidget {
     required this.tickets,
     this.currentUserId,
     this.openUrl,
-    this.onLanguage,
     this.mode,
     this.openTicketsOnLaunch = false,
   });
@@ -145,11 +144,6 @@ class _Funnel extends StatefulWidget {
   final TicketsFlow tickets;
   final String? Function()? currentUserId;
   final void Function(String url)? openUrl;
-
-  /// Persists the choice and tells the server, so the language survives a
-  /// relaunch and reaches the messages sent when no app is open. Null on a
-  /// surface with no persistence — the switch then holds for this run only.
-  final Future<void> Function(String code)? onLanguage;
   final KiloModeController? mode;
   final bool openTicketsOnLaunch;
 
@@ -238,13 +232,9 @@ class _FunnelState extends State<_Funnel> {
       return SettingsScreen(
         mode: widget.mode,
         onBack: () => setState(() => _viewingSettings = false),
-        onLanguage: (code) {
-          // Repaint first. The write to disk and the call to the server are
-          // both allowed to be slow, and neither is allowed to hold up the
-          // screen somebody just asked to be able to read.
-          context.setLanguage(code);
-          unawaited(widget.onLanguage?.call(code) ?? Future<void>.value());
-        },
+        // `Localized` repaints and then persists — the screen never waits on
+        // a disk or a network for a language somebody just asked to read in.
+        onLanguage: context.setLanguage,
       );
     }
     if (_viewingTickets) return _ticketsScreen(context);

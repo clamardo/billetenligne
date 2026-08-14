@@ -43,6 +43,10 @@ common:
     phone: "Phone number"
     name: "Name"
     language: "Language"
+  # The label on the language switcher. The names of the languages
+  # themselves are not here: each is written in its own language, from the
+  # catalog's own manifest (`languages.yaml`).
+  language: "Language"
   theme:
     light: "Light theme"
     dark: "Dark theme"

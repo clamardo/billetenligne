@@ -19,46 +19,32 @@ import 'package:flutter/services.dart' show rootBundle;
 /// One reviewed French sentence serves the screen, the SMS and the PDF
 /// (ADR-0008).
 abstract final class CatalogAssets {
-  /// Every file the bundle carries. Listed explicitly rather than discovered,
-  /// because `AssetManifest` costs a parse of the whole manifest at startup on
-  /// a device where startup budget is 2.5 seconds total (ADR-0009).
-  static const files = <String>[
-    'fr/common.yaml',
-    'fr/enums/domain.yaml',
-    'fr/errors/auth.yaml',
-    'fr/errors/payment.yaml',
-    'fr/errors/travel.yaml',
-    'fr/messages/email.yaml',
-    'fr/messages/sms.yaml',
-    'fr/pages/auth.yaml',
-    'fr/pages/console.yaml',
-    'fr/pages/payment.yaml',
-    'fr/pages/travel.yaml',
-    'fr/reference/countries.yaml',
-    'fr/reference/payment.yaml',
-    'en/common.yaml',
-    'en/enums/domain.yaml',
-    'en/errors/auth.yaml',
-    'en/errors/payment.yaml',
-    'en/errors/travel.yaml',
-    'en/messages/email.yaml',
-    'en/messages/sms.yaml',
-    'en/pages/auth.yaml',
-    'en/pages/console.yaml',
-    'en/pages/payment.yaml',
-    'en/pages/travel.yaml',
-    'en/reference/countries.yaml',
-    'en/reference/payment.yaml',
-  ];
-
   static Future<TranslationCatalog> load({
     String prefix = 'assets/i18n',
   }) async {
     final manifest = await rootBundle.loadString('$prefix/languages.yaml');
 
+    // Enumerated from an index written by `tool/sync_i18n.sh`, not listed
+    // here. What stood here was every file of every language, spelled out —
+    // so Portuguese meant editing this list in four apps and six `assets:`
+    // lines in four pubspecs, none of which have anything to do with
+    // Portuguese, and any one of them missed shipped an app that silently
+    // could not read half its own catalog. A language is now a folder and a
+    // row in `languages.yaml`.
+    //
+    // Still not `AssetManifest`: parsing the whole bundle's manifest costs
+    // more than reading one text file, on a device whose entire startup budget
+    // is 2.5 seconds (ADR-0009).
+    final index = await rootBundle.loadString('$prefix/index.txt');
+
     final sources = <String, String>{};
-    for (final file in files) {
-      sources[file] = await rootBundle.loadString('$prefix/$file');
+    for (final path in index.split('\n')) {
+      final relative = path.trim();
+      if (relative.isEmpty) continue;
+      // `pages/travel.yaml` under `fr` is bundled flat, because a Flutter
+      // `assets:` entry names one directory and does not recurse.
+      final flat = relative.replaceAll('/', '__');
+      sources[relative] = await rootBundle.loadString('$prefix/$flat');
     }
 
     return TranslationCatalog.fromSources(
@@ -78,12 +64,27 @@ final class Localized extends StatefulWidget {
     required this.catalog,
     required this.child,
     this.initialLanguage = 'fr',
+    this.onChanged,
     super.key,
   });
 
   final TranslationCatalog catalog;
   final Widget child;
   final String initialLanguage;
+
+  /// Told after the tree has already repainted, so whoever composed the app
+  /// can put the choice somewhere it survives.
+  ///
+  /// **Here rather than threaded down to whichever widget holds the control.**
+  /// Every app has a different one — a settings screen, an icon in a
+  /// navigation rail, a menu in an app bar — and passing a callback down to
+  /// each of them means the language only persists on the surfaces somebody
+  /// remembered to wire. `context.setLanguage(code)` is the whole act, from
+  /// anywhere.
+  ///
+  /// Null in tests and in any composition with nothing to write to, where a
+  /// switch holds for the run and no further.
+  final void Function(String code)? onChanged;
 
   @override
   State<Localized> createState() => _LocalizedState();
@@ -99,12 +100,24 @@ final class Localized extends StatefulWidget {
 class _LocalizedState extends State<Localized> {
   late String _language = widget.initialLanguage;
 
+  /// Repaint first, tell everybody else afterwards. Writing to a preference
+  /// store and reaching the server are both allowed to be slow, and neither is
+  /// allowed to hold up the screen somebody just asked to be able to read.
+  ///
+  /// Re-picking the language already in use is not an event: it would write a
+  /// preference and call the server to arrive exactly where it started.
+  void _set(String code) {
+    if (code == _language) return;
+    setState(() => _language = code);
+    widget.onChanged?.call(code);
+  }
+
   @override
   Widget build(BuildContext context) => _LocalizationScope(
     language: _language,
     catalog: widget.catalog,
     translator: CatalogTranslator(widget.catalog, _language),
-    setLanguage: (code) => setState(() => _language = code),
+    setLanguage: _set,
     child: widget.child,
   );
 }

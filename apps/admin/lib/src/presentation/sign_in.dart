@@ -30,6 +30,8 @@ final class AdminRoot extends StatefulWidget {
     required this.client,
     required this.buildWorkspace,
     this.mode,
+    this.language = 'fr',
+    this.onLanguage,
     super.key,
   });
 
@@ -43,12 +45,29 @@ final class AdminRoot extends StatefulWidget {
   final KiloModeController? mode;
   final AdminWorkspace Function() buildWorkspace;
 
+  /// The language this back office opens in — the browser's own preference,
+  /// resolved against the catalog, unless somebody has chosen otherwise.
+  final String language;
+
+  /// Persists a choice. Null in tests, where a switch holds for the run.
+  final void Function(String code)? onLanguage;
+
   @override
   State<AdminRoot> createState() => _AdminRootState();
 }
 
 class _AdminRootState extends State<AdminRoot> {
   AdminWorkspace? _workspace;
+
+  /// Held here rather than inside each `Localized` below, because they are
+  /// built one at a time as somebody moves through: a language chosen on the
+  /// sign-in screen would otherwise be lost the moment the code was accepted.
+  late String _language = widget.language;
+
+  void _setLanguage(String code) {
+    setState(() => _language = code);
+    widget.onLanguage?.call(code);
+  }
 
   /// True while somebody is moving their authenticator to a new phone. Held
   /// here rather than pushed onto a Navigator because it replaces the whole
@@ -64,7 +83,8 @@ class _AdminRootState extends State<AdminRoot> {
       if (_managingSecondFactor) {
         return Localized(
           catalog: widget.catalog,
-          initialLanguage: 'fr',
+          initialLanguage: _language,
+          onChanged: _setLanguage,
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: KiloTheme.materialTheme(),
@@ -85,6 +105,8 @@ class _AdminRootState extends State<AdminRoot> {
       return AdminApp(
         mode: widget.mode,
         catalog: widget.catalog,
+        language: _language,
+        onLanguage: _setLanguage,
         workspace: workspace,
         onManageSecondFactor: () =>
             setState(() => _managingSecondFactor = true),
@@ -93,7 +115,8 @@ class _AdminRootState extends State<AdminRoot> {
 
     return Localized(
       catalog: widget.catalog,
-      initialLanguage: 'fr',
+      initialLanguage: _language,
+      onChanged: _setLanguage,
       child: MaterialApp(
         title: 'BilletEnLigne — Back office',
         debugShowCheckedModeBanner: false,

@@ -33,6 +33,8 @@ final class ConsoleRoot extends StatefulWidget {
     required this.client,
     required this.buildWorkspace,
     this.mode,
+    this.language = 'fr',
+    this.onLanguage,
     required this.buildOnboarding,
     super.key,
   });
@@ -47,6 +49,13 @@ final class ConsoleRoot extends StatefulWidget {
   final KiloModeController? mode;
   final ConsoleWorkspace Function() buildWorkspace;
 
+  /// The language this console opens in — the browser's own preference,
+  /// resolved against the catalog, unless somebody has chosen otherwise.
+  final String language;
+
+  /// Persists a choice. Null in tests, where a switch holds for the run.
+  final void Function(String code)? onLanguage;
+
   /// Built only for somebody who turns out to belong to no operator. The two
   /// are never alive at once: an applicant has no fleet to load and a
   /// dispatcher has no application to fill in.
@@ -58,6 +67,19 @@ final class ConsoleRoot extends StatefulWidget {
 
 class _ConsoleRootState extends State<ConsoleRoot> {
   ConsoleWorkspace? _workspace;
+
+  /// Held here rather than inside each `Localized` below, because there are
+  /// five of them — sign-in, resolving, onboarding, the authenticator, the
+  /// console itself — and they are built one at a time as the person moves
+  /// through. A language chosen on the sign-in screen would otherwise be lost
+  /// the moment the code was accepted, which is the exact screen somebody who
+  /// needed to switch was standing on.
+  late String _language = widget.language;
+
+  void _setLanguage(String code) {
+    setState(() => _language = code);
+    widget.onLanguage?.call(code);
+  }
 
   /// Set when the person who just signed in is staff of nothing. Not an
   /// error: it is what every operator looks like on the day before we
@@ -109,7 +131,8 @@ class _ConsoleRootState extends State<ConsoleRoot> {
     if (onboarding != null) {
       return Localized(
         catalog: widget.catalog,
-        initialLanguage: 'fr',
+        initialLanguage: _language,
+        onChanged: _setLanguage,
         child: MaterialApp(
           title: 'BilletEnLigne — Inscription',
           debugShowCheckedModeBanner: false,
@@ -130,7 +153,8 @@ class _ConsoleRootState extends State<ConsoleRoot> {
     if (_resolving) {
       return Localized(
         catalog: widget.catalog,
-        initialLanguage: 'fr',
+        initialLanguage: _language,
+        onChanged: _setLanguage,
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: KiloTheme.materialTheme(),
@@ -148,7 +172,8 @@ class _ConsoleRootState extends State<ConsoleRoot> {
       if (_managingSecondFactor) {
         return Localized(
           catalog: widget.catalog,
-          initialLanguage: 'fr',
+          initialLanguage: _language,
+          onChanged: _setLanguage,
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: KiloTheme.materialTheme(),
@@ -169,6 +194,8 @@ class _ConsoleRootState extends State<ConsoleRoot> {
       return ConsoleApp(
         mode: widget.mode,
         catalog: widget.catalog,
+        language: _language,
+        onLanguage: _setLanguage,
         workspace: workspace,
         onManageSecondFactor: () =>
             setState(() => _managingSecondFactor = true),
@@ -177,7 +204,8 @@ class _ConsoleRootState extends State<ConsoleRoot> {
 
     return Localized(
       catalog: widget.catalog,
-      initialLanguage: 'fr',
+      initialLanguage: _language,
+      onChanged: _setLanguage,
       child: MaterialApp(
         title: 'BilletEnLigne — Console',
         debugShowCheckedModeBanner: false,

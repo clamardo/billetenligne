@@ -27,6 +27,8 @@ void main() {
     ScriptedConsole gateway, {
     FilePicker? files,
     FileSaver? downloads,
+    String language = 'fr',
+    void Function(String code)? onLanguage,
   }) async {
     // A realistic agency laptop rather than the 800x600 default. The console
     // is a desktop product and testing it at a phone's width would either
@@ -42,10 +44,142 @@ void main() {
       files: files,
       downloads: downloads,
     );
-    await tester.pumpWidget(ConsoleApp(catalog: catalog, workspace: workspace));
+    await tester.pumpWidget(
+      ConsoleApp(
+        catalog: catalog,
+        workspace: workspace,
+        language: language,
+        onLanguage: onLanguage,
+      ),
+    );
     await tester.pumpAndSettle();
     return workspace;
   }
+
+  group('the language this console is read in', () {
+    // Until this existed the console passed the literal `'fr'` in three
+    // places and asked nobody: an agency running an English browser got
+    // French, and so did every reviewer who opened it.
+
+    testWidgets('a language is offered, written in its own name', (
+      tester,
+    ) async {
+      await pump(tester, ScriptedConsole(capabilities: const ['booking.read']));
+
+      await tester.tap(find.byTooltip('Langue'));
+      await tester.pumpAndSettle();
+
+      // Not "Anglais". Somebody looking for English scans for the word they
+      // would write themselves.
+      expect(find.text('English'), findsOneWidget);
+      expect(find.text('Français'), findsOneWidget);
+    });
+
+    testWidgets('choosing one repaints the console and is handed out', (
+      tester,
+    ) async {
+      final chosen = <String>[];
+      await pump(
+        tester,
+        ScriptedConsole(capabilities: const ['booking.read']),
+        onLanguage: chosen.add,
+      );
+
+      expect(find.text('Aujourd\'hui'), findsWidgets);
+
+      await tester.tap(find.byTooltip('Langue'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('English'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Today'), findsWidgets);
+      // And handed out, because the browser tab is the one copy that does not
+      // survive being closed — the account row is what tomorrow's e-mail to
+      // this clerk is written in.
+      expect(chosen, ['en']);
+    });
+
+    testWidgets('the console opens in the language it was handed', (
+      tester,
+    ) async {
+      // What the composition root passes after resolving the browser's own
+      // preference list against the catalog.
+      await pump(
+        tester,
+        ScriptedConsole(capabilities: const ['booking.read']),
+        language: 'en',
+      );
+
+      expect(find.text('Today'), findsWidgets);
+    });
+
+    testWidgets('a third language needs no change to this app', (tester) async {
+      // The requirement, at the surface somebody actually sees. This catalog
+      // is built in the test rather than on disk, which is the point: nothing
+      // in the console names a language, counts them, or decides which exist.
+      // A folder under `i18n/` and a row in `languages.yaml` is the whole of
+      // adding Portuguese.
+      final threeLanguages = TranslationCatalog.fromSources(
+        languagesYaml: '''
+defaultLanguage: fr
+languages:
+  - code: fr
+    culture: fr_CG
+    nativeName: Français
+    displayOrder: 1
+  - code: en
+    culture: en
+    nativeName: English
+    displayOrder: 2
+  - code: pt
+    culture: pt
+    nativeName: Português
+    displayOrder: 3
+''',
+        files: {
+          for (final code in const ['fr', 'en', 'pt'])
+            '$code/common.yaml': 'common:\n  language: "Langue"\n',
+        },
+      );
+
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        ConsoleApp(
+          catalog: threeLanguages,
+          workspace: ConsoleWorkspace(
+            gateway: ScriptedConsole(capabilities: const ['booking.read']),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Langue'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Português'), findsOneWidget);
+    });
+
+    testWidgets('re-picking the language already in use tells nobody', (
+      tester,
+    ) async {
+      final chosen = <String>[];
+      await pump(
+        tester,
+        ScriptedConsole(capabilities: const ['booking.read']),
+        onLanguage: chosen.add,
+      );
+
+      await tester.tap(find.byTooltip('Langue'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Français'));
+      await tester.pumpAndSettle();
+
+      expect(chosen, isEmpty);
+    });
+  });
 
   group('the rail is built from capabilities', () {
     testWidgets('an owner sees every section', (tester) async {
@@ -1939,7 +2073,10 @@ void main() {
     await tester.tap(find.text('Flotte'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(PopupMenuButton<String>));
+    // By its tooltip rather than by its type: the shell now carries a language
+    // menu of the same type, and a finder that says "the popup menu" means
+    // whichever one the layout happens to build first.
+    await tester.tap(find.byTooltip('Changer le statut'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Atelier').last);
     await tester.pumpAndSettle();

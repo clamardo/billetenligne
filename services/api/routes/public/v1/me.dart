@@ -63,10 +63,19 @@ Future<Response> onRequest(RequestContext context) async {
     final body = await context.request.json();
     final requested = (body is Map ? body['language'] : null) as String?;
 
-    // A language this deployment does not carry a catalog for would be stored
+    // A language this deployment carries no catalog for would be stored
     // happily and then fall back to French on every message ever sent — which
     // reads as a bug in the catalog rather than as a rejected value.
-    if (requested == null || !services.market.languages.contains(requested)) {
+    //
+    // **The catalog, not the market file.** `markets.yaml` says which
+    // languages a *country* is marketed in; this is which language one person
+    // is written to in, and the server can render any language it has strings
+    // for. Refusing Portuguese to a Portuguese speaker in Brazzaville because
+    // the Congo market lists French and English would be answering a question
+    // nobody asked. It also makes a new language a folder and a row in
+    // `languages.yaml` — never an edit to a deployment's market file, which is
+    // exactly the sort of second list that goes stale.
+    if (requested == null || !Services.translations.isSupported(requested)) {
       return _error(
         HttpStatus.badRequest,
         ApiError(

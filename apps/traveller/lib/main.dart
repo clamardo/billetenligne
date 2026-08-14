@@ -53,7 +53,11 @@ Future<void> main() async {
   // and arrive set to a language their owner does not read, so the locale is a
   // first guess rather than an answer — and until there was a screen to say
   // otherwise, it was the answer for life.
-  final language = await loadLanguage() ?? _deviceLanguage();
+  final language =
+      await loadLanguage() ??
+      catalog.bestMatch(
+        PlatformDispatcher.instance.locales.map((l) => l.toLanguageTag()),
+      );
   final apiUrl = _reachable(const String.fromEnvironment('BEL_API_URL'));
 
   // A release build with no server address runs the whole product on demo
@@ -253,16 +257,6 @@ String _reachable(String value) {
   return value
       .replaceAll('localhost', '10.0.2.2')
       .replaceAll('127.0.0.1', '10.0.2.2');
-}
-
-/// The handset's language if we speak it, French otherwise.
-///
-/// French is the source language and the fallback (ADR-0008): a phone set to
-/// Lingala or Portuguese gets French, which every traveller in this market
-/// reads, rather than English.
-String _deviceLanguage() {
-  final locale = Platform.localeName;
-  return locale.startsWith('en') ? 'en' : 'fr';
 }
 
 /// What a release build with no server shows instead of a product.

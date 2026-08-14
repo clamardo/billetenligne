@@ -166,6 +166,129 @@ void main() {
       expect(catalog.hash, matches(RegExp(r'^[0-9a-f]{16}$')));
     });
 
+    group('adding a language', () {
+      // The requirement, tested rather than asserted in a comment: a new
+      // language is a folder under `i18n/` and a row in `languages.yaml`.
+      // Nothing else, in any app, ever.
+      //
+      // The three things that used to break it are all gone and all covered
+      // below: the resolver no longer compares against a literal, each app
+      // enumerates an index instead of a hard-coded file list, and the account
+      // route validates against the catalog rather than a market file.
+
+      TranslationCatalog withPortuguese() => TranslationCatalog.fromSources(
+        languagesYaml: '''
+defaultLanguage: fr
+languages:
+  - code: fr
+    culture: fr_CG
+    englishName: French
+    nativeName: Français
+    displayOrder: 1
+  - code: en
+    culture: en
+    englishName: English
+    nativeName: English
+    displayOrder: 2
+  - code: pt
+    culture: pt
+    englishName: Portuguese
+    nativeName: Português
+    displayOrder: 3
+''',
+        files: {
+          'fr/common.yaml': 'common:\n  actions:\n    save: "Enregistrer"\n',
+          'en/common.yaml': 'common:\n  actions:\n    save: "Save"\n',
+          'pt/common.yaml': 'common:\n  actions:\n    save: "Guardar"\n',
+        },
+      );
+
+      test('it is offered, in its own name and in its stated order', () {
+        // What every language menu in every app renders from.
+        final catalog = withPortuguese();
+        expect(catalog.languages.map((l) => l.nativeName), [
+          'Français',
+          'English',
+          'Português',
+        ]);
+      });
+
+      test('a browser asking for it is given it', () {
+        expect(withPortuguese().bestMatch(['pt-BR']), 'pt');
+        expect(withPortuguese().bestMatch(['pt']), 'pt');
+      });
+
+      test('the account route accepts it', () {
+        // `PATCH /public/v1/me` gates on exactly this call. It used to gate on
+        // `markets.yaml`, which would have refused a language the server had
+        // the strings for.
+        expect(withPortuguese().isSupported('pt'), isTrue);
+        expect(withPortuguese().isSupported('de'), isFalse);
+      });
+
+      test('its strings are read, and missing ones fall back to French', () {
+        final catalog = withPortuguese();
+        expect(catalog.strings('pt')['common.actions.save'], 'Guardar');
+        // Half a translation is the normal state of a language on the day it
+        // is added, and it must degrade to French rather than to a raw key.
+        expect(catalog.mergedStrings('pt')['common.actions.save'], 'Guardar');
+      });
+    });
+
+    group('a locale becoming a language', () {
+      // Everything in this group was decided four separate times before it
+      // lived here: three apps said `'fr'` and asked nobody, and the fourth
+      // compared `Platform.localeName` to the literal `en`.
+
+      test('an exact code is taken as it is', () {
+        expect(catalog.bestMatch(['en']), 'en');
+        expect(catalog.bestMatch(['fr']), 'fr');
+      });
+
+      test('a region is dropped, and either separator is understood', () {
+        // What a browser actually sends is `en-GB`; what `Platform.localeName`
+        // hands out on Android is `en_GB`. The second is the one that used to
+        // answer French.
+        expect(catalog.bestMatch(['en-GB']), 'en');
+        expect(catalog.bestMatch(['en_US']), 'en');
+        expect(catalog.bestMatch(['fr-CA']), 'fr');
+      });
+
+      test('case is not a language', () {
+        expect(catalog.bestMatch(['EN']), 'en');
+        expect(catalog.bestMatch(['en_gb']), 'en');
+      });
+
+      test('the order somebody asked in outranks how precisely they asked', () {
+        // `navigator.languages` is a preference list. A Quebecois browser
+        // sends `fr-CA` first and plain `en` second, and answering English
+        // because that one happened to be written without a region would be
+        // reading the punctuation instead of the person.
+        expect(catalog.bestMatch(['fr-CA', 'en']), 'fr');
+        expect(catalog.bestMatch(['en-GB', 'fr']), 'en');
+        // And an unknown first choice is skipped rather than settled for.
+        expect(catalog.bestMatch(['de-DE', 'en-GB', 'fr']), 'en');
+        expect(catalog.bestMatch(['de', 'en-GB']), 'en');
+      });
+
+      test(
+        'a language we do not carry falls back to French, not to nothing',
+        () {
+          expect(catalog.bestMatch(['de']), 'fr');
+          expect(catalog.bestMatch(['ln-CG', 'sw']), 'fr');
+          expect(catalog.bestMatch(const []), 'fr');
+        },
+      );
+
+      test('empty and blank tags are not languages', () {
+        // A browser with no preference set hands out an empty string, and an
+        // empty primary subtag would otherwise match nothing repeatedly and
+        // cost a walk of the whole list per tag.
+        expect(catalog.bestMatch(['', '  ', 'en']), 'en');
+        expect(catalog.bestMatch(['']), 'fr');
+      });
+    });
+
     test('SMS templates stay within one segment where they can', () {
       // Multipart SMS costs a multiple. Anything over 160 chars is flagged so
       // the cost is a deliberate choice, not an accident (ADR-0013).

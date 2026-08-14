@@ -86,6 +86,23 @@ final class ConsoleShell extends StatelessWidget {
                         lightLabel: context.t('common.theme.light'),
                         darkLabel: context.t('common.theme.dark'),
                       ),
+                      // Beside the theme toggle, for the same reason it is
+                      // there: this console has no settings screen and a
+                      // person who cannot read the navigation is not going to
+                      // find one behind it. Every language written in its own
+                      // name, in the catalog's display order.
+                      KLanguageMenu(
+                        tooltip: context.t('common.language'),
+                        current: context.language,
+                        languages: [
+                          for (final language in context.languages)
+                            (
+                              code: language.code,
+                              nativeName: language.nativeName,
+                            ),
+                        ],
+                        onChanged: context.setLanguage,
+                      ),
                       if (onManageSecondFactor != null)
                         IconButton(
                           icon: const Icon(Icons.lock_outline),

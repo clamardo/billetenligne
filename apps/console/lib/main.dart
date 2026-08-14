@@ -1,3 +1,5 @@
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:bel_client/bel_client.dart';
 import 'package:flutter/material.dart';
 
@@ -8,6 +10,7 @@ import 'src/infrastructure/api_onboarding_gateway.dart';
 import 'src/infrastructure/web_file_picker.dart';
 import 'src/infrastructure/web_file_saver.dart';
 import 'src/presentation/l10n.dart';
+import 'src/infrastructure/language_preference.dart';
 import 'src/infrastructure/theme_preference.dart';
 import 'src/presentation/sign_in.dart';
 
@@ -25,6 +28,19 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final catalog = await CatalogAssets.load();
+
+  // The browser's own preference list, resolved against the catalog — not the
+  // literal `'fr'` that stood here, which answered French to an agency in
+  // Pointe-Noire running an English Windows install and to every reviewer who
+  // opened the console with an English browser. `PlatformDispatcher` rather
+  // than `dart:io`: this is a web app, and `Platform` does not exist here at
+  // all. A stored choice beats the browser, because a preference that lasts
+  // until the tab closes is not a preference.
+  final language =
+      await loadLanguage() ??
+      catalog.bestMatch(
+        PlatformDispatcher.instance.locales.map((l) => l.toLanguageTag()),
+      );
   const apiUrl = String.fromEnvironment(
     'BEL_API_URL',
     defaultValue: 'http://localhost:8080',
@@ -46,13 +62,28 @@ Future<void> main() async {
   final client = BelApiClient(
     baseUrl: Uri.parse(apiUrl),
     token: session.token,
-    language: 'fr',
+    language: language,
   );
 
   runApp(
     ConsoleRoot(
       mode: await loadThemeMode(),
       catalog: catalog,
+      language: language,
+      // Three places, and all three matter. The tree repaints (done before
+      // this is called); the preference store survives a reload; and the
+      // account row is what the server writes a staff member's own e-mails in
+      // tomorrow, with no browser open anywhere (ADR-0019 rule 3). Best-effort
+      // on the last one, like `touch`: refusing to switch language because the
+      // network is down is the opposite of useful.
+      onLanguage: (code) async {
+        await saveLanguage(code);
+        try {
+          await client.setLanguage(code);
+        } on Object {
+          // Nothing to tell them. The screen already changed.
+        }
+      },
       session: session,
       client: client,
       buildWorkspace: () => ConsoleWorkspace(

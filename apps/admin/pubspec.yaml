@@ -37,16 +37,7 @@ flutter:
     # same reason the other two apps copy it: bel_localization is pure Dart
     # (the API imports it) so it cannot declare Flutter assets, and Flutter
     # refuses `..` in asset paths.
+    # One line, and one line for good: the bundle is flat, so a new language
+    # is a folder in packages/bel_localization/i18n and a row in
+    # languages.yaml — never an edit here.
     - assets/i18n/
-    - assets/i18n/fr/
-    - assets/i18n/fr/pages/
-    - assets/i18n/fr/errors/
-    - assets/i18n/fr/enums/
-    - assets/i18n/fr/messages/
-    - assets/i18n/fr/reference/
-    - assets/i18n/en/
-    - assets/i18n/en/pages/
-    - assets/i18n/en/errors/
-    - assets/i18n/en/enums/
-    - assets/i18n/en/messages/
-    - assets/i18n/en/reference/

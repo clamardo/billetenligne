@@ -17,6 +17,10 @@ dependencies:
   # of the second-factor obligation, not three (ADR-0013).
   bel_backoffice: ^0.1.0
   bel_client: ^0.1.0
+  # The language somebody chose, kept across launches. A conductor's handset
+  # is issued by the agency and set up once by whoever unboxed it, which is
+  # rarely the person who ends up holding it at half past five.
+  shared_preferences: ^2.3.0
   bel_contracts: ^0.1.0
   bel_crypto: ^0.1.0
   bel_design: ^0.1.0
@@ -55,16 +59,7 @@ flutter:
     # it is shown — but a shared screen speaks in catalog keys, and a screen
     # rendering `auth.email.label` at a coach door is not a screen anybody can
     # sign in through.
+    # One line, and one line for good: the bundle is flat, so a new language
+    # is a folder in packages/bel_localization/i18n and a row in
+    # languages.yaml — never an edit here.
     - assets/i18n/
-    - assets/i18n/fr/
-    - assets/i18n/fr/pages/
-    - assets/i18n/fr/errors/
-    - assets/i18n/fr/enums/
-    - assets/i18n/fr/messages/
-    - assets/i18n/fr/reference/
-    - assets/i18n/en/
-    - assets/i18n/en/pages/
-    - assets/i18n/en/errors/
-    - assets/i18n/en/enums/
-    - assets/i18n/en/messages/
-    - assets/i18n/en/reference/

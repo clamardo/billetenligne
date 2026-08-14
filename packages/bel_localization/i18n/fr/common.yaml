@@ -43,6 +43,10 @@ common:
     phone: "Numéro de téléphone"
     name: "Nom"
     language: "Langue"
+  # Le libellé du sélecteur de langue. Les noms des langues eux-mêmes ne
+  # sont pas ici : chacun est écrit dans sa propre langue, depuis le manifeste
+  # du catalogue (`languages.yaml`).
+  language: "Langue"
   theme:
     light: "Thème clair"
     dark: "Thème sombre"

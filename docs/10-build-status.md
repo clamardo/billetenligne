@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-14 · after commit *A language somebody can actually choose*
+**Updated:** 2026-08-14 · after commit *Adding a language is a folder and a row*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -10,7 +10,55 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 ---
 
-## What the last two pushes changed
+## What the last push changed
+
+**A language is now a folder and a row, everywhere.** The stated requirement:
+adding Portuguese, Spanish or Mandarin should be a YAML directory under
+`packages/bel_localization/i18n` plus a row in `languages.yaml`, and no code
+change in any app. Four things stood in the way and all four are gone.
+
+Every app hard-coded the resolution of a locale to a language — three passed
+the literal `'fr'` and asked nobody, and the traveller compared
+`Platform.localeName` to the string `en`, which answers French for `en_GB` and
+throws outright on the web, where `dart:io` has no `Platform`. That is now
+`catalog.bestMatch(...)` against `PlatformDispatcher.instance.locales`: one
+implementation, tested, resolving each tag in the caller's order of preference
+so `fr-CA, en` reads French and `de-DE, en-GB` reads English.
+
+Every app also hard-coded **every file of every language** — thirteen entries
+per language in Dart, six `assets:` directories per language in its pubspec.
+Portuguese meant editing eight files that have nothing to do with Portuguese,
+and the day somebody edited seven the eighth shipped an app that silently read
+half a catalog. `tool/sync_i18n.sh` now flattens the bundle
+(`fr/pages/travel.yaml` → `fr__pages__travel.yaml`) and writes an `index.txt`
+beside it, because a Flutter `assets:` entry names one directory and does not
+recurse. Each pubspec is one line, forever, and each app enumerates the index.
+
+`PATCH /public/v1/me` validated against `config/markets.yaml`, which would have
+refused a language the server had the strings for. It validates against the
+catalog now: the market file says which languages a *country* is marketed in,
+which is a different question from which language one person is written to in.
+
+And the console and the back office had no switcher at all. Both now carry
+`KLanguageMenu` in the navigation rail beside the theme toggle — every
+language written in its own name, from the catalog's manifest, in its stated
+display order. The choice lands in the tree, the preference store and the
+account row, exactly as the traveller app's does.
+
+Proved rather than asserted: a synthetic three-language catalog in
+`catalog_test.dart` and in the console's widget test, neither of which touches
+disk. Nothing in any app names a language, counts them, or decides which
+exist.
+
+**Still open, and it is the last one.** The scanner is not translated at all.
+Every string a conductor sees is a French literal in Dart — one `context.t`
+call in the whole app, against roughly a hundred sentences. A language menu on
+that surface would be theatre, so it does not have one yet. That is the next
+slice.
+
+---
+
+## What the two pushes before that changed
 
 Two defects reported from actually using the thing, and both were the same
 kind of gap the demo run turned up: a mechanism wired end to end with nothing
@@ -50,10 +98,9 @@ different set each time. It looked exactly like a regression in the language
 work and was not: the same commit passes `+442 ~1` and `+81` when it runs
 alone. The script now takes an exclusive lock and waits.
 
-**Still hardcoded.** The console, the back office and the scanner all pass
-`language: 'fr'` literally — they do not read the device locale and have no
-switcher. That is defensible for staff tools in Congo and it is not a
-decision anybody made; it is three untouched lines.
+**Still hardcoded** — *fixed in the push after this one; see above.* The
+console, the back office and the scanner all passed `language: 'fr'` literally,
+read no device locale and had no switcher.
 
 ---
 
