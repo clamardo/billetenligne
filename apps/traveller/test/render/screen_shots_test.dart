@@ -3,6 +3,7 @@ import 'package:bel_design/bel_design.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_traveller/src/presentation/l10n.dart';
+import 'package:bel_traveller/src/presentation/screens/results_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/search_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/ticket_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/tickets_screen.dart';
@@ -106,6 +107,37 @@ void main() {
       );
     });
   }
+
+  for (final b in [KiloBrightness.light, KiloBrightness.dark]) {
+    testWidgets('results ${b.name}', (tester) async {
+      await shoot(
+        tester,
+        'traveller-results-${b.name}',
+        Localized(
+          catalog: catalog,
+          initialLanguage: 'fr',
+          child: ResultsScreen(
+            query: SearchDeparturesQuery(
+              originCity: 'BZV',
+              destinationCity: 'PNR',
+              date: DateTime.utc(2026, 8, 15),
+              passengers: 1,
+            ),
+            departures: [
+              _departure('dep-1', 6, 40),
+              _departure('dep-2', 9, 3),
+              _departure('dep-3', 14, 0),
+            ],
+            onSelect: (_) {},
+            onBack: () {},
+            cityNames: const {'BZV': 'Brazzaville', 'PNR': 'Pointe-Noire'},
+          ),
+        ),
+        size: const Size(400, 860),
+        brightness: b,
+      );
+    });
+  }
 }
 
 BookingDto _booking() {
@@ -139,3 +171,20 @@ BookingDto _booking() {
     ],
   );
 }
+
+DepartureSummaryDto _departure(String id, int hour, int available) =>
+    DepartureSummaryDto(
+      id: id,
+      operatorId: 'op-1',
+      operatorName: 'Ocean du Nord',
+      mode: 'bus',
+      originCity: 'BZV',
+      destinationCity: 'PNR',
+      departsAt: DateTime.utc(2026, 8, 15, hour),
+      arrivesAt: DateTime.utc(2026, 8, 15, hour + 8),
+      fare: const Money.xaf(12000),
+      serviceFee: const Money.xaf(300),
+      seatsAvailable: available,
+      capacity: 52,
+      seatSelectionEnabled: true,
+    );
