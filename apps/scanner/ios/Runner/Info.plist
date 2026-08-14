@@ -7,15 +7,23 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Bel Scanner</string>
+	<string>BilletEnLigne Contrôle</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<!-- The market is francophone and the catalogue is French-first
+	     (ADR-0008). Without this the store lists the app as English and
+	     the system chrome around our own French prompts is English too. -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>fr</string>
+		<string>en</string>
+	</array>
 	<key>CFBundleName</key>
-	<string>bel_scanner</string>
+	<string>BEL Contrôle</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -24,8 +32,23 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Asked on every upload otherwise, and answered by a human in a
+	     hurry. This app encrypts nothing of its own: it speaks HTTPS and
+	     it verifies Ed25519 signatures on tickets (ADR-0007), both of
+	     which are exempt. Recording the answer here is what stops it
+	     being guessed at differently each time. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- iOS terminates the process the instant the camera is opened
+	     without this string. There is no permission dialog, no error and
+	     no log entry a conductor could read: the app simply disappears
+	     at the coach door, on the first ticket of the first morning.
+	     Written in French because it is read by the person holding the
+	     phone, not by us. -->
+	<key>NSCameraUsageDescription</key>
+	<string>L’appareil photo lit le QR code des billets à l’embarquement. Aucune photo n’est prise ni enregistrée.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

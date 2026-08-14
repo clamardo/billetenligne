@@ -7,15 +7,23 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Bel Traveller</string>
+	<string>BilletEnLigne</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<!-- The market is francophone and the catalogue is French-first
+	     (ADR-0008). Without this the store lists the app as English and
+	     the system chrome around our own French prompts is English too. -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>fr</string>
+		<string>en</string>
+	</array>
 	<key>CFBundleName</key>
-	<string>bel_traveller</string>
+	<string>BilletEnLigne</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -24,6 +32,13 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Asked on every upload otherwise, and answered by a human in a
+	     hurry. This app encrypts nothing of its own: it speaks HTTPS and
+	     it verifies Ed25519 signatures on tickets (ADR-0007), both of
+	     which are exempt. Recording the answer here is what stops it
+	     being guessed at differently each time. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

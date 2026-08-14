@@ -5,10 +5,15 @@
 	<!-- Universal Links (ADR-0026). The app's half of the handshake; the
 	     domain's half is served at /.well-known/apple-app-site-association.
 
-	     Not yet attached to the Runner target: that is an Xcode change, and
-	     there is no Mac and no Apple team for this deployment. See the app's
-	     README. The file is here rather than absent so the change is one
-	     checkbox rather than one investigation. -->
+	     Attached to the Runner target by CODE_SIGN_ENTITLEMENTS in all three
+	     build configurations. It was not, for as long as this file has
+	     existed: an entitlements file Xcode never reads is a Universal Links
+	     claim that is made nowhere, and nothing about it is visible until
+	     somebody taps a ticket link on an iPhone and gets Safari.
+
+	     Still unsigned and still unbuilt — there is no Mac and no Apple team
+	     for this deployment — so `applinks:blt.cg` is declared by the app and
+	     by the domain and verified by neither. -->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:blt.cg</string>

@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-13 · after commit *The apps get their faces*
+**Updated:** 2026-08-13 · after commit *The iOS project, read the way the APK was*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -488,6 +488,61 @@ counted with `services/api/build` present, so a stale copy of every package's
 tests was counted again as if it were the API's own — the exact trap the
 paragraph above warns about, walked into by whoever wrote the warning. Every
 figure here has been re-measured from a clean tree.
+
+---
+
+## What the iOS push changed, and what it cost
+
+Everything the Android release build got wrong was found by making the
+artifact and opening it. iOS cannot be built here — there is no Mac and no
+Apple team — so the same class of defect would have sat undiscovered until the
+first day somebody had both. `dart run tool/check_ios.dart` reads the project
+files as the text they are. Sixteen checks. Five of them failed on the tree as
+it stood.
+
+**The boarding scanner had no `NSCameraUsageDescription`.** iOS terminates the
+process the instant an app opens the camera without one. Not a permission
+dialog, not an error, not a log line: the app disappears — at the coach door,
+on the first ticket of the first morning, in front of a queue. It is the whole
+job of that app, and nothing in this repository could have told us.
+
+**The entitlements file was attached to no target.** `Runner.entitlements` has
+declared `applinks:blt.cg` since the ticket-link slice, with a comment saying
+it was not yet wired up, and `CODE_SIGN_ENTITLEMENTS` appeared nowhere in
+either project. An entitlements file Xcode never reads is a Universal Links
+claim made nowhere — the app's half of a handshake whose other half the API has
+been serving all along — and the symptom is a ticket link opening Safari with
+nothing anywhere saying why. It is now referenced by all three build
+configurations.
+
+**The apps were called `Bel Traveller` and `Bel Scanner`**, and their
+`CFBundleName`s were the package names.
+
+**Neither app said it speaks French**, so the store would list a francophone
+product as English and the system chrome around our own French prompts would
+be English too.
+
+**And the export-compliance question was unanswered**, which means it is asked
+on every single upload and answered by whoever is uploading, in a hurry,
+possibly differently each time. This app encrypts nothing of its own — HTTPS,
+and Ed25519 signature verification on tickets, both exempt — so the answer is
+recorded once, in the plist, with the reason next to it.
+
+The icon check is the previous slice's guarantee, moved to where it is
+enforceable: byte 25 of a PNG is its colour type, and App Store validation
+refuses an icon that carries alpha.
+
+**What it cost:** one script, two plists, one pbxproj, one entitlements
+comment, one CI step.
+
+**What is honestly not done:** none of this has been compiled. There is no
+Mac, no Apple Developer account, no provisioning profile and no signed build,
+so `applinks:blt.cg` is declared by the app and by the domain and verified by
+neither, and the associated domain is a constant in a signed file rather than
+a build input the way Android's is — a staging deployment would need its own
+entitlement. The camera string exists in French only; a second language would
+be an `InfoPlist.strings` per locale.
+
 
 ---
 

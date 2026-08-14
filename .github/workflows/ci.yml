@@ -32,6 +32,13 @@ jobs:
       - name: Layer boundaries
         run: dart run tool/check_layers.dart
 
+      # The iOS projects, checked from a machine that cannot build them. Not a
+      # substitute for a Mac — it is the part that does not need one, and
+      # several of these are not build failures at all: a missing usage
+      # description is a runtime termination with no dialog and no log.
+      - name: iOS project
+        run: dart run tool/check_ios.dart
+
       - name: Domain, localization, contract and client tests
         run: dart test packages/bel_domain packages/bel_localization packages/bel_contracts packages/bel_crypto packages/bel_client
 
