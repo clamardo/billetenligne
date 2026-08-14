@@ -910,6 +910,47 @@ check "the storefront is cacheable" "yes" \
 check "the vitrine editor is closed to anonymous" "401" \
   "$(status "$BASE/console/v1/vitrine")"
 
+# ── The address on the poster ───────────────────────────────────────────────
+#
+# `/` has two readers and answers each of them differently, which is the one
+# thing about it a socket can prove and a unit test cannot: the routing is done
+# by the `Accept` header, so a probe and a browser have to be asked separately
+# and both have to be right. A monitoring check that started rendering a
+# landing page would be a silent outage; a person who scanned a QR code and got
+# `{"status":"ok"}` is a lost customer.
+check "a probe still gets the stub it has always had" "yes" \
+  "$(curl -s "$BASE/" | grep -q '"status":"ok"' && echo yes || echo no)"
+check "a browser gets a page" "yes" \
+  "$(curl -s -H 'Accept: text/html' "$BASE/" | grep -q '<h1>' \
+     && echo yes || echo no)"
+check "and it is served as HTML" "yes" \
+  "$(curl -sD - -o /dev/null -H 'Accept: text/html' "$BASE/" | tr -d '\r' \
+     | grep -qi '^content-type: text/html' && echo yes || echo no)"
+check "the landing page reads English when asked" "yes" \
+  "$(curl -s -H 'Accept: text/html' "$BASE/?lang=en" | grep -q 'lang="en"' \
+     && echo yes || echo no)"
+# The storefront's route links carry `?from=&to=`. A page that drops them has
+# started the conversation over with somebody who already said where they go.
+check "the journey the link carried is said back" "yes" \
+  "$(curl -s -H 'Accept: text/html' "$BASE/?from=Brazzaville&to=Dolisie" \
+     | grep -q 'Brazzaville' && echo yes || echo no)"
+check "half a journey is no journey" "yes" \
+  "$(curl -s -H 'Accept: text/html' "$BASE/?from=Brazzaville" \
+     | grep -q 'class="journey"' && echo no || echo yes)"
+# No store listing is configured in dev, and that is the honest state: a dead
+# store button on the first page a stranger sees is worse than none.
+check "no listing means no button that goes nowhere" "yes" \
+  "$(curl -s -H 'Accept: text/html' "$BASE/" | grep -q 'class="cta"' \
+     && echo no || echo yes)"
+check "the landing page carries its own artwork" "yes" \
+  "$(curl -s -H 'Accept: text/html' "$BASE/" | grep -q '<svg' \
+     && echo yes || echo no)"
+check "nobody frames the front door" "yes" \
+  "$(curl -sD - -o /dev/null -H 'Accept: text/html' "$BASE/" | tr -d '\r' \
+     | grep -qi '^x-frame-options: DENY' && echo yes || echo no)"
+check "POST is not a way to change the front door" "405" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/")"
+
 # ── The storefront as a page ────────────────────────────────────────────────
 #
 # `blt.cg/o/ODN` is the address on the poster, and the reader who matters most

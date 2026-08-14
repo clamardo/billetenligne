@@ -1,0 +1,35 @@
+# The home page, rendered by the server.
+#
+# This is where anybody lands who scans a QR code on the side of a coach,
+# types an address read off a poster, or taps "see departures" from a
+# company's storefront. Until now that address answered with a JSON object.
+#
+# There is no web booking portal and there will not be one (`09-roadmap.md`):
+# booking happens in the app. So this page says three things and stops — what
+# BilletEnLigne is, where to get the app, and, if the visitor arrived with a
+# journey in mind, that the journey was heard.
+landing:
+  title: "BilletEnLigne — the coach, booked from your phone"
+  tagline: "Book your seat, pay with mobile money, board with your phone."
+  # When the link carried a journey. Name it: somebody who tapped
+  # "Brazzaville → Dolisie" has already said where they are going, and a page
+  # that does not repeat it reads as having lost the thread.
+  route: "{from} → {to}"
+  routeNote: "That journey is waiting for you in the app."
+  # The three things the app does, and no more. A home page listing twelve
+  # features is a page nobody reads on a phone at the side of a road.
+  what1: "Compare departures from every company"
+  what2: "Pay with Airtel Money, MTN MoMo or Orange Money"
+  what3: "Board with the QR code, with no network"
+  getApp: "Get the app"
+  playStore: "On Google Play"
+  appStore: "On the App Store"
+  # No store is configured yet. Say so plainly rather than showing a button
+  # that goes nowhere: a dead link on the first page is the fastest way to
+  # lose somebody for good.
+  notPublished: "The app is not published yet."
+  notPublishedBody: "Note this address and come back — it will be announced here."
+  operators: "Do you run a coach company?"
+  operatorsBody: "The operator console lets you publish your timetable and sell online."
+  consoleCta: "Open the console"
+  footer: "BilletEnLigne — Republic of the Congo"

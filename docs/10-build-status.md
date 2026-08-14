@@ -490,6 +490,66 @@ figure here has been re-measured from a clean tree.
 
 ---
 
+## What the landing-page push changed, and what it cost
+
+Three call-to-action buttons shipped pointing at a JSON object.
+
+The storefront's *voir les départs*, the follower page's, and the boarding
+pass's all point at `/`. Until this push, `/` answered
+`{"service":"billetenligne","status":"ok"}` — a sentence written for a
+monitoring probe and read by somebody standing at a bus station who has just
+scanned the side of a coach. The address was decided long before the page
+existed, which was the right order to do it in and left a hole visible from
+outside the product.
+
+**The reader is decided by the `Accept` header, not by a second URL.** A
+landing page parked on `/home` is an address nobody prints on a poster, and
+moving the JSON to `/api` breaks every probe already pointed at the root.
+Browsers have sent `text/html` in `Accept` for as long as there have been
+browsers, and `curl`, `wget` and every uptime checker do not. So the header
+does the routing and both readers keep the address they already use.
+`/health` is untouched and remains the endpoint that actually knows whether
+the database answers — a probe that quietly started rendering a landing page
+would be a silent outage.
+
+**It is not a booking portal, and it never becomes one.** A traveller web
+portal is on this product's list of things it deliberately does not build: the
+seat map, the offline ticket and the rotating QR are the reasons the app
+exists, and none of the three survives being a web page. The page says what
+BilletEnLigne is, where to get the app, and stops — three bullets rather than
+twelve, because it is read on a phone at the side of a road.
+
+**It answers the journey it was asked about.** The storefront's route links
+have carried `?from=&to=` since the vitrine shipped. Somebody who tapped
+*Brazzaville → Dolisie* has already said where they are going, and the page
+repeats it and changes the line underneath. Both halves or neither: a page
+that says *Brazzaville →* has lost the second half of the only fact it was
+given, which is why a blank or whitespace-only half is treated as no journey
+at all.
+
+**No store button that goes nowhere.** There is no Play Store listing and no
+Apple team. A dead link on the first page a stranger ever sees is the fastest
+way to lose them for good, so the buttons render only when a deployment has
+actually been given `BEL__PLAYSTOREURL` or `BEL__APPSTOREURL`, and otherwise
+the page says the app is not published yet and to come back. Blank is a
+supported state that changes what the page says, rather than a state that
+produces a broken page — the same bargain `AppLinkIdentity` makes for the
+claim files next door, and the day the listings exist it is two environment
+variables and no code.
+
+The hero carries the `journey` drawing as a silhouette, inline. Nothing on the
+page is fetched: one document, about 6 KB, no `src` and no `href` to another
+host, because half the people who open it arrived from a link in WhatsApp on a
+2G connection.
+
+**What it cost:** one page, one route, one config value read from the
+environment, 13 page tests, 10 smoke checks over a real socket, and 4 shots in
+`build/design/`. One comment corrected — `storefront_page.dart` said where `/`
+goes was deployment work, and where it goes is now decided.
+
+
+---
+
 ## What the expressive-components push changed, and what it cost
 
 Four components, and the one that matters is the first.

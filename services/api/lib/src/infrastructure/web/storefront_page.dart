@@ -206,12 +206,14 @@ abstract final class StorefrontPage {
     // rather than ids, because that is what somebody editing the URL would
     // type and what a poster's QR code should survive being reprinted with.
     //
-    // **Where `/` goes is not built yet**: the root still answers the JSON
-    // stub, and the traveller web build that will serve it is deployment work.
-    // The follower page's own call to action has pointed at `/` since it
-    // shipped, for the same reason — the address is the decision, and it is
-    // the one that has to be right on a poster printed before the page
-    // exists.
+    // **`/` is a landing page and never a booking portal.** It reads the two
+    // parameters and says the journey back, so somebody who tapped
+    // *Brazzaville → Dolisie* is not started over; the booking itself happens
+    // in the app, which is where the seat map, the offline ticket and the
+    // rotating QR live. The follower page's own call to action has pointed at
+    // `/` since it shipped, for the same reason — the address is the
+    // decision, and it had to be right on a poster printed before the page
+    // existed.
     final href =
         '/?from=${Uri.encodeQueryComponent(route.originCity)}'
         '&to=${Uri.encodeQueryComponent(route.destinationCity)}';

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:bel_api/src/application/ports/ticket_links.dart';
 import 'package:bel_api/src/infrastructure/web/boarding_pass_page.dart';
+import 'package:bel_api/src/infrastructure/web/landing_page.dart';
 import 'package:bel_api/src/infrastructure/web/storefront_page.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
@@ -80,6 +81,32 @@ void main() {
         BoardingPassPage.render(ticket: _linked(hue), catalog: catalog),
       );
     }
+  });
+
+  // The first page a stranger ever sees, in the three states it actually has:
+  // told nothing, told a journey, and finally published.
+  test('the landing page', () {
+    File(
+      '${out.path}/landing-fr.html',
+    ).writeAsStringSync(LandingPage.render(catalog: catalog));
+    File(
+      '${out.path}/landing-en.html',
+    ).writeAsStringSync(LandingPage.render(catalog: catalog, language: 'en'));
+    File('${out.path}/landing-journey.html').writeAsStringSync(
+      LandingPage.render(
+        catalog: catalog,
+        from: 'Brazzaville',
+        to: 'Pointe-Noire',
+      ),
+    );
+    File('${out.path}/landing-published.html').writeAsStringSync(
+      LandingPage.render(
+        catalog: catalog,
+        playStoreUrl: 'https://play.google.com/store/apps/details?id=cg.bel',
+        appStoreUrl: 'https://apps.apple.com/app/id0000000000',
+        consoleUrl: 'https://console.blt.cg',
+      ),
+    );
   });
 }
 

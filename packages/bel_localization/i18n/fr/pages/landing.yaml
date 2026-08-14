@@ -1,0 +1,37 @@
+# La page d'accueil, rendue par le serveur.
+#
+# C'est là que tombe quiconque scanne un QR code sur le flanc d'un car, tape
+# l'adresse lue sur une affiche, ou appuie sur « Voir les départs » depuis la
+# vitrine d'une compagnie. Jusqu'ici, cette adresse répondait un objet JSON.
+#
+# Il n'y a pas de portail de réservation web et il n'y en aura pas
+# (`09-roadmap.md`) : la réservation se fait dans l'application. Cette page
+# doit donc dire trois choses et s'arrêter — ce qu'est BilletEnLigne, où
+# prendre l'application, et, si le visiteur arrive avec un trajet en tête, que
+# ce trajet a bien été entendu.
+landing:
+  title: "BilletEnLigne — le car, réservé depuis votre téléphone"
+  tagline: "Réservez votre place, payez par mobile money, montez avec votre téléphone."
+  # Quand le lien portait un trajet. Le nommer, parce que quelqu'un qui a
+  # appuyé sur « Brazzaville → Dolisie » a déjà dit où il va, et une page qui
+  # ne le répète pas donne l'impression d'avoir perdu le fil.
+  route: "{from} → {to}"
+  routeNote: "Ce trajet vous attend dans l'application."
+  # Les trois choses que l'application fait, et rien de plus. Une page
+  # d'accueil qui énumère douze fonctionnalités est une page que personne ne
+  # lit sur un téléphone au bord de la route.
+  what1: "Comparez les départs de toutes les compagnies"
+  what2: "Payez par Airtel Money, MTN MoMo ou Orange Money"
+  what3: "Montez avec le QR code, même sans réseau"
+  getApp: "Télécharger l'application"
+  playStore: "Sur Google Play"
+  appStore: "Sur l'App Store"
+  # Aucune boutique n'est encore configurée. Le dire franchement plutôt que
+  # d'afficher un bouton qui ne mène nulle part : un lien mort sur la première
+  # page est la façon la plus rapide de perdre quelqu'un pour de bon.
+  notPublished: "L'application n'est pas encore publiée."
+  notPublishedBody: "Notez cette adresse et revenez : c'est ici qu'elle sera annoncée."
+  operators: "Vous êtes une compagnie de transport ?"
+  operatorsBody: "La console opérateur vous permet de publier vos horaires et de vendre en ligne."
+  consoleCta: "Ouvrir la console"
+  footer: "BilletEnLigne — République du Congo"

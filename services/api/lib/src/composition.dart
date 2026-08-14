@@ -17,6 +17,7 @@ import 'adapters/unavailable_operator_console.dart';
 import 'adapters/memory_idempotency_store.dart';
 import 'application/hold_seats.dart';
 import 'infrastructure/web/app_link_claims.dart';
+import 'infrastructure/web/store_listings.dart';
 import 'adapters/airtel_money_gateway.dart';
 import 'adapters/ed25519_ticket_issuer.dart';
 import 'adapters/fake_payment_gateway.dart';
@@ -151,6 +152,7 @@ final class Services {
     required this.smsConfigured,
     this.mailChannel = 'log',
     required this.appLinks,
+    required this.stores,
     Database? database,
   }) : _database = database;
 
@@ -350,6 +352,10 @@ final class Services {
   /// `/.well-known/`, and blank until a store listing exists.
   final AppLinkIdentity appLinks;
 
+  /// Where the landing page sends somebody who wants the app, and an operator
+  /// who wants the console. Blank until those addresses exist.
+  final StoreListings stores;
+
   final Database? _database;
 
   factory Services.resolve({
@@ -497,6 +503,7 @@ final class Services {
       mailChannel: _mailChannel(env),
       smsConfigured: (env['COMMS__SMSFROM'] ?? '').isNotEmpty,
       appLinks: AppLinkIdentity.from(env),
+      stores: StoreListings.from(env),
       database: db,
     );
   }
@@ -695,6 +702,7 @@ final class Services {
       // fresh clone should be able to exercise both channels.
       smsConfigured: true,
       appLinks: AppLinkIdentity.from(const {}),
+      stores: StoreListings.from(environment ?? const {}),
     );
   }
 
