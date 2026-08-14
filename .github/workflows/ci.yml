@@ -166,13 +166,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Render
         run: kubectl kustomize infra/k8s > /dev/null
-      - name: Every image is substituted, none left as the placeholder
+      - name: Every placeholder is substituted, none left behind
         run: |
           rendered="$(kubectl kustomize infra/k8s \
-            | sed -e 's#REGISTRY/bel-\([a-z]*\):latest#example/bel-\1:tag#g')"
-          if grep -q 'REGISTRY/' <<<"$rendered"; then
-            echo "an image reference the deploy script would not rewrite:"
-            grep -n 'REGISTRY/' <<<"$rendered"
+            | sed -e 's#REGISTRY/bel-\([a-z]*\):latest#example/bel-\1:tag#g' \
+                  -e 's#projects/PROJECT/secrets#projects/example/secrets#g' \
+                  -e 's#bel-workload@PROJECT#bel-workload@example#g')"
+          # `FIREBASE_PROJECT_ID` is a key name, not a placeholder — the
+          # patterns are the exact shapes deploy.sh rewrites.
+          if grep -qE 'REGISTRY/|projects/PROJECT/|@PROJECT\.' <<<"$rendered"; then
+            echo "a placeholder the deploy script would not rewrite:"
+            grep -nE 'REGISTRY/|projects/PROJECT/|@PROJECT\.' <<<"$rendered"
             exit 1
           fi
       # The worker takes pass names as arguments and the schedules name them
@@ -191,6 +195,30 @@ jobs:
             echo "$missing"
             exit 1
           fi
+
+      # Three lists of the same secrets, in three languages. A secret the
+      # pods mount and the project does not have is a pod that never starts,
+      # and the mount is the one place that failure is invisible until a
+      # deploy.
+      - name: The secrets agree across Kubernetes and Terraform
+        run: |
+          template="$(grep -oE '^  [A-Z][A-Z0-9_]*:' infra/k8s/secrets.example.yaml \
+                      | tr -d ' :' | LC_ALL=C sort)"
+          mounted="$(grep -oE '^ +path: "[A-Z0-9_]+"' infra/k8s/secretproviderclass.yaml \
+                     | sed -E 's/.*"(.*)"/\1/' | LC_ALL=C sort)"
+          declared="$(sed -n '/variable "secret_names"/,/^}/p' terraform/gcp-module/variables.tf \
+                      | grep -oE '"[A-Z][A-Z0-9_]*"' | tr -d '"' | LC_ALL=C sort)"
+          if [ "$template" != "$mounted" ]; then
+            echo "the secret template and the CSI mount disagree:"
+            diff <(echo "$template") <(echo "$mounted") || true
+            exit 1
+          fi
+          if [ "$template" != "$declared" ]; then
+            echo "the secret template and Terraform disagree:"
+            diff <(echo "$template") <(echo "$declared") || true
+            exit 1
+          fi
+          echo "$(echo "$template" | wc -l) secrets, in step"
 
       # A key in both files is a key whose value comes from whichever is
       # applied second — which is the Secret, silently, and only in the

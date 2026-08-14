@@ -51,8 +51,18 @@ spec:
           envFrom:
             - configMapRef:
                 name: bel-api-env
+            # Optional, and second: the secrets arrive as files from the CSI
+            # mount below, and `Env.resolve` gives the mount priority. This
+            # stays so that a cluster without the Secret Manager add-on can
+            # still be run from a hand-made Secret, which is what every
+            # deployment did before the mount existed.
             - secretRef:
                 name: bel-secrets
+                optional: true
+          volumeMounts:
+            - name: secrets
+              mountPath: /etc/bel/secrets
+              readOnly: true
           resources:
             requests:
               cpu: "150m"
@@ -95,4 +105,12 @@ spec:
       # Long enough for a payment callback in flight to finish. A rail that
       # retries a webhook against a pod that vanished mid-write is how a
       # captured payment ends up with no booking attached to it.
+      volumes:
+        # Requires the Secret Manager add-on; see `secretproviderclass.yaml`.
+        - name: secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: bel-secrets
       terminationGracePeriodSeconds: 60

@@ -2594,6 +2594,72 @@ wait "$config_pid" 2>/dev/null || true
 config_pid=""
 
 
+# ── Secrets, mounted rather than exported ───────────────────────────────────
+#
+# `BEL__SECRETSDIR` is the shape every secret store mounts — the Secret Store
+# CSI driver, a Vault agent, a Docker secret — and it is a better place for a
+# credential than an environment variable: an environment is inherited by
+# every child process and sits in /proc/self/environ, while a file has
+# permissions and is read once.
+echo
+echo "── secrets from a mount"
+
+secrets_dir="$(mktemp -d)"
+# Deliberately with the newline `echo` appends, which is the bug this is
+# supposed to survive: a DATABASE_URL with a trailing newline fails to connect
+# with an error about the *host*.
+echo "https://mounted.example.cg" > "$secrets_dir/BEL__WEBORIGINS"
+
+(cd "$API_DIR" && exec env BEL_ENV_FILE=none PORT="$CONFIG_PORT" \
+  BEL__SECRETSDIR="$secrets_dir" \
+  dart build/bin/server.dart >/tmp/bel-smoke-secrets.log 2>&1) &
+config_pid=$!
+
+for _ in $(seq 1 40); do
+  if curl -sf "$CONFIG_BASE/health" >/dev/null 2>&1; then break; fi
+  sleep 0.25
+done
+
+allowed="$(curl -sD - -o /dev/null -H 'Origin: https://mounted.example.cg' \
+  "$CONFIG_BASE/public/v1/market" | tr -d '\r' \
+  | sed -n 's/^[Aa]ccess-[Cc]ontrol-[Aa]llow-[Oo]rigin: //p')"
+check "a variable mounted as a file is read" "https://mounted.example.cg" "$allowed"
+
+kill "$config_pid" 2>/dev/null || true
+wait "$config_pid" 2>/dev/null || true
+config_pid=""
+
+# A volume that did not mount must be louder than a fallback. With no
+# DATABASE_URL this API serves the in-memory composition — invented
+# departures under a green deployment — so a named directory that is not
+# there refuses to start.
+(cd "$API_DIR" && exec env BEL_ENV_FILE=none PORT="$CONFIG_PORT" \
+  BEL__SECRETSDIR="$secrets_dir/never-mounted" \
+  dart build/bin/server.dart >/tmp/bel-smoke-nomount.log 2>&1) &
+config_pid=$!
+
+nomount_up="no"
+for _ in $(seq 1 20); do
+  if curl -sf "$CONFIG_BASE/health" >/dev/null 2>&1; then nomount_up="yes"; break; fi
+  sleep 0.25
+done
+check "a secrets directory that is not there does not start" "no" "$nomount_up"
+
+said_why="no"
+for _ in $(seq 1 40); do
+  if grep -q 'BEL__SECRETSDIR' /tmp/bel-smoke-nomount.log 2>/dev/null; then
+    said_why="yes"; break
+  fi
+  sleep 0.25
+done
+check "and says which directory it looked for" "yes" "$said_why"
+
+kill "$config_pid" 2>/dev/null || true
+wait "$config_pid" 2>/dev/null || true
+config_pid=""
+rm -rf "$secrets_dir"
+
+
 # ── One host, many addresses ────────────────────────────────────────────────
 #
 # Last, and deliberately: it exhausts this host's hourly budget for codes, so

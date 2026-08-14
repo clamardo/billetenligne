@@ -57,6 +57,47 @@ gcloud container clusters update <cluster> --location <loc> --enable-keda
 certificate stuck in `Provisioning` is almost always DNS that has not been
 pointed yet.
 
+## Secrets
+
+They live in Secret Manager and arrive as **files**, one per variable, under
+`/etc/bel/secrets`. `BEL__SECRETSDIR` points the API, the worker and the
+migration runner at the mount and `Env.resolve` reads them.
+
+Why files rather than environment variables: an environment is inherited by
+every child process, sits in `/proc/self/environ` for anything that can read
+the process, and is copied into crash dumps. A file has permissions, is read
+once at startup, and is **rewritten in place when the secret rotates** — an
+environment variable needs the pod recreated.
+
+The `SecretProviderClass` deliberately does **not** sync back into a
+Kubernetes Secret. That would put every value into etcd as base64, which is an
+encoding, and undo the reason for mounting them.
+
+Requires the Secret Manager add-on, exactly as the ScaledJobs require KEDA:
+
+```
+gcloud container clusters update <cluster> --location <zone> \
+  --enable-secret-manager
+```
+
+Terraform creates the secrets and **not their values**: a
+`google_secret_manager_secret_version` resource takes the value as an argument
+and Terraform writes every argument into state, which here is a GCS bucket.
+Add each value by hand, once:
+
+```
+printf %s "$SEED" | gcloud secrets versions add TICKETS__SIGNINGSEED --data-file=-
+```
+
+`printf`, not `echo` — `echo` appends a newline, and a `DATABASE_URL` with one
+fails to connect with an error about the *host*. (The API strips trailing
+newlines when it reads a mounted file, for exactly that reason. The value in
+the project should still be the value.)
+
+`envFrom: secretRef` is still there, marked optional, so a cluster without the
+add-on can be run from a hand-made `bel-secrets` Secret. The mount wins where
+both exist.
+
 ## What runs, and how often
 
 `bel-api` — two replicas, rolling with `maxUnavailable: 0`. This is the

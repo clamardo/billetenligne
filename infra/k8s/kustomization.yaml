@@ -4,6 +4,7 @@ resources:
   - namespace.yaml
   - configmap.yaml
   - serviceaccount.yaml
+  - secretproviderclass.yaml
 
   # The API, and the three public addresses that answer from it.
   - api/deployment.yaml

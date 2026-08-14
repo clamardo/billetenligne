@@ -384,8 +384,8 @@ final class Services {
     // Without this, a launcher whose env file quietly did not apply gets the
     // in-memory composition, a 200 from `/health`, invented departures and a
     // sign-in code on stdout, with nothing anywhere saying so.
-    // Empty is unset — a ConfigMap cannot say "no value", only "". See `Env`.
-    final env = Env.present(DevEnv.fill(environment ?? Platform.environment));
+    // Empty is unset, and a secret arrives as a file. Both in `Env`.
+    final env = Env.resolve(DevEnv.fill(environment ?? Platform.environment));
     final market = marketCatalog(env).defaultMarket;
     final url = env['DATABASE_URL'];
 

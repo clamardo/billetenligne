@@ -65,9 +65,10 @@ Future<void> main(List<String> args) async {
   // The same gap-filling the API does, for the same reason: the worker is
   // started by a shell script, a launch configuration and a cron trigger, and
   // exactly one of those is guaranteed to have sourced the env file.
-  // Empty is unset here too — the worker reads the same ConfigMap and the
-  // same Secret as the API, and `env['X'] ?? default` reads `""` as an answer.
-  final env = Env.present(DevEnv.fill(Platform.environment));
+  // The same rules the API resolves by: empty is unset, and a secret
+  // mounted at BEL__SECRETSDIR is read from its file. The worker reads the
+  // same ConfigMap and the same credentials.
+  final env = Env.resolve(DevEnv.fill(Platform.environment));
   final url = env['DATABASE_URL'];
   if (url == null || url.isEmpty) {
     stderr.writeln(

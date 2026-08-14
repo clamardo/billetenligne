@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:bel_api/src/infrastructure/config/env.dart';
 import 'package:bel_worker/src/migrations.dart';
 import 'package:postgres/postgres.dart';
 
@@ -29,7 +30,13 @@ import 'package:postgres/postgres.dart';
 /// This file is the environment: read it, connect, print, choose an exit
 /// code.
 Future<void> main() async {
-  final url = Platform.environment['MIGRATE_DATABASE_URL'] ?? '';
+  // The same resolution the API and the worker use: empty is unset, and a
+  // secret mounted at BEL__SECRETSDIR is read from its file. The owner
+  // connection is the one credential in this system that can rewrite the
+  // schema, so it is the last one that should be sitting in an environment
+  // every child process inherits.
+  final env = Env.resolve(Platform.environment);
+  final url = env['MIGRATE_DATABASE_URL'] ?? '';
   if (url.isEmpty) {
     stderr.writeln(
       'MIGRATE_DATABASE_URL is not set. It is the *owner* connection — not '
@@ -58,7 +65,7 @@ Future<void> main() async {
     outcome = await applyMigrations(
       session: connection,
       directory: directory,
-      baseline: Platform.environment['MIGRATE_BASELINE'],
+      baseline: env['MIGRATE_BASELINE'],
     );
   } on ServerException catch (error) {
     // Named rather than swallowed: the file that failed has already been

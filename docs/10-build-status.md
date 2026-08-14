@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-14 · after commit *Most of what was in the secret was not a secret*
+**Updated:** 2026-08-14 · after commit *A secret arrives as a file*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -489,6 +489,72 @@ counted with `services/api/build` present, so a stale copy of every package's
 tests was counted again as if it were the API's own — the exact trap the
 paragraph above warns about, walked into by whoever wrote the warning. Every
 figure here has been re-measured from a clean tree.
+
+---
+
+## What the mounted-secrets push changed, and what it cost
+
+The secrets stop being environment variables somebody typed into a terminal.
+
+**A secret arrives as a file.** `BEL__SECRETSDIR` names a directory whose file
+names are variable names, which is the shape every secret store mounts — the
+Secret Store CSI driver, a Vault agent, a Docker secret, a `tmpfs` somebody
+populated by hand. `Env.resolve` reads one variable per file in the API, the
+worker and the migration runner.
+
+The reasons are not stylistic. An environment is inherited by every child
+process, sits in `/proc/self/environ` for anything that can read the process,
+and is copied into crash dumps. A file has permissions and is read once at
+startup. And it **rotates**: a CSI mount rewrites the file in place, where an
+environment variable needs the pod recreated.
+
+**Three details that are the whole difficulty.** `echo secret > file` appends
+a newline, and a `DATABASE_URL` with a trailing newline fails to connect with
+an error about the *host* — which sends somebody to the network for a problem
+that is in a text file, so trailing line breaks are stripped. A trailing space
+is not: trimming that would be this code rewriting a credential. And
+Kubernetes projects a volume through a hidden timestamped directory and a
+`..data` symlink, so a naive listing finds `..data` beside the real names;
+dot-entries are skipped.
+
+**A directory that is named and not mounted refuses to start.** This is the
+opposite of the usual instinct. With no `DATABASE_URL` this API deliberately
+falls back to the in-memory composition — a fresh clone has working screens
+without Postgres — so a volume that failed to mount would produce a green
+deployment serving invented departures and selling seats on coaches that do
+not exist. That has to be louder than a fallback.
+
+**Terraform creates the secrets and not their values.** A
+`google_secret_manager_secret_version` takes the value as an argument, and
+Terraform writes every argument into state — which for this configuration is a
+GCS bucket. So the containers are declared, `prevent_destroy` is on because
+there is no undo, read access is granted **per secret** rather than
+project-wide, and each value is added once by hand with `printf | gcloud
+secrets versions add`.
+
+**And the SecretProviderClass does not sync back.** The driver can copy a
+mounted secret into a Kubernetes Secret so `envFrom` can read it. That would
+put every value into etcd as base64 — an encoding — and undo the reason for
+mounting them. `envFrom: secretRef` stays, marked `optional`, so a cluster
+without the add-on can still run from a hand-made Secret; the mount wins where
+both exist.
+
+A CI check compares three lists of the same secrets in three languages — the
+template, the CSI mount and the Terraform variable — because a secret the pods
+mount and the project does not have is a pod that never starts, and the mount
+is where that failure is invisible until a deploy.
+
+**What it cost:** `Env.resolve` and 7 more tests, 3 smoke checks over a real
+socket, one `SecretProviderClass`, a volume and a mount on every workload, two
+Terraform resources, and one CI check. `deploy.sh` now checks for the CSI CRD
+rather than for a Secret.
+
+**What is honestly not done:** applied nowhere, as before. Nothing rotates on
+a schedule — the mount makes rotation possible, and something still has to
+decide to do it. And the API caches its configuration at startup, so a
+rewritten file is picked up by the next pod rather than by the running one:
+rotation is still a rollout, just not a re-typing.
+
 
 ---
 

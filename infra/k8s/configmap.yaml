@@ -24,6 +24,13 @@ data:
   BEL__ENV: "production"
   PORT: "8080"
 
+  # Where the secrets are, as files. See `secretproviderclass.yaml` — an
+  # environment is inherited by every child process and sits in
+  # /proc/self/environ; a file has permissions and rotates in place. A
+  # directory named here and not mounted refuses to start rather than falling
+  # back to the in-memory composition and serving invented departures.
+  BEL__SECRETSDIR: "/etc/bel/secrets"
+
   # Where this deployment answers. `PUBLIC_BASE_URL` is what a payment rail
   # calls back on and has to be reachable from outside; `BEL__SHAREBASEURL` is
   # printed on every share link and every ticket link a traveller sends to

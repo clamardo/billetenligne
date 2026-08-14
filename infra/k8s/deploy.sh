@@ -56,15 +56,24 @@ if ! kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
   kubectl apply -f "$HERE/infra/k8s/namespace.yaml"
 fi
 
-# The Secret is never in this repository and never applied from it. If it is
-# not already in the cluster, stop here rather than rolling pods that will
-# crash-loop on a missing signing seed — which is the correct behaviour of the
-# API and a confusing way to find out.
-if ! kubectl -n "$NAMESPACE" get secret bel-secrets >/dev/null 2>&1; then
-  red "── the secret bel-secrets does not exist in $NAMESPACE"
-  echo "   See infra/k8s/secrets.example.yaml — it names every key and holds"
-  echo "   no values. The API will not start without TICKETS__SIGNINGSEED."
-  exit 1
+# The secrets come from Secret Manager, mounted as files. Neither the values
+# nor a Secret containing them is ever in this repository.
+#
+# Checked here rather than discovered as a pod stuck in ContainerCreating: the
+# CSI driver arrives with the Secret Manager add-on, and a cluster without it
+# accepts the volume and never mounts one.
+if ! kubectl get crd secretproviderclasses.secrets-store.csi.x-k8s.io >/dev/null 2>&1; then
+  if kubectl -n "$NAMESPACE" get secret bel-secrets >/dev/null 2>&1; then
+    echo "── no Secret Manager add-on; falling back to the Secret in the cluster"
+  else
+    red "── this cluster has neither the Secret Manager add-on nor a bel-secrets Secret"
+    echo "   gcloud container clusters update <cluster> --location <zone> \\"
+    echo "     --enable-secret-manager"
+    echo "   Then add a version to each secret named in"
+    echo "   infra/k8s/secrets.example.yaml. The API will not start without"
+    echo "   TICKETS__SIGNINGSEED."
+    exit 1
+  fi
 fi
 
 if [[ "$BUILD" == 1 ]]; then
@@ -77,7 +86,8 @@ if [[ "$MIGRATE" == 1 ]]; then
   # Deleted first: a Job's pod template is immutable, so re-applying one that
   # already exists is an error rather than a re-run.
   kubectl -n "$NAMESPACE" delete job bel-migrate --ignore-not-found
-  sed "s#image: bel-worker#image: $BEL_REGISTRY/bel-worker:$TAG#" \
+  sed -e "s#image: bel-worker#image: $BEL_REGISTRY/bel-worker:$TAG#" \
+      -e "s#projects/PROJECT/secrets#projects/$BEL_PROJECT/secrets#g" \
     "$HERE/infra/k8s/migrate/job.yaml" | kubectl -n "$NAMESPACE" apply -f -
 
   if ! kubectl -n "$NAMESPACE" wait --for=condition=complete job/bel-migrate --timeout=10m; then
@@ -97,6 +107,7 @@ echo "── applying"
 kubectl kustomize "$HERE/infra/k8s" \
   | sed -e "s#REGISTRY/bel-\([a-z]*\):latest#$BEL_REGISTRY/bel-\1:$TAG#g" \
         -e "s#bel-workload@PROJECT.iam.gserviceaccount.com#bel-workload@$BEL_PROJECT.iam.gserviceaccount.com#g" \
+        -e "s#projects/PROJECT/secrets#projects/$BEL_PROJECT/secrets#g" \
   | kubectl apply -f -
 
 echo "── waiting"

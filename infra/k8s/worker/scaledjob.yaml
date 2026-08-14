@@ -40,6 +40,13 @@ spec:
       spec:
         restartPolicy: Never
         serviceAccountName: bel
+        volumes:
+          - name: secrets
+            csi:
+              driver: secrets-store.csi.k8s.io
+              readOnly: true
+              volumeAttributes:
+                secretProviderClass: bel-secrets
         securityContext:
           runAsNonRoot: true
           runAsUser: 10001
@@ -65,8 +72,15 @@ spec:
             envFrom:
               - configMapRef:
                   name: bel-api-env
+              # Optional, and second: the values arrive as files from the
+              # CSI mount and `Env.resolve` gives the mount priority.
               - secretRef:
                   name: bel-secrets
+                  optional: true
+            volumeMounts:
+              - name: secrets
+                mountPath: /etc/bel/secrets
+                readOnly: true
             resources:
               requests: { cpu: 100m, memory: 128Mi }
               limits: { cpu: "1", memory: 512Mi }
@@ -106,6 +120,13 @@ spec:
       spec:
         restartPolicy: Never
         serviceAccountName: bel
+        volumes:
+          - name: secrets
+            csi:
+              driver: secrets-store.csi.k8s.io
+              readOnly: true
+              volumeAttributes:
+                secretProviderClass: bel-secrets
         securityContext:
           runAsNonRoot: true
           runAsUser: 10001
@@ -122,8 +143,15 @@ spec:
             envFrom:
               - configMapRef:
                   name: bel-api-env
+              # Optional, and second: the values arrive as files from the
+              # CSI mount and `Env.resolve` gives the mount priority.
               - secretRef:
                   name: bel-secrets
+                  optional: true
+            volumeMounts:
+              - name: secrets
+                mountPath: /etc/bel/secrets
+                readOnly: true
             resources:
               requests: { cpu: 200m, memory: 256Mi }
               limits: { cpu: "1", memory: 1Gi }

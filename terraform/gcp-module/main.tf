@@ -140,6 +140,49 @@ resource "google_service_account_iam_member" "workload" {
   member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.kubernetes_namespace}/bel]"
 }
 
+# The secrets, as containers with nothing in them.
+#
+# **No `google_secret_manager_secret_version` here, and that is the whole
+# point.** A version resource takes the value as an argument, and Terraform
+# writes every argument into state — which for this configuration is a GCS
+# bucket. Creating the secrets in Terraform and the *values* by hand is what
+# keeps a signing seed and a database password out of a file that half the
+# team can read and that no one thinks of as sensitive:
+#
+#   printf %s "$SEED" | gcloud secrets versions add TICKETS__SIGNINGSEED --data-file=-
+#
+# `printf` rather than `echo`, because `echo` appends a newline and a
+# DATABASE_URL with one fails to connect with an error about the host. (The
+# API strips trailing newlines when it reads a mounted secret, for exactly
+# that reason — but the value in the project should still be the value.)
+resource "google_secret_manager_secret" "secrets" {
+  for_each  = toset(var.secret_names)
+  secret_id = each.key
+  project   = var.project_id
+
+  replication {
+    auto {}
+  }
+
+  lifecycle {
+    # A secret is deleted by a person who meant to, in the console. Terraform
+    # removing one because a name moved in a list would take the value with
+    # it, and there is no undo.
+    prevent_destroy = true
+  }
+}
+
+# Read access, per secret rather than per project. `roles/secretmanager.
+# secretAccessor` at the project level would also grant every secret somebody
+# adds later for something else.
+resource "google_secret_manager_secret_iam_member" "workload" {
+  for_each  = google_secret_manager_secret.secrets
+  project   = var.project_id
+  secret_id = each.value.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.workload.email}"
+}
+
 resource "google_container_cluster" "primary" {
   name     = var.cluster_name
   location = var.zone

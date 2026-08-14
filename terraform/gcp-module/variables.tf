@@ -156,3 +156,37 @@ variable "common_labels" {
   type    = map(string)
   default = {}
 }
+
+variable "secret_names" {
+  description = <<-EOT
+    Every secret the deployment reads, by name. The same list as the keys in
+    infra/k8s/secrets.example.yaml and infra/k8s/secretproviderclass.yaml, and
+    CI fails when the three disagree — a secret the pods mount and the project
+    does not have is a pod that never starts.
+  EOT
+  type        = list(string)
+  default = [
+    "AIRTEL__CLIENTID",
+    "AIRTEL__CLIENTSECRET",
+    "AIRTEL__DISBURSEMENTPIN",
+    "CARD__APIKEY",
+    "CARD__SITEID",
+    "COMMS__CONNECTIONSTRING",
+    "DATABASE_URL",
+    "FIREBASE_CLIENT_EMAIL",
+    "FIREBASE_PRIVATE_KEY",
+    "MIGRATE_DATABASE_URL",
+    "MTN__APIKEY",
+    "MTN__APIUSER",
+    "MTN__DISBURSEMENTAPIKEY",
+    "MTN__DISBURSEMENTKEY",
+    "MTN__DISBURSEMENTUSER",
+    "MTN__SUBSCRIPTIONKEY",
+    "ORANGE__CLIENTID",
+    "ORANGE__CLIENTSECRET",
+    "ORANGE__MERCHANTKEY",
+    "STORAGE__KEY",
+    "TICKETS__SIGNINGSEED",
+    "TOTP__ENCRYPTIONKEY",
+  ]
+}

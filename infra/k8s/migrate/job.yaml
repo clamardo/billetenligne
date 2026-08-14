@@ -39,6 +39,13 @@ spec:
     spec:
       restartPolicy: Never
       serviceAccountName: bel
+      volumes:
+        - name: secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: bel-secrets
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -46,12 +53,21 @@ spec:
         - name: migrate
           image: bel-worker
           command: ["/app/bin/migrate"]
-          env:
-            - name: MIGRATE_DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: bel-secrets
-                  key: MIGRATE_DATABASE_URL
+          # The owner connection arrives as a file, like every other secret
+          # — `Env.resolve` in `bin/migrate.dart` reads the mount. It is the
+          # one credential here that can rewrite the schema, and therefore
+          # the last that should sit in an environment every child process
+          # inherits.
+          envFrom:
+            - configMapRef:
+                name: bel-api-env
+            - secretRef:
+                name: bel-secrets
+                optional: true
+          volumeMounts:
+            - name: secrets
+              mountPath: /etc/bel/secrets
+              readOnly: true
           resources:
             requests: { cpu: 100m, memory: 128Mi }
             limits: { cpu: "1", memory: 512Mi }

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:bel_api/src/infrastructure/config/env.dart';
 import 'package:test/test.dart';
 
@@ -38,5 +40,86 @@ void main() {
     // And the original is left alone: this is read in one place at startup
     // and the caller may still hold the map it passed.
     expect(raw.length, 3);
+  });
+
+  group('a secret arrives as a file', () {
+    late Directory dir;
+    setUp(() => dir = Directory.systemTemp.createTempSync('bel-secrets'));
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    void mount(String name, String value) =>
+        File('${dir.path}/$name').writeAsStringSync(value);
+
+    test('one variable per file', () {
+      mount('DATABASE_URL', 'postgres://bel_api@10.0.0.3/billetenligne');
+      mount('TICKETS__SIGNINGSEED', 'c2VlZA==');
+
+      final env = Env.resolve({'BEL__SECRETSDIR': dir.path});
+      expect(env['DATABASE_URL'], 'postgres://bel_api@10.0.0.3/billetenligne');
+      expect(env['TICKETS__SIGNINGSEED'], 'c2VlZA==');
+    });
+
+    test('the newline whoever wrote it did not mean', () {
+      // `echo secret > file` appends one. A DATABASE_URL with a trailing
+      // newline fails to connect with an error about the *host*, which sends
+      // somebody to the network for a problem that is in a text file.
+      mount('DATABASE_URL', 'postgres://x\n');
+      expect(
+        Env.resolve({'BEL__SECRETSDIR': dir.path})['DATABASE_URL'],
+        'postgres://x',
+      );
+      mount('OTHER', 'value\r\n');
+      expect(Env.resolve({'BEL__SECRETSDIR': dir.path})['OTHER'], 'value');
+    });
+
+    test('a trailing space is left alone', () {
+      // Unlikely, and trimming it would be this code rewriting a credential.
+      mount('KEY', 'value ');
+      expect(Env.resolve({'BEL__SECRETSDIR': dir.path})['KEY'], 'value ');
+    });
+
+    test("Kubernetes's own hidden entries are not variables", () {
+      // A projected volume is a timestamped directory and a `..data` symlink,
+      // so a naive listing finds `..data` beside the real names.
+      mount('DATABASE_URL', 'postgres://x');
+      Directory('${dir.path}/..2026_08_14_10_00_00').createSync();
+      File('${dir.path}/..data').writeAsStringSync('not a variable');
+
+      final env = Env.resolve({'BEL__SECRETSDIR': dir.path});
+      expect(env.keys, containsAll(['DATABASE_URL', 'BEL__SECRETSDIR']));
+      expect(env.containsKey('..data'), isFalse);
+    });
+
+    test('the mount wins over what was exported', () {
+      // A ConfigMap and a secrets mount naming the same key is a mistake, and
+      // the more specific of the two is the one that was mounted.
+      mount('DATABASE_URL', 'postgres://mounted');
+      final env = Env.resolve({
+        'BEL__SECRETSDIR': dir.path,
+        'DATABASE_URL': 'postgres://exported',
+      });
+      expect(env['DATABASE_URL'], 'postgres://mounted');
+    });
+
+    test('an empty file is an unset variable', () {
+      mount('COMMS__SMSFROM', '\n');
+      expect(
+        Env.resolve({
+          'BEL__SECRETSDIR': dir.path,
+        }).containsKey('COMMS__SMSFROM'),
+        isFalse,
+      );
+    });
+
+    test('a directory that is not there refuses, rather than starting', () {
+      // With no DATABASE_URL this API falls back to the in-memory
+      // composition and serves invented departures — a green deployment
+      // selling seats on coaches that do not exist. A volume that did not
+      // mount has to be louder than that.
+      expect(
+        () => Env.resolve({'BEL__SECRETSDIR': '${dir.path}/nowhere'}),
+        throwsA(isA<StateError>()),
+      );
+    });
   });
 }
