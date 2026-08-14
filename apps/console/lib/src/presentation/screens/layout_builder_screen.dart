@@ -293,6 +293,7 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
           children: [
             Expanded(
               child: DropdownButtonFormField<TransportMode>(
+                isExpanded: true,
                 initialValue: _mode,
                 decoration: InputDecoration(
                   labelText: context.t('console.fleet.builder.mode'),
@@ -315,6 +316,7 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
             SizedBox(width: kilo.space.s3),
             Expanded(
               child: DropdownButtonFormField<SeatNumbering>(
+                isExpanded: true,
                 initialValue: _numbering,
                 decoration: InputDecoration(
                   labelText: context.t('console.fleet.builder.numbering'),
@@ -663,6 +665,7 @@ class _FeatureDialogState extends State<_FeatureDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           DropdownButtonFormField<LayoutFeatureType>(
+            isExpanded: true,
             initialValue: _type,
             decoration: InputDecoration(
               labelText: context.t('console.fleet.builder.featureType'),
@@ -890,6 +893,7 @@ class _SectionCard extends StatelessWidget {
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: editor.code,
                   decoration: InputDecoration(
                     labelText: context.t('console.fleet.builder.sectionClass'),
@@ -961,6 +965,7 @@ class _SectionCard extends StatelessWidget {
             children: [
               Expanded(
                 child: DropdownButtonFormField<_FareMode>(
+                  isExpanded: true,
                   initialValue: editor.fareMode,
                   decoration: InputDecoration(
                     labelText: context.t('console.fleet.builder.fare'),

@@ -491,6 +491,7 @@ class _PolicyWizardState extends State<PolicyWizard> {
         SizedBox(height: kilo.space.s5),
 
         DropdownButtonFormField<RefundDestination>(
+          isExpanded: true,
           initialValue: _destination,
           decoration: InputDecoration(
             labelText: context.t('console.policies.destination'),

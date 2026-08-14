@@ -205,6 +205,7 @@ final class FleetScreen extends StatelessWidget {
                 ),
                 SizedBox(height: dialogContext.kilo.space.s3),
                 DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: preset,
                   decoration: InputDecoration(
                     labelText: dialogContext.t('console.fleet.preset'),
@@ -299,6 +300,7 @@ final class FleetScreen extends StatelessWidget {
                 ),
                 SizedBox(height: dialogContext.kilo.space.s3),
                 DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: layoutId,
                   decoration: InputDecoration(
                     labelText: dialogContext.t('console.fleet.layout'),

@@ -352,6 +352,7 @@ final class NetworkScreen extends StatelessWidget {
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
+                          isExpanded: true,
                           initialValue: origin,
                           decoration: InputDecoration(
                             labelText: dialogContext.t('console.network.from'),
@@ -364,6 +365,7 @@ final class NetworkScreen extends StatelessWidget {
                       SizedBox(width: dialogContext.kilo.space.s3),
                       Expanded(
                         child: DropdownButtonFormField<String>(
+                          isExpanded: true,
                           initialValue: destination,
                           decoration: InputDecoration(
                             labelText: dialogContext.t('console.network.to'),
@@ -421,6 +423,7 @@ final class NetworkScreen extends StatelessWidget {
                           Expanded(
                             flex: 3,
                             child: DropdownButtonFormField<String>(
+                              isExpanded: true,
                               initialValue: stop.city,
                               decoration: InputDecoration(
                                 labelText: dialogContext.t(
@@ -525,6 +528,7 @@ final class NetworkScreen extends StatelessWidget {
                             Expanded(
                               flex: 3,
                               child: DropdownButtonFormField<String>(
+                                isExpanded: true,
                                 initialValue: leg.from,
                                 decoration: InputDecoration(
                                   labelText: dialogContext.t(
@@ -551,6 +555,7 @@ final class NetworkScreen extends StatelessWidget {
                             Expanded(
                               flex: 3,
                               child: DropdownButtonFormField<String>(
+                                isExpanded: true,
                                 initialValue: leg.to,
                                 decoration: InputDecoration(
                                   labelText: dialogContext.t(
@@ -696,6 +701,7 @@ final class NetworkScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: city,
                   decoration: InputDecoration(
                     labelText: dialogContext.t('console.network.city'),

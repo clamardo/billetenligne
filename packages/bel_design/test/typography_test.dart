@@ -19,8 +19,9 @@ void main() {
     return null;
   }
 
-  bool tabular(TextStyle style) => (style.fontFeatures ?? const [])
-      .any((f) => f.feature == 'tnum' && f.value == 1);
+  bool tabular(TextStyle style) => (style.fontFeatures ?? const []).any(
+    (f) => f.feature == 'tnum' && f.value == 1,
+  );
 
   group('which face carries what', () {
     test('the display sizes are the serif', () {
@@ -33,9 +34,21 @@ void main() {
 
     test('everything else is Inter', () {
       for (final style in [
-        t.h2, t.h3, t.bodyLg, t.body, t.bodySm, t.caption, t.label,
-        t.time, t.timeHero, t.amount, t.amountHero, t.amountSm,
-        t.code, t.codeHero, t.shout,
+        t.h2,
+        t.h3,
+        t.bodyLg,
+        t.body,
+        t.bodySm,
+        t.caption,
+        t.label,
+        t.time,
+        t.timeHero,
+        t.amount,
+        t.amountHero,
+        t.amountSm,
+        t.code,
+        t.codeHero,
+        t.shout,
       ]) {
         expect(style.fontFamily, KiloTypography.family);
       }
@@ -55,8 +68,13 @@ void main() {
       // Amounts that shift width as digits change look untrustworthy, and
       // this product is made entirely of numbers people care about.
       for (final style in [
-        t.time, t.timeHero, t.amount, t.amountHero, t.amountSm,
-        t.code, t.codeHero,
+        t.time,
+        t.timeHero,
+        t.amount,
+        t.amountHero,
+        t.amountSm,
+        t.code,
+        t.codeHero,
       ]) {
         expect(tabular(style), isTrue);
       }

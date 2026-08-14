@@ -9,6 +9,8 @@
 /// condition, not an edge case.
 library;
 
+export 'src/art/kilo_art.dart';
+export 'src/art/kilo_pattern.dart';
 export 'src/components/k_brand_header.dart';
 export 'src/components/k_button.dart';
 export 'src/components/k_card.dart';
@@ -19,6 +21,7 @@ export 'src/components/k_money.dart';
 export 'src/components/k_seat_map.dart';
 export 'src/components/k_state_view.dart';
 export 'src/components/k_trip_card.dart';
+export 'src/kilo_scheme.dart';
 export 'src/kilo_theme.dart';
 export 'src/tokens/kilo_colors.dart';
 export 'src/tokens/kilo_spacing.dart';

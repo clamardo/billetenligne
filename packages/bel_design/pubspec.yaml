@@ -11,6 +11,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # The illustration layer. The artwork lives as editable SVG under
+  # assets/, not as Dart path data, so a designer can open a file, change
+  # it, and ship it without touching a line of code.
+  flutter_svg: ^2.0.10
 dev_dependencies:
   flutter_test:
     sdk: flutter

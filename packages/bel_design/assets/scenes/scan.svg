@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 320" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect width="800" height="320" fill="#FF00E3"/>
+  <path d="M0 250h800v70H0z" fill="#FF00E2" fill-opacity=".34"/>
+  <rect x="322" y="44" width="156" height="232" rx="24" fill="#FF00E6" stroke="#FF00E0" stroke-width="5"/>
+  <rect x="340" y="72" width="120" height="120" rx="10" fill="#FF00E3"/>
+  <g fill="#FF00E0">
+    <path d="M354 86h26v26h-26zM420 86h26v26h-26zM354 152h26v26h-26z"/>
+  </g>
+  <g fill="#FF00E3">
+    <path d="M362 94h10v10h-10zM428 94h10v10h-10zM362 160h10v10h-10z"/>
+  </g>
+  <g fill="#FF00E1">
+    <path d="M396 86h11v11h-11zM396 108h11v11h-11zM420 130h11v11h-11zM396 152h11v11h-11zM420 168h11v11h-11zM442 152h11v11h-11z"/>
+  </g>
+  <path d="M340 132h120" stroke="#FF00E4" stroke-width="5"/>
+  <path d="M362 216h76M362 238h50" stroke="#FF00E1" stroke-width="8"/>
+  <g stroke="#FF00E2" stroke-width="7">
+    <path d="M188 108V72h34M188 212v36h34M612 108V72h-34M612 212v36h-34"/>
+  </g>
+  <g fill="#FF00E2" fill-opacity=".5">
+    <path d="M96 168h44v82H96zM152 196h34v54h-34zM646 152h48v98h-48zM708 190h32v60h-32z"/>
+  </g>
+</svg>

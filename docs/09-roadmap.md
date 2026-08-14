@@ -38,7 +38,7 @@ Everything after this is faster because of it, and that turned out to be true in
 - ✅ `bel_localization` — YAML catalog, fr + en, with the drift guards
 - ✅ `bel_contracts` — the wire format
 - ✅ `bel_crypto` — Ed25519 and HMAC, against published vectors
-- ✅ `bel_design` — Kilo tokens, three themes, nine components
+- ✅ `bel_design` — Kilo tokens, three themes, ten components, the complete Material 3 `ColorScheme` and ~30 component themes, Inter + Fraunces bundled, and eighteen pieces of artwork as editable SVG. 🔨 **Still open: putting it on the screens** — empty states, heroes and an in-app dark-mode toggle across the four apps and the two server-rendered pages
 - ✅ `bel_client` — the typed API client, shared by every surface
 - ✅ Postgres schema, RLS, double-entry ledger, append-only audit
 - ✅ **The public sales boundary** (ADR-0023) — not in the original plan, and the single largest thing this phase learned

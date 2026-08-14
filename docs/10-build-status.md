@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-13 · after commit *The coach drawn for the journey being bought, not for the road it runs*
+**Updated:** 2026-08-13 · after commit *One shared style, and something to look at*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -20,7 +20,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | `bel_localization` — YAML catalogs, fr + en | ✅ done | Missing-key, orphan, placeholder and SMS-length guards |
 | `bel_contracts` — wire format | ✅ done | Money is always `{minor, currency}` |
 | `bel_crypto` — Ed25519, HMAC | ✅ done | Verified against the RFC 4231 vector |
-| `bel_design` — Kilo tokens, three themes, components | ✅ done | 10 components, 65 tests; **gallery app still not built** |
+| `bel_design` — Kilo tokens, three themes, components | ✅ done | 10 components, 119 tests. Inter + Fraunces actually bundled; the **complete** Material 3 `ColorScheme` and ~30 component themes, so no screen styles a control itself; 11 illustrations, 3 heroes and 4 woven patterns as editable SVG under `assets/`. **Screens do not use the illustrations yet, and there is still no in-app dark-mode toggle** |
 | Postgres schema, RLS, ledger | ✅ done | 11 migrations, 26 executed guarantees |
 | Public sales boundary (`bel_public`) | ✅ done | 0005 — a traveller cannot mark a seat sold, proven in `verify_public.sql` |
 | Dart Frog skeleton, auth + idempotency middleware | ✅ done | 43 smoke checks over a real socket |
@@ -490,7 +490,102 @@ figure here has been re-measured from a clean tree.
 
 ---
 
-## What the last push changed, and what it cost
+## What the design-system push changed, and what it cost
+
+The product looked like a wireframe of itself: black text on white, nothing
+raised, nothing tinted, no illustration anywhere. That reads as a taste
+problem. It was two mechanical ones, and both are now closed.
+
+**Material 3 was being fed eight of its thirty colour roles.** The rest
+resolve lazily, and every fallback in `color_scheme.dart` collapses onto a
+role Kilo *was* supplying:
+
+```dart
+Color get primaryContainer        => _primaryContainer ?? primary;
+Color get surfaceContainer        => _surfaceContainer ?? surface;
+Color get surfaceContainerHighest => _surfaceContainerHighest ?? surface;
+Color get outlineVariant          => _outlineVariant ?? onBackground;
+```
+
+So every `Card`, `Chip`, `NavigationBar` and `SegmentedButton` in four apps
+drew its container in the same white as the page behind it, every `Divider`
+drew in near-black, and every tonal button drew at full brand strength. The
+product was "black on white with nothing standing out" because the framework
+had been told, precisely, to be that. The soft tokens already existed —
+`brandPrimarySoft`, `surfaceSunken`, `borderSubtle` — and were simply never
+handed over. `KiloScheme` now fills every role for all three brightnesses,
+and `surfaceTint` is explicitly transparent, because Material's default
+elevation tint reads as a green stain on warm paper.
+
+**The surface ramp is written out per brightness rather than interpolated
+between two endpoints.** Material wants five stops; Kilo names three. The
+ramp runs *away* from the reader in light and *towards* them in dark, so
+`surfaceContainerLowest` is the whitest surface by day and the blackest by
+night — which is why raised chrome is pinned to the `surfaceRaised` token
+instead of to a role. A card bound to the role sat above its page in light
+and **below it in dark**, and that is exactly what the first run of the new
+tests found.
+
+**One shared style, no per-screen overrides.** About thirty component themes
+now live in `KiloTheme.materialTheme` — cards, buttons, chips, fields,
+dividers, list tiles, navigation bar and rail, segmented buttons, tabs,
+dialogs, sheets, menus, tables, switches, sliders. A bare `Card` with no local
+styling comes out in Kilo's colours, and there is a test that asserts the
+screen sets nothing.
+
+**A real accessibility failure had shipped.** White on the laterite accent is
+3.04:1 — legible on a desk monitor, illegible on a phone in the sun this
+product is built for. "On" colours are now *chosen* by luminance rather than
+assumed, which fixes it and keeps fixing it when a hue changes.
+
+**And there is something to look at.** Eleven spot illustrations, three heroes
+and four woven patterns, drawn from Congolese textile. The artwork lives as
+editable SVG under `packages/bel_design/assets/` — not as path data buried in
+Dart — and is drawn against a **sentinel palette** of eight impossible magenta
+values, substituted for real tokens at paint time. One file therefore renders
+correctly in light, dark and plein soleil, and an operator's own accent pushes
+through the same drawing, so a storefront hero is in that operator's colour
+without a second copy of anything. A hero prefers the operator's uploaded
+photograph where one exists; the drawing is what fills the space until then,
+so no layout is designed around an image that might not arrive. The files are
+compiled in by `tool/build_art.dart` rather than bundled as assets, because an
+empty state that flashes blank while its illustration loads is worse than one
+with no illustration; a test fails if the generated file drifts from the
+folder, and another fails on any literal colour.
+
+Patterns are the exception: they are geometry, not artwork, so they are
+painted. A motif has to tile at any width without stretching and survive being
+24 px tall behind a logo, and stretching a fixed drawing does none of that.
+
+**The design is now looked at, not only read.** `test/render/` renders every
+illustration, hero, pattern and themed control to PNG. It asserts nothing, and
+it is the most useful thing in this push: two of the three heroes were
+composed for a 2:1 frame and were being cropped to 3:1 in place — the coach on
+the road was sliced off entirely — which no widget test can see and which was
+obvious in one glance at the sheet. It also has to be pumped by hand rather
+than settled: `flutter_svg` decodes outside the test's fake async zone, so
+`pumpAndSettle` spins forever waiting on work the test clock will never
+advance.
+
+**Found on the way:** nine `DropdownButtonFormField`s in the console had no
+`isExpanded`, so their selected label overflowed the moment fields gained a
+proper outline and fill. Long labels in French were always going to do that;
+the theme just made it happen today rather than in whichever language went in
+next.
+
+**What it did not build:** the screens do not use any of this yet — the empty
+states in all four apps are still text, no hero is placed, and there is still
+no in-app dark-mode toggle (the dark theme exists and follows the OS only).
+The storefront and follower pages are server-rendered HTML and carry none of
+the artwork. Named here rather than implied by silence.
+
+**What it cost:** 39 new tests in `bel_design` (80 → 119), one generated file,
+eighteen drawings, and two defects that had shipped — a card below its page in
+dark mode, and a contrast ratio of 3.04:1 on the accent.
+
+---
+
+## What the Orange Money push changed, and what it cost
 
 **The wallet that does not ring** — Orange Money, the largest single unlock in
 this market.

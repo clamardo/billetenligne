@@ -194,6 +194,7 @@ final class TimetableScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     initialValue: routeId,
                     decoration: InputDecoration(
                       labelText: dialogContext.t('console.timetable.route'),
@@ -207,6 +208,7 @@ final class TimetableScreen extends StatelessWidget {
                   SizedBox(height: dialogContext.kilo.space.s3),
 
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     initialValue: vehicleId,
                     decoration: InputDecoration(
                       labelText: dialogContext.t('console.timetable.vehicle'),

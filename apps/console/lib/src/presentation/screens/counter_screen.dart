@@ -192,6 +192,7 @@ class _CounterScreenState extends State<CounterScreen> {
         )
       else ...[
         DropdownButtonFormField<String>(
+          isExpanded: true,
           initialValue: _departureId,
           decoration: InputDecoration(
             labelText: context.t('console.counter.departure'),
