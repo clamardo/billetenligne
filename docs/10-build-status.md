@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-14 · after commit *The server had never written down what it did*
+**Updated:** 2026-08-14 · after commit *Two replicas on one node is one replica*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -489,6 +489,71 @@ counted with `services/api/build` present, so a stale copy of every package's
 tests was counted again as if it were the API's own — the exact trap the
 paragraph above warns about, walked into by whoever wrote the warning. Every
 figure here has been re-measured from a clean tree.
+
+---
+
+## What the availability push changed, and what it cost
+
+The manifests promised two things they could not keep, and a third that was
+enabled and unused.
+
+**Two replicas on one node is one replica.** `maxUnavailable: 0` protects a
+*rollout*, and a rollout is not what takes this down. A node upgrade, a
+preemption or a `kubectl drain` evicts whatever is on that node, and with
+nothing said about placement the scheduler was free to put both API pods
+there — so the thing the second replica was bought for never happened. Every
+deployment now spreads one pod per node with `DoNotSchedule`, and holds a
+`PodDisruptionBudget` of `minAvailable: 1`. Two rules answering different
+questions: where pods go, and what may be taken away.
+
+**The web bundles ran one replica each**, on an argument that was also about
+rollouts. A node drain left an operator's console 404ing at a counter in the
+middle of a sale. The tempting fix — a budget saying nothing may be evicted —
+is worse than it looks: `maxUnavailable: 0` over a single replica blocks
+voluntary eviction **forever**, so the node upgrade hangs and somebody deletes
+the budget in a hurry. A second replica at 20 millicores is the honest answer.
+
+**Which forced the node floor to two.** With `min_node_count = 1` the new pair
+is not a safety net, it is a deadlock: the second replica of everything is
+unschedulable, and `auto_upgrade` — which is on — cannot drain the only node
+without violating every budget. The variable now carries that reasoning where
+somebody about to save money will read it.
+
+**Workload Identity was enabled and nothing was bound to it.** That is a trap
+rather than an omission. Turning it on takes the node service account *away*
+from the pods: anything running as `default` has no Google credentials at all,
+and the first call to a Google API fails in the metadata server with an error
+that mentions no service account. So `bel` exists in Kubernetes, bound to
+`bel-workload@PROJECT`, and every pod template names it. **The Google account
+holds no roles.** An identity that exists and can do nothing is the correct
+starting point; inventing permissions for a call nobody has written is how a
+workload ends up with `roles/editor`.
+
+**And the API can scale.** 2 to 8 pods at 60% of a 150m request — low on
+purpose for a road whose peak is 05:30 to 07:00, because by the time a Dart
+server is at 80% of a core its tail latency is somebody watching a spinner at
+a counter, and the pod that fixes it takes a minute to arrive. No
+stabilisation on the way up; ten minutes on the way down, because one extra
+pod for ten minutes costs nothing and flapping through a peak costs a rolling
+cold start.
+
+Three CI checks keep it: nothing runs as `default`, every deployment has a
+budget, every container states what it needs and what it may take. Each was
+run against a deliberately broken tree to watch it fail.
+
+**What it cost:** three manifests, four edits, a Terraform service account and
+binding, one variable default, and one more environment variable for
+`deploy.sh` — the project id, which belongs to a deployment rather than to
+this repository.
+
+**What is honestly not done:** still applied nowhere. The HPA's numbers are a
+guess, not a load test; the pool's ceiling of three `e2-standard-2` nodes is
+the real bound on eight API pods, not the `maxReplicas`. There is no Secret
+Manager: the signing seed and the database password still reach the cluster in
+a `kubectl apply` from somebody's terminal, which is the next thing the
+service account will need a role for. And no staging environment, so the first
+cluster this is applied to is production.
+
 
 ---
 

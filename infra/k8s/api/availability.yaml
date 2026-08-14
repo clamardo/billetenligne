@@ -1,0 +1,60 @@
+---
+# Two replicas on one node is one replica.
+#
+# `maxUnavailable: 0` protects a *rollout*, and a rollout is not what takes
+# this down. A node upgrade, a preemption or a `kubectl drain` evicts whatever
+# is on that node, and with nothing said about placement the scheduler is free
+# to put both API pods there — so the thing the second replica was bought for
+# never happens.
+#
+# Two rules, and they answer different questions. The spread constraint is
+# where pods *go*: one per node, and `DoNotSchedule` because a second replica
+# beside the first is not worth having. The budget is what may be *taken
+# away*: at least one, always, so a drain waits rather than emptying the
+# deployment.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bel-api
+  namespace: billetenligne
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: bel-api
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: bel-api
+  namespace: billetenligne
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: bel-api
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # Against the *request*, which is 150m — so this scales at about
+          # 90m of CPU per pod. Deliberately low for a request-serving process
+          # on a road with a morning peak: by the time a Dart server is at 80%
+          # of a core its tail latency is already somebody watching a spinner
+          # at a counter, and the pod that would fix it takes a minute to
+          # arrive.
+          averageUtilization: 60
+  behavior:
+    scaleUp:
+      # No stabilisation on the way up: the peak here is 05:30 to 07:00 on a
+      # weekday and a five-minute window would spend most of it deciding.
+      stabilizationWindowSeconds: 0
+    scaleDown:
+      # And ten minutes on the way down, because the cost of one extra pod for
+      # ten minutes is nothing and the cost of flapping is a rolling cold
+      # start through a peak.
+      stabilizationWindowSeconds: 600

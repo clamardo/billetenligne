@@ -114,6 +114,32 @@ resource "google_project_iam_member" "nodes" {
   member  = "serviceAccount:${google_service_account.nodes.email}"
 }
 
+# The identity the pods run as, and the binding that makes it theirs.
+#
+# Workload Identity is enabled on the cluster below, and that is not a
+# convenience — it takes the node service account *away* from the pods. A pod
+# on the `default` Kubernetes service account then has no Google credentials
+# at all, and the first call to a Google API fails in the metadata server with
+# an error that says nothing about service accounts. So the pair exists from
+# the start: `bel` in Kubernetes (infra/k8s/serviceaccount.yaml) is bound to
+# `bel-workload@PROJECT` here.
+#
+# **It holds no roles.** An identity that exists and can do nothing is the
+# correct starting point; inventing permissions now, for a call nobody has
+# written, is how a workload ends up with roles/editor. The first thing that
+# needs one — Secret Manager, most likely — adds exactly that one.
+resource "google_service_account" "workload" {
+  account_id   = "bel-workload"
+  display_name = "BilletEnLigne workloads"
+  project      = var.project_id
+}
+
+resource "google_service_account_iam_member" "workload" {
+  service_account_id = google_service_account.workload.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.kubernetes_namespace}/bel]"
+}
+
 resource "google_container_cluster" "primary" {
   name     = var.cluster_name
   location = var.zone

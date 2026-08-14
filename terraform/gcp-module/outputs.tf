@@ -28,3 +28,8 @@ output "sql_connection_name" {
 output "node_service_account" {
   value = google_service_account.nodes.email
 }
+
+output "workload_service_account" {
+  description = "What the `iam.gke.io/gcp-service-account` annotation on the `bel` service account resolves to, and what BEL_PROJECT produces."
+  value       = google_service_account.workload.email
+}

@@ -3,6 +3,7 @@
 ```
 BEL_REGISTRY=europe-west1-docker.pkg.dev/<project>/bel \
 BEL_API_URL=https://blt.cg \
+BEL_PROJECT=<project> \
   ./infra/k8s/deploy.sh
 ```
 
@@ -61,8 +62,27 @@ pointed yet.
 `bel-api` — two replicas, rolling with `maxUnavailable: 0`. This is the
 process that sells seats.
 
-`bel-console`, `bel-admin` — one replica each. Static files and a company's
-dispatchers, not the public.
+`bel-console`, `bel-admin` — two replicas each, spread one per node. They
+shipped with one, on the argument that static files for a company's
+dispatchers do not need two. That argument was about rollouts, and a rollout
+is not what takes them down: a node drain evicts the only pod and a console
+404s at a counter mid-sale.
+
+Every deployment holds a `PodDisruptionBudget` of `minAvailable: 1` and
+spreads one pod per node, which is why the node pool's floor is **two nodes**.
+On one node the pair deadlocks: the second replica of everything is
+unschedulable and `auto_upgrade` can never drain the only node without
+violating every budget.
+
+`bel-api` also has a `HorizontalPodAutoscaler`, 2 to 8 pods at 60% of a 150m
+CPU request — deliberately low for a road with an 05:30 peak, and with no
+stabilisation on the way up and ten minutes on the way down.
+
+Everything runs as the `bel` service account, annotated onto
+`bel-workload@<project>`. Not decoration: Workload Identity is enabled on the
+cluster, which takes the node service account away from the pods, so anything
+left on `default` has no Google credentials at all and finds out in the
+metadata server months later. The Google account holds no roles yet.
 
 `bel-worker-minutes` — every five minutes: `payments refunds outbox holds
 changes alerts reservations calls`.

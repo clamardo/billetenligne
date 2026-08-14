@@ -52,6 +52,12 @@ variable "cluster_name" {
   type = string
 }
 
+variable "kubernetes_namespace" {
+  description = "The namespace infra/k8s deploys into. Half of the Workload Identity binding."
+  type        = string
+  default     = "billetenligne"
+}
+
 variable "machine_type" {
   description = "e2-standard-2 is two vCPU and 8 GB, which runs the API twice over, two nginx pods and the passes with room to spare."
   type        = string
@@ -59,8 +65,18 @@ variable "machine_type" {
 }
 
 variable "min_node_count" {
-  type    = number
-  default = 1
+  description = <<-EOT
+    Two, and it has to be two.
+
+    The manifests spread each deployment one pod per node and hold a
+    PodDisruptionBudget of minAvailable 1. On a single-node pool that pair is
+    not a safety net, it is a deadlock: the second replica of everything is
+    unschedulable, and `auto_upgrade` — which is on — cannot drain the only
+    node without violating every budget, so the upgrade waits forever and
+    somebody eventually deletes the budgets in a hurry.
+  EOT
+  type        = number
+  default     = 2
 }
 
 variable "max_node_count" {

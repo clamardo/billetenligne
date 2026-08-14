@@ -21,6 +21,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 NAMESPACE="billetenligne"
 
 : "${BEL_REGISTRY:?set BEL_REGISTRY, e.g. europe-west1-docker.pkg.dev/<project>/bel}"
+# Which Google service account the pods run as. Substituted the same way the
+# image references are, and for the same reason: the project id belongs to a
+# deployment rather than to this repository.
+: "${BEL_PROJECT:?set BEL_PROJECT — the GCP project id the workload identity lives in}"
 : "${BEL_API_URL:?set BEL_API_URL, e.g. https://blt.cg — it is compiled into the web bundles}"
 
 TAG="$(git -C "$HERE" rev-parse --short HEAD)"
@@ -92,6 +96,7 @@ echo "── applying"
 # readable and says `REGISTRY`.
 kubectl kustomize "$HERE/infra/k8s" \
   | sed -e "s#REGISTRY/bel-\([a-z]*\):latest#$BEL_REGISTRY/bel-\1:$TAG#g" \
+        -e "s#bel-workload@PROJECT.iam.gserviceaccount.com#bel-workload@$BEL_PROJECT.iam.gserviceaccount.com#g" \
   | kubectl apply -f -
 
 echo "── waiting"

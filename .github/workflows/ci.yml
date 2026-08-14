@@ -192,6 +192,49 @@ jobs:
             exit 1
           fi
 
+      # Three promises the manifests make that are invisible in a render and
+      # expensive to discover on a cluster. Each one shipped broken.
+      - name: Nothing runs as the default service account
+        # Workload Identity is on, which takes the node service account away
+        # from the pods: anything on `default` has no Google credentials at
+        # all, and finds out in the metadata server months later.
+        run: |
+          rendered="$(kubectl kustomize infra/k8s)"
+          pods="$(grep -c 'restartPolicy: Never\|      containers:' <<<"$rendered" || true)"
+          named="$(grep -c 'serviceAccountName: bel' <<<"$rendered" || true)"
+          echo "$named pod templates name the service account"
+          if [ "$named" -lt 5 ]; then
+            echo "a workload without serviceAccountName: bel"
+            exit 1
+          fi
+
+      - name: Every deployment has a disruption budget
+        # `maxUnavailable: 0` protects a rollout. A node drain is not a
+        # rollout, and it is what actually takes a replica away.
+        run: |
+          rendered="$(kubectl kustomize infra/k8s)"
+          for app in bel-api bel-console bel-admin; do
+            if ! awk '/^kind: PodDisruptionBudget/,/^---/' <<<"$rendered" \
+                 | grep -q "app: $app"; then
+              echo "$app has no PodDisruptionBudget"
+              exit 1
+            fi
+          done
+
+      - name: Every container states what it needs and what it may take
+        run: |
+          rendered="$(kubectl kustomize infra/k8s)"
+          # Indentation varies with the kind, so count the thing that is the
+          # same everywhere: one image reference per container.
+          containers="$(grep -c 'image: REGISTRY/bel-' <<<"$rendered" || true)"
+          requests="$(grep -cE '^ +requests:$' <<<"$rendered" || true)"
+          limits="$(grep -cE '^ +limits:$' <<<"$rendered" || true)"
+          echo "$containers containers, $requests requests, $limits limits"
+          if [ "$requests" -lt "$containers" ] || [ "$limits" -lt "$containers" ]; then
+            echo "a container with no resource requests or no limits"
+            exit 1
+          fi
+
       - name: No secret has a value in it
         # `secrets.example.yaml` is a template and is not in the
         # kustomization. This is the check that keeps it a template.

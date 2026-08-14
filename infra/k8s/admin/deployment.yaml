@@ -1,9 +1,12 @@
 ---
 # The back office: a Flutter web bundle behind unprivileged nginx.
 #
-# One replica. This is static files and a company's dispatchers, not the
-# public — it does not need two, and the rolling strategy below means an
-# update is still not an outage.
+# Two replicas, spread across nodes. It shipped with one and an argument that
+# static files for a handful of our own people do not need two — which was
+# about rollouts, and a rollout is not what takes this down. A node drain
+# evicts the only pod, and the back office is where a payment that went wrong
+# is resolved and where an operator waiting on a 48-hour review is approved.
+# See `web-availability.yaml`.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -12,7 +15,7 @@ metadata:
   labels:
     app: bel-admin
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: bel-admin
@@ -26,6 +29,18 @@ spec:
       labels:
         app: bel-admin
     spec:
+      # Not `default`: Workload Identity is on, and a pod on the default
+      # service account has no Google credentials at all.
+      serviceAccountName: bel
+      # One per node. Two replicas the scheduler put side by side are one
+      # replica the moment that node is drained.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: bel-admin
       securityContext:
         runAsNonRoot: true
         # The unprivileged nginx image's own user. It listens on 8080 because

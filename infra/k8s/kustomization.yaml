@@ -3,16 +3,19 @@ namespace: billetenligne
 resources:
   - namespace.yaml
   - configmap.yaml
+  - serviceaccount.yaml
 
   # The API, and the three public addresses that answer from it.
   - api/deployment.yaml
   - api/service.yaml
+  - api/availability.yaml
 
   # The two web apps.
   - console/deployment.yaml
   - console/service.yaml
   - admin/deployment.yaml
   - admin/service.yaml
+  - web-availability.yaml
 
   # The passes. Requires the KEDA add-on:
   #   gcloud container clusters update <cluster> --location <loc> --enable-keda

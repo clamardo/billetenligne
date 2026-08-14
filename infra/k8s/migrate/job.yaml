@@ -38,6 +38,7 @@ spec:
         app: bel-migrate
     spec:
       restartPolicy: Never
+      serviceAccountName: bel
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

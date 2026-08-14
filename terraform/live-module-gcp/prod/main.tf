@@ -57,7 +57,7 @@ module "bel" {
   # day.
   use_spot_nodes = false
 
-  min_node_count = 1
+  min_node_count = 2
   max_node_count = 3
 
   deletion_protection = true

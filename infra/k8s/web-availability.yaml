@@ -1,0 +1,37 @@
+---
+# The two web bundles, which shipped with one replica each and an argument
+# that they did not need two: static files, a company's dispatchers, and a
+# rolling update that is not an outage.
+#
+# The argument was about rollouts, and a rollout is not what takes these down.
+# A node upgrade, a preemption or a `kubectl drain` evicts the only pod, and
+# there is nothing behind it — an operator's console 404s at a counter in the
+# middle of a sale, on a Tuesday, because a node pool was being patched.
+#
+# The tempting fix is a budget saying nothing may be taken away. That is worse
+# than it looks: a `maxUnavailable: 0` budget over a single replica blocks
+# voluntary eviction **forever**, so the node upgrade hangs rather than
+# finishing, and somebody eventually deletes the budget in a hurry. A second
+# replica at 20 millicores is the honest answer, and it makes `minAvailable: 1`
+# a promise that can actually be kept.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bel-console
+  namespace: billetenligne
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: bel-console
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bel-admin
+  namespace: billetenligne
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: bel-admin

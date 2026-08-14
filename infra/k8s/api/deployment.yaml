@@ -25,6 +25,18 @@ spec:
       labels:
         app: bel-api
     spec:
+      # Not `default`: Workload Identity is on, and a pod on the default
+      # service account has no Google credentials at all.
+      serviceAccountName: bel
+      # One per node. Two replicas the scheduler put side by side are one
+      # replica the moment that node is drained.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: bel-api
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
