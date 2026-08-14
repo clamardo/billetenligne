@@ -145,6 +145,13 @@ for app in "${APPS[@]}"; do
     grep -q "versionCode='$(( BUILD_NUMBER + offset ))'" <<<"$badging" ||
       die "$(basename "$apk") is not versionCode $(( BUILD_NUMBER + offset ))"
 
+    # An adaptive icon, which is an XML resource. The Flutter template's
+    # default beachball is a plain PNG, so this is the check that says the
+    # brand mark is still installed rather than reverted by a `flutter
+    # create` somebody ran to fix something else.
+    grep -qE "^application-icon-160:'res/.*\.xml'" <<<"$badging" ||
+      die "$(basename "$apk") has no adaptive launcher icon"
+
     label="$(sed -n "s/^application-label:'\(.*\)'$/\1/p" <<<"$badging")"
     [[ -n "$label" && "$label" != bel_* ]] ||
       die "$(basename "$apk") is labelled '$label' — that is the package name, on a launcher"

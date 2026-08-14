@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-13 · after commit *The release build, and five things only it could find*
+**Updated:** 2026-08-13 · after commit *The apps get their faces*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -25,7 +25,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | Public sales boundary (`bel_public`) | ✅ done | 0005 — a traveller cannot mark a seat sold, proven in `verify_public.sql` |
 | Dart Frog skeleton, auth + idempotency middleware | ✅ done | 43 smoke checks over a real socket |
 | `infra/dev` — Postgres, Firebase emulator, Azurite, Mailpit | ✅ done | `docker compose up`; `.env.example` connected as the wrong role until 0007 |
-| Brand — mark, wordmark, four app icons | 🔨 in progress | SVGs done; **not yet installed into the Android/iOS icon sets** |
+| Brand — mark, wordmark, four app icons | ✅ done | Installed. The mipmaps, the adaptive icon, the iOS set and the web icons are **rendered from the SVGs by the app's own renderer** — `flutter_svg` into a `RepaintBoundary` — so the icon on the launcher is by construction the icon the app draws, and no second rasteriser has to be installed to agree with it. Re-rendered and compared on every `flutter test` |
 
 ## Phase 1 — Cash-only pilot
 
@@ -488,6 +488,58 @@ counted with `services/api/build` present, so a stale copy of every package's
 tests was counted again as if it were the API's own — the exact trap the
 paragraph above warns about, walked into by whoever wrote the warning. Every
 figure here has been re-measured from a clean tree.
+
+---
+
+## What the icons push changed, and what it cost
+
+Four marks have been SVGs in `brand/icons/` since the brand was drawn, and all
+four apps shipped Flutter's default blue-and-white beachball. The slice before
+this one produced an APK an agency could install; this is the one that makes it
+findable on a home screen full of other apps.
+
+**Rasterised by the app's own renderer.** ImageMagick, `rsvg-convert` and the
+icon generators all mean a second thing to install and a second rasteriser
+whose output nobody compares to the app's. This repository already draws these
+files — `flutter_svg` renders the same artwork on every screen — so the
+generator is a `flutter test` that paints each mark into a `RepaintBoundary`
+and calls `toImage`. The icon on the launcher is then, by construction, the
+icon the app draws.
+
+**The background rectangle comes out of the foreground.** An adaptive icon is
+two layers: Android paints the foreground over a flat colour and masks the
+pair. Leave the mark's own background rect in the foreground and a launcher
+that crops to a circle is cropping a square that was already there. The rect
+is stripped, and its fill becomes `@color/ic_launcher_background`.
+
+**Apple refuses an icon with an alpha channel.** `toByteData(format: png)`
+always writes RGBA, so the iOS set is written from raw pixels as PNG colour
+type 2 — three bytes to the pixel, one filter byte to the scanline, zlib doing
+the compression. Sixty lines, and the alternative is a rejection that arrives
+at submission, months after the file was made, complaining about a
+transparency nobody put there.
+
+**The freshness check is a tolerance, not a byte match.** Every file is
+re-rendered on an ordinary `flutter test` and compared to what is committed, so
+an edited mark that nobody regenerated fails here rather than shipping. It is a
+mean-error threshold because Skia's antialiasing moves by a shade between
+engine versions, and `git diff --exit-code` on a PNG would turn every Flutter
+upgrade into a red build about an icon nobody touched. A changed *drawing*
+moves whole regions: swapping the traveller's icon for the scanner's scores 35
+against a threshold of 6.
+
+`tool/release_android.sh` gained one check with it — the launcher icon must be
+an XML resource, which is what an adaptive icon is and what the template's
+default beachball is not.
+
+**What it cost:** one test file, 62 generated PNGs, two generated XML
+resources. No new dependency and no new tool.
+
+**What is honestly not done:** there is no round-icon variant for the API 24–25
+launchers that want one, and the monochrome layer for Android 13's themed
+icons is the foreground's own alpha rather than a mark drawn for it. Neither
+has been seen on a device, because neither app has been installed on one.
+
 
 ---
 
