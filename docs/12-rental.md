@@ -26,89 +26,11 @@ That reuse is the entire business case. What follows is only the part that is ne
 
 ## 2. Prerequisite: the platform split
 
-**Shared with stays.** Whichever vertical starts first builds this; the other gets it free. It is a refactor with no behaviour change and it must land as its own slices, green, before any vertical code is written.
+**[`15-platform-split.md`](15-platform-split.md)** — slices P1–P5. Blocking, and shared with stays: whichever vertical starts first builds it, the other gets it free.
 
-Today `packages/bel_domain` holds both the platform primitives and the transport domain, and calls the result "the domain". ADR-0027 §1 separates them.
+In one paragraph: `bel_platform` is extracted out from under `bel_domain` — 19 of its 38 files, 2 802 of its 6 862 lines, with zero overlap in public type names. `tool/check_layers.dart` gains the rule that `bel_domain`, `bel_rental` and `bel_stay` may not import one another. The migration runner learns per-schema sequences so `infra/migrations/rental/` has its own ledger without disturbing the 45 rows already applied. `check.sh` learns that no table in `public` may hold a foreign key into a vertical schema. And `public.payables` becomes the one narrow seam through which rental asks for money, carrying an opaque `subject_ref` the platform never joins on.
 
-### P1 — `bel_platform` exists and is empty
-
-Create `packages/bel_platform` with a pubspec, add it to the Melos workspace and the pub workspace, export nothing. Add it to `tool/check_layers.dart` as the innermost ring.
-
-Done when: `melos bootstrap` succeeds and CI is green with an unused package.
-
-### P2 — Move the platform primitives into it
-
-Move, do not copy: `Money`, `Currency`, the market types, ledger domain types, payment-rail types, operator identity and lifecycle enums, staff capability types, refund-policy machinery, notification types, id and time helpers.
-
-`bel_domain` then declares `dependencies: bel_platform` and re-exports nothing — every consumer imports from wherever the type actually lives now.
-
-The mechanical risk is import churn across ~450 files. Do it with `dart fix` and the analyser, not by hand, and let the compiler find every site.
-
-Done when: the full test suite passes with **zero behaviour changes**, `dart run tool/check_layers.dart` is clean, and `git diff --stat` shows imports and moves and nothing else.
-
-### P3 — The layering rule that makes the split real
-
-`tool/check_layers.dart` gains one rule:
-
-> `bel_domain`, `bel_rental` and `bel_stay` may not import one another. Any of them may import `bel_platform`. `bel_platform` may import none of them.
-
-Done when: a deliberately added `import 'package:bel_domain/bel_domain.dart';` inside `bel_rental` fails the checker with a readable message, and removing it passes. Write that as a test of the checker.
-
-### P4 — Schemas, roles and the direction rule
-
-Add to the migration runner the notion of per-schema migration sequences: `infra/migrations/` stays the platform sequence; `infra/migrations/rental/` and `infra/migrations/stay/` are their own, each with its own `schema_migrations` row namespace.
-
-`rental/0001_schema.sql` creates the schema and the role:
-
-```sql
-CREATE SCHEMA IF NOT EXISTS rental;
-CREATE ROLE bel_rental_app NOLOGIN;
-GRANT USAGE ON SCHEMA rental TO bel_rental_app;
-GRANT bel_rental_app TO bel_api;
-```
-
-`bel_api` remains `NOLOGIN NOINHERIT` and gets privileges only through `SET LOCAL ROLE` (ADR-0011). Nothing about that changes.
-
-`infra/migrations/check.sh` gains the direction check:
-
-> No table in `public` may hold a foreign key into `rental`, `stay` or `review`.
-
-Done when: adding such a key to a scratch migration fails `check.sh`, and the message names the offending constraint.
-
-### P5 — `public.payables`, the one shared money seam
-
-ADR-0027 §3. One platform table, written by a vertical, read by the payment machinery, never joined back.
-
-```sql
-CREATE TABLE payables (
-  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  operator_id    UUID NOT NULL REFERENCES operators(id) ON DELETE RESTRICT,
-  subject_kind   TEXT NOT NULL,
-  -- Opaque. The platform NEVER joins on this and never parses it. It is the
-  -- vertical's own reference, echoed back on settlement so the vertical can
-  -- find its own aggregate. This one property is what lets a vertical become
-  -- a service later without the ledger moving (ADR-0027 §3).
-  subject_ref    TEXT NOT NULL,
-  purchaser_user_id UUID REFERENCES user_accounts(id),
-  amount_minor   BIGINT NOT NULL,
-  fee_minor      BIGINT NOT NULL DEFAULT 0,
-  currency       CHAR(3) NOT NULL,
-  commission_bps INTEGER NOT NULL,
-  state          TEXT NOT NULL DEFAULT 'pending',
-  idempotency_key TEXT,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  settled_at     TIMESTAMPTZ,
-
-  CONSTRAINT payables_subject_kind_known
-    CHECK (subject_kind IN ('transport_booking','rental','stay')),
-  CONSTRAINT payables_amounts_sane CHECK (amount_minor >= 0 AND fee_minor >= 0),
-  UNIQUE (subject_kind, subject_ref)
-);
-```
-
-Transport does **not** migrate onto this in P5. `bookings` keeps its existing path, which works and is tested; adding a second way to pay for a coach seat before there is a reason is risk for nothing. Transport adopts `payables` only if and when it becomes a service.
-
-Done when: a payable settles through the fake rail, the ledger balances, and `verify_unbalanced.sql` still fails an unbalanced pair.
+Rental additionally needs P4's schema and role: `rental`, and `bel_rental_app` as a new member of the existing role family, granted on its own schema and on exactly the platform tables it reads.
 
 ---
 

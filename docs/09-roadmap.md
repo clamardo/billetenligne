@@ -211,11 +211,17 @@ The architecture, in one sentence: **each vertical is its own domain package, it
 
 **A vertical ships whole — search to money to fulfilment artefact to review — or it does not ship.** Four half-built verticals are worth less than one finished one, and this phase makes it very easy to feel productive while the two commercial long poles at the top of this document stay exactly where they are.
 
-### P — the platform split · **blocking, shared, no behaviour change**
+### P — the platform split · **blocking, shared, no behaviour change** — [`15-platform-split.md`](15-platform-split.md)
 
-`12-rental.md` §2, slices P1–P5. `bel_platform` is extracted from `bel_domain`; the layering checker gains the rule that `bel_domain`, `bel_rental` and `bel_stay` may not import one another; the migration runner learns per-schema sequences; `check.sh` learns that `public` may never hold a foreign key into a vertical schema; and `public.payables` becomes the one narrow seam through which a vertical asks for money without the ledger ever learning what was sold.
+Five slices, P1–P5, specified against a classifier actually run over the tree rather than against an estimate. `bel_domain` holds 38 files and 6 862 lines; **19 files and 2 802 lines are platform, 19 files and 4 060 lines are transport, and the two sets share no public type name at all** — which is what makes the move safe to land as a pure file rename with a one-commit transitional re-export.
 
-Roughly 450 files of import churn and zero behaviour change. It must land green before any vertical code is written.
+The dependency graph inside the package turned out to contain **exactly one forced decision**: `identity/totp.dart` imports `ticketing/crypto_ports.dart`, so a platform file depends on a transport-filed one. `crypto_ports` moves; everything else falls out. It was never about ticketing — it was filed there because ticketing was its first caller.
+
+The number that argues the boundary is real: of the **263 files that import `package:bel_domain`, 149 use platform symbols only.** Fifty-seven per cent of the consumers of "the domain" never touch a seat, a departure or a ticket, and after P2b they cannot.
+
+Also in P: three layering rules with tests that prove each one fires; per-schema migration sequences, designed so an existing 45-migration database gains no rows; the `public`-holds-no-foreign-key-into-a-vertical check; and `public.payables`, the one narrow money seam.
+
+Zero behaviour change, five green commits, each independently revertible. It must land before a line of `bel_rental` or `bel_stay` is written — building a vertical first means splitting three domains instead of one, with two of them already depending on the wrong things.
 
 ### Air · **specified, gated commercially** — [`11-air.md`](11-air.md), ADR-0017
 

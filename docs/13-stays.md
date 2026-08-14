@@ -28,7 +28,9 @@ The user's request — *"user can add their org, and hotel and manage room and p
 
 ## 2. Prerequisite
 
-**The platform split, `12-rental.md` §2, slices P1–P5.** Blocking. Whichever vertical starts first builds it. Stays additionally needs P4's per-schema migration sequences for schema `stay` and role `bel_stay_app`.
+**[`15-platform-split.md`](15-platform-split.md), slices P1–P5.** Blocking, and shared with rental — whichever vertical starts first builds it.
+
+Stays additionally needs P4's per-schema migration sequence for `infra/migrations/stay/`, the `stay` schema, and `bel_stay_app` as a new member of the existing role family. Note that the runner's baseline probe — *"`schema_migrations` is absent but `operators` exists"* — is the root sequence's alone; a `stay` sequence with no rows on a live database is the normal state of a vertical that has not shipped, not an unknown baseline.
 
 ---
 
