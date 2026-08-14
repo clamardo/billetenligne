@@ -490,6 +490,68 @@ figure here has been re-measured from a clean tree.
 
 ---
 
+## What the Terraform push changed, and what it cost
+
+Four modules and a README. Three things in them are worth reading.
+
+**The split across two clouds is a decision.** GCP has the cluster, the
+database and the registry, because that is where the account and the billing
+are. Azure has the object store and the messages, because the storage adapter
+signs with Shared Key and is exercised in CI against Azurite, and because
+Communication Services is where the sender identity will be (ADR-0019). Two
+consoles and two bills is a real cost. It is smaller than rewriting an
+implementation whose thirteen signing steps have to be in one order and which
+answers 403 with no hint about which one was wrong.
+
+**Cloud NAT is load-bearing, not boilerplate.** Private nodes have no external
+address, and this system reaches an Azure storage account, an Azure
+Communication Services endpoint and — one day — four mobile-money hosts.
+Without NAT the pods come up healthy and every outbound call times out, which
+reads as a broken adapter and is a missing route.
+
+**Terraform deliberately does not create the application database user, and
+this is the sharpest thing in the slice.** `bel_api` is created by migration
+0005 as `NOLOGIN NOINHERIT`: it is a member of the three surface roles and
+holds none of their privileges until a transaction runs `SET LOCAL ROLE`. A
+Cloud SQL user of that name created by Terraform would be an **inheriting**
+role. The migration's `IF NOT EXISTS` would then politely skip it, everything
+would come up green, and every request would run with the union of the public,
+tenant and platform privileges — row-level security switched off, with no line
+of code changed and nothing in any log saying so. Produced by doing two
+reasonable things in the wrong order.
+
+So Terraform creates the owner only, the README says to `ALTER ROLE bel_api
+LOGIN PASSWORD` afterwards, and `infra/migrations/verify.sql` now asserts that
+`bel_api` exists and does **not** inherit, and that no surface role can bypass
+RLS. That assertion runs in CI on a throwaway Postgres, which is the only
+place a claim like this stays true.
+
+**KEDA has no Terraform field.** It is `gcloud container clusters update
+--enable-keda`, named in the module as a comment and in the README as a step,
+because a ScaledJob applied to a cluster without KEDA is accepted by the API
+server as an unknown kind and never runs. That is the quietest failure in this
+deployment: the payments pass simply never happens, and it is found by a
+traveller whose payment was never polled.
+
+Everything validates. `terraform validate` runs in CI over all four modules,
+with the gitignored credentials file substituted by the committed sample —
+which catches a misspelled resource, a wrong argument name and a provider
+version that has dropped a field, and that is most of what goes wrong between
+one apply and the next six months later.
+
+**What it cost:** 15 `.tf` files, one schema guarantee, one CI job, and a
+`.gitignore` rule that keeps the credentials file out and lets the sample in.
+
+**What is honestly not done:** nothing has been applied. No cluster exists, no
+plan has run against a real project, and every number in these files — the
+machine type, the database tier, the node count — is a starting guess rather
+than something a load test produced. There is no staging environment, and no
+CI that applies: a pipeline with credentials to rebuild the cluster is a
+pipeline that can destroy it.
+
+
+---
+
 ## What the manifests push changed, and what it cost
 
 `infra/k8s/` is fifteen files and a deploy script. What is worth reading is

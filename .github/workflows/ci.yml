@@ -196,6 +196,34 @@ jobs:
             exit 1
           fi
 
+  # The infrastructure, checked the only way it can be without applying it.
+  # `validate` catches a misspelled resource, a wrong argument name and a
+  # provider version that no longer has the field being set — which is most of
+  # what goes wrong between one apply and the next, six months apart.
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - name: Formatting
+        run: terraform fmt -recursive -check -diff terraform
+      # The live modules read a gitignored credentials file. The sample next
+      # to it has the same shape and no real values, which is what makes this
+      # runnable at all.
+      - name: A credentials file with nothing in it
+        run: cp terraform/credentials-prod.sample.json terraform/credentials-prod.json
+      - name: Validate
+        run: |
+          for dir in terraform/gcp-module terraform/azure-module \
+                     terraform/live-module-gcp/prod terraform/live-module-azure/prod; do
+            echo "── $dir"
+            terraform -chdir="$dir" init -backend=false -input=false >/dev/null
+            terraform -chdir="$dir" validate
+          done
+
   # Budgets from ADR-0009, enforced rather than hoped for. Skipped until the
   # traveller app exists.
   budgets:

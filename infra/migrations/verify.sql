@@ -486,3 +486,40 @@ BEGIN
   RAISE NOTICE 'OK  a wallet payment names a wallet, a card payment names a page';
 END
 $$;
+
+-- ── The application role holds nothing until it says which surface it is ────
+--
+-- `bel_api` is granted membership in the three surface roles and is NOINHERIT,
+-- so it has none of their privileges until a transaction runs `SET LOCAL ROLE`
+-- (0005). Inherit instead of noinherit and the grant becomes permanent: every
+-- request would run with the union of the public, tenant and platform
+-- privileges, and row-level security would be a comment.
+--
+-- Asserted here rather than assumed, because the role now has a *second* way
+-- to come into existence. The migration creates it NOLOGIN and NOINHERIT; a
+-- deployment has to give it a password, and a Cloud SQL user created by
+-- Terraform before the migrations ran would be an inheriting role of the same
+-- name that this file's `IF NOT EXISTS` would then politely skip. That is a
+-- silent, total loss of tenant isolation, produced by doing two reasonable
+-- things in the wrong order.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_roles WHERE rolname = 'bel_api' AND NOT rolinherit
+  ) THEN
+    RAISE EXCEPTION
+      'FAIL: bel_api is missing or inherits. An inheriting bel_api holds the '
+      'public, tenant and platform privileges at once, in every transaction.';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_roles
+     WHERE rolname IN ('bel_app', 'bel_admin', 'bel_public', 'bel_identity')
+       AND (rolsuper OR rolbypassrls)
+  ) THEN
+    RAISE EXCEPTION 'FAIL: a surface role can bypass row-level security';
+  END IF;
+
+  RAISE NOTICE 'OK  the application role holds nothing until it declares a surface';
+END
+$$;

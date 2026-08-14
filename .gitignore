@@ -31,3 +31,12 @@ services/api/.dart_frog/
 # Copied from packages/bel_localization/i18n by tool/sync_i18n.sh. Generated,
 # not authored — and a committed copy is a copy somebody will edit by mistake.
 apps/*/assets/i18n/
+
+# Terraform: state, providers, and the one file that holds real project ids
+# and passwords. The `.sample.json` next to it is what is committed.
+terraform/**/.terraform/
+terraform/**/.terraform.lock.hcl
+terraform/**/*.tfstate
+terraform/**/*.tfstate.*
+terraform/credentials-*.json
+!terraform/credentials-*.sample.json
