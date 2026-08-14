@@ -20,9 +20,11 @@ import '../l10n.dart';
 ///     contrast against our surfaces and in direct sun. A free picker
 ///     guarantees that somebody eventually chooses a yellow that is invisible
 ///     on their own ticket, at the moment a conductor needs to read it;
-///   * **three generated patterns, no photography.** A cover photo is 120 KB
+///   * **four generated motifs, no photography.** A cover photo is 120 KB
 ///     on a metered prepaid bundle, and most operators have none usable
-///     (ADR-0009);
+///     (ADR-0009). The fourth, `kuba`, is the interlocking chevron of Kuba
+///     cloth — drawn in the design system since the motifs were first painted
+///     and offered here by nothing until now;
 ///   * **30 characters of title, 60 of tagline, in both languages.** Long
 ///     enough to say something, short enough not to wrap on a 320 dp screen.
 ///
@@ -46,7 +48,7 @@ class _VitrineScreenState extends State<VitrineScreen> {
 
   String? _loadedFor;
   var _accent = AccentHue.foret;
-  var _pattern = HeaderPattern.flat;
+  var _pattern = KPatternMotif.flat;
 
   @override
   void dispose() {
@@ -71,7 +73,7 @@ class _VitrineScreenState extends State<VitrineScreen> {
     _taglineFr.text = vitrine.taglineFr ?? '';
     _taglineEn.text = vitrine.taglineEn ?? '';
     _accent = AccentHue.byName(vitrine.accentHue);
-    _pattern = HeaderPattern.byName(vitrine.headerPattern);
+    _pattern = KPatternMotif.byName(vitrine.headerPattern);
   }
 
   @override
@@ -130,7 +132,7 @@ class _VitrineScreenState extends State<VitrineScreen> {
 
   void chooseAccent(AccentHue hue) => setState(() => _accent = hue);
 
-  void choosePattern(HeaderPattern pattern) =>
+  void choosePattern(KPatternMotif pattern) =>
       setState(() => _pattern = pattern);
 
   void _save() => widget.workspace.saveVitrine(
@@ -237,7 +239,7 @@ class _Form extends StatelessWidget {
         Wrap(
           spacing: kilo.space.s2,
           children: [
-            for (final pattern in HeaderPattern.values)
+            for (final pattern in KPatternMotif.values)
               ChoiceChip(
                 label: Text(
                   context.t('console.vitrine.patterns.${pattern.name}'),

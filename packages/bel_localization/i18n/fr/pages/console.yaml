@@ -491,6 +491,7 @@ console:
       flat: "Uni"
       diagonale: "Diagonale"
       vagues: "Vagues"
+      kuba: "Kuba"
     save: "Enregistrer la vitrine"
     notAllowed: "Votre rôle ne permet pas de modifier la vitrine."
     preview: "Aperçu en direct"

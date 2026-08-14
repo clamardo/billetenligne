@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-14 · after commit *A secret arrives as a file*
+**Updated:** 2026-08-14 · after commit *The one motif that is actually Congolese*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -489,6 +489,52 @@ counted with `services/api/build` present, so a stale copy of every package's
 tests was counted again as if it were the API's own — the exact trap the
 paragraph above warns about, walked into by whoever wrote the warning. Every
 figure here has been re-measured from a clean tree.
+
+---
+
+## What the Kuba push changed, and what it cost
+
+The one motif in this design system that is actually Congolese was reachable
+from nowhere in the product, and had been since the day it was drawn.
+
+**Two enums with the same three names.** `KPatternMotif` — the design
+system's — had `flat`, `diagonale`, `vagues` and `kuba`, and painted all four:
+interlocking chevrons that invert tile to tile, because a field of chevrons
+all pointing the same way reads as bunting and only the inversion reads as
+weave. `KBrandHeader`, the component that actually draws an operator's
+storefront hero, declared its own `HeaderPattern` with the first three and its
+own painter for them. The console's picker iterated the header's enum, the
+contract's closed set listed three, and the fourth existed in a file nothing
+offered.
+
+The fix is a deletion. `KBrandHeader` now paints with `KPattern`, its enum and
+its painter are gone, and the console picker, the live preview, the storefront
+page and the contract all read from the one list.
+
+**The server-rendered page needed its own.** The public storefront draws its
+motifs in CSS rather than shipping files — a storefront must render before
+anything else has loaded, and a background image is a second request that can
+fail after the page has painted. Kuba is two mirrored repeating gradients
+offset by half a tile, which is the closest a background shorthand gets to an
+interlocking chevron; the app draws the real thing.
+
+**And the page trusted the row.** The header's class came straight from
+`header_pattern`, so a value the write path did not produce — a row predating
+a retired motif, or one edited in psql — rendered an unstyled header with a
+string nobody chose in a class attribute. It now goes through the closed set
+and falls back to the flat field, which is what the app does with the same
+value. The test that says so iterates the contract's list and asserts every
+motif has a rule on the page, so the next one added cannot be offered and
+undrawn.
+
+**What it cost:** one enum and one painter deleted, one CSS rule, two catalog
+keys, 3 tests.
+
+**What is honestly not done:** the CSS approximation is an approximation. On
+the page the chevrons are a lattice; in the app they interlock. Nobody has
+looked at the two side by side on a phone, because nobody has looked at any of
+this on a phone.
+
 
 ---
 
@@ -1650,7 +1696,10 @@ that might not arrive — the same rule the Flutter `KScene` follows.
 **What it did not build:** the Kuba motif is in the design system and not on
 the storefront. `headerPattern` is a database column with a closed set of
 three, so a fourth is a migration and a console change rather than a line of
-CSS, and it did not belong in this push.
+CSS, and it did not belong in this push. *(Closed later — and the closed set
+turned out to be a contract constant rather than a CHECK constraint, so it
+was neither a migration nor a line of CSS but a duplicated enum. See "What the
+Kuba push changed".)*
 
 **What it cost:** 4 API unit tests, 6 more on the storefront page, 8 smoke
 checks over a real socket, one generated file, and one generator that now

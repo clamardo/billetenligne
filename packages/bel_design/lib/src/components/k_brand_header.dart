@@ -1,34 +1,10 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../art/kilo_art.dart';
-
+import '../art/kilo_pattern.dart';
 import '../kilo_theme.dart';
 import '../tokens/kilo_colors.dart';
-
-/// The three header patterns an operator may choose (`03-operator-lifecycle.md`
-/// §2.4).
-///
-/// **Generated vectors, not images.** Each one paints in about a kilobyte of
-/// instructions and themes itself to the accent, which is the whole reason
-/// there are three of them and no photography: a cover photo is 120 KB on a
-/// metered prepaid bundle, and most operators have no usable photography at
-/// all. A storefront that looks empty without one is a broken design
-/// (ADR-0009).
-enum HeaderPattern {
-  flat,
-  diagonale,
-  vagues;
-
-  static HeaderPattern byName(String? raw) {
-    for (final pattern in values) {
-      if (pattern.name == raw) return pattern;
-    }
-    return flat;
-  }
-}
 
 /// An operator's storefront hero: their mark, their title, their tagline.
 ///
@@ -45,7 +21,7 @@ final class KBrandHeader extends StatelessWidget {
     required this.title,
     required this.accent,
     this.tagline,
-    this.pattern = HeaderPattern.flat,
+    this.pattern = KPatternMotif.flat,
     this.logo,
     this.cover,
     this.footnote,
@@ -56,7 +32,7 @@ final class KBrandHeader extends StatelessWidget {
   final String title;
   final String? tagline;
   final AccentHue accent;
-  final HeaderPattern pattern;
+  final KPatternMotif pattern;
 
   /// The operator's own mark, when they have uploaded one. Null falls back to
   /// [KMonogram] — a generated tile rather than an empty square, so an
@@ -96,8 +72,21 @@ final class KBrandHeader extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          CustomPaint(
-            painter: _PatternPainter(pattern: pattern, accent: accent.color),
+          // The motif is `KPattern`'s, not this component's. It painted its
+          // own three for as long as it existed, which is how the Kuba weave
+          // came to be drawn in the design system and reachable from nowhere
+          // in the product: two enums with the same three names and a fourth
+          // in only one of them.
+          KPattern(
+            motif: pattern,
+            color: const Color(0xFFFFFFFF),
+            background: accent.color,
+            // A tenth of an alpha over the accent: enough to read as texture,
+            // faint enough that the title stays at the contrast ratio the hue
+            // was chosen for. A pattern that eats its own header is worse
+            // than no pattern.
+            opacity: 0.10,
+            scale: compact ? 0.75 : 1,
           ),
           // No photograph, so the drawing. The public storefront has done
           // this since the artwork push — an operator who has never uploaded
@@ -280,62 +269,3 @@ final class KMonogram extends StatelessWidget {
 }
 
 /// Flat, diagonal stripes, or waves — painted, never fetched.
-class _PatternPainter extends CustomPainter {
-  const _PatternPainter({required this.pattern, required this.accent});
-
-  final HeaderPattern pattern;
-  final Color accent;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = accent);
-    if (pattern == HeaderPattern.flat) return;
-
-    // A tenth of an alpha over the accent itself: visible enough to read as
-    // texture, faint enough that the title stays at the contrast ratio the
-    // hue was chosen for. A pattern that eats its own header is worse than no
-    // pattern.
-    final ink = Paint()
-      ..color = const Color(0x1AFFFFFF)
-      ..style = PaintingStyle.fill;
-
-    switch (pattern) {
-      case HeaderPattern.diagonale:
-        const step = 28.0;
-        for (var x = -size.height; x < size.width; x += step * 2) {
-          canvas.drawPath(
-            Path()
-              ..moveTo(x, size.height)
-              ..lineTo(x + size.height, 0)
-              ..lineTo(x + size.height + step, 0)
-              ..lineTo(x + step, size.height)
-              ..close(),
-            ink,
-          );
-        }
-      case HeaderPattern.vagues:
-        const amplitude = 10.0;
-        for (var band = 0; band < 3; band++) {
-          final baseline = size.height * (0.45 + band * 0.22);
-          final path = Path()..moveTo(0, baseline);
-          for (var x = 0.0; x <= size.width; x += 4) {
-            path.lineTo(
-              x,
-              baseline + math.sin((x / size.width) * math.pi * 4) * amplitude,
-            );
-          }
-          path
-            ..lineTo(size.width, size.height)
-            ..lineTo(0, size.height)
-            ..close();
-          canvas.drawPath(path, ink);
-        }
-      case HeaderPattern.flat:
-        break;
-    }
-  }
-
-  @override
-  bool shouldRepaint(_PatternPainter old) =>
-      old.pattern != pattern || old.accent != accent;
-}

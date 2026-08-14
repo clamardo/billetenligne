@@ -3317,7 +3317,7 @@ void main() {
       // that; this is what stops them drifting apart.
       expect(AccentHue.values.map((h) => h.name).toList(), Vitrine.accents);
       expect(
-        HeaderPattern.values.map((p) => p.name).toList(),
+        KPatternMotif.values.map((p) => p.name).toList(),
         Vitrine.patterns,
       );
     });

@@ -603,7 +603,7 @@ void main() {
     });
 
     testWidgets('every pattern paints without throwing', (tester) async {
-      for (final pattern in HeaderPattern.values) {
+      for (final pattern in KPatternMotif.values) {
         await tester.pumpWidget(
           host(
             KBrandHeader(
@@ -629,7 +629,7 @@ void main() {
     test('an unknown hue or pattern falls back rather than throwing', () {
       expect(AccentHue.byName('chartreuse'), AccentHue.foret);
       expect(AccentHue.byName(null), AccentHue.foret);
-      expect(HeaderPattern.byName('hexagones'), HeaderPattern.flat);
+      expect(KPatternMotif.byName('hexagones'), KPatternMotif.flat);
     });
 
     // `tryByName` is for the callers that would rather use the running

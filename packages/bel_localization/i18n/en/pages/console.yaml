@@ -486,6 +486,7 @@ console:
       flat: "Flat"
       diagonale: "Diagonal"
       vagues: "Waves"
+      kuba: "Kuba"
     save: "Save the storefront"
     notAllowed: "Your role cannot change the storefront."
     preview: "Live preview"

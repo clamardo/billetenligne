@@ -126,7 +126,15 @@ abstract final class StorefrontPage {
     final v = storefront.vitrine;
     final buffer = StringBuffer();
 
-    buffer.writeln('  <header class="hero ${_attr(v.headerPattern)}">');
+    // Through the closed set rather than straight from the row. The write
+    // path already refuses an unknown motif, so this is about the values a
+    // write path did not produce: a row that predates a motif being retired,
+    // or one somebody edited in psql. Either renders an unstyled header and
+    // puts a string nobody chose into a class attribute; falling back to the
+    // flat field is what the app does with the same value.
+    final motif = Vitrine.isPattern(v.headerPattern) ? v.headerPattern : 'flat';
+
+    buffer.writeln('  <header class="hero ${_attr(motif)}">');
     if (v.coverUrl != null) {
       buffer.writeln(
         '    <img class="cover" src="${_attr(v.coverUrl!)}" '
@@ -304,14 +312,27 @@ h2{font-size:1rem;color:var(--soft);font-weight:600;margin:0 0 .75rem;
 .hero .scene svg{width:100%;height:100%;display:block}
 .art{margin:1.5rem auto 1rem;max-width:15rem}
 .art svg{width:100%;height:auto;display:block}
-/* The two generated vectors, drawn in CSS rather than shipped as files: a
-   storefront must render before anything else has loaded. */
+/* The three generated motifs, drawn in CSS rather than shipped as files: a
+   storefront must render before anything else has loaded, and a background
+   image is a second request that can fail after the page has painted. */
 .hero.diagonale:after{content:"";position:absolute;inset:0;
   background:repeating-linear-gradient(135deg,rgba(255,255,255,.10) 0 12px,
                                         transparent 12px 28px)}
 .hero.vagues:after{content:"";position:absolute;inset:0;
   background:radial-gradient(120% 60% at 50% 120%,rgba(255,255,255,.16),
                              transparent 60%)}
+/* Kuba cloth: chevrons that invert tile to tile, so each one keys into its
+   neighbours. The inversion is the motif — a field of chevrons all pointing
+   the same way reads as bunting; interlocking them reads as weave. Two
+   mirrored gradients, offset by half a tile, are the closest a background
+   shorthand gets to that, and the app draws the real thing. */
+.hero.kuba:after{content:"";position:absolute;inset:0;
+  background:
+    repeating-linear-gradient(45deg,rgba(255,255,255,.10) 0 2px,
+                              transparent 2px 17px),
+    repeating-linear-gradient(-45deg,rgba(255,255,255,.10) 0 2px,
+                              transparent 2px 17px);
+  background-position:0 0,12px 12px}
 .heroInner{position:relative;max-width:36rem;margin:0 auto;
            padding:2.25rem 1.25rem 2rem}
 .logo{width:64px;height:64px;border-radius:14px;object-fit:cover;

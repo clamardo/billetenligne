@@ -239,6 +239,41 @@ void main() {
     expect(html, contains('&lt;script&gt;'));
   });
 
+  group('the motif they chose', () {
+    // Four, and the fourth was drawn in the design system from the day the
+    // motifs were painted and offered by nothing: `KPatternMotif` had `kuba`
+    // and the header component had its own enum with three names, so the one
+    // motif that is actually Congolese was reachable from nowhere.
+    test('every motif in the contract has a rule on this page', () {
+      final html = _render(vitrine: _vitrine(headerPattern: 'kuba'));
+      for (final motif in Vitrine.patterns) {
+        if (motif == 'flat') continue; // a flat field is the absence of one
+        expect(
+          html,
+          contains('.hero.$motif:after'),
+          reason: '$motif is offered in the console and drawn nowhere here',
+        );
+      }
+    });
+
+    test('the chosen one is on the header', () {
+      expect(
+        _render(vitrine: _vitrine(headerPattern: 'kuba')),
+        contains('class="hero kuba"'),
+      );
+    });
+
+    test('a motif nobody offers is not put on the page', () {
+      // The class is written from the stored value, so a row that predates a
+      // motif being retired must not select a rule that no longer exists —
+      // it falls back rather than rendering an unstyled header.
+      expect(
+        _render(vitrine: _vitrine(headerPattern: 'hexagones')),
+        isNot(contains('hexagones')),
+      );
+    });
+  });
+
   group('the artwork on it', () {
     test('a company with no cover photograph gets the drawing instead', () {
       // The header used to be a rectangle of flat colour. A shop window that

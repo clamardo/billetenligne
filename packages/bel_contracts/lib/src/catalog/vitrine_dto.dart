@@ -26,10 +26,16 @@ abstract final class Vitrine {
     'ardoise',
   ];
 
-  /// Three generated vectors, about a kilobyte each. No photography: most
+  /// Four generated vectors, about a kilobyte each. No photography: most
   /// operators have none usable, and 120 KB of cover image is a data cost
   /// imposed on the poorest user (ADR-0009).
-  static const patterns = <String>['flat', 'diagonale', 'vagues'];
+  ///
+  /// `kuba` — the interlocking chevrons of Kuba cloth — was drawn in the
+  /// design system from the day the motifs were, and was in neither this list
+  /// nor the header component's own copy of it. Two enums with the same three
+  /// names, and the fourth in only one of them, so the one motif that is
+  /// actually Congolese was reachable from nowhere in the product.
+  static const patterns = <String>['flat', 'diagonale', 'vagues', 'kuba'];
 
   static bool isAccent(String? raw) => accents.contains(raw);
   static bool isPattern(String? raw) => patterns.contains(raw);
@@ -85,7 +91,7 @@ final class VitrineDto {
   /// is reordered.
   final String accentHue;
 
-  /// `flat` | `diagonale` | `vagues`.
+  /// `flat` | `diagonale` | `vagues` | `kuba`.
   final String headerPattern;
 
   final String? titleFr;
