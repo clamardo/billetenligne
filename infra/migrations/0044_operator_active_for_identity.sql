@@ -25,7 +25,6 @@
 -- named operator is trading and learns nothing else — not the name, not the
 -- code, not that any other operator exists. Passing an id the caller invented
 -- returns false, which is all it returns for an operator that is suspended.
-\set ON_ERROR_STOP on
 
 CREATE OR REPLACE FUNCTION app_operator_is_active(p_operator UUID)
 RETURNS BOOLEAN

@@ -137,6 +137,18 @@ jobs:
       - name: Holds against a real Postgres
         run: ./tool/integration.sh
 
+  # The two images a deployment actually runs. Building them is not the check
+  # — a Dockerfile that compiles and produces an image which exits on its
+  # first request is a green build and a broken deploy — so the script starts
+  # each one and asks it to do the smallest real thing it does.
+  images:
+    name: Container images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build both, and prove they start
+        run: ./tool/images.sh
+
   # Budgets from ADR-0009, enforced rather than hoped for. Skipped until the
   # traveller app exists.
   budgets:

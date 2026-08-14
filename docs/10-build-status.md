@@ -490,6 +490,91 @@ figure here has been re-measured from a clean tree.
 
 ---
 
+## What the images push changed, and what it cost
+
+Until this push, everything this system does was reachable only from a working
+tree with a Dart SDK in it.
+
+**Two images.** `bel-api` is 23 MB and `bel-worker` is 31 MB, both `FROM
+scratch` with the Dart runtime and one compiled executable. No SDK, no shell,
+no package manager. That is a cold start in milliseconds and a small surface
+to patch, which matters on a process that holds a ticket signing key — and it
+means `kubectl exec` gets you nothing and the probes have to be `httpGet`,
+which is a trade worth naming rather than discovering.
+
+Three things are copied in as data rather than compiled: the translation
+catalog, because the server renders prose on four surfaces and one catalog
+serves the clients and the server (ADR-0008); `config/markets.yaml`, because
+it is the one file a market switch touches; and the migrations, because a
+schema step whose SQL is invisible is a schema step nobody can review.
+
+**The workspace is trimmed in the build stage, and the cost is named.** The
+root `pubspec.yaml` lists four Flutter apps and three Flutter packages as
+members, and `dart pub get` will not resolve a workspace whose members are
+missing from disk. Both Dockerfiles `sed` them out. The alternative was the
+Flutter SDK in the build stage — a gigabyte and several minutes, to build a
+server that never touches it. What it costs is that the image resolves the
+server's dependencies rather than replaying the committed lockfile, so it can
+pick up a patch release CI has not seen. That is the reason the image job runs
+on every push rather than at release time.
+
+**One worker image with two entry points.** `/app/bin/migrate` is the default
+and `/app/bin/worker` is the pass. They share the whole dependency graph and
+differ by one `bin/` file; two images would be two builds, two tags and two
+chances for the schema step and the process that reads it to come from
+different commits — the one way a migration goes wrong that nobody notices
+until the pass runs. The default is the migration runner because it is what a
+deployment runs first, and a Job that forgets to name a command should do the
+harmless thing.
+
+**The migration runner is a program now.** `tool/migrate.sh` has applied
+migrations since the schema existed, with `docker compose exec psql` — the
+right tool for a laptop and no tool at all for a cluster. The ledger rules
+moved into `bel_worker/src/migrations.dart` and the shell script calls it,
+because the alternative was a second implementation of the ledger written in
+Kubernetes YAML and quietly disagreeing about which files count as applied.
+
+Writing it as a program and testing it against a real Postgres found two
+things.
+
+A refusal **created the ledger before deciding to refuse**. A database with a
+schema and no ledger is refused rather than guessed at — but the empty
+`schema_migrations` table it had just created made the *second* attempt look
+like a fresh database, and it would have tried to apply `0001` over a live
+schema. Nothing is written before that decision now, and there is a test whose
+whole point is the second attempt.
+
+`0044` carried a `\set ON_ERROR_STOP on`: a psql meta-command, which does
+nothing the two shell scripts had not already said on their command lines, and
+which stops a program dead at the first backslash. `infra/migrations/check.sh`
+now refuses any migration containing one — a file that works under psql and
+fails in the cluster is the worst place to find that out.
+
+A file that fails half way also leaves its own transaction open and aborted,
+so every statement after it on that connection comes back 25P02 — including
+the one that would say what happened. The runner ends the transaction and then
+lets the real error out.
+
+**Building is not the check.** A Dockerfile that compiles and produces an image
+which exits on its first request is a green build and a broken deploy. So
+`tool/images.sh` starts both: the API answers `/health` and renders French
+from the catalog copied into it — a missing catalog is otherwise invisible
+until somebody loads a page — and the migration runner applies all forty-five
+migrations to a throwaway Postgres over a socket. `infra/migrations/check.sh`
+proves the SQL; this proves the *image*, which is a different claim and the one
+a deploy depends on.
+
+**What it cost:** two Dockerfiles, a `.dockerignore`, one build script, one CI
+job, one library file, one entry point, 7 integration tests, and one line
+removed from a migration.
+
+**Still not built:** the cluster. Manifests, Terraform, a registry, secrets and
+the certificate are the next slice; these images exist and have never been
+pushed anywhere.
+
+
+---
+
 ## What the signing-seed push changed, and what it cost
 
 This one was a live hole, not a rough edge.

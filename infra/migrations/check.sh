@@ -48,6 +48,19 @@ fi
 docker exec -i "$CONTAINER" psql -U postgres -d postgres -q \
   -c "DROP DATABASE IF EXISTS $DB WITH (FORCE);" -c "CREATE DATABASE $DB;"
 
+# A migration is applied in production by a Dart program over a socket
+# (`services/worker/bin/migrate.dart`), not by psql — a cluster has no psql to
+# run one with. So a backslash meta-command is a file that works here and
+# fails there, which is the worst place to find out. 0044 shipped with a
+# `\set ON_ERROR_STOP on` that did nothing psql was not already told on the
+# command line, and it stopped the runner dead.
+if grep -l '^\\' "$HERE"/[0-9]*.sql 2>/dev/null | grep -q .; then
+  red "── a migration contains a psql meta-command"
+  grep -n '^\\' "$HERE"/[0-9]*.sql
+  echo "   These files are applied by a program, not by psql. Remove it."
+  exit 1
+fi
+
 echo "── migrations"
 for f in "$HERE"/[0-9]*.sql; do
   printf '   %s\n' "$(basename "$f")"
