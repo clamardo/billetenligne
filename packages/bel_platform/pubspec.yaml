@@ -1,0 +1,14 @@
+name: bel_platform
+description: >-
+  Everything a vertical needs and none of them owns: money and the ledger,
+  markets and payment rails, identity, operators, and the crypto ports. Pure
+  Dart, zero dependencies — it is the floor every vertical stands on, and a
+  floor that imported one of them would have to change to add the next
+  (ADR-0027).
+version: 0.1.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.8.0
+dev_dependencies:
+  test: ^1.25.0

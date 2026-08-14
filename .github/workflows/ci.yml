@@ -40,7 +40,10 @@ jobs:
         run: dart run tool/check_ios.dart
 
       - name: Domain, localization, contract and client tests
-        run: dart test packages/bel_domain packages/bel_localization packages/bel_contracts packages/bel_crypto packages/bel_client
+        run: >-
+          dart test packages/bel_platform packages/bel_domain
+          packages/bel_localization packages/bel_contracts packages/bel_crypto
+          packages/bel_client
 
       - name: API tests
         run: dart test services/api

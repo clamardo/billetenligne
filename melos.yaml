@@ -24,7 +24,9 @@ scripts:
     description: >-
       Pure Dart, no containers, under five seconds. Runs on save. If it is
       slow, the code is in the wrong layer.
-    run: dart test packages/bel_domain packages/bel_localization packages/bel_contracts packages/bel_crypto
+    run: >-
+      dart test packages/bel_platform packages/bel_domain
+      packages/bel_localization packages/bel_contracts packages/bel_crypto
 
   test:api:
     description: API unit tests — middleware, tenancy, idempotency.

@@ -22,6 +22,7 @@ dependencies:
   bel_contracts: ^0.1.0
   bel_design: ^0.1.0
   bel_domain: ^0.1.0
+  bel_platform: ^0.1.0
   bel_localization: ^0.1.0
 dev_dependencies:
   flutter_test:

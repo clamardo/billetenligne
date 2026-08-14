@@ -3,6 +3,7 @@ publish_to: none
 environment:
   sdk: ^3.8.0
 workspace:
+  - packages/bel_platform
   - packages/bel_domain
   - packages/bel_localization
   - packages/bel_design

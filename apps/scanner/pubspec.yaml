@@ -21,6 +21,7 @@ dependencies:
   bel_crypto: ^0.1.0
   bel_design: ^0.1.0
   bel_domain: ^0.1.0
+  bel_platform: ^0.1.0
   bel_localization: ^0.1.0
   # The Keychain and the Android Keystore (ADR-0013).
   bel_secure_store: ^0.1.0

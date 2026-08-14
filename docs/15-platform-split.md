@@ -144,7 +144,7 @@ Deferring all three keeps P2 to a mechanical move of files that need no surgery.
 
 ---
 
-## 4. P1 — `bel_platform` exists and is empty
+## 4. P1 — `bel_platform` exists and is empty · **done, 2026-08-14**
 
 Create the package, wire it in, export nothing.
 
@@ -169,15 +169,35 @@ dev_dependencies:
 
 Root `pubspec.yaml`: add `- packages/bel_platform` to `workspace`, **first**, above `bel_domain`, because the list reads as a dependency order even though pub does not require it to.
 
-`melos.yaml`: `packages: packages/**` already matches it. Add it to the `test:domain` script's package list, beside `bel_domain`, so its tests run in the fast suite from the day it has one.
+`melos.yaml` and `.github/workflows/ci.yml` both list the fast-suite packages by hand, and both get `packages/bel_platform` added beside `bel_domain`, so its tests run in that suite from the day it has one.
 
-Add `bel_platform: ^0.1.0` to the dependencies of every pubspec that declares `bel_domain` today. There are ten:
+That is safe, and it was checked rather than assumed. `dart test packages/bel_platform` **on its own exits 79** — "No tests were found" is a failure, not a no-op. Listed alongside packages that do have tests, the run exits 0. Both call sites are lists, so both stay green; a future call site that names this package alone would not, until P2a brings its tests over.
 
-`apps/traveller` · `apps/scanner` · `apps/console` · `apps/admin` · `packages/bel_crypto` · `packages/bel_client` · `packages/bel_contracts` · `packages/bel_domain` · `services/api` · `services/worker`
+Add `bel_platform: ^0.1.0` to the dependencies of every pubspec that declares `bel_domain` today — **except `bel_domain` itself**. That is nine:
+
+`apps/traveller` · `apps/scanner` · `apps/console` · `apps/admin` · `packages/bel_crypto` · `packages/bel_client` · `packages/bel_contracts` · `services/api` · `services/worker`
 
 Every one of them uses at least one platform symbol, so none of these is a speculative dependency.
 
-**Done when:** `melos bootstrap` succeeds, `dart analyze --fatal-infos` is clean, and CI is green with a package that contains nothing. Commit it on its own — an empty package landing green proves the workspace plumbing before any code moves through it.
+`bel_domain` is the exception because it is not a consumer yet — it *contains* the platform types rather than importing them. Giving it the dependency in P1 would prove nothing that `bel_contracts` does not already prove, and it would make its own description ("Pure Dart, zero dependencies") false a slice earlier than necessary. It gains the dependency in **P2a**, in the same commit that moves the files out and rewrites that sentence.
+
+**Done when:** the workspace resolves, `dart analyze --fatal-infos` is clean, and every suite is green with a package that contains nothing. Commit it on its own — an empty package landing green proves the workspace plumbing before any code moves through it.
+
+### 4.1 What it actually cost
+
+Resolution succeeded first attempt, including all four Flutter apps: `.dart_tool/package_config.json` lists `bel_platform` among 141 packages. Then, unchanged:
+
+```
+dart analyze --fatal-infos            No issues found!
+dart run tool/check_layers.dart       OK  dependencies point inward — 450 files
+dart test <the five pure-Dart pkgs>   +610  All tests passed!
+dart test services/api                +1370 All tests passed!
+flutter test × 7 surfaces             +252 +149 +40 +62 +163 +11 +5
+```
+
+The layer checker went from 447 files to 450: `bel_platform.dart`, and two others added since it was last quoted.
+
+**One pre-existing drift noticed and deliberately not fixed here:** `melos.yaml`'s `test:domain` omits `packages/bel_client`, which CI's equivalent step includes. Two hand-maintained lists of the same thing have diverged once already and will again. It is a real thing to fix and it is not this slice's — a drive-by correction inside a refactor whose entire value is that it changes no behaviour is exactly what §12 exists to prevent.
 
 ---
 
@@ -478,7 +498,7 @@ Named so that scope does not creep into a refactor whose entire value is that it
 
 ## 13. Slice summary
 
-- **P1** — `bel_platform` exists and is empty. Ten pubspecs, the workspace list, the melos test script. *Green with an empty package.*
+- **P1** — ✅ **done.** `bel_platform` exists and is empty. Nine pubspecs, the workspace list, and both hand-maintained fast-suite lists. *Green with an empty package: analyze, layers, 610 + 1 370 pure-Dart tests, and seven Flutter surfaces.*
 - **P2a** — 19 files move; `bel_domain` re-exports transitionally. *Full suite green, diff is renames and imports only.*
 - **P2b** — the re-export is removed; ~206 import edits by script; the barrel-re-export rule and the `export`-matching checker. *149 files end up on `bel_platform` alone.*
 - **P3** — three layering rules, each with a test that proves it fires.
