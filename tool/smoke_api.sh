@@ -2627,6 +2627,62 @@ check "the refusal says when it lifts" "yes" \
 check "and carries no prose" "yes" \
   "$(grep -q '"message"' <<<"$source_refusal" && echo no || echo yes)"
 
+# ── What the server wrote down ──────────────────────────────────────────────
+#
+# Last, because it reads the log of everything above it. Until this middleware
+# existed the API wrote **nothing at all** unless something threw: a cluster
+# of green pods and a traveller saying "it did not work" had no meeting point.
+echo
+echo "── the access log"
+
+# A token that is a credential — /b/{token} opens somebody's boarding pass —
+# through a path that answers 404 here, because what is being checked is what
+# got written and not what came back.
+secret="smoke-$$-not-a-real-ticket-token"
+curl -s -o /dev/null -H "X-Trace-Id: smoke-trace-$$" "$BASE/public/v1/market"
+curl -s -o /dev/null "$BASE/b/$secret"
+curl -s -o /dev/null "$BASE/health"
+sleep 0.5
+
+log="$(cat /tmp/bel-smoke.log)"
+
+check "a request is written down at all" "yes" \
+  "$(grep -q '"requestMethod":"GET"' <<<"$log" && echo yes || echo no)"
+# The id the client sent, on the line — which is the whole point: a traveller
+# quotes one string out of a support message and it finds their request.
+check "the client's own trace id is the one on the line" "yes" \
+  "$(grep -q "smoke-trace-$$" <<<"$log" && echo yes || echo no)"
+check "and it is on the field Cloud Logging joins on" "yes" \
+  "$(grep -q 'logging.googleapis.com/trace' <<<"$log" && echo yes || echo no)"
+
+# The one that matters. A ticket token in a log is a credential handed to
+# everyone who can read logs, which in a deployment is a wider group than
+# everyone who can reach the database.
+check "the ticket token is not in the log" "yes" \
+  "$(grep -q "$secret" <<<"$log" && echo no || echo yes)"
+check "the path it appeared on is" "yes" \
+  "$(grep -q '"requestUrl":"/b/{token}"' <<<"$log" && echo yes || echo no)"
+
+# A liveness probe every few seconds is not news, and a log that is mostly
+# probes is a log nobody reads.
+check "a healthy probe is not written down" "yes" \
+  "$(grep -q '"requestUrl":"/health"' <<<"$log" && echo no || echo yes)"
+
+# Where somebody is travelling and on what date is in the query string, and an
+# access log is read by more people than the database is.
+curl -s -o /dev/null "$BASE/public/v1/trips?from=BZV&to=PNR&date=2026-09-01"
+sleep 0.3
+check "no query string is written down" "yes" \
+  "$(grep -q 'from=BZV' /tmp/bel-smoke.log && echo no || echo yes)"
+
+# A 401 and a 500 are not the same news, and a log where they arrive at the
+# same level is one nobody can alert on.
+curl -s -o /dev/null -H 'Authorization: Bearer definitely-not-valid' \
+  "$BASE/public/v1/market"
+sleep 0.3
+check "a refused request is a warning, not information" "yes" \
+  "$(grep -q '"severity":"WARNING"' /tmp/bel-smoke.log && echo yes || echo no)"
+
 echo
 if (( fail > 0 )); then
   printf '\033[31m── %d passed, %d failed\033[0m\n' "$pass" "$fail"

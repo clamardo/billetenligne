@@ -156,6 +156,7 @@ final class Services {
     required this.appLinks,
     required this.stores,
     required this.webOrigins,
+    this.logsAsJson = true,
     Database? database,
   }) : _database = database;
 
@@ -363,6 +364,14 @@ final class Services {
   /// means none — the handset apps and the scanner send no `Origin` at all.
   final WebOrigins webOrigins;
 
+  /// One JSON object per request, or one readable line.
+  ///
+  /// JSON is the deployed default because Cloud Logging parses it into a real
+  /// request entry — filterable by status and latency — and a plain line is a
+  /// blob of text there. `BEL__LOGFORMAT=text` is for a terminal, where the
+  /// reverse is true.
+  final bool logsAsJson;
+
   final Database? _database;
 
   factory Services.resolve({
@@ -514,6 +523,7 @@ final class Services {
       appLinks: AppLinkIdentity.from(env),
       stores: StoreListings.from(env),
       webOrigins: WebOrigins.from(env),
+      logsAsJson: env['BEL__LOGFORMAT'] != 'text',
       database: db,
     );
   }
@@ -718,6 +728,7 @@ final class Services {
       appLinks: AppLinkIdentity.from(const {}),
       stores: StoreListings.from(environment ?? const {}),
       webOrigins: WebOrigins.from(environment ?? const {}),
+      logsAsJson: (environment ?? const {})['BEL__LOGFORMAT'] != 'text',
     );
   }
 

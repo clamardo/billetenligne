@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-13 · after commit *The iOS project, read the way the APK was*
+**Updated:** 2026-08-14 · after commit *The server had never written down what it did*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -176,11 +176,12 @@ These are true today and each one is a decision, not an oversight.
    API refuses it because a request-scoped connection is the wrong place to
    walk the whole table, and the claim path already treats a lapsed hold as
    available — so no inventory is stranded either way. Every pass the worker
-   owns now exists, including the one that *creates* — the sales horizon. What
-   is missing is the last mile of deployment: a cron trigger in the
-   environment that invokes `dart run bin/worker.dart` each night. Until that
-   exists the passes are run by hand, and a night missed is a night nobody can
-   book at the far edge of the window.
+   owns now exists, including the one that *creates* — the sales horizon. The
+   last mile — a cron trigger that invokes the worker rather than a person —
+   is now two KEDA `ScaledJob`s in `infra/k8s/worker/`, one every five minutes
+   and one at 02:00, with a CI check that every pass the worker owns is named
+   by one of them. **Applied nowhere**: no cluster exists, so until one does
+   the passes are still run by hand.
 3. ~~**Search has no pagination and a hard `LIMIT 100`.**~~ **Closed.** The
    cap is gone and the page carries the cursor the next one starts at. Kept
    in this list rather than deleted, because the shape of the gap is worth
@@ -488,6 +489,59 @@ counted with `services/api/build` present, so a stale copy of every package's
 tests was counted again as if it were the API's own — the exact trap the
 paragraph above warns about, walked into by whoever wrote the warning. Every
 figure here has been re-measured from a clean tree.
+
+---
+
+## What the access-log push changed, and what it cost
+
+Until this push the API wrote **nothing at all** unless something threw. Not a
+status, not a latency, not a count. A cluster of green pods and a traveller
+saying "it did not work" had no meeting point, and the only lines in the log
+were the failures — which is the smallest possible fraction of what happened.
+
+**The shape is Cloud Logging's, not ours.** A JSON object on stdout with
+`severity`, `httpRequest` and `logging.googleapis.com/trace` is rendered by GCP
+as a real request entry: filterable by status and by latency, and joined to the
+trace id the client was already handed in a header. Inventing field names would
+have produced a log we can read and a console that cannot. `BEL__LOGFORMAT=text`
+gives a terminal one readable line instead, and that is what `infra/dev/.env`
+sets.
+
+**A path on this API can be a credential.** `/b/{token}` is the ticket link
+emailed to a traveller: whoever holds that string opens the boarding pass, seat
+number and passenger names included. Writing the path as it arrived would copy
+a live credential into a log that far more people can read than can reach the
+database — in a deployment, everybody with Cloud Logging on the project. So the
+token is replaced **by where it sits, not by what it looks like**: a token is
+opaque, there is nothing in one to recognise, and "it did not look like a
+token" is exactly how one ends up in a log. The smoke suite issues a request
+with a known secret in the path and then greps the whole log for it.
+
+**And no query string is written, ever.** On this API the query carries where
+somebody is travelling and on what date. That is not a field to redact
+carefully; it is a field not to log.
+
+**An id is not a route.** `/public/v1/departures/{uuid}/seatmap` written
+literally is a million distinct paths and a log nobody can group or alert on.
+UUIDs, numeric ids and booking references are templated. An operator's code is
+not: it is on a poster, and which storefront somebody opened is the one thing
+these lines are good for.
+
+**A healthy probe is not news.** `/health` and `/ready` are logged the moment
+they stop being fine and not before — a log that is nine tenths kubelet is a
+log nobody reads.
+
+**What it cost:** one middleware, one `AccessLogLine`, 12 unit tests, 8 smoke
+checks over a real socket, and one environment variable. No dependency, and no
+response body buffered to measure one — the length comes from the header when
+there is one.
+
+**What is honestly not done:** there are still no metrics and no error
+reporting. This is a log, and counting things in a log is not the same as
+having a number. Preflight `OPTIONS` requests are answered by the CORS layer
+outside this one and are not logged. Nothing samples: a hot path writes a line
+per request, which is the right default at this size and not at ten times it.
+
 
 ---
 

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bel_api/src/composition.dart';
+import 'package:bel_api/src/middleware/access_log.dart';
 import 'package:bel_api/src/middleware/cors.dart';
 import 'package:bel_api/src/middleware/problem.dart';
 import 'package:bel_api/src/ports/auth_gateway.dart';
@@ -17,7 +18,8 @@ import 'package:dart_frog/dart_frog.dart';
 /// ORDER MATTERS, and it reads backwards: `.use()` wraps, so the LAST call is
 /// the OUTERMOST layer and runs FIRST. Execution is therefore:
 ///
-///   _traceId  ->  _errorBoundary  ->  provider  ->  _authentication  ->  route
+///   _traceId  ->  accessLog  ->  _errorBoundary  ->  provider
+///             ->  _authentication  ->  route
 ///
 /// _traceId must be outermost because every layer below it reads the trace id
 /// from the context. Getting this inverted turned a 401 into a 500: the auth
@@ -30,6 +32,10 @@ Handler middleware(Handler handler) => handler
     .use(provider<AuthGateway>((_) => _authGateway))
     .use(provider<Services>((_) => _services))
     .use(_errorBoundary())
+    // Outside the boundary, so a request that ended as a 500 is one line with
+    // a status on it rather than only a stack trace; inside the trace id,
+    // because that is what joins the two.
+    .use(accessLog(structured: _services.logsAsJson))
     .use(_traceId())
     // Outermost of all: a preflight must be answered before routing, and a
     // 401 or a 500 needs the header as much as a 200 does — without it the
