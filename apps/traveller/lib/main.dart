@@ -19,6 +19,7 @@ import 'src/infrastructure/api_travel_gateway.dart';
 import 'src/infrastructure/demo_identity_gateway.dart';
 import 'src/infrastructure/demo_travel_gateway.dart';
 import 'src/infrastructure/sqlite_ticket_vault.dart';
+import 'src/infrastructure/theme_preference.dart';
 import 'src/presentation/app.dart';
 import 'src/presentation/l10n.dart';
 
@@ -107,6 +108,7 @@ Future<void> main() async {
 
   runApp(
     TravellerApp(
+      mode: await loadThemeMode(),
       catalog: catalog,
       flow: BookingFlow(
         gateway: gateway,

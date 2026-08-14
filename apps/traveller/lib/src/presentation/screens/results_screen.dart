@@ -86,6 +86,7 @@ final class ResultsScreen extends StatelessWidget {
     final list = departures.isEmpty
         ? KStateView(
             KEmpty(
+              art: KArt.noTrips,
               title: context.t('travel.results.emptyTitle'),
               body: context.t('travel.results.emptyBody'),
               actionLabel: onTryTomorrow == null

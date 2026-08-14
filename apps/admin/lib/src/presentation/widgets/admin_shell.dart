@@ -62,6 +62,7 @@ class _AdminShellState extends State<AdminShell> {
       return Scaffold(
         body: KStateView(
           KEmpty(
+            art: KArt.emptyBox,
             title: context.t('admin.noAccess.title'),
             body: context.t('admin.noAccess.body'),
           ),
@@ -95,21 +96,29 @@ class _AdminShellState extends State<AdminShell> {
                   label: Text(context.t(_labelKey(section))),
                 ),
             ],
-            trailing: widget.onManageSecondFactor == null
-                ? null
-                : Expanded(
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: EdgeInsets.only(bottom: kilo.space.s4),
-                        child: IconButton(
+            trailing: Expanded(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: kilo.space.s4),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      KModeToggle(
+                        lightLabel: context.t('common.theme.light'),
+                        darkLabel: context.t('common.theme.dark'),
+                      ),
+                      if (widget.onManageSecondFactor != null)
+                        IconButton(
                           icon: const Icon(Icons.lock_outline),
                           tooltip: context.t('auth.enrol.manage'),
                           onPressed: widget.onManageSecondFactor,
                         ),
-                      ),
-                    ),
+                    ],
                   ),
+                ),
+              ),
+            ),
           ),
           const VerticalDivider(width: 1),
           Expanded(

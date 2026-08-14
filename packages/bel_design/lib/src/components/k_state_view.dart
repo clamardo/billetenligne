@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
+import '../art/kilo_art.dart';
 import '../kilo_theme.dart';
 import 'k_button.dart';
 
@@ -26,11 +29,20 @@ final class KEmpty extends KScreenState {
     this.body,
     this.actionLabel,
     this.onAction,
+    this.art = KArt.emptyBox,
   });
   final String title;
   final String? body;
   final String? actionLabel;
   final VoidCallback? onAction;
+
+  /// The picture. Empty is the state a screen spends most of its life in
+  /// before it has anything to show, and it is the one most often left as a
+  /// grey icon and a sentence — which is exactly the moment somebody decides
+  /// the product is unfinished. Pass the drawing that matches the absence:
+  /// `noTrips` for a search with no coaches, `noTickets` for a wallet nobody
+  /// has bought into yet.
+  final KArt art;
 }
 
 final class KFailed extends KScreenState {
@@ -40,11 +52,13 @@ final class KFailed extends KScreenState {
     this.retryLabel,
     this.onRetry,
     this.traceId,
+    this.art = KArt.error,
   });
 
   final String title;
   final String? body;
   final String? retryLabel;
+  final KArt art;
 
   /// Absent when retrying cannot possibly help. Offering "try again" for a
   /// seat that is genuinely sold is advice that wastes somebody's data.
@@ -56,10 +70,21 @@ final class KFailed extends KScreenState {
 }
 
 final class KOffline extends KScreenState {
-  const KOffline({required this.title, this.body, this.onRetry, this.cached});
+  const KOffline({
+    required this.title,
+    this.body,
+    this.retryLabel,
+    this.onRetry,
+    this.cached,
+  });
 
   final String title;
   final String? body;
+
+  /// Required alongside [onRetry]. It used to be absent, and the view drew a
+  /// button with an empty label — a real control, correctly sized, with
+  /// nothing written on it, which is worse than no button at all.
+  final String? retryLabel;
   final VoidCallback? onRetry;
 
   /// What we can still show from the last successful load. Offline does not
@@ -85,9 +110,15 @@ final class KStateView extends StatelessWidget {
         if (message != null) _Body(message),
       ],
     ),
-    KEmpty(:final title, :final body, :final actionLabel, :final onAction) =>
+    KEmpty(
+      :final title,
+      :final body,
+      :final actionLabel,
+      :final onAction,
+      :final art,
+    ) =>
       _Centered(
-        icon: Icons.search_off,
+        art: art,
         children: [
           _Title(title),
           if (body != null) _Body(body),
@@ -101,10 +132,10 @@ final class KStateView extends StatelessWidget {
       :final retryLabel,
       :final onRetry,
       :final traceId,
+      :final art,
     ) =>
       _Centered(
-        icon: Icons.error_outline,
-        tone: _Tone.danger,
+        art: art,
         children: [
           _Title(title),
           if (body != null) _Body(body),
@@ -113,57 +144,67 @@ final class KStateView extends StatelessWidget {
           if (traceId != null) _Trace(traceId),
         ],
       ),
-    KOffline(:final title, :final body, :final onRetry, :final cached) =>
+    KOffline(
+      :final title,
+      :final body,
+      :final retryLabel,
+      :final onRetry,
+      :final cached,
+    ) =>
       cached != null
           ? _OfflineBanner(title: title, body: body, child: cached)
           : _Centered(
-              icon: Icons.wifi_off,
-              tone: _Tone.warning,
+              art: KArt.offline,
               children: [
                 _Title(title),
                 if (body != null) _Body(body),
-                if (onRetry != null) _Action('', onRetry),
+                if (retryLabel != null && onRetry != null)
+                  _Action(retryLabel, onRetry),
               ],
             ),
   };
 }
 
-enum _Tone { neutral, warning, danger }
-
 class _Centered extends StatelessWidget {
-  const _Centered({
-    required this.children,
-    this.icon,
-    this.tone = _Tone.neutral,
-  });
+  const _Centered({required this.children, this.art});
 
   final List<Widget> children;
-  final IconData? icon;
-  final _Tone tone;
+  final KArt? art;
+
+  /// Below this, the illustration is dropped rather than shrunk. A state
+  /// squeezed into a sheet or a half-height panel is one where the words are
+  /// the whole point, and a 60 px drawing above them is decoration nobody
+  /// asked for.
+  static const _artNeeds = 320.0;
 
   @override
   Widget build(BuildContext context) {
     final kilo = context.kilo;
-    final colour = switch (tone) {
-      _Tone.neutral => kilo.color.contentMuted,
-      _Tone.warning => kilo.color.warning,
-      _Tone.danger => kilo.color.danger,
-    };
 
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(kilo.space.s6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 40, color: colour),
-              SizedBox(height: kilo.space.s4),
-            ],
-            ...children,
-          ],
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final room = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : double.infinity;
+        final size = math.min(220.0, constraints.maxWidth * 0.62);
+        final showArt = art != null && room >= _artNeeds && size >= 120;
+
+        return Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(kilo.space.s6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (showArt) ...[
+                  KIllustration(art!, size: size),
+                  SizedBox(height: kilo.space.s5),
+                ],
+                ...children,
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

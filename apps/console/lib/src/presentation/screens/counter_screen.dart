@@ -76,6 +76,7 @@ class _CounterScreenState extends State<CounterScreen> {
       // can explain at close of shift.
       return KStateView(
         KEmpty(
+          art: KArt.searchEmpty,
           title: context.t('console.counter.noStationTitle'),
           body: context.t('console.counter.noStationBody'),
         ),

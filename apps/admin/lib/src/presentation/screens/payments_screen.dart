@@ -41,6 +41,7 @@ final class PaymentsScreen extends StatelessWidget {
         if (payments.isEmpty && !workspace.busy)
           KStateView(
             KEmpty(
+              art: KArt.payment,
               title: context.t('admin.payments.emptyTitle'),
               body: context.t('admin.payments.emptyBody'),
             ),

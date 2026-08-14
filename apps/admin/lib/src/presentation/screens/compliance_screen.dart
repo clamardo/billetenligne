@@ -59,6 +59,7 @@ final class ComplianceScreen extends StatelessWidget {
         if (rows.isEmpty && !workspace.busy)
           KStateView(
             KEmpty(
+              art: KArt.boarding,
               title: context.t('admin.compliance.emptyTitle'),
               body: context.t('admin.compliance.emptyBody'),
             ),

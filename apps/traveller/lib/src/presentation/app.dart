@@ -49,6 +49,7 @@ final class TravellerApp extends StatelessWidget {
     this.openUrl,
     this.openTicketsOnLaunch = false,
     this.language = 'fr',
+    this.mode,
     super.key,
   });
 
@@ -77,27 +78,45 @@ final class TravellerApp extends StatelessWidget {
 
   final String language;
 
+  /// The theme choice, held outside the widget tree so it survives a rebuild
+  /// and can be written to disk by whoever composed the app. Absent in tests
+  /// and in any surface that has not wired persistence — following the
+  /// handset is a correct default, not a fallback.
+  final KiloModeController? mode;
+
   @override
   Widget build(BuildContext context) => Localized(
     catalog: catalog,
     initialLanguage: language,
-    child: MaterialApp(
-      title: 'BilletEnLigne',
-      debugShowCheckedModeBanner: false,
-      theme: KiloTheme.materialTheme(),
-      darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
-      home: _Funnel(
-        flow: flow,
-        signIn: signIn,
-        payment: payment,
-        tickets: tickets,
-        currentUserId: currentUserId,
-        openUrl: openUrl,
-        openTicketsOnLaunch: openTicketsOnLaunch,
+    child: KiloModeScope(
+      notifier: mode ?? _fallback,
+      child: ListenableBuilder(
+        listenable: mode ?? _fallback,
+        builder: (context, _) => MaterialApp(
+          title: 'BilletEnLigne',
+          debugShowCheckedModeBanner: false,
+          theme: KiloTheme.materialTheme(),
+          darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
+          themeMode: (mode ?? _fallback).mode.materialMode,
+          home: _Funnel(
+            flow: flow,
+            signIn: signIn,
+            payment: payment,
+            tickets: tickets,
+            currentUserId: currentUserId,
+            openUrl: openUrl,
+            openTicketsOnLaunch: openTicketsOnLaunch,
+          ),
+        ),
       ),
     ),
   );
 }
+
+/// For the surfaces and the tests that wire no persistence: an in-memory
+/// choice that starts at *follow the handset*, so the toggle still works for
+/// the length of a session rather than being absent or inert.
+final _fallback = KiloModeController();
 
 class _Funnel extends StatefulWidget {
   const _Funnel({

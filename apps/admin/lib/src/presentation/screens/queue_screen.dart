@@ -83,6 +83,7 @@ final class QueueScreen extends StatelessWidget {
         if (operators.isEmpty && !workspace.busy)
           KStateView(
             KEmpty(
+              art: KArt.emptyBox,
               title: context.t('admin.queue.emptyTitle'),
               body: context.t('admin.queue.emptyBody'),
             ),

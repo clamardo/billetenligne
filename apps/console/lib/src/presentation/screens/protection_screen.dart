@@ -242,6 +242,7 @@ final class ProtectionScreen extends StatelessWidget {
         if (all.isEmpty && !workspace.busy)
           KStateView(
             KEmpty(
+              art: KArt.route,
               title: context.t('console.protection.emptyTitle'),
               body: context.t('console.protection.emptyBody'),
             ),

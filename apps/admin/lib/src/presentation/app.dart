@@ -26,6 +26,7 @@ final class AdminApp extends StatelessWidget {
     required this.workspace,
     this.language = 'fr',
     this.onManageSecondFactor,
+    this.mode,
     super.key,
   });
 
@@ -38,22 +39,39 @@ final class AdminApp extends StatelessWidget {
   /// than showing one that does nothing.
   final VoidCallback? onManageSecondFactor;
 
+  /// The theme choice, held outside the widget tree so it survives a rebuild
+  /// and can be written to disk by whoever composed the app. Absent in tests
+  /// — following the platform is a correct default, not a fallback.
+  final KiloModeController? mode;
+
   @override
   Widget build(BuildContext context) => Localized(
     catalog: catalog,
     initialLanguage: language,
-    child: MaterialApp(
-      title: 'BilletEnLigne — Back office',
-      debugShowCheckedModeBanner: false,
-      theme: KiloTheme.materialTheme(),
-      darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
-      home: _Admin(
-        workspace: workspace,
-        onManageSecondFactor: onManageSecondFactor,
+    child: KiloModeScope(
+      notifier: mode ?? _fallback,
+      child: ListenableBuilder(
+        listenable: mode ?? _fallback,
+        builder: (context, _) => MaterialApp(
+          title: 'BilletEnLigne — Back office',
+          debugShowCheckedModeBanner: false,
+          theme: KiloTheme.materialTheme(),
+          darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
+          themeMode: (mode ?? _fallback).mode.materialMode,
+          home: _Admin(
+            workspace: workspace,
+            onManageSecondFactor: onManageSecondFactor,
+          ),
+        ),
       ),
     ),
   );
 }
+
+/// For the surfaces and the tests that wire no persistence: an in-memory
+/// choice that starts at *follow the platform*, so the toggle still works for
+/// the length of a session rather than being absent or inert.
+final _fallback = KiloModeController();
 
 class _Admin extends StatefulWidget {
   const _Admin({required this.workspace, this.onManageSecondFactor});

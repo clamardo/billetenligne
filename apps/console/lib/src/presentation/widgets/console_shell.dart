@@ -71,21 +71,32 @@ final class ConsoleShell extends StatelessWidget {
                   label: Text(context.t(_labelKey(section))),
                 ),
             ],
-            trailing: onManageSecondFactor == null
-                ? null
-                : Expanded(
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: EdgeInsets.only(bottom: kilo.space.s4),
-                        child: IconButton(
+            trailing: Expanded(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: kilo.space.s4),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // A console is open all day, often in an office with
+                      // the blinds down. The choice belongs where somebody
+                      // will find it without being told.
+                      KModeToggle(
+                        lightLabel: context.t('common.theme.light'),
+                        darkLabel: context.t('common.theme.dark'),
+                      ),
+                      if (onManageSecondFactor != null)
+                        IconButton(
                           icon: const Icon(Icons.lock_outline),
                           tooltip: context.t('auth.enrol.manage'),
                           onPressed: onManageSecondFactor,
                         ),
-                      ),
-                    ),
+                    ],
                   ),
+                ),
+              ),
+            ),
           ),
           const VerticalDivider(width: 1),
           Expanded(

@@ -43,6 +43,10 @@ common:
     phone: "Phone number"
     name: "Name"
     language: "Language"
+  theme:
+    light: "Light theme"
+    dark: "Dark theme"
+    system: "System"
   state:
     loading: "Loading…"
     offline: "Offline"

@@ -13,6 +13,7 @@ travel:
     start: "Commencer"
   search:
     title: "Où allez-vous ?"
+    tagline: "Réservez votre place, payez avec votre mobile, montez."
     swap: "Inverser"
     today: "Aujourd'hui"
     tomorrow: "Demain"

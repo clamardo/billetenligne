@@ -55,6 +55,9 @@ final class FailureView extends StatelessWidget {
           ? KOffline(
               title: context.t('common.state.offline'),
               body: message,
+              retryLabel: onRetry == null
+                  ? null
+                  : context.t('common.actions.retry'),
               onRetry: onRetry,
             )
           : KFailed(

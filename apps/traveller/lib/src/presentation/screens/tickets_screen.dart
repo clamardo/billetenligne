@@ -86,6 +86,7 @@ final class TicketsScreen extends StatelessWidget {
         child: _isEmpty
             ? KStateView(
                 KEmpty(
+                  art: KArt.noTickets,
                   title: context.t('travel.tickets.emptyTitle'),
                   body: context.t('travel.tickets.emptyBody'),
                   actionLabel: onSearch == null
@@ -224,7 +225,10 @@ class _BookingCard extends StatelessWidget {
                   child: Text(
                     '${_city(booking.originCity)} → '
                     '${_city(booking.destinationCity)}',
-                    style: KiloTypography.weight(kilo.text.body, FontWeight.w600),
+                    style: KiloTypography.weight(
+                      kilo.text.body,
+                      FontWeight.w600,
+                    ),
                   ),
                 ),
                 // Ahead of every other badge on purpose. A traveller opening

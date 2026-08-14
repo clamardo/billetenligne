@@ -83,6 +83,7 @@ final class TodayScreen extends StatelessWidget {
           Expanded(
             child: KStateView(
               KEmpty(
+                art: KArt.noTrips,
                 title: context.t('console.today.emptyTitle'),
                 // Names the cause rather than shrugging. On a day with no
                 // departures the answer is almost always "the timetable was

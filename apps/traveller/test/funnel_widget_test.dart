@@ -98,6 +98,12 @@ void main() {
     await tester.tap(find.text('Pointe-Noire').last);
     await tester.pumpAndSettle();
 
+    // Scrolled to first: the search screen now opens on a full-bleed hero,
+    // so the button is below the fold on a test-sized viewport. `tap` on an
+    // off-screen widget warns rather than throws, which turns into a failure
+    // three assertions later about a coach that was never searched for.
+    await tester.ensureVisible(find.text('Rechercher un départ'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Rechercher un départ'));
     await tester.pumpAndSettle();
   }

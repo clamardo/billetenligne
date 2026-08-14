@@ -79,6 +79,7 @@ final class FunnelScreen extends StatelessWidget {
         if (days.isEmpty && !workspace.busy)
           KStateView(
             KEmpty(
+              art: KArt.route,
               title: context.t('admin.funnel.emptyTitle'),
               body: context.t('admin.funnel.emptyBody'),
             ),

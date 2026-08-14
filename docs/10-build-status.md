@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-13 · after commit *One shared style, and something to look at*
+**Updated:** 2026-08-13 · after commit *Onto the screens, and a theme somebody can choose*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -20,7 +20,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | `bel_localization` — YAML catalogs, fr + en | ✅ done | Missing-key, orphan, placeholder and SMS-length guards |
 | `bel_contracts` — wire format | ✅ done | Money is always `{minor, currency}` |
 | `bel_crypto` — Ed25519, HMAC | ✅ done | Verified against the RFC 4231 vector |
-| `bel_design` — Kilo tokens, three themes, components | ✅ done | 10 components, 119 tests. Inter + Fraunces actually bundled; the **complete** Material 3 `ColorScheme` and ~30 component themes, so no screen styles a control itself; 11 illustrations, 3 heroes and 4 woven patterns as editable SVG under `assets/`. **Screens do not use the illustrations yet, and there is still no in-app dark-mode toggle** |
+| `bel_design` — Kilo tokens, three themes, components | ✅ done | 10 components, 133 tests. Inter + Fraunces bundled; the **complete** Material 3 `ColorScheme` and ~30 component themes, so no screen styles a control itself; 11 illustrations, 3 heroes and 4 woven patterns as editable SVG under `assets/`, all wired into the empty, error and offline states of all four apps; a hero on the traveller's home screen; and a persisted dark-mode choice on all three surfaces that have one. **The storefront and follower pages still carry no artwork** |
 | Postgres schema, RLS, ledger | ✅ done | 11 migrations, 26 executed guarantees |
 | Public sales boundary (`bel_public`) | ✅ done | 0005 — a traveller cannot mark a seat sold, proven in `verify_public.sql` |
 | Dart Frog skeleton, auth + idempotency middleware | ✅ done | 43 smoke checks over a real socket |
@@ -487,6 +487,73 @@ counted with `services/api/build` present, so a stale copy of every package's
 tests was counted again as if it were the API's own — the exact trap the
 paragraph above warns about, walked into by whoever wrote the warning. Every
 figure here has been re-measured from a clean tree.
+
+---
+
+## What the screens-and-dark-mode push changed, and what it cost
+
+The push before this one built a design system nobody could see. This one puts
+it on the screens.
+
+**Every empty, error and offline state in the product now has a picture.**
+`KStateView` is used in twenty-eight places across four apps, so upgrading the
+one component was the whole change: an empty search draws an empty road with a
+signpost, an empty wallet draws a ticket, a failure draws a broken-down coach,
+offline draws a struck-through cloud. Twelve call sites name a more specific
+drawing than the default. The illustration is **dropped rather than shrunk**
+below 320 px of height — a state squeezed into a sheet is one where the words
+are the point, and a 60 px drawing above them is decoration nobody asked for.
+
+**A bug fell out of doing it.** `KOffline` had `onRetry` and no label, and the
+view rendered `_Action('', onRetry)` — a real button, correctly sized, with
+nothing written on it. The traveller's failure view passes `onRetry` on every
+network error, so it was on screen for the commonest failure in the product.
+The label is now required alongside the callback, and there is a test.
+
+**The traveller opens on a hero rather than on a line of text.** A painted
+landscape — hills, palms, a coach on the road, the sun — with the headline and
+a tagline over it. Painted from theme tokens rather than loaded, so it costs no
+request, cannot fail to arrive on 2G, and recolours itself in dark mode. It is
+a `Stack` with `StackFit.expand` rather than a column with a spacer, for two
+reasons that were both found by rendering it: a flex that overruns a fixed
+height by six pixels is a striped bar across the top of the app, and a stack
+whose children are all positioned shrinks to nothing and centres itself, which
+put the headline in the middle of the sky.
+
+**Dark mode is now a choice, not a consequence.** It existed as a theme and
+followed the handset, which is the wrong answer often enough to matter: a
+shared phone somebody else set to dark, a battery saver that forces it at
+15 %, an agent under a strip light who finds dark unreadable. The choice is
+one tap in the traveller's hero and at the foot of both back-office rails,
+persisted through the platform's own preference store, and reachable from any
+screen through a scope rather than threaded from the composition root — a
+toggle that can only exist where somebody remembered to pass a controller can
+only exist on the screens somebody already thought about. It draws **nothing
+at all** when no app wired one, because a control the app cannot honour is
+worse than no control.
+
+The toggle is deliberately two-state rather than three. Cycling through
+*system* means a third of taps appear to do nothing whenever the handset
+already matches, which reads as a broken control; the three-way choice,
+including the way back to following the platform, lives in `KModeChoice`. And
+the pre-auth sign-in screens gained the dark half too — a blazing white sign-in
+in front of a dark console is a seam somebody notices every morning.
+
+**The scanner keeps plein soleil and gains no toggle.** A conductor in direct
+equatorial sun does not have a preference worth honouring here.
+
+**Found on the way:** the search screen's three date choices — two of them
+whole French words — do not fit across a 320 dp handset, which ADR-0002 names
+as the *target* device rather than the edge case. They wrap now. It was
+invisible until the screen was rendered at that width and looked at.
+
+**What it did not build:** the storefront and follower pages are
+server-rendered HTML and still carry none of the artwork, which is the next
+thing.
+
+**What it cost:** 14 new tests in `bel_design` (119 → 133), 5 in the traveller
+(234 → 239), one dependency (`shared_preferences`), and one empty button that
+had been on screen for every network failure in the product.
 
 ---
 

@@ -8,6 +8,7 @@ import 'src/infrastructure/api_onboarding_gateway.dart';
 import 'src/infrastructure/web_file_picker.dart';
 import 'src/infrastructure/web_file_saver.dart';
 import 'src/presentation/l10n.dart';
+import 'src/infrastructure/theme_preference.dart';
 import 'src/presentation/sign_in.dart';
 
 /// Composition root.
@@ -50,6 +51,7 @@ Future<void> main() async {
 
   runApp(
     ConsoleRoot(
+      mode: await loadThemeMode(),
       catalog: catalog,
       session: session,
       client: client,

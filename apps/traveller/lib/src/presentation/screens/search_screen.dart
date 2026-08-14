@@ -71,149 +71,145 @@ class _SearchScreenState extends State<SearchScreen> {
     final tomorrow = today.add(const Duration(days: 1));
 
     return Scaffold(
-      body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s4),
-          children: [
-            SizedBox(height: kilo.space.s4),
-            Row(
+      body: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          _Hero(onOpenTickets: widget.onOpenTickets),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              kilo.space.s4,
+              kilo.space.s5,
+              kilo.space.s4,
+              kilo.space.s8,
+            ),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    context.t('travel.search.title'),
-                    style: kilo.text.display,
-                  ),
-                ),
-                if (widget.onOpenTickets != null)
-                  IconButton(
-                    onPressed: widget.onOpenTickets,
-                    icon: const Icon(Icons.confirmation_number_outlined),
-                    tooltip: context.t('travel.tickets.open'),
-                  ),
-              ],
-            ),
-            SizedBox(height: kilo.space.s6),
-
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: _CityPicker(
-                    label: context.t('common.labels.from'),
-                    hint: context.t('travel.search.chooseOrigin'),
-                    cities: widget.cities,
-                    value: _from,
-                    onChanged: (v) => setState(() => _from = v),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: kilo.space.s2),
-                  child: Semantics(
-                    button: true,
-                    label: context.t('travel.search.swap'),
-                    child: IconButton(
-                      onPressed: _swap,
-                      icon: const Icon(Icons.swap_horiz),
-                      color: kilo.color.brandPrimary,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: _CityPicker(
-                    label: context.t('common.labels.to'),
-                    hint: context.t('travel.search.chooseDestination'),
-                    cities: widget.cities,
-                    value: _to,
-                    onChanged: (v) => setState(() => _to = v),
-                  ),
-                ),
-              ],
-            ),
-
-            if (_from != null && _from == _to) ...[
-              SizedBox(height: kilo.space.s2),
-              Text(
-                context.t('travel.search.sameCity'),
-                style: kilo.text.bodySm.copyWith(color: kilo.color.danger),
-              ),
-            ],
-
-            SizedBox(height: kilo.space.s5),
-            Text(
-              context.t('common.labels.date'),
-              style: kilo.text.label.copyWith(
-                color: kilo.color.contentSecondary,
-              ),
-            ),
-            SizedBox(height: kilo.space.s2),
-            Row(
-              children: [
-                _DateChoice(
-                  label: context.t('travel.search.today'),
-                  selected: _isSameDay(_date, today),
-                  onTap: () => setState(() => _date = today),
-                ),
-                SizedBox(width: kilo.space.s2),
-                _DateChoice(
-                  label: context.t('travel.search.tomorrow'),
-                  selected: _isSameDay(_date, tomorrow),
-                  onTap: () => setState(() => _date = tomorrow),
-                ),
-                SizedBox(width: kilo.space.s2),
-                Expanded(
-                  child: _DateChoice(
-                    label:
-                        _isSameDay(_date, today) || _isSameDay(_date, tomorrow)
-                        ? context.t('travel.search.pickDate')
-                        : Format.shortDate(_date, locale: context.language),
-                    selected:
-                        !_isSameDay(_date, today) &&
-                        !_isSameDay(_date, tomorrow),
-                    onTap: _pickDate,
-                  ),
-                ),
-              ],
-            ),
-
-            SizedBox(height: kilo.space.s5),
-            Text(
-              context.t('common.labels.passengers'),
-              style: kilo.text.label.copyWith(
-                color: kilo.color.contentSecondary,
-              ),
-            ),
-            SizedBox(height: kilo.space.s2),
-            _PassengerStepper(
-              value: _passengers,
-              onChanged: (v) => setState(() => _passengers = v),
-            ),
-
-            SizedBox(height: kilo.space.s8),
-            KButton(
-              label: context.t('travel.search.submit'),
-              icon: Icons.search,
-              onPressed: _valid
-                  ? () => widget.onSearch(
-                      SearchDeparturesQuery(
-                        originCity: _from!,
-                        destinationCity: _to!,
-                        date: _date,
-                        passengers: _passengers,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: _CityPicker(
+                        label: context.t('common.labels.from'),
+                        hint: context.t('travel.search.chooseOrigin'),
+                        cities: widget.cities,
+                        value: _from,
+                        onChanged: (v) => setState(() => _from = v),
                       ),
-                    )
-                  : null,
-              // A greyed button with no explanation is the most common way an
-              // app strands somebody.
-              // Its own sentence rather than the picker's placeholder. The
-              // button is explaining what is missing overall, which is not the
-              // same thing as labelling one empty field.
-              disabledHint: _from == null || _to == null
-                  ? context.t('travel.search.chooseBoth')
-                  : context.t('travel.search.sameCity'),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: kilo.space.s2),
+                      child: Semantics(
+                        button: true,
+                        label: context.t('travel.search.swap'),
+                        child: IconButton(
+                          onPressed: _swap,
+                          icon: const Icon(Icons.swap_horiz),
+                          color: kilo.color.brandPrimary,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: _CityPicker(
+                        label: context.t('common.labels.to'),
+                        hint: context.t('travel.search.chooseDestination'),
+                        cities: widget.cities,
+                        value: _to,
+                        onChanged: (v) => setState(() => _to = v),
+                      ),
+                    ),
+                  ],
+                ),
+
+                if (_from != null && _from == _to) ...[
+                  SizedBox(height: kilo.space.s2),
+                  Text(
+                    context.t('travel.search.sameCity'),
+                    style: kilo.text.bodySm.copyWith(color: kilo.color.danger),
+                  ),
+                ],
+
+                SizedBox(height: kilo.space.s5),
+                Text(
+                  context.t('common.labels.date'),
+                  style: kilo.text.label.copyWith(
+                    color: kilo.color.contentSecondary,
+                  ),
+                ),
+                SizedBox(height: kilo.space.s2),
+                // A wrap rather than a row: three choices, two of them
+                // whole words, do not fit across a 320 dp handset — which is
+                // the handset ADR-0002 names as the target, not the edge
+                // case. The third drops to a second line rather than being
+                // squeezed to nothing.
+                Wrap(
+                  spacing: kilo.space.s2,
+                  runSpacing: kilo.space.s2,
+                  children: [
+                    _DateChoice(
+                      label: context.t('travel.search.today'),
+                      selected: _isSameDay(_date, today),
+                      onTap: () => setState(() => _date = today),
+                    ),
+                    _DateChoice(
+                      label: context.t('travel.search.tomorrow'),
+                      selected: _isSameDay(_date, tomorrow),
+                      onTap: () => setState(() => _date = tomorrow),
+                    ),
+                    _DateChoice(
+                      label:
+                          _isSameDay(_date, today) ||
+                              _isSameDay(_date, tomorrow)
+                          ? context.t('travel.search.pickDate')
+                          : Format.shortDate(_date, locale: context.language),
+                      selected:
+                          !_isSameDay(_date, today) &&
+                          !_isSameDay(_date, tomorrow),
+                      onTap: _pickDate,
+                    ),
+                  ],
+                ),
+
+                SizedBox(height: kilo.space.s5),
+                Text(
+                  context.t('common.labels.passengers'),
+                  style: kilo.text.label.copyWith(
+                    color: kilo.color.contentSecondary,
+                  ),
+                ),
+                SizedBox(height: kilo.space.s2),
+                _PassengerStepper(
+                  value: _passengers,
+                  onChanged: (v) => setState(() => _passengers = v),
+                ),
+
+                SizedBox(height: kilo.space.s8),
+                KButton(
+                  label: context.t('travel.search.submit'),
+                  icon: Icons.search,
+                  onPressed: _valid
+                      ? () => widget.onSearch(
+                          SearchDeparturesQuery(
+                            originCity: _from!,
+                            destinationCity: _to!,
+                            date: _date,
+                            passengers: _passengers,
+                          ),
+                        )
+                      : null,
+                  // A greyed button with no explanation is the most common way an
+                  // app strands somebody.
+                  // Its own sentence rather than the picker's placeholder. The
+                  // button is explaining what is missing overall, which is not the
+                  // same thing as labelling one empty field.
+                  disabledHint: _from == null || _to == null
+                      ? context.t('travel.search.chooseBoth')
+                      : context.t('travel.search.sameCity'),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -232,6 +228,100 @@ class _SearchScreenState extends State<SearchScreen> {
 
   static bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+/// The full-bleed opening of the app.
+///
+/// This screen used to begin with a line of black text on white, which is an
+/// accurate description of what the product does and tells somebody nothing
+/// about whether it is worth trusting with money. The drawing is painted from
+/// theme tokens rather than loaded, so it costs no request, cannot fail to
+/// arrive on 2G, and recolours itself in dark mode.
+class _Hero extends StatelessWidget {
+  const _Hero({this.onOpenTickets});
+
+  final VoidCallback? onOpenTickets;
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+    // Tall enough to be a picture rather than a band, short enough that the
+    // first field is still on screen on a 5-inch handset.
+    final height = MediaQuery.sizeOf(context).height < 700 ? 190.0 : 232.0;
+
+    return KScene(
+      KSceneArt.journey,
+      height: height,
+      child: SafeArea(
+        bottom: false,
+        // A stack rather than a column with a spacer: the artwork is a fixed
+        // height, and a flex that overflows it by six pixels in one language
+        // is a striped bar across the top of the app. It has to be told to
+        // expand — a stack whose children are all positioned shrinks to
+        // nothing and then centres itself, which puts the headline in the
+        // middle of the sky.
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Positioned(
+              top: kilo.space.s1,
+              right: kilo.space.s2,
+              // The theme draws icon buttons in the ink used on paper. These
+              // sit on the artwork, so they are overridden here rather than
+              // by every caller remembering to pass a colour.
+              child: IconButtonTheme(
+                data: IconButtonThemeData(
+                  style: IconButton.styleFrom(
+                    foregroundColor: kilo.color.contentInverse,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const KModeToggle(),
+                    if (onOpenTickets != null)
+                      IconButton(
+                        onPressed: onOpenTickets,
+                        icon: const Icon(Icons.confirmation_number_outlined),
+                        tooltip: context.t('travel.tickets.open'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              left: kilo.space.s4,
+              right: kilo.space.s4,
+              bottom: kilo.space.s4,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    context.t('travel.search.title'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: kilo.text.display.copyWith(
+                      color: kilo.color.contentInverse,
+                    ),
+                  ),
+                  SizedBox(height: kilo.space.s1),
+                  Text(
+                    context.t('travel.search.tagline'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: kilo.text.body.copyWith(
+                      color: kilo.color.contentInverse.withValues(alpha: 0.9),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _CityPicker extends StatelessWidget {

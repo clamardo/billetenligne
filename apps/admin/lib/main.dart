@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'src/application/admin_workspace.dart';
 import 'src/infrastructure/api_admin_gateway.dart';
 import 'src/presentation/l10n.dart';
+import 'src/infrastructure/theme_preference.dart';
 import 'src/presentation/sign_in.dart';
 
 /// Composition root.
@@ -42,6 +43,7 @@ Future<void> main() async {
 
   runApp(
     AdminRoot(
+      mode: await loadThemeMode(),
       catalog: catalog,
       session: session,
       client: client,

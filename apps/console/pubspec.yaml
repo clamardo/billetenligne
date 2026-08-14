@@ -12,6 +12,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # One string: which theme the person chose. Local storage on the web, a
+  # tiny XML file on Android — the platform's own preference store rather
+  # than a database of our own for a single key.
+  shared_preferences: ^2.3.0
   bel_backoffice: ^0.1.0
   bel_client: ^0.1.0
   bel_contracts: ^0.1.0

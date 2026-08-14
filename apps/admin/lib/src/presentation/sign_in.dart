@@ -29,12 +29,18 @@ final class AdminRoot extends StatefulWidget {
     required this.session,
     required this.client,
     required this.buildWorkspace,
+    this.mode,
     super.key,
   });
 
   final TranslationCatalog catalog;
   final BelSession session;
   final BelApiClient client;
+
+  /// The theme choice, so the sign-in screen and the app behind it agree —
+  /// a blazing white sign-in in front of a dark console is a seam somebody
+  /// notices every single morning.
+  final KiloModeController? mode;
   final AdminWorkspace Function() buildWorkspace;
 
   @override
@@ -62,6 +68,8 @@ class _AdminRootState extends State<AdminRoot> {
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: KiloTheme.materialTheme(),
+            darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
+            themeMode: (widget.mode?.mode ?? KiloMode.system).materialMode,
             home: Builder(
               builder: (context) => SecondFactorEnrolment(
                 client: widget.client,
@@ -75,6 +83,7 @@ class _AdminRootState extends State<AdminRoot> {
       }
 
       return AdminApp(
+        mode: widget.mode,
         catalog: widget.catalog,
         workspace: workspace,
         onManageSecondFactor: () =>
@@ -89,6 +98,8 @@ class _AdminRootState extends State<AdminRoot> {
         title: 'BilletEnLigne — Back office',
         debugShowCheckedModeBanner: false,
         theme: KiloTheme.materialTheme(),
+        darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
+        themeMode: (widget.mode?.mode ?? KiloMode.system).materialMode,
         home: Builder(
           builder: (context) => BackOfficeSignIn(
             client: widget.client,

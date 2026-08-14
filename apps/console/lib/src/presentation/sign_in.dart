@@ -32,6 +32,7 @@ final class ConsoleRoot extends StatefulWidget {
     required this.session,
     required this.client,
     required this.buildWorkspace,
+    this.mode,
     required this.buildOnboarding,
     super.key,
   });
@@ -39,6 +40,11 @@ final class ConsoleRoot extends StatefulWidget {
   final TranslationCatalog catalog;
   final BelSession session;
   final BelApiClient client;
+
+  /// The theme choice, so the sign-in screen and the app behind it agree —
+  /// a blazing white sign-in in front of a dark console is a seam somebody
+  /// notices every single morning.
+  final KiloModeController? mode;
   final ConsoleWorkspace Function() buildWorkspace;
 
   /// Built only for somebody who turns out to belong to no operator. The two
@@ -108,6 +114,8 @@ class _ConsoleRootState extends State<ConsoleRoot> {
           title: 'BilletEnLigne — Inscription',
           debugShowCheckedModeBanner: false,
           theme: KiloTheme.materialTheme(),
+          darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
+          themeMode: (widget.mode?.mode ?? KiloMode.system).materialMode,
           home: StreamBuilder<void>(
             stream: onboarding.changes,
             builder: (context, _) => OnboardingScreen(workspace: onboarding),
@@ -126,6 +134,8 @@ class _ConsoleRootState extends State<ConsoleRoot> {
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: KiloTheme.materialTheme(),
+          darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
+          themeMode: (widget.mode?.mode ?? KiloMode.system).materialMode,
           home: const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           ),
@@ -142,6 +152,8 @@ class _ConsoleRootState extends State<ConsoleRoot> {
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: KiloTheme.materialTheme(),
+            darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
+            themeMode: (widget.mode?.mode ?? KiloMode.system).materialMode,
             home: Builder(
               builder: (context) => SecondFactorEnrolment(
                 client: widget.client,
@@ -155,6 +167,7 @@ class _ConsoleRootState extends State<ConsoleRoot> {
       }
 
       return ConsoleApp(
+        mode: widget.mode,
         catalog: widget.catalog,
         workspace: workspace,
         onManageSecondFactor: () =>
@@ -169,6 +182,8 @@ class _ConsoleRootState extends State<ConsoleRoot> {
         title: 'BilletEnLigne — Console',
         debugShowCheckedModeBanner: false,
         theme: KiloTheme.materialTheme(),
+        darkTheme: KiloTheme.materialTheme(brightness: KiloBrightness.dark),
+        themeMode: (widget.mode?.mode ?? KiloMode.system).materialMode,
         home: Builder(
           builder: (context) => BackOfficeSignIn(
             client: widget.client,

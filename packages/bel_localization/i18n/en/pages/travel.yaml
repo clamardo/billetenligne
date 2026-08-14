@@ -13,6 +13,7 @@ travel:
     start: "Get started"
   search:
     title: "Where are you going?"
+    tagline: "Reserve your seat, pay from your phone, board."
     swap: "Swap"
     today: "Today"
     tomorrow: "Tomorrow"
