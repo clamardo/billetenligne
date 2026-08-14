@@ -28,6 +28,8 @@ console:
     sold: "Vendus"
     held: "Réservés"
     free: "Libres"
+    departures: "Départs"
+    disrupted: "Incidents"
     manifest: "Liste"
     noVehicle: "Aucun car affecté"
     emptyTitle: "Aucun départ ce jour"

@@ -60,6 +60,18 @@ void main() {
     });
   }
 
+  for (final b in [KiloBrightness.light, KiloBrightness.dark]) {
+    testWidgets('expressive ${b.name}', (tester) async {
+      await shoot(
+        tester,
+        'expressive-${b.name}',
+        const _Expressive(),
+        size: const Size(420, 760),
+        brightness: b,
+      );
+    });
+  }
+
   testWidgets('patterns', (tester) async {
     await shoot(
       tester,
@@ -249,6 +261,53 @@ class _Components extends StatelessWidget {
           icon: Icon(Icons.person_outline),
           label: 'Compte',
         ),
+      ],
+    ),
+  );
+}
+
+class _Expressive extends StatelessWidget {
+  const _Expressive();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const KTicketHeader(
+          origin: 'BZV',
+          destination: 'PNR',
+          subtitle: 'sam. 15 août · 06 h 00',
+          footnote: 'Ocean du Nord · voiture 2, place 14',
+          accent: Color(0xFF6B2D5C),
+        ),
+        const SizedBox(height: 24),
+        const KSectionHeader(
+          'À traiter',
+          count: 7,
+          subtitle: 'Dossiers en attente de décision',
+        ),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const KStat(value: '128', label: 'Places'),
+                const KStat(value: '92 %', label: 'Remplissage'),
+                KStat(
+                  value: '3',
+                  label: 'Retards',
+                  tone: context.kilo.color.danger,
+                  icon: Icons.warning_amber_rounded,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        const KSectionHeader('En cours de chargement'),
+        KSkeleton.list(rows: 3),
       ],
     ),
   );

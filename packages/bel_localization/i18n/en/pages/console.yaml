@@ -28,6 +28,8 @@ console:
     sold: "Sold"
     held: "Held"
     free: "Free"
+    departures: "Departures"
+    disrupted: "Disruptions"
     manifest: "Manifest"
     noVehicle: "No coach assigned"
     emptyTitle: "No departures on this day"

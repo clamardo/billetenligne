@@ -943,9 +943,15 @@ void main() {
       await pump(tester, gateway);
 
       // "48 of 49 sold" and "20 sold, 28 held" are completely different
-      // situations twenty minutes before departure.
-      expect(find.text('20'), findsOneWidget);
-      expect(find.text('28'), findsOneWidget);
+      // situations twenty minutes before departure. Scoped to the row: the
+      // day's summary strip above it repeats the same totals when there is
+      // only one departure, which is exactly the case this fixture builds.
+      Finder onTheRow(String text) => find.descendant(
+        of: find.byType(KCard),
+        matching: find.text(text),
+      );
+      expect(onTheRow('20'), findsOneWidget);
+      expect(onTheRow('28'), findsOneWidget);
       expect(find.text('ODN-001'), findsOneWidget);
     });
 

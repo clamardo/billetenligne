@@ -79,6 +79,12 @@ final class TodayScreen extends StatelessWidget {
           ),
         ),
 
+        // The four figures a dispatcher looks for before they look at any
+        // row. They were all on the board already, one departure at a time,
+        // which meant the question *how is today going* was answered by
+        // reading forty rows and adding up.
+        if (workspace.board.isNotEmpty) _Summary(board: workspace.board),
+
         if (workspace.board.isEmpty)
           Expanded(
             child: KStateView(
@@ -109,6 +115,64 @@ final class TodayScreen extends StatelessWidget {
   static String _dayLabel(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/'
       '${d.month.toString().padLeft(2, '0')}/${d.year}';
+}
+
+class _Summary extends StatelessWidget {
+  const _Summary({required this.board});
+
+  final List<DepartureBoardDto> board;
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+    var sold = 0;
+    var free = 0;
+    var disrupted = 0;
+    for (final row in board) {
+      sold += row.sold;
+      free += row.available;
+      if (row.disruption != null) disrupted++;
+    }
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        kilo.space.s4,
+        0,
+        kilo.space.s4,
+        kilo.space.s3,
+      ),
+      child: Card(
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: kilo.space.s5,
+            vertical: kilo.space.s4,
+          ),
+          child: Wrap(
+            spacing: kilo.space.s8,
+            runSpacing: kilo.space.s4,
+            children: [
+              KStat(
+                value: '${board.length}',
+                label: context.t('console.today.departures'),
+              ),
+              KStat(value: '$sold', label: context.t('console.today.sold')),
+              KStat(value: '$free', label: context.t('console.today.free')),
+              // Only when there is one. A zero in red beside three healthy
+              // figures is a number somebody checks every morning for
+              // nothing, and it is how a real one stops being noticed.
+              if (disrupted > 0)
+                KStat(
+                  value: '$disrupted',
+                  label: context.t('console.today.disrupted'),
+                  tone: kilo.color.danger,
+                  icon: Icons.warning_amber_rounded,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _DepartureRow extends StatelessWidget {

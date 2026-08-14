@@ -55,8 +55,7 @@ class KiloModeController extends ChangeNotifier {
   /// already matches, which reads as a broken control. Choosing explicitly is
   /// the point of touching it at all.
   void toggle(BuildContext context) {
-    final showing =
-        mode == KiloMode.system
+    final showing = mode == KiloMode.system
         ? MediaQuery.platformBrightnessOf(context)
         : (mode == KiloMode.dark ? Brightness.dark : Brightness.light);
     mode = showing == Brightness.dark ? KiloMode.light : KiloMode.dark;
@@ -78,9 +77,8 @@ class KiloModeScope extends InheritedNotifier<KiloModeController> {
 
   /// Null when no app wired one, so a screen can simply not draw a toggle
   /// rather than crash. Tests mount screens on their own all the time.
-  static KiloModeController? maybeOf(BuildContext context) => context
-      .dependOnInheritedWidgetOfExactType<KiloModeScope>()
-      ?.notifier;
+  static KiloModeController? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<KiloModeScope>()?.notifier;
 }
 
 /// One tap, in an app bar. Labelled for screen readers and tooltipped for
@@ -166,8 +164,9 @@ extension KiloModeThemes on KiloMode {
       switch (mode) {
         KiloMode.light => KiloBrightness.light,
         KiloMode.dark => KiloBrightness.dark,
-        KiloMode.system => platform == Brightness.dark
-            ? KiloBrightness.dark
-            : KiloBrightness.light,
+        KiloMode.system =>
+          platform == Brightness.dark
+              ? KiloBrightness.dark
+              : KiloBrightness.light,
       };
 }

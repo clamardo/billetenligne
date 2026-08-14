@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-13 · after commit *One folder of drawings, two consumers*
+**Updated:** 2026-08-13 · after commit *A ticket that looks like a ticket*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -20,7 +20,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | `bel_localization` — YAML catalogs, fr + en | ✅ done | Missing-key, orphan, placeholder and SMS-length guards |
 | `bel_contracts` — wire format | ✅ done | Money is always `{minor, currency}` |
 | `bel_crypto` — Ed25519, HMAC | ✅ done | Verified against the RFC 4231 vector |
-| `bel_design` — Kilo tokens, three themes, components | ✅ done | 10 components, 133 tests. Inter + Fraunces bundled; the **complete** Material 3 `ColorScheme` and ~30 component themes, so no screen styles a control itself; 11 illustrations, 3 heroes and 4 woven patterns as editable SVG under `assets/`, all wired into the empty, error and offline states of all four apps; a hero on the traveller's home screen; a persisted dark-mode choice on all three surfaces that have one; and the same folder compiled into the API, so the storefront and follower pages inline it too |
+| `bel_design` — Kilo tokens, three themes, components | ✅ done | 14 components, 145 tests. Inter + Fraunces bundled; the **complete** Material 3 `ColorScheme` and ~30 component themes, so no screen styles a control itself; 11 illustrations, 3 heroes and 4 woven patterns as editable SVG under `assets/`, all wired into the empty, error and offline states of all four apps; a hero on the traveller's home screen; a persisted dark-mode choice on all three surfaces that have one; and the same folder compiled into the API, so the storefront and follower pages inline it too |
 | Postgres schema, RLS, ledger | ✅ done | 11 migrations, 26 executed guarantees |
 | Public sales boundary (`bel_public`) | ✅ done | 0005 — a traveller cannot mark a seat sold, proven in `verify_public.sql` |
 | Dart Frog skeleton, auth + idempotency middleware | ✅ done | 43 smoke checks over a real socket |
@@ -487,6 +487,56 @@ counted with `services/api/build` present, so a stale copy of every package's
 tests was counted again as if it were the API's own — the exact trap the
 paragraph above warns about, walked into by whoever wrote the warning. Every
 figure here has been re-measured from a clean tree.
+
+---
+
+## What the expressive-components push changed, and what it cost
+
+Four components, and the one that matters is the first.
+
+**The ticket looks like a ticket.** It is the single screen a passenger holds
+up to another human being, and it opened on two lines of centred grey text. A
+paper ticket is recognisable from across a yard; `KTicketHeader` buys some of
+that back — the operator's colour across the top, their woven motif in it, the
+two towns in display type, and a torn edge. The perforation is **painted, not
+clipped**: a cut-out notch has to know the colour behind it, and on a screen
+that scrolls under a disruption strip nobody can promise one.
+
+The accent falls back to the house green, and that fallback had to look
+deliberate rather than absent — it is what every operator gets on the day they
+activate, which is most of them.
+
+**`KSectionHeader`, `KStat`, `KSkeleton`.** Every list screen in the console
+and the back office had grown its own heading out of a `Text` and a `Spacer`,
+which is how six screens end up with six spacings and four type sizes. Three
+details are worth the ink: a count of **zero is not the same as nobody
+counted**, so `null` draws no pill; a `KStat` tone colours the *figure* and
+never a background, because a tile that turns red is a tile somebody stops
+reading; and a skeleton is never used for a wait that might end in an empty
+list, because a skeleton that resolves to "nothing found" has told somebody a
+lie for six seconds. It stops pulsing under reduce-motion without stopping
+being a skeleton.
+
+**The dispatcher's day gained the four figures it was making people add up.**
+Departures, sold, free, and disruptions — all of which were already on the
+board one row at a time, so *how is today going* was answered by reading forty
+rows. The disruption figure appears **only when there is one**: a zero in red
+beside three healthy numbers is a number somebody checks every morning for
+nothing, and that is how a real one stops being noticed.
+
+**Found on the way:** a console test asserted `find.text('20')` across the
+whole screen. With a summary strip above a single-departure fixture, the same
+total appears twice — correctly. The assertion is scoped to the row now, which
+is what it always meant.
+
+**What it did not build:** the operator's accent does not reach the ticket.
+`BookingDto` carries the operator's *name* and not their hue, so every ticket
+draws in the house green regardless of who is running the coach. That is a
+wire-format change with a schema guarantee behind it, and it did not belong in
+a push about components.
+
+**What it cost:** 12 new tests in `bel_design` (133 → 145), 2 in the traveller,
+four components, and two catalog keys.
 
 ---
 

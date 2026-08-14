@@ -143,19 +143,18 @@ class _TicketScreenState extends State<TicketScreen> {
               SizedBox(height: kilo.space.s4),
             ],
 
-            Text(
-              '${booking.originCity} → ${booking.destinationCity}',
-              style: kilo.text.h2,
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: kilo.space.s1),
-            Text(
-              '${Format.shortDate(booking.departsAt, locale: locale)} · '
-              '${Format.time(booking.departsAt)} · ${booking.operatorName}',
-              style: kilo.text.bodySm.copyWith(
-                color: kilo.color.contentSecondary,
-              ),
-              textAlign: TextAlign.center,
+            // The ticket is the one screen somebody holds up to another
+            // human being, and it used to open on two lines of centred grey
+            // text. A paper ticket is recognisable from across a yard; this
+            // buys some of that back — the colour, the woven motif and a torn
+            // edge, before anybody has read a word.
+            KTicketHeader(
+              origin: booking.originCity,
+              destination: booking.destinationCity,
+              subtitle:
+                  '${Format.shortDate(booking.departsAt, locale: locale)} · '
+                  '${Format.time(booking.departsAt)}',
+              footnote: booking.operatorName,
             ),
 
             // Where to stand, above the QR rather than below it. This is the

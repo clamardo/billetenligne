@@ -18,9 +18,7 @@ void main() {
     ) async {
       await tester.pumpWidget(
         host(
-          const KStateView(
-            KEmpty(art: KArt.noTrips, title: 'Aucun départ'),
-          ),
+          const KStateView(KEmpty(art: KArt.noTrips, title: 'Aucun départ')),
         ),
       );
       await tester.pumpAndSettle();
@@ -72,7 +70,8 @@ void main() {
           KStateView(
             KEmpty(
               title: 'Un titre plutôt long qui occupe deux lignes entières',
-              body: 'Et un paragraphe explicatif qui en occupe trois autres, '
+              body:
+                  'Et un paragraphe explicatif qui en occupe trois autres, '
                   'parce que la phrase honnête est rarement la plus courte.',
               actionLabel: 'Rechercher',
               onAction: () {},
