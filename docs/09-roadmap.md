@@ -38,7 +38,7 @@ Everything after this is faster because of it, and that turned out to be true in
 - ✅ `bel_localization` — YAML catalog, fr + en, with the drift guards
 - ✅ `bel_contracts` — the wire format
 - ✅ `bel_crypto` — Ed25519 and HMAC, against published vectors
-- ✅ `bel_design` — Kilo tokens, three themes, ten components, the complete Material 3 `ColorScheme` and ~30 component themes, Inter + Fraunces bundled, eighteen pieces of artwork as editable SVG, every empty and error state in the four apps drawn, a hero on the traveller's home screen, and a persisted dark-mode choice. 🔨 **Still open: the storefront and follower pages**, which are server-rendered HTML and carry none of the artwork
+- ✅ `bel_design` — Kilo tokens, three themes, ten components, the complete Material 3 `ColorScheme` and ~30 component themes, Inter + Fraunces bundled, eighteen pieces of artwork as editable SVG compiled into both the Flutter apps and the API, every empty and error state in the four apps drawn, a hero on the traveller's home screen and on the public storefront, and a persisted dark-mode choice
 - ✅ `bel_client` — the typed API client, shared by every surface
 - ✅ Postgres schema, RLS, double-entry ledger, append-only audit
 - ✅ **The public sales boundary** (ADR-0023) — not in the original plan, and the single largest thing this phase learned

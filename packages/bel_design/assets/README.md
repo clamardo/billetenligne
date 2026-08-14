@@ -29,14 +29,25 @@ invisible in review and unreadable in dark mode.
 ## After editing
 
 ```sh
-dart run tool/build_art.dart
+dart run tool/build_art.dart   # from the repository root
 ```
 
-This regenerates `lib/src/art/kilo_art.g.dart`, which embeds each file as a
-string constant. The artwork is compiled in rather than loaded from the asset
-bundle so it paints synchronously — an empty state that flashes blank before
-its illustration arrives is worse than no illustration. `art_test.dart` fails
-if the generated file has drifted from this folder.
+This regenerates **two** files, because this folder has two consumers with
+nothing in common:
+
+`packages/bel_design/lib/src/art/kilo_art.g.dart` — the Flutter apps, which
+paint it with `flutter_svg`.
+
+`services/api/lib/src/infrastructure/web/artwork.g.dart` — the API, which
+inlines it into server-rendered HTML and substitutes the sentinels for CSS
+custom properties instead of colours, so one drawing follows the page's
+`prefers-color-scheme` query *and* the operator's accent.
+
+The artwork is compiled in rather than loaded so it paints synchronously — an
+empty state that flashes blank before its illustration arrives is worse than
+no illustration, and a storefront has to render before anything else has
+loaded at all. `art_test.dart` and the API's `artwork_test.dart` fail if
+either output has drifted from this folder.
 
 ## Licence
 

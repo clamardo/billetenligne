@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:bel_localization/bel_localization.dart';
 
+import 'artwork.g.dart';
+
 /// The follower page: plain HTML and a little JavaScript (ADR-0014 §2).
 ///
 /// **The one surface in this product where Flutter Web is the wrong tool**,
@@ -75,13 +77,20 @@ abstract final class FollowerPage {
 <title>${_text(t('follow.title'))}</title>
 <meta name="robots" content="noindex,nofollow">
 <style>
-:root{--ink:#141a17;--soft:#6b7a72;--line:#e2e8e4;--brand:#0f6b4f;--warn:#b26a00;--bg:#fbfcfb}
+:root{--ink:#141a17;--soft:#6b7a72;--line:#e2e8e4;--brand:#0f6b4f;--warn:#b26a00;--bg:#fbfcfb;
+      --accent:#0f6b4f;--art-ink:#141a17;--art-muted:#6b7a72;--art-wash:#e9f1ec;
+      --art-accent:#d9772f;--art-accent-wash:#fbeee2;--art-surface:#fff;
+      --art-line:#e2e8e4}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
      font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:34rem;margin:0 auto;padding:1.5rem 1.25rem 3rem}
 h1{font-size:1.5rem;margin:0 0 .25rem}
 .sub{color:var(--soft);margin:0 0 1.5rem}
+/* Inlined, not linked. This page is opened once, on a borrowed handset, on
+   2G; a second request for the picture is the one that does not arrive. */
+.art{max-width:12rem;margin:.25rem auto 1rem}
+.art svg{width:100%;height:auto;display:block}
 .card{background:#fff;border:1px solid var(--line);border-radius:12px;
       padding:1rem 1.1rem;margin-bottom:1rem}
 .bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin:1rem 0 .5rem}
@@ -100,7 +109,10 @@ h1{font-size:1.5rem;margin:0 0 .25rem}
 a.cta{display:block;text-align:center;margin-top:1.25rem;padding:.85rem;
       background:var(--brand);color:#fff;text-decoration:none;border-radius:10px}
 @media(prefers-color-scheme:dark){
-  :root{--ink:#e8efea;--soft:#93a49b;--line:#26312c;--bg:#0d1210}
+  :root{--ink:#e8efea;--soft:#93a49b;--line:#26312c;--bg:#0d1210;
+        --accent:#3fbf8f;--art-ink:#e8efea;--art-muted:#93a49b;
+        --art-wash:#122019;--art-accent:#f0a05c;--art-accent-wash:#2a1a0e;
+        --art-surface:#161b18;--art-line:#26312c}
   .card{background:#131a17}
   .warn{background:#2a2008;border-color:#4a3a12}
 }
@@ -108,6 +120,7 @@ a.cta{display:block;text-align:center;margin-top:1.25rem;padding:.85rem;
 </head>
 <body>
 <main>
+  <div class="art" aria-hidden="true">${Artwork.css(Artwork.route)}</div>
   <h1 id="route">…</h1>
   <p class="sub" id="operator"></p>
 

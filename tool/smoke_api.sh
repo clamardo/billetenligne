@@ -937,6 +937,25 @@ check "nobody frames somebody else's storefront" "yes" \
 check "POST is not a way to edit a storefront" "405" \
   "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/o/ODN")"
 
+# ── The artwork on the page ─────────────────────────────────────────────────
+#
+# The drawing is inlined rather than linked, because this page has to be a shop
+# window in its first response. Over a socket that means one thing: the SVG is
+# in the body, and nothing in the body asks for a second request.
+check "the page carries its own artwork" "yes" \
+  "$(grep -q '<svg' <<<"$page" && echo yes || echo no)"
+check "no sentinel colour reaches a reader" "yes" \
+  "$(grep -q 'FF00E' <<<"$page" && echo no || echo yes)"
+check "the drawing is wired to the theme, not to a palette" "yes" \
+  "$(grep -q 'var(--art-ink)' <<<"$page" && echo yes || echo no)"
+check "the page fetches nothing to render itself" "yes" \
+  "$(grep -qE '<script|<link rel="stylesheet"|<image ' <<<"$page" \
+     && echo no || echo yes)"
+check "a company nobody has heard of still gets a drawing" "yes" \
+  "$(curl -s "$BASE/o/NOPE" | grep -q '<svg' && echo yes || echo no)"
+check "and the page is still small enough for 2G" "yes" \
+  "$([ "$(curl -s "$BASE/o/ODN" | wc -c)" -lt 20000 ] && echo yes || echo no)"
+
 # ── Brand assets ────────────────────────────────────────────────────────────
 #
 # The fakes composition has no object store, so what a socket can prove here is
@@ -1471,6 +1490,12 @@ check "English renders from the same catalog" "yes" \
 check "the page refuses to be framed" "DENY" \
   "$(curl -s -D - -o /dev/null "$BASE/t/abc" \
      | tr -d '\r' | awk -F': ' 'tolower($1)=="x-frame-options"{print $2}')"
+# It has a drawing on it now, inlined for the same reason everything else on
+# this page is: it is opened once, on a borrowed handset, on 2G.
+check "the follower page carries its own drawing" "yes" \
+  "$(grep -q '<svg' <<<"$page" && echo yes || echo no)"
+check "and stays under ten kilobytes with it" "yes" \
+  "$([ "$(wc -c <<<"$page")" -lt 10000 ] && echo yes || echo no)"
 
 check "an unissued token resolves to nothing" "404" \
   "$(status "$BASE/public/v1/trips/shared/nobody-ever-issued-this")"

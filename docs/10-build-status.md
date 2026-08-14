@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-13 · after commit *Onto the screens, and a theme somebody can choose*
+**Updated:** 2026-08-13 · after commit *One folder of drawings, two consumers*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -20,7 +20,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | `bel_localization` — YAML catalogs, fr + en | ✅ done | Missing-key, orphan, placeholder and SMS-length guards |
 | `bel_contracts` — wire format | ✅ done | Money is always `{minor, currency}` |
 | `bel_crypto` — Ed25519, HMAC | ✅ done | Verified against the RFC 4231 vector |
-| `bel_design` — Kilo tokens, three themes, components | ✅ done | 10 components, 133 tests. Inter + Fraunces bundled; the **complete** Material 3 `ColorScheme` and ~30 component themes, so no screen styles a control itself; 11 illustrations, 3 heroes and 4 woven patterns as editable SVG under `assets/`, all wired into the empty, error and offline states of all four apps; a hero on the traveller's home screen; and a persisted dark-mode choice on all three surfaces that have one. **The storefront and follower pages still carry no artwork** |
+| `bel_design` — Kilo tokens, three themes, components | ✅ done | 10 components, 133 tests. Inter + Fraunces bundled; the **complete** Material 3 `ColorScheme` and ~30 component themes, so no screen styles a control itself; 11 illustrations, 3 heroes and 4 woven patterns as editable SVG under `assets/`, all wired into the empty, error and offline states of all four apps; a hero on the traveller's home screen; a persisted dark-mode choice on all three surfaces that have one; and the same folder compiled into the API, so the storefront and follower pages inline it too |
 | Postgres schema, RLS, ledger | ✅ done | 11 migrations, 26 executed guarantees |
 | Public sales boundary (`bel_public`) | ✅ done | 0005 — a traveller cannot mark a seat sold, proven in `verify_public.sql` |
 | Dart Frog skeleton, auth + idempotency middleware | ✅ done | 43 smoke checks over a real socket |
@@ -487,6 +487,50 @@ counted with `services/api/build` present, so a stale copy of every package's
 tests was counted again as if it were the API's own — the exact trap the
 paragraph above warns about, walked into by whoever wrote the warning. Every
 figure here has been re-measured from a clean tree.
+
+---
+
+## What the server-artwork push changed, and what it cost
+
+The storefront is the address an operator puts on a poster, and its header was
+a rectangle of flat colour. It has the drawing now — and so does the follower
+page, the empty storefront and the page for a code nobody issued.
+
+**One folder of SVG, two consumers with nothing in common.** The Flutter apps
+paint it with `flutter_svg`; the API inlines it into server-rendered HTML.
+`tool/build_art.dart` moved to the repository root and now emits both — a
+generator that belongs to one of two consumers always ends up reaching across
+a boundary it should not know about.
+
+**The server substitutes CSS custom properties, not colours.** An inline SVG
+inherits them from the document, so one embedded drawing follows the page's
+`prefers-color-scheme` query *and* the operator's own accent, with the server
+knowing neither. The brand slot resolves through `--art-brand` before falling
+back to `--accent`, which is what lets the storefront hero override it to a
+translucent white: the company's colour is already the background there, so
+hills painted in it would be invisible, and the drawing becomes a silhouette
+instead.
+
+**Inlined rather than linked, in both pages.** A storefront has to be a shop
+window in its first response — the reader who matters most is a crawler that
+runs no JavaScript — and a follower is on a borrowed handset on 2G, where a
+second request for the one thing that makes the page look like a product is
+the request most likely not to arrive. The storefront went from 5 KB to 7.5 KB
+and the follower page is still under 10; both are asserted over a real socket,
+along with "the page fetches nothing to render itself".
+
+**The operator's own photograph still wins.** The drawing is what fills the
+header until they upload one, so the layout is never designed around an image
+that might not arrive — the same rule the Flutter `KScene` follows.
+
+**What it did not build:** the Kuba motif is in the design system and not on
+the storefront. `headerPattern` is a database column with a closed set of
+three, so a fourth is a migration and a console change rather than a line of
+CSS, and it did not belong in this push.
+
+**What it cost:** 4 API unit tests, 6 more on the storefront page, 8 smoke
+checks over a real socket, one generated file, and one generator that now
+lives where it belongs.
 
 ---
 

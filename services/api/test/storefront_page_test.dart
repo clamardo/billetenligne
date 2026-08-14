@@ -234,4 +234,67 @@ void main() {
     expect(html, isNot(contains('<script>alert(1)')));
     expect(html, contains('&lt;script&gt;'));
   });
+
+  group('the artwork on it', () {
+    test('a company with no cover photograph gets the drawing instead', () {
+      // The header used to be a rectangle of flat colour. A shop window that
+      // is a coloured band is a shop window nobody photographs for a poster.
+      final html = _render(
+        vitrine: _vitrine(),
+      );
+      expect(html, contains('class="scene"'));
+      expect(html, contains('<svg'));
+      // Cropped rather than letterboxed: the header's height comes from the
+      // text on it and will never match the drawing's proportions.
+      expect(html, contains('preserveAspectRatio="xMidYMid slice"'));
+    });
+
+    test("the operator's own photograph still wins", () {
+      final html = _render(
+        vitrine: _vitrine(coverUrl: 'https://cdn.example/cover.jpg'),
+      );
+      expect(html, contains('class="cover"'));
+      expect(html, isNot(contains('class="scene"')));
+    });
+
+    test('nothing on sale, and a company with nothing to say, both draw', () {
+      final empty = _render(
+        vitrine: _vitrine(),
+        routes: const [],
+      );
+      expect(empty, contains('class="art"'));
+
+      final missing = StorefrontPage.notFound(catalog: _catalog);
+      expect(missing, contains('class="art"'));
+    });
+
+    test('no sentinel colour reaches a reader', () {
+      // A sentinel that survives substitution is bright magenta across a
+      // company's shop window.
+      final html = _render(
+        vitrine: _vitrine(),
+      );
+      expect(html, isNot(contains('#FF00E')));
+      expect(html, contains('--art-ink'));
+    });
+
+    test('the drawing follows the dark theme and the operator accent', () {
+      final html = _render(
+        vitrine: _vitrine(accentHue: 'prune'),
+      );
+      // One embedded drawing, wired to the page rather than to a palette:
+      // the media query moves it, and so does the company's colour.
+      expect(html, contains('var(--art-brand,var(--accent))'));
+      expect(html, contains('--accent:#6B2D5C'));
+      expect(html, contains('prefers-color-scheme:dark'));
+    });
+
+    test('the page still carries no request it does not need', () {
+      final html = _render(
+        vitrine: _vitrine(),
+      );
+      expect(html, isNot(contains('<script')));
+      expect(html, isNot(contains('<link rel="stylesheet"')));
+    });
+  });
 }

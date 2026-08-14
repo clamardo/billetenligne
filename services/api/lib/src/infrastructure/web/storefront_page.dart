@@ -1,6 +1,8 @@
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_localization/bel_localization.dart';
 
+import 'artwork.g.dart';
+
 /// The public storefront at `blt.cg/o/<code>` (`03-operator-lifecycle.md`
 /// §2.4).
 ///
@@ -121,6 +123,7 @@ abstract final class StorefrontPage {
           '<meta name="robots" content="noindex,nofollow">',
       body: '''
   <main class="narrow">
+    <div class="art" aria-hidden="true">${Artwork.css(Artwork.searchEmpty)}</div>
     <h1>${_text(t('storefront.unknown'))}</h1>
     <p class="sub">${_text(t('storefront.unknownBody'))}</p>
     <a class="cta" href="/">${_text(t('storefront.search'))}</a>
@@ -141,6 +144,17 @@ abstract final class StorefrontPage {
     if (v.coverUrl != null) {
       buffer.writeln('    <img class="cover" src="${_attr(v.coverUrl!)}" '
           'alt="" aria-hidden="true">');
+    } else {
+      // No photograph, so the header used to be a rectangle of flat colour
+      // with a pattern over it. The drawing is inlined rather than linked:
+      // this page has to be a shop window in the first response, and a
+      // separate request for the one thing that makes it look like a shop is
+      // the request most likely not to arrive.
+      //
+      // It renders as a silhouette because `.hero` overrides `--art-brand` —
+      // the company's own colour is already the background here.
+      buffer.writeln('    <div class="scene" aria-hidden="true">'
+          '${_cover(Artwork.css(Artwork.journey))}</div>');
     }
     buffer.writeln('    <div class="heroInner">');
     if (v.logoUrl != null) {
@@ -161,7 +175,10 @@ abstract final class StorefrontPage {
       ..writeln('  <main>');
 
     if (storefront.routes.isEmpty) {
-      buffer.writeln('    <p class="sub">${_text(t('storefront.empty'))}</p>');
+      buffer
+        ..writeln('    <div class="art" aria-hidden="true">'
+            '${Artwork.css(Artwork.noTrips)}</div>')
+        ..writeln('    <p class="sub">${_text(t('storefront.empty'))}</p>');
     } else {
       buffer.writeln('    <h2>${_text(t('storefront.routes'))}</h2>');
       buffer.writeln('    <ul class="routes">');
@@ -259,7 +276,10 @@ abstract final class StorefrontPage {
 <meta name="theme-color" content="$accent">
 $head
 <style>
-:root{--accent:$accent;--ink:#141a17;--soft:#6b7a72;--line:#e2e8e4;--bg:#fbfcfb}
+:root{--accent:$accent;--ink:#141a17;--soft:#6b7a72;--line:#e2e8e4;--bg:#fbfcfb;
+      --art-ink:#141a17;--art-muted:#6b7a72;--art-wash:#e9f1ec;
+      --art-accent:#d9772f;--art-accent-wash:#fbeee2;--art-surface:#fff;
+      --art-line:#e2e8e4}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
      font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
@@ -269,9 +289,20 @@ h1{font-size:1.6rem;margin:0}
 h2{font-size:1rem;color:var(--soft);font-weight:600;margin:0 0 .75rem;
    text-transform:uppercase;letter-spacing:.04em}
 .sub{color:var(--soft)}
-.hero{position:relative;background:var(--accent);color:#fff;overflow:hidden}
+.hero{position:relative;background:var(--accent);color:#fff;overflow:hidden;
+      /* The drawing turns into a silhouette here: the company's colour is
+         already the ground, so hills painted in it would be invisible. */
+      --art-brand:rgba(255,255,255,.34);--art-wash:rgba(0,0,0,.20);
+      --art-ink:rgba(0,0,0,.5);--art-muted:rgba(255,255,255,.55);
+      --art-surface:rgba(255,255,255,.9);--art-accent:rgba(255,255,255,.5);
+      --art-accent-wash:rgba(255,255,255,.26);
+      --art-line:rgba(255,255,255,.3)}
 .hero .cover{position:absolute;inset:0;width:100%;height:100%;
              object-fit:cover;opacity:.55}
+.hero .scene{position:absolute;inset:0}
+.hero .scene svg{width:100%;height:100%;display:block}
+.art{margin:1.5rem auto 1rem;max-width:15rem}
+.art svg{width:100%;height:auto;display:block}
 /* The two generated vectors, drawn in CSS rather than shipped as files: a
    storefront must render before anything else has loaded. */
 .hero.diagonale:after{content:"";position:absolute;inset:0;
@@ -303,7 +334,10 @@ a.cta{display:inline-block;margin-top:1.5rem;padding:.85rem 1.5rem;
       background:var(--accent);color:#fff;text-decoration:none;
       border-radius:10px}
 @media(prefers-color-scheme:dark){
-  :root{--ink:#e8efea;--soft:#93a49b;--line:#26312c;--bg:#0d1210}
+  :root{--ink:#e8efea;--soft:#93a49b;--line:#26312c;--bg:#0d1210;
+        --art-ink:#e8efea;--art-muted:#93a49b;--art-wash:#122019;
+        --art-accent:#f0a05c;--art-accent-wash:#2a1a0e;--art-surface:#161b18;
+        --art-line:#26312c}
   .routes a{background:#131a17}
 }
 </style>
@@ -313,6 +347,13 @@ $body
 </body>
 </html>
 ''';
+
+  /// Crops the drawing to the header rather than letterboxing it. The
+  /// default is `meet`, which would leave bands of flat colour above and
+  /// below on any header that is not exactly the artwork's proportions —
+  /// which is every header, since the height comes from the text on it.
+  static String _cover(String svg) =>
+      svg.replaceFirst('<svg ', '<svg preserveAspectRatio="xMidYMid slice" ');
 
   static String _attr(String value) =>
       value.replaceAll('"', '&quot;').replaceAll('<', '&lt;');
