@@ -188,5 +188,22 @@ final class Database {
     );
   }
 
+  /// Can this process reach the database at all.
+  ///
+  /// One round trip and no role, no tenant and no session variables: what a
+  /// readiness probe asks is whether a *connection* can be got and used, and
+  /// wrapping it in the scoped transaction every request uses would make the
+  /// probe fail for reasons a probe cannot act on. False rather than a throw,
+  /// because the caller is a health endpoint and an exception there becomes a
+  /// 500 that says nothing.
+  Future<bool> canReach() async {
+    try {
+      await _pool.execute('SELECT 1');
+      return true;
+    } on Exception {
+      return false;
+    }
+  }
+
   Future<void> close() => _pool.close();
 }

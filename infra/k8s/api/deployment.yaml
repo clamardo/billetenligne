@@ -1,0 +1,86 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bel-api
+  namespace: billetenligne
+  labels:
+    app: bel-api
+spec:
+  replicas: 2
+  # Long enough that a pod which starts, answers one probe and then falls over
+  # does not take the healthy one with it.
+  minReadySeconds: 20
+  selector:
+    matchLabels:
+      app: bel-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      # Never fewer than there were. This is the process that sells seats.
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: bel-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: bel-api
+          image: bel-api
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: bel-api-env
+            - secretRef:
+                name: bel-secrets
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "128Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          # Liveness asks whether the *process* is alive, and nothing more.
+          # `/health` touches no dependency on purpose: a liveness probe that
+          # queried Postgres would restart every pod at once during a database
+          # blip, turning a thirty-second outage into a fleet-wide cold start.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Readiness is the opposite trade. A pod that cannot reach Postgres
+          # cannot serve a search, a sale or a boarding pass, so it comes out
+          # of the load balancer while it cannot — and goes back in the moment
+          # the database does, with nothing restarted.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          # A compiled binary from a scratch image: milliseconds to start, so
+          # a startup probe would be ceremony. Named here so that nobody adds
+          # one wondering why it is missing.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      # Long enough for a payment callback in flight to finish. A rail that
+      # retries a webhook against a pod that vanished mid-write is how a
+      # captured payment ends up with no booking attached to it.
+      terminationGracePeriodSeconds: 60

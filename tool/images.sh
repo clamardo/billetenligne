@@ -52,7 +52,11 @@ docker build -f "$HERE/infra/docker/worker.Dockerfile" -t "$WORKER" "$HERE"
 echo "── the API answers"
 PORT="${BEL_IMAGE_PORT:-8099}"
 CONTAINER="bel-api-smoke-$$"
-docker run -d --rm --name "$CONTAINER" -p "$PORT:8080" "$API" >/dev/null
+# `--read-only` and a non-root uid, because that is how the Deployment runs it
+# (`infra/k8s/api/deployment.yaml`) and a binary that needs a writable root or
+# a passwd entry would fail there and nowhere else.
+docker run -d --rm --name "$CONTAINER" --read-only --user 10001:10001 \
+  -p "$PORT:8080" "$API" >/dev/null
 trap 'docker rm -f "$CONTAINER" >/dev/null 2>&1 || true' EXIT
 
 ok=0
@@ -65,6 +69,17 @@ if [[ "$ok" != 1 ]]; then
   docker logs "$CONTAINER" || true
   exit 1
 fi
+
+# The two probes the Deployment names. A readiness endpoint that is a 404 is
+# a pod that never enters the load balancer, and the manifest would look
+# right.
+for probe in health ready; do
+  code="$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$PORT/$probe")"
+  if [[ "$code" != 200 ]]; then
+    red "── /$probe answered $code"
+    exit 1
+  fi
+done
 
 # The catalog is a directory copied into the image, and a missing one is
 # invisible until somebody renders a page in French. This is that somebody.

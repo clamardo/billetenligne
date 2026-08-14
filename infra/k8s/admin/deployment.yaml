@@ -1,0 +1,68 @@
+---
+# The back office: a Flutter web bundle behind unprivileged nginx.
+#
+# One replica. This is static files and a company's dispatchers, not the
+# public — it does not need two, and the rolling strategy below means an
+# update is still not an outage.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bel-admin
+  namespace: billetenligne
+  labels:
+    app: bel-admin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bel-admin
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: bel-admin
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # The unprivileged nginx image's own user. It listens on 8080 because
+        # a container that has to be root to serve static files is asking for
+        # a privilege it does not need.
+        runAsUser: 101
+      containers:
+        - name: bel-admin
+          image: bel-admin
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "32Mi"
+            limits:
+              cpu: "300m"
+              memory: "128Mi"
+          livenessProbe:
+            httpGet:
+              path: /index.html
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /index.html
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          # nginx writes its temp files under /var/cache and /tmp, so the root
+          # filesystem is not read-only here. Named rather than silently
+          # different from the API's.
+      terminationGracePeriodSeconds: 30

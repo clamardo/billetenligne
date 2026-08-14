@@ -1,0 +1,16 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bel-console
+  namespace: billetenligne
+  labels:
+    app: bel-console
+spec:
+  type: ClusterIP
+  selector:
+    app: bel-console
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

@@ -119,6 +119,15 @@ fi
 echo "── checks"
 
 check "health responds"            "200" "$(status "$BASE/health")"
+# Liveness and readiness are different questions and this suite runs with no
+# database at all, which is the answer to one of them: the fakes composition
+# serves invented departures and has nothing to be unready about.
+check "readiness is a separate endpoint" "200" "$(status "$BASE/ready")"
+check "and it says what it is wired to" "fakes" \
+  "$(curl -s "$BASE/ready" | sed -n 's/.*"data":"\([a-z]*\)".*/\1/p')"
+check "a load balancer is never told about a cached world" "yes" \
+  "$(curl -sD - -o /dev/null "$BASE/ready" | tr -d '\r' \
+     | grep -qi '^cache-control: no-store' && echo yes || echo no)"
 # What this process is actually wired to. Absent, the commonest local failure
 # is invisible: an env file that did not apply leaves the API on the in-memory
 # composition, answering 200 with invented departures and the sign-in code on

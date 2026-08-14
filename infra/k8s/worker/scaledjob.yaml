@@ -1,0 +1,145 @@
+# The worker, on two cadences, as KEDA ScaledJobs with cron triggers.
+#
+# KEDA is a GKE add-on:
+#   gcloud container clusters update <cluster> --location <loc> --enable-keda
+#
+# **Why two, and not one job running everything often.** The passes do not
+# share a cadence. `payments` is the difference between a traveller boarding
+# and a traveller who paid and cannot; `reliability` recomputes on-time rates
+# over every departure a company has ever run. Running the second at the first
+# one's cadence is the nightly work done a hundred and forty times a day, and
+# running the first at the second's is a traveller waiting until morning to
+# find out whether their payment landed.
+#
+# **A pass that does not run is not an outage.** Most of these are tidy-up
+# over a property that already holds elsewhere, so a missed run costs a less
+# tidy database and nothing else. Two are not: `payments`, above, and
+# `departures`, which keeps the far edge of the sales window moving — a night
+# it is skipped is a night nobody can book three weeks out, recoverable by a
+# dispatcher in the console but not invisible.
+#
+# The worker's exit code is what the scheduler reads: non-zero if any pass
+# threw, so a jammed drain shows up as a failed job rather than a quiet gap in
+# delivery. `restartPolicy: Never` with `backoffLimit: 2` — a pass that fails
+# twice is a pass a person needs to look at, not one to retry all night.
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: bel-worker-minutes
+  namespace: billetenligne
+  labels:
+    app: bel-worker
+spec:
+  jobTargetRef:
+    backoffLimit: 2
+    template:
+      metadata:
+        labels:
+          app: bel-worker
+      spec:
+        restartPolicy: Never
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+        containers:
+          - name: worker
+            image: bel-worker
+            command: ["/app/bin/worker"]
+            # Payments first and by a distance; then the drain, the only other
+            # pass a traveller notices; then the sweepers, whose order is
+            # itself the argument — holds before reservations, because an
+            # abandoned checkout must have had its seats released before the
+            # reservation it belongs to is expired.
+            args:
+              - payments
+              - refunds
+              - outbox
+              - holds
+              - changes
+              - alerts
+              - alerts-expired
+              - reservations
+              - calls
+            envFrom:
+              - configMapRef:
+                  name: bel-api-env
+              - secretRef:
+                  name: bel-secrets
+            resources:
+              requests: { cpu: 100m, memory: 128Mi }
+              limits: { cpu: "1", memory: 512Mi }
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 10
+  # One at a time. Two drains alive together would not corrupt anything —
+  # every queue read is `FOR UPDATE SKIP LOCKED` — but two is twice the
+  # connections for no more work done.
+  maxReplicaCount: 1
+  triggers:
+    - type: cron
+      metadata:
+        timezone: Africa/Brazzaville
+        start: "*/5 * * * *"
+        end: "4-59/5 * * * *"
+        desiredReplicas: "1"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: bel-worker-nightly
+  namespace: billetenligne
+  labels:
+    app: bel-worker
+spec:
+  jobTargetRef:
+    backoffLimit: 2
+    template:
+      metadata:
+        labels:
+          app: bel-worker
+      spec:
+        restartPolicy: Never
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+        containers:
+          - name: worker
+            image: bel-worker
+            command: ["/app/bin/worker"]
+            args:
+              - departures
+              - compliance
+              - challenges
+              - onboarding
+              - reliability
+            envFrom:
+              - configMapRef:
+                  name: bel-api-env
+              - secretRef:
+                  name: bel-secrets
+            resources:
+              requests: { cpu: 200m, memory: 256Mi }
+              limits: { cpu: "1", memory: 1Gi }
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 10
+  maxReplicaCount: 1
+  triggers:
+    - type: cron
+      metadata:
+        timezone: Africa/Brazzaville
+        # 02:00, which is after the last coach of the day has departed and
+        # before the first booking of the next one. The horizon extension is
+        # the expensive pass and this is when nobody is waiting on a search.
+        start: "0 2 * * *"
+        end: "45 2 * * *"
+        desiredReplicas: "1"

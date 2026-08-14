@@ -149,6 +149,53 @@ jobs:
       - name: Build both, and prove they start
         run: ./tool/images.sh
 
+  # The manifests. Not a deploy — nothing here reaches a cluster — but a
+  # kustomization that does not render is a deploy that fails at the moment
+  # somebody is trying to ship, and it renders in under a second.
+  manifests:
+    name: Kubernetes manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render
+        run: kubectl kustomize infra/k8s > /dev/null
+      - name: Every image is substituted, none left as the placeholder
+        run: |
+          rendered="$(kubectl kustomize infra/k8s \
+            | sed -e 's#REGISTRY/bel-\([a-z]*\):latest#example/bel-\1:tag#g')"
+          if grep -q 'REGISTRY/' <<<"$rendered"; then
+            echo "an image reference the deploy script would not rewrite:"
+            grep -n 'REGISTRY/' <<<"$rendered"
+            exit 1
+          fi
+      # The worker takes pass names as arguments and the schedules name them
+      # one at a time, so a pass added to the worker and to neither ScaledJob
+      # simply never runs — and nothing anywhere would say so. `alerts-expired`
+      # was exactly that on the day the schedules were first written.
+      - name: Every worker pass is on a schedule
+        run: |
+          passes="$(grep -oE "^    '[a-z-]+':" services/worker/bin/worker.dart \
+                    | tr -d " ':" | sort -u)"
+          scheduled="$(grep -oE '^ +- [a-z-]+$' infra/k8s/worker/scaledjob.yaml \
+                       | sed 's/^ *- //' | sort -u)"
+          missing="$(comm -23 <(echo "$passes") <(echo "$scheduled"))"
+          if [ -n "$missing" ]; then
+            echo "worker passes that no ScaledJob runs:"
+            echo "$missing"
+            exit 1
+          fi
+
+      - name: No secret has a value in it
+        # `secrets.example.yaml` is a template and is not in the
+        # kustomization. This is the check that keeps it a template.
+        run: |
+          if grep -nE '^\s+[A-Z_]+: +.+' infra/k8s/secrets.example.yaml \
+             | grep -v ': *""' | grep -q .; then
+            echo "a value in the secret template:"
+            grep -nE '^\s+[A-Z_]+: +.+' infra/k8s/secrets.example.yaml | grep -v ': *""'
+            exit 1
+          fi
+
   # Budgets from ADR-0009, enforced rather than hoped for. Skipped until the
   # traveller app exists.
   budgets:

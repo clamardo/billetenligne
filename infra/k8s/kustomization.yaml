@@ -1,0 +1,52 @@
+namespace: billetenligne
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+
+  # The API, and the three public addresses that answer from it.
+  - api/deployment.yaml
+  - api/service.yaml
+
+  # The two web apps.
+  - console/deployment.yaml
+  - console/service.yaml
+  - admin/deployment.yaml
+  - admin/service.yaml
+
+  # The passes. Requires the KEDA add-on:
+  #   gcloud container clusters update <cluster> --location <loc> --enable-keda
+  - worker/scaledjob.yaml
+
+  # TLS and the redirect, then the routing that depends on both.
+  - managed-cert.yaml
+  - frontend-config.yaml
+  - ingress.yaml
+
+# Deliberately not here:
+#
+#   secrets.example.yaml   a template with no values in it. A committed Secret
+#                          is a committed secret; base64 is an encoding.
+#   migrate/job.yaml       applied by the deploy script *before* this, and
+#                          separately, because a schema that arrives with the
+#                          pods that read it is a schema that sometimes
+#                          arrives second.
+
+images:
+  - name: bel-api
+    newName: REGISTRY/bel-api
+    newTag: latest
+  - name: bel-worker
+    newName: REGISTRY/bel-worker
+    newTag: latest
+  - name: bel-console
+    newName: REGISTRY/bel-console
+    newTag: latest
+  - name: bel-admin
+    newName: REGISTRY/bel-admin
+    newTag: latest
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: billetenligne
+      managed-by: kustomize

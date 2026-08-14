@@ -736,6 +736,13 @@ final class Services {
     );
   }
 
+  /// Whether this process can reach what it needs to serve a request.
+  ///
+  /// True with no database on purpose: the fakes composition serves invented
+  /// departures and is ready by definition. See `routes/ready.dart` for why
+  /// this is a different question from `/health`.
+  Future<bool> get isReady async => await _database?.canReach() ?? true;
+
   Future<void> close() async => _database?.close();
 
   // ── Identity wiring ───────────────────────────────────────────────────────

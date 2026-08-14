@@ -1,0 +1,15 @@
+# Google-managed TLS for the three hostnames.
+#
+# Provisions itself once each name resolves to the ingress load balancer's IP,
+# and not before — a certificate stuck in `Provisioning` is almost always DNS
+# that has not been pointed yet rather than anything in this file.
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: bel-cert
+  namespace: billetenligne
+spec:
+  domains:
+    - blt.cg
+    - console.blt.cg
+    - admin.blt.cg

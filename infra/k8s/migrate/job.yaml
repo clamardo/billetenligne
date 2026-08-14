@@ -1,0 +1,61 @@
+# The schema, applied before anything reads it.
+#
+#   kubectl -n billetenligne delete job bel-migrate --ignore-not-found
+#   kubectl -n billetenligne apply -f infra/k8s/migrate/job.yaml
+#   kubectl -n billetenligne wait --for=condition=complete job/bel-migrate --timeout=10m
+#
+# **A Job, run by the deploy script, and not a Helm hook or an init container.**
+# An init container would run this once per pod — two replicas means two
+# migration runners racing, and the ledger's primary key would make one of
+# them fail rather than the schema come out wrong, but a deploy that fails
+# half the time is a deploy nobody trusts. A Job runs once and a person can
+# read its log.
+#
+# It connects as `MIGRATE_DATABASE_URL`, which is the **owner** and is
+# deliberately a different secret from `DATABASE_URL`: `bel_api` is NOINHERIT
+# and holds no privileges at all, and a role that could both serve requests
+# and rewrite the schema would make row-level security a comment (ADR-0011).
+#
+# The runner is forward-only and records a file only after it succeeds, so
+# re-running is safe and applies nothing. A database with a schema and no
+# ledger is refused rather than guessed at — set `MIGRATE_BASELINE` to say
+# where it is.
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bel-migrate
+  namespace: billetenligne
+  labels:
+    app: bel-migrate
+spec:
+  backoffLimit: 1
+  # Kept for a day so the log is readable after the deploy that ran it.
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: bel-migrate
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: migrate
+          image: bel-worker
+          command: ["/app/bin/migrate"]
+          env:
+            - name: MIGRATE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: bel-secrets
+                  key: MIGRATE_DATABASE_URL
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

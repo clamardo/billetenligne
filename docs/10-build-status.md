@@ -490,6 +490,87 @@ figure here has been re-measured from a clean tree.
 
 ---
 
+## What the manifests push changed, and what it cost
+
+`infra/k8s/` is fifteen files and a deploy script. What is worth reading is
+the four decisions in them and the two bugs writing them found.
+
+**Three hostnames, not three paths.** `blt.cg` is the API and everything a
+stranger reads — the landing page, a storefront, a shared journey, a boarding
+pass. `console.blt.cg` and `admin.blt.cg` are the two web apps. They are not
+paths under `blt.cg` because `/console` and `/admin` are already API route
+surfaces (ADR-0011): mounting the web apps there would collide with the
+endpoints they call. That forced separate origins, which is why the previous
+slice's CORS work had to exist at all.
+
+**Liveness and readiness are different questions, and `/ready` is new.**
+`/health` touches no dependency on purpose — a liveness probe that queried
+Postgres would restart every pod at once during a database blip, turning a
+thirty-second outage into a fleet-wide cold start. `/ready` takes one round
+trip with no role and no tenant, so a pod that cannot reach the database
+leaves the load balancer while it cannot and returns the moment it can, with
+nothing restarted. It is also the GKE backend health check, because the load
+balancer checks the backend itself rather than trusting the pod's probe.
+
+**Migrations run to completion before anything that reads the schema is
+rolled.** An init container or a Helm hook runs the migration once per
+replica: two runners racing, one losing to the ledger's primary key. That
+fails *safely* and looks like a flaky deploy, which is worse than failing.
+
+**The Secret is not in this repository and `deploy.sh` refuses to roll
+without it.** A committed Secret is a committed secret — base64 is an encoding
+and every tool that shows you a manifest decodes it for you.
+`secrets.example.yaml` names every key and holds no values, and a CI check
+keeps it that way. Without the Secret the API would crash-loop on a missing
+signing seed, which is the correct behaviour and a confusing way to find out.
+
+### The two bugs
+
+**The worker's exit code never worked.** Its doc comment says *the exit code
+is what a scheduler reads: non-zero if any pass threw, so a failing drain is
+visible rather than a quiet gap in delivery.* The file ends `return failed ? 1
+: 0` from a `Future<int> main` — and **Dart ignores a value returned from
+`main`**. The process has exited 0 after every failed pass for the whole life
+of the worker. Nothing noticed because until this week nothing read the exit
+code; a KEDA ScaledJob would have recorded every failed drain as a success and
+the delivery gap would have been found by a traveller. It sets `exitCode` now,
+and the same trap was caught in the migration runner while it was still being
+written.
+
+**One pass was on no schedule.** Splitting the worker into a five-minute set
+and a nightly set means naming fourteen passes across two files, and
+`alerts-expired` was in neither — a pass that would simply never have run,
+with nothing anywhere saying so. It was found by the new refusal to accept a
+pass name that does not exist, which printed the real list. CI now compares
+the worker's own pass map against the ScaledJobs' arguments, so the next one
+added to the worker and to neither schedule fails the build.
+
+### Also, in the same pass
+
+The worker takes **several** pass names rather than one, because the passes do
+not share a cadence and the scheduler is where that has to be said. The order
+remains the worker's own, not the argument list's: the passes are ordered
+against each other on purpose — payments before the drain, holds before
+reservations — and letting a caller reorder them would make the ordering a
+suggestion.
+
+`tool/images.sh` now starts the API image `--read-only` and as a non-root uid,
+because that is how the Deployment runs it, and checks both probes: a
+readiness endpoint that 404s is a pod that never enters the load balancer,
+and the manifest would look right.
+
+**What it cost:** 15 manifests, one deploy script, one route, one method on
+`Database`, 3 smoke checks, 3 CI checks.
+
+**Still not built:** Terraform. The cluster, the Cloud SQL instance, the
+Artifact Registry repository, the static address and the service accounts are
+made by hand today. No autoscaler — two replicas is a guess, and the honest
+way to replace a guess is a load test. No secret manager: the signing seed
+exists in one shell history.
+
+
+---
+
 ## What the CORS push changed, and what it cost
 
 The previous slice named this and did not fix it. This is the fix.

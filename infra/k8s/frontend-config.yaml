@@ -1,0 +1,16 @@
+# Plain HTTP is answered with a redirect at the load balancer, so nothing is
+# ever served in the clear.
+#
+# This matters more here than on a marketing site: `blt.cg/b/{ref}` is a
+# boarding pass and `blt.cg/t/{token}` is somebody's live journey, and both
+# are addresses people type off a poster or paste from WhatsApp — where the
+# scheme is whatever the sender's keyboard produced.
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: bel-frontend
+  namespace: billetenligne
+spec:
+  redirectToHttps:
+    enabled: true
+    responseCodeName: MOVED_PERMANENTLY_DEFAULT

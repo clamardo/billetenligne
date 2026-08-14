@@ -1,0 +1,53 @@
+# Everything the API reads from the environment that is not a secret.
+#
+# The secrets are next door in a Secret this repository does not contain — see
+# `secrets.example.yaml`, which lists every key by name and holds no value.
+#
+# Read `infra/dev/.env.example` for what each of these means. What is here is
+# the deployment's answers, and three of them decide behaviour rather than
+# addresses:
+#
+#   BEL__ENV          production, and the default. A process with no ticket
+#                     signing seed refuses to start unless this says
+#                     development, which no deployment does.
+#   BEL__WEBORIGINS   which browser origins may call this API. Empty means
+#                     none, and the console is a browser.
+#   BEL__SCREENING    absent. The demo screening adapter approves seeded
+#                     companies only, but a variable that reads as harmless is
+#                     a variable somebody sets in the wrong place.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bel-api-env
+  namespace: billetenligne
+data:
+  BEL__ENV: "production"
+  PORT: "8080"
+
+  # Where this deployment answers. `PUBLIC_BASE_URL` is what a payment rail
+  # calls back on and has to be reachable from outside; `BEL__SHAREBASEURL` is
+  # printed on every share link and every ticket link a traveller sends to
+  # whoever is meeting them.
+  PUBLIC_BASE_URL: "https://blt.cg"
+  BEL__SHAREBASEURL: "https://blt.cg"
+
+  # The console and the back office, exactly as a browser sees them. Scheme
+  # and port are part of an origin: the plain-HTTP twin of an HTTPS console is
+  # a different origin and is deliberately not on this list.
+  BEL__WEBORIGINS: "https://console.blt.cg,https://admin.blt.cg"
+
+  # The landing page at `/`. No store listing exists yet, and while these are
+  # blank that page says the app is not published rather than showing a button
+  # that goes nowhere.
+  BEL__PLAYSTOREURL: ""
+  BEL__APPSTOREURL: ""
+  BEL__CONSOLEURL: "https://console.blt.cg"
+
+  # Email works; the phone channel is announced only once a sender number
+  # exists (ADR-0019). `COMMS__SMSFROM` lives in the Secret with the rest of
+  # the Communication Services configuration.
+  COMMS__EMAILFROM: "billets@blt.cg"
+
+  # Which rails this market announces. The file is in the image; naming it
+  # here would mean a rail switch needed a rebuild.
+  BEL_MARKETS_FILE: "/app/config/markets.yaml"

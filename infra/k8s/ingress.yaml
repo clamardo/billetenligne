@@ -1,0 +1,56 @@
+# Three hostnames, one load balancer.
+#
+#   blt.cg           the API, and everything a stranger reads: the landing
+#                    page, an operator's storefront at /o/{code}, a shared
+#                    journey at /t/{token}, a boarding pass at /b/{ref}
+#   console.blt.cg   the operator console
+#   admin.blt.cg     the back office
+#
+# **The console is not a path under blt.cg**, and that is forced rather than
+# chosen: `/console` and `/admin` are already API route surfaces (ADR-0011),
+# so mounting the web apps there would collide with the endpoints they call.
+# Separate hostnames mean the browser treats them as separate origins, which
+# is why `BEL__WEBORIGINS` exists and why the API sends CORS headers at all.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bel-ingress
+  namespace: billetenligne
+  annotations:
+    # Reserved by terraform (`google_compute_global_address`), so the address
+    # on the posters survives this ingress being deleted and recreated.
+    kubernetes.io/ingress.global-static-ip-name: "bel-static-ip"
+    networking.gke.io/managed-certificates: "bel-cert"
+    networking.gke.io/v1beta1.FrontendConfig: "bel-frontend"
+spec:
+  rules:
+    - host: blt.cg
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: bel-api
+                port:
+                  number: 8080
+    - host: console.blt.cg
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: bel-console
+                port:
+                  number: 8080
+    - host: admin.blt.cg
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: bel-admin
+                port:
+                  number: 8080

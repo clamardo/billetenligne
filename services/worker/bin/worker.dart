@@ -35,12 +35,32 @@ import 'package:bel_worker/src/timetable_horizon.dart';
 /// console, which is how it worked before this pass existed, but not
 /// invisible.
 ///
-///   dart run bin/worker.dart              # every pass
-///   dart run bin/worker.dart outbox       # just the drain
+///   dart run bin/worker.dart                    # every pass
+///   dart run bin/worker.dart outbox             # just the drain
+///   dart run bin/worker.dart payments outbox    # two of them, in file order
+///
+/// **Several names rather than one**, because the passes do not share a
+/// cadence and the scheduler is where that has to be said. `payments` is the
+/// difference between a traveller boarding and a traveller who paid and
+/// cannot, and wants to run every few minutes; `reliability` recomputes
+/// on-time rates over every departure a company has run and wants to run
+/// once, at night. With one name per invocation the only deployable shape was
+/// *everything, often*, which is the nightly work done ninety-six times a day.
+///
+/// The order is this file's, not the argument list's: the passes are ordered
+/// against each other on purpose — payments before the drain, holds before
+/// reservations — and letting a caller reorder them would make the ordering a
+/// suggestion.
 ///
 /// The exit code is what a scheduler reads: non-zero if any pass threw, so a
 /// failing drain is visible rather than a quiet gap in delivery.
-Future<int> main(List<String> args) async {
+///
+/// **Set on `exitCode`, not returned.** Dart ignores a value returned from
+/// `main` — this file returned 1 from a failed run for its whole life and the
+/// process exited 0 every time, which nothing noticed until there was a
+/// scheduler reading it. A KEDA ScaledJob would have recorded every failed
+/// pass as a success.
+Future<void> main(List<String> args) async {
   // The same gap-filling the API does, for the same reason: the worker is
   // started by a shell script, a launch configuration and a cron trigger, and
   // exactly one of those is guaranteed to have sourced the env file.
@@ -51,10 +71,11 @@ Future<int> main(List<String> args) async {
       'DATABASE_URL is unset. The worker has nothing to sweep and no queue '
       'to drain; the fakes composition serves the API only.',
     );
-    return 2;
+    exitCode = 2;
+    return;
   }
 
-  final only = args.isEmpty ? null : args.first;
+  final only = args.isEmpty ? null : args.toSet();
   final db = Database.open(url);
 
   // Blank connection string is a supported state (ADR-0019): messages go to
@@ -179,8 +200,22 @@ Future<int> main(List<String> args) async {
 
   var failed = false;
 
+  // A name nobody has is a typo in a cron trigger, and the failure it would
+  // otherwise produce is a job that succeeds having done nothing at all.
+  final unknown = only?.difference(passes.keys.toSet()) ?? const <String>{};
+  if (unknown.isNotEmpty) {
+    stderr.writeln(
+      'no such pass: ${unknown.join(', ')}. '
+      'The passes are: ${passes.keys.join(', ')}.',
+    );
+    await db.close();
+    await services.close();
+    exitCode = 2;
+    return;
+  }
+
   for (final entry in passes.entries) {
-    if (only != null && only != entry.key) continue;
+    if (only != null && !only.contains(entry.key)) continue;
     try {
       final result = await entry.value();
       stdout.writeln('   ${result.name}: ${result.affected}');
@@ -194,5 +229,5 @@ Future<int> main(List<String> args) async {
 
   await db.close();
   await services.close();
-  return failed ? 1 : 0;
+  exitCode = failed ? 1 : 0;
 }
