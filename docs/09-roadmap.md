@@ -193,6 +193,14 @@ The *payment path* is built end to end and waiting on a telco. The phase is not:
 
 Each is a deliberate decision with a gate, not an assumption.
 
+**Architecturally unblocked by [ADR-0031](adr/0031-markets-are-context.md) and [`16-markets.md`](16-markets.md), commercially unchanged.** The multi-country model has been in the schema since migration `0001` and is inert: `market_code` sits on `operators`, `cities` and `user_accounts`, is written on every insert, and is **read exactly once in the whole tree** — to print it on an admin screen. The city picker has no market clause at all, so seeding a second country today would silently mix Libreville into a Brazzaville traveller's origin list.
+
+The decision: **a market is context, not a partition.** It scopes the city catalogue, the traveller's presentation and the operator's licence. It does **not** partition inventory — departures are found by city pair, so a Brazzaville→Libreville coach works with no special case, and `departures` has no market column precisely so that nobody can add the filter that would break it.
+
+The regional case is better than it looks: Gabon, Cameroon, Chad, the CAR and Equatorial Guinea are CEMAC with Congo, **all six on XAF and all six UTC+1 with no daylight saving** — so no FX, no multi-currency payouts, and one answer to the local-day question the entire search rests on. The irony is that the second market this codebase already rehearses in test code is the DRC, which is CDF and therefore the hardest neighbour, not the easiest.
+
+Slices M1–M6 are engineering, cheap now and much dearer once two markets hold production data. **M7 — a second market actually existing — is a business decision wearing a slice's clothes**, and the gates in the table below are unchanged by any of it.
+
 | Bet | Why | Gate |
 |---|---|---|
 | **Colis / parcels** | Already an informal business on the same coaches, high margin | The anchor operator asks for it |

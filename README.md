@@ -116,6 +116,7 @@ Full reasoning: **[`docs/adr/`](docs/adr/)** — 26 records, each with the alter
 | [`13-stays.md`](docs/13-stays.md) | **Stays** — room types on per-night allotments, rate plans, pay-at-property, the ARI mapping. Specified, not built |
 | [`14-reviews.md`](docs/14-reviews.md) | **Reviews** — one per completed booking, a shrunk mean, and what is never done for money. Specified, not built |
 | [`15-platform-split.md`](docs/15-platform-split.md) | **The platform split** — the blocking refactor under the three new verticals, with the file-by-file inventory and the script that produced it |
+| [`16-markets.md`](docs/16-markets.md) | **Markets** — making a country column that three tables carry and one screen reads actually filter something |
 
 ---
 
