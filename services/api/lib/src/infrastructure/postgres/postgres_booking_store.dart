@@ -731,6 +731,7 @@ final class PostgresBookingStore implements BookingStore {
                COALESCE(bp.city, r.origin_city) AS origin_city,
                COALESCE(ap.city, r.destination_city) AS destination_city,
                o.code AS operator_code, o.legal_name AS operator_name,
+               o.accent_hue,
                os.id AS origin_station_id, os.name AS origin_station,
                os.boarding_notes AS origin_notes,
                ds.id AS destination_station_id,
@@ -763,6 +764,7 @@ final class PostgresBookingStore implements BookingStore {
     return TripSummary(
       operatorName: row['operator_name'] as String,
       operatorCode: row['operator_code'] as String,
+      operatorAccentHue: row['accent_hue'] as String?,
       originCity: row['origin_city'] as String,
       destinationCity: row['destination_city'] as String,
       departsAt: row['departs_at'] as DateTime,

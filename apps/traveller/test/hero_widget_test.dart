@@ -22,9 +22,7 @@ void main() {
         home: child,
       ),
     );
-    return mode == null
-        ? screen
-        : KiloModeScope(notifier: mode, child: screen);
+    return mode == null ? screen : KiloModeScope(notifier: mode, child: screen);
   }
 
   const cities = [
@@ -45,10 +43,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(KScene), findsOneWidget);
-    expect(
-      tester.widget<KScene>(find.byType(KScene)).scene,
-      KSceneArt.journey,
-    );
+    expect(tester.widget<KScene>(find.byType(KScene)).scene, KSceneArt.journey);
     // The headline moved onto the artwork; it must still be there.
     expect(find.text('Où allez-vous ?'), findsOneWidget);
   });

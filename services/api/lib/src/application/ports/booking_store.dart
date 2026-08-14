@@ -164,10 +164,18 @@ final class TripSummary {
     required this.routeCode,
     this.originStation,
     this.destinationStation,
+    this.operatorAccentHue,
   });
 
   final String operatorName;
   final String operatorCode;
+
+  /// The operator's chosen hue by name, from the closed set on
+  /// `operators.accent_hue`. Carried so the ticket can be drawn in the
+  /// company's colour: a passenger holds the ticket up to a conductor who
+  /// knows their own livery at a glance, and every ticket in the house green
+  /// throws that recognition away.
+  final String? operatorAccentHue;
   final String originCity;
   final String destinationCity;
   final DateTime departsAt;

@@ -256,7 +256,8 @@ Future<Response> onRequest(RequestContext context) async {
   final out = <LayoutFeature>[];
   for (var i = 0; i < raw.length; i++) {
     final f = raw[i];
-    if (f is! Map) return (value: const [], invalid: true, field: 'features[$i]');
+    if (f is! Map)
+      return (value: const [], invalid: true, field: 'features[$i]');
 
     final type = LayoutFeatureType.values
         .where((t) => t.name == f['type'])

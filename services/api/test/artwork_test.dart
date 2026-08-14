@@ -34,12 +34,12 @@ void main() {
 
       final onDisk = {
         for (final dir in ['illustrations', 'scenes'])
-          for (final file in Directory('$assets/$dir')
-              .listSync()
-              .whereType<File>()
-              .where((f) => f.path.endsWith('.svg')))
-            file.uri.pathSegments.last.replaceAll('.svg', ''):
-                minify(file.readAsStringSync()),
+          for (final file in Directory(
+            '$assets/$dir',
+          ).listSync().whereType<File>().where((f) => f.path.endsWith('.svg')))
+            file.uri.pathSegments.last.replaceAll('.svg', ''): minify(
+              file.readAsStringSync(),
+            ),
       };
 
       // Named individually rather than reflected over, so adding a drawing

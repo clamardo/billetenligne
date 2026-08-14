@@ -169,6 +169,7 @@ BookingDto _toDto(BookingRecord record) => BookingDto(
   state: record.state,
   departureId: record.departureId,
   operatorName: record.trip.operatorName,
+  operatorAccentHue: record.trip.operatorAccentHue,
   originCity: record.trip.originCity,
   destinationCity: record.trip.destinationCity,
   originStation: _station(record.trip.originStation),

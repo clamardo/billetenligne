@@ -123,20 +123,21 @@ void main() {
       final port = closed.port;
       await closed.close();
 
-      final failure = await SmtpNotificationGateway(
-        host: '127.0.0.1',
-        port: port,
-        emailFrom: 'no-reply@billetenligne.local',
-        fallback: log,
-        timeout: const Duration(milliseconds: 300),
-      ).send(
-        const OutboundMessage(
-          channel: SignInChannel.email,
-          to: 'a@b.cg',
-          subject: 's',
-          body: 'the code is 424242',
-        ),
-      );
+      final failure =
+          await SmtpNotificationGateway(
+            host: '127.0.0.1',
+            port: port,
+            emailFrom: 'no-reply@billetenligne.local',
+            fallback: log,
+            timeout: const Duration(milliseconds: 300),
+          ).send(
+            const OutboundMessage(
+              channel: SignInChannel.email,
+              to: 'a@b.cg',
+              subject: 's',
+              body: 'the code is 424242',
+            ),
+          );
 
       // A stopped container is a fact about this laptop, not about the
       // address. The developer still gets their code.
@@ -144,24 +145,26 @@ void main() {
       expect(log.sent.single.body, contains('424242'));
     });
 
-    test('a server that refuses the recipient falls back rather than lies',
-        () async {
-      final log = _Recording();
-      final rude = await _FakeSmtp.start(rejectRecipient: true);
-      addTearDown(rude.close);
+    test(
+      'a server that refuses the recipient falls back rather than lies',
+      () async {
+        final log = _Recording();
+        final rude = await _FakeSmtp.start(rejectRecipient: true);
+        addTearDown(rude.close);
 
-      final failure = await gatewayTo(rude, fallback: log).send(
-        const OutboundMessage(
-          channel: SignInChannel.email,
-          to: 'nobody@nowhere',
-          subject: 's',
-          body: 'b',
-        ),
-      );
+        final failure = await gatewayTo(rude, fallback: log).send(
+          const OutboundMessage(
+            channel: SignInChannel.email,
+            to: 'nobody@nowhere',
+            subject: 's',
+            body: 'b',
+          ),
+        );
 
-      expect(failure, isNull);
-      expect(log.sent, hasLength(1));
-    });
+        expect(failure, isNull);
+        expect(log.sent, hasLength(1));
+      },
+    );
   });
 
   group('choosing it at all', () {
@@ -227,7 +230,8 @@ final class _FakeSmtp {
   var connections = 0;
 
   int get port => _socket.port;
-  Future<_Mail> get received => _mail.future.timeout(const Duration(seconds: 5));
+  Future<_Mail> get received =>
+      _mail.future.timeout(const Duration(seconds: 5));
 
   void _handle(Socket client) {
     connections++;
@@ -241,45 +245,51 @@ final class _FakeSmtp {
     // Buffered because a DATA payload arrives in packets that do not line up
     // with lines — the bug this fake exists to be able to catch.
     var buffer = '';
-    client.listen((bytes) {
-      buffer += utf8.decode(bytes);
-      while (buffer.contains('\r\n')) {
-        final i = buffer.indexOf('\r\n');
-        final line = buffer.substring(0, i);
-        buffer = buffer.substring(i + 2);
+    client.listen(
+      (bytes) {
+        buffer += utf8.decode(bytes);
+        while (buffer.contains('\r\n')) {
+          final i = buffer.indexOf('\r\n');
+          final line = buffer.substring(0, i);
+          buffer = buffer.substring(i + 2);
 
-        if (inData) {
-          if (line == '.') {
-            inData = false;
-            client.write('250 queued\r\n');
-            if (!_mail.isCompleted) {
-              _mail.complete(_Mail(from: from, to: to, raw: data.toString()));
+          if (inData) {
+            if (line == '.') {
+              inData = false;
+              client.write('250 queued\r\n');
+              if (!_mail.isCompleted) {
+                _mail.complete(_Mail(from: from, to: to, raw: data.toString()));
+              }
+              continue;
             }
+            data.writeln(line.replaceAll('\r', ''));
             continue;
           }
-          data.writeln(line.replaceAll('\r', ''));
-          continue;
-        }
 
-        if (line.startsWith('EHLO')) {
-          // Multi-line, on purpose: a reader that took the first line as the
-          // reply would break here and nowhere else.
-          client.write('250-fake\r\n250 SIZE 10485760\r\n');
-        } else if (line.startsWith('MAIL FROM:')) {
-          from = _address(line);
-          client.write('250 ok\r\n');
-        } else if (line.startsWith('RCPT TO:')) {
-          to = _address(line);
-          client.write(rejectRecipient ? '550 no such user\r\n' : '250 ok\r\n');
-        } else if (line == 'DATA') {
-          inData = true;
-          client.write('354 go ahead\r\n');
-        } else if (line == 'QUIT') {
-          client.write('221 bye\r\n');
-          client.destroy();
+          if (line.startsWith('EHLO')) {
+            // Multi-line, on purpose: a reader that took the first line as the
+            // reply would break here and nowhere else.
+            client.write('250-fake\r\n250 SIZE 10485760\r\n');
+          } else if (line.startsWith('MAIL FROM:')) {
+            from = _address(line);
+            client.write('250 ok\r\n');
+          } else if (line.startsWith('RCPT TO:')) {
+            to = _address(line);
+            client.write(
+              rejectRecipient ? '550 no such user\r\n' : '250 ok\r\n',
+            );
+          } else if (line == 'DATA') {
+            inData = true;
+            client.write('354 go ahead\r\n');
+          } else if (line == 'QUIT') {
+            client.write('221 bye\r\n');
+            client.destroy();
+          }
         }
-      }
-    }, onError: (_) {}, cancelOnError: true);
+      },
+      onError: (_) {},
+      cancelOnError: true,
+    );
   }
 
   static String _address(String line) {
@@ -311,9 +321,7 @@ final class _Mail {
   String get subjectDecoded {
     final value = header('Subject') ?? '';
     if (!value.startsWith('=?UTF-8?B?')) return value;
-    return utf8.decode(
-      base64.decode(value.substring(10, value.length - 2)),
-    );
+    return utf8.decode(base64.decode(value.substring(10, value.length - 2)));
   }
 
   /// The first `text/plain` part, decoded.

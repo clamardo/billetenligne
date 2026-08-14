@@ -82,28 +82,27 @@ abstract final class StorefrontPage {
       ..writeln('<meta name="robots" content="index,follow">')
       ..writeln('<meta property="og:type" content="website">')
       ..writeln('<meta property="og:title" content="${_attr(title)}">')
-      ..writeln('<meta property="og:description" content="'
-          '${_attr(tagline)}">');
+      ..writeln(
+        '<meta property="og:description" content="'
+        '${_attr(tagline)}">',
+      );
 
     // The cover if there is one, the logo if there is not. A card with no
     // image is a card people scroll past, and the logo at least carries the
     // company's colours.
     final social = v.coverUrl ?? v.logoUrl;
     if (social != null) {
-      head.writeln('<meta property="og:image" content="'
-          '${_attr(_absolute(social, origin))}">');
+      head.writeln(
+        '<meta property="og:image" content="'
+        '${_attr(_absolute(social, origin))}">',
+      );
     }
 
     return _document(
       language: language,
       accent: accent,
       head: head.toString(),
-      body: _body(
-        storefront: storefront,
-        t: t,
-        name: name,
-        tagline: tagline,
-      ),
+      body: _body(storefront: storefront, t: t, name: name, tagline: tagline),
     );
   }
 
@@ -119,9 +118,11 @@ abstract final class StorefrontPage {
     return _document(
       language: language,
       accent: _hues['foret']!,
-      head: '<title>${_text(t('storefront.unknown'))}</title>\n'
+      head:
+          '<title>${_text(t('storefront.unknown'))}</title>\n'
           '<meta name="robots" content="noindex,nofollow">',
-      body: '''
+      body:
+          '''
   <main class="narrow">
     <div class="art" aria-hidden="true">${Artwork.css(Artwork.searchEmpty)}</div>
     <h1>${_text(t('storefront.unknown'))}</h1>
@@ -142,8 +143,10 @@ abstract final class StorefrontPage {
 
     buffer.writeln('  <header class="hero ${_attr(v.headerPattern)}">');
     if (v.coverUrl != null) {
-      buffer.writeln('    <img class="cover" src="${_attr(v.coverUrl!)}" '
-          'alt="" aria-hidden="true">');
+      buffer.writeln(
+        '    <img class="cover" src="${_attr(v.coverUrl!)}" '
+        'alt="" aria-hidden="true">',
+      );
     } else {
       // No photograph, so the header used to be a rectangle of flat colour
       // with a pattern over it. The drawing is inlined rather than linked:
@@ -153,19 +156,25 @@ abstract final class StorefrontPage {
       //
       // It renders as a silhouette because `.hero` overrides `--art-brand` —
       // the company's own colour is already the background here.
-      buffer.writeln('    <div class="scene" aria-hidden="true">'
-          '${_cover(Artwork.css(Artwork.journey))}</div>');
+      buffer.writeln(
+        '    <div class="scene" aria-hidden="true">'
+        '${_cover(Artwork.css(Artwork.journey))}</div>',
+      );
     }
     buffer.writeln('    <div class="heroInner">');
     if (v.logoUrl != null) {
-      buffer.writeln('      <img class="logo" src="${_attr(v.logoUrl!)}" '
-          'alt="${_attr(name)}">');
+      buffer.writeln(
+        '      <img class="logo" src="${_attr(v.logoUrl!)}" '
+        'alt="${_attr(name)}">',
+      );
     } else {
       // The console promises this in as many words — *aucune vitrine ne reste
       // vide* — so the fallback is the same monogram `KMonogram` draws, not a
       // grey square.
-      buffer.writeln('      <div class="logo mono">${_text(_initials(name))}'
-          '</div>');
+      buffer.writeln(
+        '      <div class="logo mono">${_text(_initials(name))}'
+        '</div>',
+      );
     }
     buffer
       ..writeln('      <h1>${_text(name)}</h1>')
@@ -176,8 +185,10 @@ abstract final class StorefrontPage {
 
     if (storefront.routes.isEmpty) {
       buffer
-        ..writeln('    <div class="art" aria-hidden="true">'
-            '${Artwork.css(Artwork.noTrips)}</div>')
+        ..writeln(
+          '    <div class="art" aria-hidden="true">'
+          '${Artwork.css(Artwork.noTrips)}</div>',
+        )
         ..writeln('    <p class="sub">${_text(t('storefront.empty'))}</p>');
     } else {
       buffer.writeln('    <h2>${_text(t('storefront.routes'))}</h2>');
@@ -189,8 +200,10 @@ abstract final class StorefrontPage {
     }
 
     buffer
-      ..writeln('    <p class="foot">'
-          '${_text(t('storefront.operated', {'operator': name}))}</p>')
+      ..writeln(
+        '    <p class="foot">'
+        '${_text(t('storefront.operated', {'operator': name}))}</p>',
+      )
       ..writeln('  </main>');
     return buffer.toString();
   }
@@ -214,7 +227,8 @@ abstract final class StorefrontPage {
     // shipped, for the same reason — the address is the decision, and it is
     // the one that has to be right on a poster printed before the page
     // exists.
-    final href = '/?from=${Uri.encodeQueryComponent(route.originCity)}'
+    final href =
+        '/?from=${Uri.encodeQueryComponent(route.originCity)}'
         '&to=${Uri.encodeQueryComponent(route.destinationCity)}';
 
     return '''

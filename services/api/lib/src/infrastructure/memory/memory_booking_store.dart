@@ -209,6 +209,7 @@ final class MemoryBookingStore implements BookingStore {
   TripSummary _demoTrip(String departureId) => TripSummary(
     operatorName: 'Ocean du Nord',
     operatorCode: 'ODN',
+    operatorAccentHue: 'ocean',
     originCity: 'BZV',
     destinationCity: 'PNR',
     departsAt: _clock.now().add(const Duration(days: 1)),

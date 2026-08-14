@@ -36,9 +36,7 @@ void main() {
       await tester.pumpWidget(
         host(const KTicketHeader(origin: 'A', destination: 'B')),
       );
-      var box = tester.widget<DecoratedBox>(
-        find.byType(DecoratedBox).first,
-      );
+      var box = tester.widget<DecoratedBox>(find.byType(DecoratedBox).first);
       expect(
         (box.decoration as BoxDecoration).color,
         KiloColors.light.brandPrimary,
@@ -54,10 +52,7 @@ void main() {
         ),
       );
       box = tester.widget<DecoratedBox>(find.byType(DecoratedBox).first);
-      expect(
-        (box.decoration as BoxDecoration).color,
-        const Color(0xFF6B2D5C),
-      );
+      expect((box.decoration as BoxDecoration).color, const Color(0xFF6B2D5C));
     });
 
     testWidgets('the motif is woven into it', (tester) async {
@@ -112,10 +107,7 @@ void main() {
         host(const KStat(value: '15 000', label: 'Recette')),
       );
       final style = tester.widget<Text>(find.text('15 000')).style!;
-      expect(
-        style.fontFeatures,
-        contains(const FontFeature.tabularFigures()),
-      );
+      expect(style.fontFeatures, contains(const FontFeature.tabularFigures()));
       expect(style.fontSize, greaterThan(24));
     });
 

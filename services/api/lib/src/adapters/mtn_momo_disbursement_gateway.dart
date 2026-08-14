@@ -60,10 +60,7 @@ final class MtnMomoDisbursementGateway implements DisbursementGateway {
           'amount': MtnMomoGateway.amountFor(request.amount),
           'currency': request.amount.currency.code,
           'externalId': request.reference,
-          'payee': {
-            'partyIdType': 'MSISDN',
-            'partyId': request.payeeMsisdn,
-          },
+          'payee': {'partyIdType': 'MSISDN', 'partyId': request.payeeMsisdn},
           'payerMessage': request.description,
           'payeeNote': request.description,
         },

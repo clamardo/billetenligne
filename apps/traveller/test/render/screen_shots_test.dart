@@ -148,6 +148,7 @@ BookingDto _booking() {
     state: 'confirmed',
     departureId: 'dep-shot',
     operatorName: 'Ocean du Nord',
+    operatorAccentHue: 'indigo',
     originCity: 'Brazzaville',
     destinationCity: 'Pointe-Noire',
     departsAt: departsAt,

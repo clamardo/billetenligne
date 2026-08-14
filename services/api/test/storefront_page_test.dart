@@ -179,10 +179,12 @@ void main() {
       expect(html, contains('14/08 06:00'));
     });
 
-    test('a line with nothing scheduled says so rather than showing a blank',
-        () {
-      expect(_render(), contains('Aucun départ programmé'));
-    });
+    test(
+      'a line with nothing scheduled says so rather than showing a blank',
+      () {
+        expect(_render(), contains('Aucun départ programmé'));
+      },
+    );
 
     test('a company with no timetable is still a storefront', () {
       // They have chosen a colour and uploaded a logo; the page they put on a
@@ -198,8 +200,10 @@ void main() {
       // BilletEnLigne is the company, or that the company took the payment.
       expect(
         _render(),
-        contains('Départs assurés par Alizés. '
-            'Réservation et paiement par BilletEnLigne.'),
+        contains(
+          'Départs assurés par Alizés. '
+          'Réservation et paiement par BilletEnLigne.',
+        ),
       );
     });
   });
@@ -239,9 +243,7 @@ void main() {
     test('a company with no cover photograph gets the drawing instead', () {
       // The header used to be a rectangle of flat colour. A shop window that
       // is a coloured band is a shop window nobody photographs for a poster.
-      final html = _render(
-        vitrine: _vitrine(),
-      );
+      final html = _render(vitrine: _vitrine());
       expect(html, contains('class="scene"'));
       expect(html, contains('<svg'));
       // Cropped rather than letterboxed: the header's height comes from the
@@ -258,10 +260,7 @@ void main() {
     });
 
     test('nothing on sale, and a company with nothing to say, both draw', () {
-      final empty = _render(
-        vitrine: _vitrine(),
-        routes: const [],
-      );
+      final empty = _render(vitrine: _vitrine(), routes: const []);
       expect(empty, contains('class="art"'));
 
       final missing = StorefrontPage.notFound(catalog: _catalog);
@@ -271,17 +270,13 @@ void main() {
     test('no sentinel colour reaches a reader', () {
       // A sentinel that survives substitution is bright magenta across a
       // company's shop window.
-      final html = _render(
-        vitrine: _vitrine(),
-      );
+      final html = _render(vitrine: _vitrine());
       expect(html, isNot(contains('#FF00E')));
       expect(html, contains('--art-ink'));
     });
 
     test('the drawing follows the dark theme and the operator accent', () {
-      final html = _render(
-        vitrine: _vitrine(accentHue: 'prune'),
-      );
+      final html = _render(vitrine: _vitrine(accentHue: 'prune'));
       // One embedded drawing, wired to the page rather than to a palette:
       // the media query moves it, and so does the company's colour.
       expect(html, contains('var(--art-brand,var(--accent))'));
@@ -290,9 +285,7 @@ void main() {
     });
 
     test('the page still carries no request it does not need', () {
-      final html = _render(
-        vitrine: _vitrine(),
-      );
+      final html = _render(vitrine: _vitrine());
       expect(html, isNot(contains('<script')));
       expect(html, isNot(contains('<link rel="stylesheet"')));
     });

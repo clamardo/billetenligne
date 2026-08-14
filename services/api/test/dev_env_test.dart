@@ -63,8 +63,9 @@ GOOD=1
     setUp(() {
       root = Directory.systemTemp.createTempSync('devenv');
       Directory('${root.path}/infra/dev').createSync(recursive: true);
-      File('${root.path}/infra/dev/.env')
-          .writeAsStringSync('DATABASE_URL=postgres://from-file\nSMTP__HOST=localhost\n');
+      File('${root.path}/infra/dev/.env').writeAsStringSync(
+        'DATABASE_URL=postgres://from-file\nSMTP__HOST=localhost\n',
+      );
     });
 
     tearDown(() => root.deleteSync(recursive: true));
@@ -101,19 +102,25 @@ GOOD=1
       expect(DevEnv.fill(const {}, from: bare, announce: (_) {}), isEmpty);
     });
 
-    test('it says so, because a value arriving from a file is worth knowing',
-        () {
-      final said = <String>[];
-      DevEnv.fill(const {}, from: root, announce: said.add);
-      expect(said.single, contains('infra/dev/.env'));
-    });
+    test(
+      'it says so, because a value arriving from a file is worth knowing',
+      () {
+        final said = <String>[];
+        DevEnv.fill(const {}, from: root, announce: said.add);
+        expect(said.single, contains('infra/dev/.env'));
+      },
+    );
 
     test('`none` turns it off, and something depends on that', () {
       // `tool/smoke_api.sh` exercises the fakes composition on purpose, in a
       // working tree that has a real `.env` next to it. Without the off
       // switch this helper quietly gave that suite a database.
       expect(
-        DevEnv.fill(const {'BEL_ENV_FILE': 'none'}, from: root, announce: (_) {}),
+        DevEnv.fill(
+          const {'BEL_ENV_FILE': 'none'},
+          from: root,
+          announce: (_) {},
+        ),
         const {'BEL_ENV_FILE': 'none'},
       );
     });

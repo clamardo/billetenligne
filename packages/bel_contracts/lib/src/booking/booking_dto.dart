@@ -168,6 +168,7 @@ final class BookingDto {
     this.paymentDeadline,
     this.originStation,
     this.destinationStation,
+    this.operatorAccentHue,
   });
 
   final String id;
@@ -178,6 +179,11 @@ final class BookingDto {
   final String state;
   final String departureId;
   final String operatorName;
+
+  /// One of the eight curated hues, by name, or null. Null is the ordinary
+  /// case for an operator who has never opened the vitrine, and the ticket
+  /// draws in the house colour rather than guessing one.
+  final String? operatorAccentHue;
   final String originCity;
   final String destinationCity;
 
@@ -238,6 +244,7 @@ final class BookingDto {
     'state': state,
     'departureId': departureId,
     'operatorName': operatorName,
+    'operatorAccentHue': operatorAccentHue,
     'originCity': originCity,
     'destinationCity': destinationCity,
     'departsAt': Wire.instant(departsAt),
@@ -265,6 +272,7 @@ final class BookingDto {
     state: Wire.requireString(json['state'], 'state'),
     departureId: Wire.requireString(json['departureId'], 'departureId'),
     operatorName: Wire.requireString(json['operatorName'], 'operatorName'),
+    operatorAccentHue: json['operatorAccentHue'] as String?,
     originCity: Wire.requireString(json['originCity'], 'originCity'),
     destinationCity: Wire.requireString(
       json['destinationCity'],

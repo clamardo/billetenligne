@@ -352,6 +352,7 @@ final class DemoTravelGateway implements TravelGateway {
       state: 'pending_payment',
       departureId: hold.departureId,
       operatorName: departure.operatorName,
+      operatorAccentHue: departure.operatorAccentHue,
       originCity: departure.originCity,
       destinationCity: departure.destinationCity,
       departsAt: departure.departsAt,
@@ -423,6 +424,7 @@ final class DemoTravelGateway implements TravelGateway {
         state: 'confirmed',
         departureId: 'dep-demo-rescue',
         operatorName: 'Ocean du Nord',
+        operatorAccentHue: 'foret',
         // Codes, not names: `routes.origin_city` references `cities(code)`,
         // so this is what the server actually sends — and it is what a
         // "refaire ce trajet" search has to be built from.
@@ -538,6 +540,7 @@ final class DemoTravelGateway implements TravelGateway {
         state: 'confirmed',
         departureId: 'dep-demo-past',
         operatorName: 'Ocean du Nord',
+        operatorAccentHue: 'foret',
         originCity: 'PNR',
         destinationCity: 'BZV',
         departsAt: departed,
@@ -649,6 +652,7 @@ final class DemoTravelGateway implements TravelGateway {
     state: 'confirmed',
     departureId: booking.departureId,
     operatorName: booking.operatorName,
+    operatorAccentHue: booking.operatorAccentHue,
     originCity: booking.originCity,
     destinationCity: booking.destinationCity,
     departsAt: booking.departsAt,

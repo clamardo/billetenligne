@@ -188,10 +188,16 @@ enum AccentHue {
   /// to parse is a storefront that should still render — the row came from a
   /// database column with a CHECK constraint, and if it ever disagrees with
   /// this enum the honest failure is a green header, not a blank screen.
-  static AccentHue byName(String? raw) {
+  static AccentHue byName(String? raw) => tryByName(raw) ?? foret;
+
+  /// Null when the name is absent or unknown, for the callers that would
+  /// rather use the running theme's own brand colour than a fixed green: in
+  /// dark mode `foret` is not the green the rest of the screen is drawn in.
+  static AccentHue? tryByName(String? raw) {
+    if (raw == null) return null;
     for (final hue in values) {
       if (hue.name == raw) return hue;
     }
-    return foret;
+    return null;
   }
 }

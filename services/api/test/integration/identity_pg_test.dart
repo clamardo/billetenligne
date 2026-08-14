@@ -137,8 +137,10 @@ void main() {
       // Not an error and not a scope: a suspension is a decision about the
       // company, and the person holding the token learns nothing about it
       // here beyond having no console to open.
-      expect((await directory.byAuthUid(signedIn.account.authUid!))!.staff,
-          isNull);
+      expect(
+        (await directory.byAuthUid(signedIn.account.authUid!))!.staff,
+        isNull,
+      );
     });
   });
 

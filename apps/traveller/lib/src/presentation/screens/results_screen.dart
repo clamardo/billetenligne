@@ -121,7 +121,7 @@ final class ResultsScreen extends StatelessWidget {
                 // Under a fifth of the coach left. True scarcity, computed
                 // from the same number that is shown.
                 scarce: !d.isSoldOut && d.seatsAvailable <= d.capacity ~/ 5,
-                accentColor: _accent(context, d.operatorAccentHue),
+                accentColor: AccentHue.tryByName(d.operatorAccentHue)?.color,
                 amenities: _amenityIcons(d.amenities),
                 // Only when the server has a figure. It sends none until the
                 // operator has run enough coaches for one to mean something,
@@ -262,17 +262,6 @@ final class ResultsScreen extends StatelessWidget {
   Widget _refreshable(Widget child) => onRefresh == null
       ? child
       : RefreshIndicator(onRefresh: onRefresh!, child: child);
-
-  /// The operator's accent, from the closed set of eight. An unknown value
-  /// falls back to the brand rather than throwing: an operator vitrine edited
-  /// by a future console must never be able to crash a traveller's search.
-  static Color? _accent(BuildContext context, String? hue) {
-    if (hue == null) return null;
-    for (final accent in AccentHue.values) {
-      if (accent.name == hue) return accent.color;
-    }
-    return null;
-  }
 
   /// The yard's name, but only when this list actually offers a choice of
   /// yards.

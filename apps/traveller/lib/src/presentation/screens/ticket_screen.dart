@@ -155,6 +155,7 @@ class _TicketScreenState extends State<TicketScreen> {
                   '${Format.shortDate(booking.departsAt, locale: locale)} · '
                   '${Format.time(booking.departsAt)}',
               footnote: booking.operatorName,
+              accent: AccentHue.tryByName(booking.operatorAccentHue)?.color,
             ),
 
             // Where to stand, above the QR rather than below it. This is the

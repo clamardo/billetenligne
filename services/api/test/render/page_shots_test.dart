@@ -65,8 +65,9 @@ void main() {
       ),
     );
 
-    File('${out.path}/storefront-unknown.html')
-        .writeAsStringSync(StorefrontPage.notFound(catalog: catalog));
+    File(
+      '${out.path}/storefront-unknown.html',
+    ).writeAsStringSync(StorefrontPage.notFound(catalog: catalog));
   });
 }
 

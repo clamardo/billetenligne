@@ -88,7 +88,8 @@ final class LayoutDraft {
     // reports a change nobody made.
     'blocked': blocked.toList()..sort(),
     'features': [
-      for (final f in features) {'type': f.type.name, 'row': f.row, 'col': f.col},
+      for (final f in features)
+        {'type': f.type.name, 'row': f.row, 'col': f.col},
     ],
   };
 

@@ -325,14 +325,17 @@ void main() {
       expect((await factors.forUser(id))!.secretBase32, seed);
     });
 
-    test('a sealed row with no key is an error, not a missing factor', () async {
-      final id = await enrolled();
-      final blind = PostgresSecondFactors(db);
+    test(
+      'a sealed row with no key is an error, not a missing factor',
+      () async {
+        final id = await enrolled();
+        final blind = PostgresSecondFactors(db);
 
-      // The failure mode this refuses: a factor that reads as absent is a
-      // factor an attacker can enrol again. Losing the key must be an outage.
-      expect(blind.forUser(id), throwsA(isA<StateError>()));
-    });
+        // The failure mode this refuses: a factor that reads as absent is a
+        // factor an attacker can enrol again. Losing the key must be an outage.
+        expect(blind.forUser(id), throwsA(isA<StateError>()));
+      },
+    );
 
     test('the wrong key is refused rather than answered wrongly', () async {
       final id = await enrolled();
