@@ -96,6 +96,7 @@ final class LinkedTicket {
     required this.state,
     required this.operatorName,
     required this.operatorCode,
+    this.operatorAccentHue,
     required this.routeCode,
     required this.originCity,
     required this.destinationCity,
@@ -113,6 +114,13 @@ final class LinkedTicket {
   final String state;
   final String operatorName;
   final String operatorCode;
+
+  /// The operator's chosen hue by name, from the closed set on
+  /// `operators.accent_hue`, or null for one who has never opened their
+  /// vitrine. Public on every storefront and every search result already, so
+  /// putting it on the link tells the holder nothing new — it only lets the
+  /// page be recognised across a yard on somebody else's phone.
+  final String? operatorAccentHue;
   final String routeCode;
 
   /// The journey **this booking** bought, which on a road with priced legs is

@@ -123,6 +123,7 @@ final class PostgresTicketLinks implements TicketLinks {
           state: head['booking_state']! as String,
           operatorName: head['operator_name']! as String,
           operatorCode: head['operator_code']! as String,
+          operatorAccentHue: head['operator_accent'] as String?,
           routeCode: head['route_code']! as String,
           originCity: head['origin_city']! as String,
           destinationCity: head['destination_city']! as String,

@@ -2,6 +2,7 @@ import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_localization/bel_localization.dart';
 
 import 'artwork.g.dart';
+import 'accent_hues.dart';
 
 /// The public storefront at `blt.cg/o/<code>` (`03-operator-lifecycle.md`
 /// §2.4).
@@ -35,22 +36,6 @@ import 'artwork.g.dart';
 ///     landing them on a home page to say it again is how a sales channel
 ///     turns back into a brochure.
 abstract final class StorefrontPage {
-  /// The eight curated hues, as hex. Duplicated from `bel_design`'s
-  /// `AccentHue` rather than imported: `bel_design` is Flutter, this file runs
-  /// on the server, and a `Color` cannot cross that line. The list is closed
-  /// and changes about never; `packages/bel_design/test/components_test.dart`
-  /// is where a ninth would be caught.
-  static const _hues = <String, String>{
-    'foret': '#0A6B4F',
-    'laterite': '#D9772F',
-    'indigo': '#1E3A6B',
-    'brique': '#B4502E',
-    'prune': '#6B2D5C',
-    'ocean': '#0E5E75',
-    'olive': '#54661F',
-    'ardoise': '#3B4650',
-  };
-
   /// The page for an operator that sells.
   ///
   /// [origin] is this deployment's own base URL, used only for the absolute
@@ -68,7 +53,7 @@ abstract final class StorefrontPage {
     // if they wrote it — `titleFor` already falls through to the trading name
     // and then the legal one, so this is never empty.
     final name = v.titleFor(language);
-    final accent = _hues[v.accentHue] ?? _hues['foret']!;
+    final accent = AccentHues.hex(v.accentHue);
     final title = t('storefront.title', {'operator': name});
     // And their own sentence about themselves, if they have one. Ours says
     // what BilletEnLigne does, which is the right thing to say about a company
@@ -117,7 +102,7 @@ abstract final class StorefrontPage {
     final t = CatalogTranslator(catalog, language);
     return _document(
       language: language,
-      accent: _hues['foret']!,
+      accent: AccentHues.hex(null),
       head:
           '<title>${_text(t('storefront.unknown'))}</title>\n'
           '<meta name="robots" content="noindex,nofollow">',

@@ -31,11 +31,13 @@ LinkedTicket _ticket({
   String status = 'scheduled',
   String? stationName = 'Gare de Mikalou',
   String? stationNotes = 'Portail vert, à côté du marché',
+  String? accentHue = 'indigo',
 }) => LinkedTicket(
   bookingRef: 'LNK001',
   state: 'confirmed',
   operatorName: 'Océan du Nord',
   operatorCode: 'ODN',
+  operatorAccentHue: accentHue,
   routeCode: 'BZV-PNR',
   originCity: 'Brazzaville',
   destinationCity: 'Pointe-Noire',
@@ -324,6 +326,63 @@ void main() {
 
   _emailTests();
   _appLinkTests();
+
+  group("the operator's colour", () {
+    test('rides on the band and the button', () {
+      final html = BoardingPassPage.render(
+        ticket: _ticket(),
+        catalog: _catalog,
+      );
+
+      expect(html, contains('--brand:#1E3A6B'));
+      expect(html, contains('class="band"'));
+      // The name is still written out. A colour is recognition, not
+      // identification, and eight hues across a hundred operators means
+      // several companies share one.
+      expect(html, contains('Océan du Nord'));
+    });
+
+    // An operator who has never opened their vitrine, and a hue from a console
+    // that ships separately from this server. Both render; neither is allowed
+    // to leave the page without a colour at all.
+    test('an unchosen or unknown hue falls back to the house green', () {
+      for (final hue in [null, 'turquoise']) {
+        final html = BoardingPassPage.render(
+          ticket: _ticket(accentHue: hue),
+          catalog: _catalog,
+        );
+        expect(html, contains('--brand:#0A6B4F'), reason: 'hue: $hue');
+      }
+    });
+
+    // The column has a CHECK constraint behind it, but this page is rendered
+    // from whatever the function returned, and a stylesheet is a place where
+    // a stray brace ends a rule and starts somebody else's.
+    test('a hue is looked up, never interpolated', () {
+      final html = BoardingPassPage.render(
+        ticket: _ticket(accentHue: 'red;}body{display:none'),
+        catalog: _catalog,
+      );
+
+      expect(html, isNot(contains('body{display:none')));
+      expect(html, isNot(contains('red;}')));
+      expect(html, contains('--brand:#0A6B4F'));
+    });
+
+    // A yard printer is not owed a full-bleed cartridge of somebody's brand.
+    test('the band is dropped for print', () {
+      final html = BoardingPassPage.render(
+        ticket: _ticket(),
+        catalog: _catalog,
+      );
+
+      expect(html, contains('@media print'));
+      expect(
+        html.substring(html.indexOf('@media print')),
+        contains('.band{background:#fff'),
+      );
+    });
+  });
 }
 
 void _appLinkTests() {

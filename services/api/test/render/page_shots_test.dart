@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:bel_api/src/application/ports/ticket_links.dart';
+import 'package:bel_api/src/infrastructure/web/boarding_pass_page.dart';
 import 'package:bel_api/src/infrastructure/web/storefront_page.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
@@ -69,6 +71,16 @@ void main() {
       '${out.path}/storefront-unknown.html',
     ).writeAsStringSync(StorefrontPage.notFound(catalog: catalog));
   });
+
+  // The page a traveller sends to whoever is meeting them. Two hues, because
+  // the point of the band is that two companies do not look alike.
+  test('the boarding pass a link opens', () {
+    for (final hue in ['indigo', 'laterite']) {
+      File('${out.path}/boarding-pass-$hue.html').writeAsStringSync(
+        BoardingPassPage.render(ticket: _linked(hue), catalog: catalog),
+      );
+    }
+  });
 }
 
 String _i18n() {
@@ -78,3 +90,33 @@ String _i18n() {
   }
   throw StateError('i18n directory not found');
 }
+
+LinkedTicket _linked(String hue) => LinkedTicket(
+  bookingRef: 'LNK4821',
+  state: 'confirmed',
+  operatorName: 'Alizés du Congo',
+  operatorCode: 'ALZ',
+  operatorAccentHue: hue,
+  routeCode: 'BZV-PNR',
+  originCity: 'Brazzaville',
+  destinationCity: 'Pointe-Noire',
+  departsAt: DateTime.utc(2026, 8, 20, 5),
+  arrivesAt: DateTime.utc(2026, 8, 20, 13),
+  status: 'scheduled',
+  stationName: 'Gare de Mikalou',
+  stationNotes: 'Portail vert, à côté du marché',
+  channel: 'whatsapp',
+  expiresAt: DateTime.utc(2026, 8, 21, 13),
+  seats: const [
+    LinkedSeat(
+      seatLabel: '12A',
+      passengerName: 'Aline Massamba',
+      payload: 'BEL1.eyJyIjoiTE5LNDgyMSJ9.c2ln',
+    ),
+    LinkedSeat(
+      seatLabel: '12B',
+      passengerName: 'Joseph Massamba',
+      payload: 'BEL1.eyJyIjoiTE5LNDgyMiJ9.c2ln',
+    ),
+  ],
+);

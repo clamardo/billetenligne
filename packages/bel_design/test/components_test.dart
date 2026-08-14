@@ -621,6 +621,46 @@ void main() {
       expect(AccentHue.byName(null), AccentHue.foret);
       expect(HeaderPattern.byName('hexagones'), HeaderPattern.flat);
     });
+
+    // `tryByName` is for the callers that would rather use the running
+    // theme's brand than a fixed green — on a dark ticket, `foret` is not the
+    // green anything else on the screen is drawn in.
+    test('an unchosen hue is null rather than the house green', () {
+      expect(AccentHue.tryByName(null), isNull);
+      expect(AccentHue.tryByName('chartreuse'), isNull);
+      expect(AccentHue.tryByName('ocean'), AccentHue.ocean);
+    });
+
+    // The server renders the storefront and the boarding pass itself, in CSS,
+    // and cannot import a Flutter `Color`. So it keeps its own copy of this
+    // table in `services/api/lib/src/infrastructure/web/accent_hues.dart`,
+    // and this is what stops the two drifting: a ninth hue, or a changed
+    // value, fails here with the file to edit named in the failure.
+    test('the eight hues are exactly what the server renders', () {
+      const onTheServer = <String, int>{
+        'foret': 0xFF0A6B4F,
+        'laterite': 0xFFD9772F,
+        'indigo': 0xFF1E3A6B,
+        'brique': 0xFFB4502E,
+        'prune': 0xFF6B2D5C,
+        'ocean': 0xFF0E5E75,
+        'olive': 0xFF54661F,
+        'ardoise': 0xFF3B4650,
+      };
+
+      expect(
+        AccentHue.values.map((h) => h.name),
+        onTheServer.keys,
+        reason: 'update services/api/.../web/accent_hues.dart to match',
+      );
+      for (final hue in AccentHue.values) {
+        expect(
+          hue.color.toARGB32(),
+          onTheServer[hue.name],
+          reason: '${hue.name} disagrees with accent_hues.dart',
+        );
+      }
+    });
   });
 
   group('both themes', () {

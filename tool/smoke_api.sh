@@ -513,6 +513,16 @@ check "it carries a payment code and a deadline" "yes" \
 check "the price comes from the seat, not the request" "yes" \
   "$(grep -q '"total":{"minor":12300,"currency":"XAF"}' <<<"$booking" \
      && echo yes || echo no)"
+# The company's colour rides on the booking, from the same join that answers
+# their name. This is the whole path the ticket band is drawn from, and it is
+# only ever executed against a real database here.
+check "the booking carries the operator's own hue" "yes" \
+  "$(grep -q '"operatorAccentHue":"' <<<"$booking" && echo yes || echo no)"
+# One of the eight, and never a value invented in transit: the column has a
+# CHECK constraint, and this is where it is proven to survive the wire.
+check "and it is one of the eight" "yes" \
+  "$(grep -qE '"operatorAccentHue":"(foret|laterite|indigo|brique|prune|ocean|olive|ardoise)"' \
+     <<<"$booking" && echo yes || echo no)"
 # Nothing is ticketed before the money is taken. A ticket that exists before
 # payment is a ticket that can board before payment.
 check "an unpaid booking has no ticket" "yes" \

@@ -533,10 +533,77 @@ is what it always meant.
 `BookingDto` carries the operator's *name* and not their hue, so every ticket
 draws in the house green regardless of who is running the coach. That is a
 wire-format change with a schema guarantee behind it, and it did not belong in
-a push about components.
+a push about components. **Closed by the push below.**
 
 **What it cost:** 12 new tests in `bel_design` (133 → 145), 2 in the traveller,
 four components, and two catalog keys.
+
+---
+
+## What the accent push changed, and what it cost
+
+`operators.accent_hue` has held a closed set of eight since migration 0001 — a
+CHECK constraint, not a colour picker, because a picker guarantees that some
+company eventually chooses a yellow nobody can read in direct sun. The search
+row has drawn its left rule in it for months. The **ticket** had never seen it.
+
+That is the screen a passenger holds up to another person, and the person
+holding the scanner knows their own company's livery from further away than
+they can read a name. Every ticket in the house green throws that away.
+
+**What the change actually was: one column, four times.** The booking query
+already joined `operators` for the trading name, so this is one more selected
+column, one nullable field on `TripSummary`, one on `BookingDto`, and the
+lookup at the top of the ticket. The offline vault stores the whole JSON blob,
+so a ticket kept for a flight-mode morning keeps its colour with no migration
+of its own.
+
+**Null stays null rather than defaulting to `foret`.** In dark mode the house
+green is not the green anything else on the screen is drawn in, so an operator
+who never opened their vitrine should get the running theme's brand and not a
+fixed colour. `AccentHue.tryByName` says that once; `byName` now delegates to
+it, and the results screen's private copy of the same eight-way lookup is
+gone.
+
+**The boarding pass a traveller sends on had no colour at all.** It is the
+surface most likely to be opened on somebody else's phone — the cousin doing
+the meeting at the other end — among a dozen tabs. It now has the band, a
+drawn torn edge and the button in the company's hue. Three things fell out of
+building it:
+
+* It took a **migration**. What the holder of a link may know is decided in
+  `ticket_by_link` and not in a handler (ADR-0026), and Postgres will not
+  change a function's return type in place. The widening is real but small:
+  the hue is already public on every storefront and every search row, so a
+  link holder learns nothing they could not read on the operator's own page.
+* The **band is dropped for print.** A station's printer is not owed a
+  cartridge of somebody's brand, and the torn edge — a radial gradient, not a
+  clip — would have printed as a row of grey blobs.
+* The hue is **looked up, never interpolated**, and the test passes a closing
+  brace in the value to prove it. The column has a CHECK constraint behind it,
+  but this page renders whatever the function returned, and a stylesheet is
+  exactly where a stray brace ends one rule and starts somebody else's.
+
+**The duplicated table is now guarded rather than commented.** The server
+renders CSS and cannot import a Flutter `Color`, so it keeps its own copy of
+the eight hex values; the old comment claimed a test would catch a ninth hue
+and no such test existed. Both pages now read one file, and `bel_design`
+asserts the names and the exact ARGB values against it, naming the file to
+edit in the failure message.
+
+**What stayed house-coloured on purpose:** the freshness ring under the QR. It
+means *this app is computing a live code* — our guarantee, not the operator's
+decoration — and a conductor learning to look for a moving ring should not
+have to learn eight of them.
+
+**Verified rather than assumed:** the 45 migrations were re-executed against a
+throwaway Postgres, and every guarantee still holds — including the two the
+link boundary rests on, that a ticket link is a hash nobody may walk and that
+a link hands over a counter account and never a person's.
+
+**What it cost:** 3 traveller tests, 4 server-rendering tests, 2 in
+`bel_design`, one migration, and one file of eight hex values that two pages
+now share.
 
 ---
 

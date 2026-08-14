@@ -1,6 +1,7 @@
 import 'package:bel_api/src/application/ports/ticket_links.dart';
 import 'package:bel_api/src/infrastructure/web/qr_svg.dart';
 import 'package:bel_localization/bel_localization.dart';
+import 'accent_hues.dart';
 
 /// The boarding pass, as a page (ADR-0026).
 ///
@@ -39,6 +40,11 @@ abstract final class BoardingPassPage {
     String language = 'fr',
   }) {
     final t = CatalogTranslator(catalog, language);
+    // The operator's own colour, on the band and the button. This page is
+    // most often opened on somebody else's phone -- the cousin doing the
+    // meeting at the other end -- and the company's colour is what makes it
+    // findable in a yard among a dozen open tabs.
+    final accent = AccentHues.hex(ticket.operatorAccentHue);
     final seats = StringBuffer();
 
     for (final seat in ticket.seats) {
@@ -64,13 +70,22 @@ abstract final class BoardingPassPage {
 <title>${_text(t('boardingPass.title'))}</title>
 <meta name="robots" content="noindex,nofollow">
 <style>
-:root{--ink:#141a17;--soft:#6b7a72;--line:#e2e8e4;--brand:#0f6b4f;--warn:#b26a00;--bg:#fbfcfb}
+:root{--ink:#141a17;--soft:#6b7a72;--line:#e2e8e4;--brand:$accent;--warn:#b26a00;--bg:#fbfcfb}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
      font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:34rem;margin:0 auto;padding:1.5rem 1.25rem 3rem}
-h1{font-size:1.5rem;margin:0 0 .25rem}
-.sub{color:var(--soft);margin:0 0 1rem}
+main{max-width:34rem;margin:0 auto;padding:0 0 3rem}
+.band{background:var(--brand);color:#fff;padding:1.5rem 1.25rem 1.75rem;
+      position:relative}
+/* The torn edge, drawn rather than clipped: a notch cut out of the band has
+   to know the colour behind it, and on this page that is the print
+   stylesheet's white as often as the screen's. */
+.band::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:8px;
+     background:radial-gradient(circle at 6px 8px,var(--bg) 5px,transparent 6px)
+                repeat-x 0 0/12px 8px}
+.wrap{padding:1.25rem}
+h1{font-size:1.5rem;margin:0;color:#fff}
+.sub{color:rgba(255,255,255,.88);margin:.25rem 0 0}
 .card{background:#fff;border:1px solid var(--line);border-radius:12px;
       padding:1rem 1.1rem;margin-bottom:1rem}
 .rows{display:flex;flex-wrap:wrap;gap:1rem}
@@ -99,14 +114,19 @@ a.cta{display:block;text-align:center;margin-top:1.25rem;padding:.85rem;
   .card{background:#131a17}
   .warn{background:#2a2008;border-color:#4a3a12}
 }
-@media print{body{background:#fff}a.cta,.foot{display:none}}
+/* A station's printer is not owed a cartridge of the operator's colour. */
+@media print{body{background:#fff}a.cta,.foot{display:none}
+  .band{background:#fff;color:#141a17;border-bottom:2px solid #141a17}
+  .band::after{display:none}h1{color:#141a17}.sub{color:#6b7a72}}
 </style>
 </head>
 <body>
 <main>
-  <h1>${_text(t('boardingPass.headline', {'origin': ticket.originCity, 'destination': ticket.destinationCity}))}</h1>
-  <p class="sub">${_text(t('boardingPass.operator', {'operator': ticket.operatorName}))}</p>
-
+  <header class="band">
+    <h1>${_text(t('boardingPass.headline', {'origin': ticket.originCity, 'destination': ticket.destinationCity}))}</h1>
+    <p class="sub">${_text(t('boardingPass.operator', {'operator': ticket.operatorName}))}</p>
+  </header>
+  <div class="wrap">
   ${ticket.status == 'cancelled' ? '<div class="card warn"><p>${_text(t('boardingPass.cancelled'))}</p></div>' : ''}
 
   <div class="card">
@@ -128,6 +148,7 @@ $seats
   <p class="foot">${_text(t('boardingPass.offline'))}</p>
   <p class="foot">${_text(t('boardingPass.expires', {'date': _date(ticket.expiresAt)}))}</p>
   <a class="cta" href="/">${_text(t('boardingPass.cta'))}</a>
+  </div>
 </main>
 </body>
 </html>
