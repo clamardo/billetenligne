@@ -111,6 +111,10 @@ Full reasoning: **[`docs/adr/`](docs/adr/)** — 26 records, each with the alter
 | [`08-disruption.md`](docs/08-disruption.md) | IRROPS — breakdown, re-accommodation, protection |
 | [`09-roadmap.md`](docs/09-roadmap.md) | Phased delivery, what remains in dependency order, and the risks that decide this |
 | [`10-build-status.md`](docs/10-build-status.md) | **What is built, what is half-built, and what is missing** — updated every push |
+| [`11-air.md`](docs/11-air.md) | **Air** — the three compliance seams, check-in, the mode chooser, 15 slices. Specified, not built |
+| [`12-rental.md`](docs/12-rental.md) | **Vehicle rental** — overlap-proof availability, chauffeur-driven, handover reports. Specified, not built |
+| [`13-stays.md`](docs/13-stays.md) | **Stays** — room types on per-night allotments, rate plans, pay-at-property, the ARI mapping. Specified, not built |
+| [`14-reviews.md`](docs/14-reviews.md) | **Reviews** — one per completed booking, a shrunk mean, and what is never done for money. Specified, not built |
 
 ---
 

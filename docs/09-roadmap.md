@@ -195,10 +195,57 @@ Each is a deliberate decision with a gate, not an assumption.
 
 | Bet | Why | Gate |
 |---|---|---|
-| **Air** (ADR-0017) | Same manual problem, higher value per booking. The seat map already renders a two-class cabin | One design-partner carrier **and** the compliance package: ID capture, check-in, baggage, exit rows |
 | **Colis / parcels** | Already an informal business on the same coaches, high margin | The anchor operator asks for it |
 | **DRC** | Larger market; config plus one PSP adapter. `market_test.dart` already stands up a full DRC market in test code | Congo-Brazzaville unit economics proven |
 | **River ferry** | Manual, high volume, structurally identical to bus | Opportunistic |
+
+---
+
+## Phase 6 — The other three verticals
+
+**Specified in full, none of it built.** Four documents landed on 2026-08-14: [`11-air.md`](11-air.md), [`12-rental.md`](12-rental.md), [`13-stays.md`](13-stays.md), [`14-reviews.md`](14-reviews.md), under [ADR-0027](adr/0027-verticals-are-separate.md), [ADR-0028](adr/0028-vehicle-rental.md), [ADR-0029](adr/0029-stays.md) and [ADR-0030](adr/0030-reviews.md). Each names its files, columns, DTOs, routes, tests and slices; none of them has a line of code.
+
+The architecture, in one sentence: **each vertical is its own domain package, its own Postgres schema and its own API surface; they share the platform beneath — identity, money, the ledger, every payment rail, operators, notifications, localization and the design system — and a shell in the app.** ADR-0027 rejects both over-unifications at length: `TransportMode.car` (one enum, seven corrupted subsystems) and a polymorphic `bookings` row with three nullable foreign keys (which was that ADR's own first draft).
+
+### The gate that applies to all of them
+
+**A vertical ships whole — search to money to fulfilment artefact to review — or it does not ship.** Four half-built verticals are worth less than one finished one, and this phase makes it very easy to feel productive while the two commercial long poles at the top of this document stay exactly where they are.
+
+### P — the platform split · **blocking, shared, no behaviour change**
+
+`12-rental.md` §2, slices P1–P5. `bel_platform` is extracted from `bel_domain`; the layering checker gains the rule that `bel_domain`, `bel_rental` and `bel_stay` may not import one another; the migration runner learns per-schema sequences; `check.sh` learns that `public` may never hold a foreign key into a vertical schema; and `public.payables` becomes the one narrow seam through which a vertical asks for money without the ledger ever learning what was sold.
+
+Roughly 450 files of import churn and zero behaviour change. It must land green before any vertical code is written.
+
+### Air · **specified, gated commercially** — [`11-air.md`](11-air.md), ADR-0017
+
+Most of it already exists and nobody noticed: `TransportMode`, cabin sections with per-section price modifiers, `mode` on layouts, vehicles and departures, the search filter, the DTOs, a console mode picker and an `airTwoClass()` preset — all shipped, all tested. What is missing is three policy seams that do not exist at all (`PassengerRequirements`, `BoardingPolicy`, `BaggagePolicy`), a traveller app that **discards the `mode` it is sent** — `TripDto.mode` travels from Postgres to the handset and no widget reads it — and any air inventory anywhere. Fifteen slices, A1–A14, starting with an hour's work that makes all of it visible.
+
+**Gate:** one design-partner carrier. Everything else is buildable and testable against a demo carrier today.
+
+### Stays · **specified, gated on nothing but engineering** — [`13-stays.md`](13-stays.md), ADR-0029
+
+The largest bet here and the one whose ship date we control. The incumbents do operate in this market, at 15–18% commission against our 5%, over a thin slice of the actual room stock, on a card rail most travellers do not have, with an amenity vocabulary that cannot express the two things that decide a booking in Brazzaville — whether the **generator** actually runs and whether there is **hot water**.
+
+Three decisions carry it: room *types* on per-night allotments with `CHECK (sold + held <= allotment)` as the structural anti-overbooking guarantee; **rate plans**, which is the fourth seam ADR-0017 warned about arriving for real, because a property that cannot offer *non remboursable −15%* against *tarif flexible* will not list; and **pay-at-property**, on which the property pays no commission at all and the guest pays a small flat booking fee — the mechanic that unlocks small-property supply and gives a booking a cost, which is what stops no-shows.
+
+Eighteen slices, S1–S18. The risk it dies of is inventory staleness, and §16 of that document is four specific mitigations for it.
+
+### Vehicle rental · **specified, gated on nothing but engineering** — [`12-rental.md`](12-rental.md), ADR-0028
+
+No online option exists anywhere in this market. High value per transaction — a five-day 4×4 is worth thirty coach seats. Double-booking is made structurally impossible by a Postgres exclusion constraint rather than by application checking, which is the same class of guarantee as the ledger balancing at `COMMIT`. Chauffeur-driven is first-class rather than an upsell, because here it is often the default — and it makes the licence questions disappear entirely, which is the third independent implementation of ADR-0017's rule that a passenger must never be asked for a document another vertical's schema happens to have.
+
+The unresolved constraint is the **security deposit**: card pre-authorisation is what the entire global rental industry rests on and it does not exist on mobile money. v1's answer is that the platform does not touch the deposit at all and instead makes sure nobody is surprised by it. Fifteen slices, R1–R15.
+
+### Reviews · **specified, cross-vertical** — [`14-reviews.md`](14-reviews.md), ADR-0030
+
+The strongest available answer to the *"travellers do not trust prepayment"* risk in the table at the bottom of this document, which has been open and unmitigated since it was written. One review per **completed booking**, which is a structural integrity advantage no open review platform has, because we know the booking happened, we know it was paid for, and we know the ticket was scanned. 1–5 stars, a shrunk mean so a single 5-star review cannot outrank two hundred at 4.6, no score at all below three reviews, one public operator reply, and no removal for money under any circumstances.
+
+Ten slices, V1–V10. Worth building alongside the first vertical that ships rather than after all of them.
+
+### Suggested order
+
+**P → stays → reviews → rental → air.** Stays first because the supply is largest and the ship date is ours; reviews next because a hotel is the purchase people most want other people's opinion of; rental after because the deposit question has no clean answer yet; air last because it is the only one of the four whose gate is somebody else's signature.
 
 ---
 
@@ -218,7 +265,7 @@ Each is reasonable, and each would dilute the one thing that has to be excellent
 | Anchor operator does not sign | No LOI | The cash-only console is free and useful on its own; lead with that | **Unmitigated — no LOI** |
 | Mobile money success below 85% | Per-rail, per-hour dashboard | Rail fallback plus an aggregator escape hatch (ADR-0006) | **Both adapters built and tested against a fake that reproduces every terminal state. Unmeasured until real traffic** |
 | An operator mistypes their collection number | — | Saved unverified; no rail is offered until somebody has checked it | Mobile money has no chargeback, so this is the one typo in the product that cannot be undone |
-| Travellers do not trust prepayment | Funnel drop at the payment screen | SMS receipts, honest scarcity, visible refund policy, cash retained | Design done; unproven |
+| Travellers do not trust prepayment | Funnel drop at the payment screen | SMS receipts, honest scarcity, visible refund policy, cash retained | Design done; unproven. **Reviews (ADR-0030) are the specified answer** — one per completed booking, which is an integrity advantage no open platform has. Specified, not built |
 | Disruption overwhelms support | Support tickets per disruption | IRROPS is operator self-service and P0 in Phase 2 | Built — declaration, rescue coach, rebooking wave, protection movement, the open call to the whole road, and the passenger's own choice |
 | **Nobody has used this on a real network** | — | Phase 3 manual smoke | Everything so far is an emulator on a fast connection |
 | **No operator can configure anything without us** | Time from "yes" to first departure on sale | The console app | **Closed.** An operator configures a fleet and publishes a timetable in a browser |

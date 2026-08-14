@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-14 · after commit *The one motif that is actually Congolese*
+**Updated:** 2026-08-14 · after commit *Three products the platform does not sell yet*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -155,6 +155,30 @@ loader are all built, as is the whole of option ③ — the protection agreement
 the movement under it, and the open call for operators who never had an
 agreement to begin with — and option ⑤, the passenger's own choice. What is
 left there is a telco's sandbox becoming production credentials.
+
+---
+
+## Phase 6 — The other three verticals · **specified, none of it built**
+
+Four documents and four ADRs landed on 2026-08-14 and produced **zero lines of
+code**, which is what this table says and is the honest state.
+
+| Slice | State | What is actually there |
+| --- | --- | --- |
+| **Air** | ⬜ specified | [`11-air.md`](11-air.md), 914 lines, 15 slices A1–A14. The scan that produced it found more built than expected: `TransportMode`, cabin sections with per-section price modifiers, `mode` on `seat_layouts`, `vehicles` and `departures`, the `mode=` search filter, `SeatMapDto.sections`, a console mode picker and an `airTwoClass()` preset — all shipped and tested. It also found the three seams ADR-0017 named — `PassengerRequirements`, `BoardingPolicy`, `BaggagePolicy` — **return zero grep hits across `packages`, `services` and `apps`**, that `TripDto.mode` travels from Postgres to the handset and **no widget in `apps/traveller/lib` ever reads it**, and that every layout, vehicle and departure in the demo world and the demo gateway is hardcoded `bus`. Gated on a design-partner carrier |
+| **Verticals are separate** | ⬜ specified | [ADR-0027](adr/0027-verticals-are-separate.md). Rejects two over-unifications at length: `TransportMode.car`, which would corrupt seven subsystems to save one enum value, and a polymorphic `bookings` row with a discriminator and three nullable foreign keys — **which was this ADR's own first draft**, and is recorded as such. Decides: a domain package, a Postgres schema and an API route tree per vertical; `bel_platform` extracted underneath; one narrow money seam (`public.payables`) with an opaque `subject_ref` the platform never joins on; one shell in the app with registered feature packages |
+| **The platform split** | ⬜ specified | [`12-rental.md`](12-rental.md) §2, slices P1–P5. Blocking and shared. ~450 files of import churn, zero behaviour change, and one new rule in `tool/check_layers.dart`: `bel_domain`, `bel_rental` and `bel_stay` may not import one another |
+| **Stays** | ⬜ specified | [`13-stays.md`](13-stays.md), 608 lines, 18 slices S1–S18, [ADR-0029](adr/0029-stays.md). Room *types* on per-night allotments with `CHECK (sold + held <= allotment)` as the structural anti-overbooking guarantee; the three-nights-in-one-transaction `ORDER BY night` deadlock is written into the ADR rather than a code comment; rate plans, which is the fourth seam ADR-0017 warned about arriving for real; and **pay-at-property**, on which the property pays no commission and the guest pays a flat booking fee. §17 maps every ARI and OTA field onto our columns so a channel-manager adapter is a lookup later, and names the four places we deliberately diverge |
+| **Vehicle rental** | ⬜ specified | [`12-rental.md`](12-rental.md), 556 lines, 15 slices R1–R15, [ADR-0028](adr/0028-vehicle-rental.md). Double-booking prevented by a Postgres `EXCLUDE USING gist` constraint rather than by application checking — the same class of guarantee as the ledger balancing at `COMMIT`. Chauffeur-driven is first-class rather than an upsell, and it makes every licence field `hidden`. The unresolved constraint is the **security deposit**: card pre-authorisation is what the global rental industry rests on and mobile money has no such primitive, so v1's answer is that the platform does not touch it |
+| **Reviews** | ⬜ specified | [`14-reviews.md`](14-reviews.md), 348 lines, 10 slices V1–V10, [ADR-0030](adr/0030-reviews.md). One review per **completed booking**, enforced by a unique constraint rather than by a service. A shrunk mean, so one 5-star review cannot outrank two hundred at 4.6, with the formula and the ordering asserted directly in a test. No score below three reviews. One public operator reply, schema-enforced. Removal requires a reason from a closed set with no `other`, and `operator` is not among the roles that can remove |
+
+**What this phase has cost so far: four ADRs, four specifications, one
+architectural reversal, and no executable.** That is deliberate — the request
+was for a roadmap detailed enough to implement from — but it is worth stating
+plainly, because a specification that has never been compiled is a hypothesis.
+
+The gate that applies to every row above: **a vertical ships whole — search to
+money to fulfilment artefact to review — or it does not ship.**
 
 ---
 
