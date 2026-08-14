@@ -31,13 +31,10 @@ final class PayoutsScreen extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.all(kilo.space.s4),
       children: [
-        Text(context.t('admin.payouts.title'), style: kilo.text.h1),
-        SizedBox(height: kilo.space.s1),
-        Text(
-          context.t('admin.payouts.subtitle', {'count': runs.length}),
-          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
+        KPageHeader(
+          context.t('admin.payouts.title'),
+          subtitle: context.t('admin.payouts.subtitle', {'count': runs.length}),
         ),
-        SizedBox(height: kilo.space.s4),
 
         if (runs.isEmpty && !workspace.busy)
           KStateView(

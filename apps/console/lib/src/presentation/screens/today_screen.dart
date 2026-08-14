@@ -36,46 +36,44 @@ final class TodayScreen extends StatelessWidget {
       children: [
         Padding(
           padding: EdgeInsets.all(kilo.space.s4),
-          child: Row(
-            children: [
-              // Flexible, not a fixed Text plus a Spacer: the console runs in
-              // whatever window an agency happens to have open, and a header
-              // that overflows at 900px is a header that hides the date
-              // controls on half the laptops in the country.
-              Expanded(
-                child: Text(
-                  context.t('console.today.title'),
-                  style: kilo.text.h2,
-                  overflow: TextOverflow.ellipsis,
+          child: KPageHeader(
+            context.t('console.today.title'),
+            // The day controls are this page's action. The title itself is
+            // Expanded inside the header rather than a Text with a Spacer:
+            // the console runs in whatever window an agency happens to have
+            // open, and a header that overflows at 900px is a header that
+            // hides the date controls on half the laptops in the country.
+            action: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // A local calendar day. "Departures on the 15th" is a local
+                // question, and a UTC comparison puts the 06:00 coach on the
+                // wrong day.
+                IconButton(
+                  tooltip: context.t('console.today.previous'),
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: () => workspace.showDay(
+                    workspace.day.subtract(const Duration(days: 1)),
+                  ),
                 ),
-              ),
-              // A local calendar day. "Departures on the 15th" is a local
-              // question, and a UTC comparison puts the 06:00 coach on the
-              // wrong day.
-              IconButton(
-                tooltip: context.t('console.today.previous'),
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () => workspace.showDay(
-                  workspace.day.subtract(const Duration(days: 1)),
+                Text(_dayLabel(workspace.day), style: kilo.text.h3),
+                IconButton(
+                  tooltip: context.t('console.today.next'),
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: () => workspace.showDay(
+                    workspace.day.add(const Duration(days: 1)),
+                  ),
                 ),
-              ),
-              Text(_dayLabel(workspace.day), style: kilo.text.h3),
-              IconButton(
-                tooltip: context.t('console.today.next'),
-                icon: const Icon(Icons.chevron_right),
-                onPressed: () => workspace.showDay(
-                  workspace.day.add(const Duration(days: 1)),
+                SizedBox(width: kilo.space.s3),
+                KButton(
+                  label: context.t('common.actions.retry'),
+                  tone: KButtonTone.ghost,
+                  fullWidth: false,
+                  icon: Icons.refresh,
+                  onPressed: workspace.refresh,
                 ),
-              ),
-              SizedBox(width: kilo.space.s3),
-              KButton(
-                label: context.t('common.actions.retry'),
-                tone: KButtonTone.ghost,
-                fullWidth: false,
-                icon: Icons.refresh,
-                onPressed: workspace.refresh,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
 
@@ -142,32 +140,39 @@ class _Summary extends StatelessWidget {
         kilo.space.s3,
       ),
       child: Card(
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: kilo.space.s5,
-            vertical: kilo.space.s4,
-          ),
-          child: Wrap(
-            spacing: kilo.space.s8,
-            runSpacing: kilo.space.s4,
-            children: [
-              KStat(
-                value: '${board.length}',
-                label: context.t('console.today.departures'),
-              ),
-              KStat(value: '$sold', label: context.t('console.today.sold')),
-              KStat(value: '$free', label: context.t('console.today.free')),
-              // Only when there is one. A zero in red beside three healthy
-              // figures is a number somebody checks every morning for
-              // nothing, and it is how a real one stops being noticed.
-              if (disrupted > 0)
+        // Full width, not shrink-wrapped. A `Wrap` sizes to its content and a
+        // `Card` sizes to its child, so the strip stopped wherever the last
+        // figure did — a box floating over a list of full-width rows, which
+        // reads as unfinished rather than as the summary of them.
+        child: SizedBox(
+          width: double.infinity,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: kilo.space.s5,
+              vertical: kilo.space.s4,
+            ),
+            child: Wrap(
+              spacing: kilo.space.s8,
+              runSpacing: kilo.space.s4,
+              children: [
                 KStat(
-                  value: '$disrupted',
-                  label: context.t('console.today.disrupted'),
-                  tone: kilo.color.danger,
-                  icon: Icons.warning_amber_rounded,
+                  value: '${board.length}',
+                  label: context.t('console.today.departures'),
                 ),
-            ],
+                KStat(value: '$sold', label: context.t('console.today.sold')),
+                KStat(value: '$free', label: context.t('console.today.free')),
+                // Only when there is one. A zero in red beside three healthy
+                // figures is a number somebody checks every morning for
+                // nothing, and it is how a real one stops being noticed.
+                if (disrupted > 0)
+                  KStat(
+                    value: '$disrupted',
+                    label: context.t('console.today.disrupted'),
+                    tone: kilo.color.danger,
+                    icon: Icons.warning_amber_rounded,
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -220,6 +225,19 @@ class _DepartureRow extends StatelessWidget {
                         ),
                         tone: KChipTone.danger,
                       ),
+                    // And what the departure itself is. The board query has
+                    // no status filter, so a cancelled coach is on this list
+                    // — and it was drawn identically to one that is running,
+                    // which is the one row on the screen somebody must not
+                    // mistake. `scheduled` says nothing: a label on every row
+                    // is a label nobody reads.
+                    if (row.status != 'scheduled')
+                      KChip(
+                        context.t('console.today.status.${row.status}'),
+                        tone: row.status == 'cancelled'
+                            ? KChipTone.danger
+                            : KChipTone.neutral,
+                      ),
                   ],
                 ),
                 Text(
@@ -260,7 +278,11 @@ class _DepartureRow extends StatelessWidget {
           // a second line at 1000px is a row that still reads; a Row there is
           // an overflow stripe across the screen somebody watches every
           // morning.
-          Flexible(
+          // `Expanded`, not `Flexible`. Flexible is loose: the Wrap shrank
+          // to its buttons, `WrapAlignment.end` had nothing to align inside,
+          // and the unused half of the allotment sat as dead space at the end
+          // of every row on the screen.
+          Expanded(
             child: Wrap(
               alignment: WrapAlignment.end,
               spacing: kilo.space.s2,

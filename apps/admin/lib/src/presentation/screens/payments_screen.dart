@@ -30,13 +30,12 @@ final class PaymentsScreen extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.all(kilo.space.s4),
       children: [
-        Text(context.t('admin.payments.title'), style: kilo.text.h1),
-        SizedBox(height: kilo.space.s1),
-        Text(
-          context.t('admin.payments.subtitle', {'count': payments.length}),
-          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
+        KPageHeader(
+          context.t('admin.payments.title'),
+          subtitle: context.t('admin.payments.subtitle', {
+            'count': payments.length,
+          }),
         ),
-        SizedBox(height: kilo.space.s4),
 
         if (payments.isEmpty && !workspace.busy)
           KStateView(

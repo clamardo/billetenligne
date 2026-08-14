@@ -31,6 +31,15 @@ console:
     departures: "Départs"
     disrupted: "Incidents"
     manifest: "Liste"
+    # L'état du départ lui-même, affiché seulement quand il n'est pas
+    # « scheduled » : une étiquette présente sur chaque ligne est une
+    # étiquette que personne ne lit.
+    status:
+      delayed: "Retardé"
+      boarding: "Embarquement"
+      departed: "Parti"
+      arrived: "Arrivé"
+      cancelled: "Annulé"
     noVehicle: "Aucun car affecté"
     emptyTitle: "Aucun départ ce jour"
     emptyBody: "Publiez un horaire depuis l'onglet Horaires pour mettre des départs en vente."

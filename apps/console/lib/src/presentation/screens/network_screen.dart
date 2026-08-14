@@ -29,34 +29,26 @@ final class NetworkScreen extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.all(kilo.space.s4),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                context.t('console.network.title'),
-                style: kilo.text.h2,
-                overflow: TextOverflow.ellipsis,
-              ),
+        KPageHeader(
+          context.t('console.network.title'),
+          count: workspace.routes.length,
+          // A bounded width, because `disabledHint` renders the button and
+          // its explanation as a Column — and a Column in a Row with no
+          // constraint is an infinite width, which is a layout crash
+          // rather than a squashed button.
+          action: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 260),
+            child: KButton(
+              label: context.t('console.network.addRoute'),
+              fullWidth: false,
+              icon: Icons.add,
+              onPressed: workspace.cities.length < 2
+                  ? null
+                  : () => _editRoute(context),
+              disabledHint: context.t('console.network.needCities'),
             ),
-            // A bounded width, because `disabledHint` renders the button and
-            // its explanation as a Column — and a Column in a Row with no
-            // constraint is an infinite width, which is a layout crash
-            // rather than a squashed button.
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 260),
-              child: KButton(
-                label: context.t('console.network.addRoute'),
-                fullWidth: false,
-                icon: Icons.add,
-                onPressed: workspace.cities.length < 2
-                    ? null
-                    : () => _editRoute(context),
-                disabledHint: context.t('console.network.needCities'),
-              ),
-            ),
-          ],
+          ),
         ),
-        SizedBox(height: kilo.space.s3),
 
         if (workspace.routes.isEmpty)
           KCard(
@@ -148,35 +140,27 @@ final class NetworkScreen extends StatelessWidget {
         // city, because that is the only grouping anybody uses — "our two
         // Brazzaville terminals" is a sentence operators say out loud.
         SizedBox(height: kilo.space.s5),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                context.t('console.network.stations'),
-                style: kilo.text.h2,
-                overflow: TextOverflow.ellipsis,
-              ),
+        KSectionHeader(
+          context.t('console.network.stations'),
+          count: workspace.stations.length,
+          // The help line belongs to the heading rather than sitting under it
+          // as a loose Text: it is the sentence that explains what a terminal
+          // is for, and a screen where each section spaces its own subtitle
+          // is a screen with four different gaps in it.
+          subtitle: context.t('console.network.stationsHelp'),
+          action: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 260),
+            child: KButton(
+              label: context.t('console.network.addStation'),
+              fullWidth: false,
+              icon: Icons.add,
+              onPressed: workspace.cities.isEmpty
+                  ? null
+                  : () => _addStation(context),
+              disabledHint: context.t('console.network.needCities'),
             ),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 260),
-              child: KButton(
-                label: context.t('console.network.addStation'),
-                fullWidth: false,
-                icon: Icons.add,
-                onPressed: workspace.cities.isEmpty
-                    ? null
-                    : () => _addStation(context),
-                disabledHint: context.t('console.network.needCities'),
-              ),
-            ),
-          ],
+          ),
         ),
-        SizedBox(height: kilo.space.s1),
-        Text(
-          context.t('console.network.stationsHelp'),
-          style: kilo.text.bodySm.copyWith(color: kilo.color.contentSecondary),
-        ),
-        SizedBox(height: kilo.space.s3),
 
         if (workspace.stations.isEmpty)
           KCard(

@@ -31,45 +31,43 @@ final class FleetScreen extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.all(kilo.space.s4),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                context.t('console.fleet.layouts'),
-                style: kilo.text.h2,
-                overflow: TextOverflow.ellipsis,
+        KSectionHeader(
+          context.t('console.fleet.layouts'),
+          count: workspace.layouts.length,
+          action: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // A bounded width, because `disabledHint` renders the button
+              // and its explanation as a Column — and a Column in a Row with
+              // no constraint is an infinite width, which is a layout crash
+              // rather than a squashed button.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 260),
+                child: KButton(
+                  label: context.t('console.fleet.addLayout'),
+                  fullWidth: false,
+                  icon: Icons.add,
+                  onPressed: () => _addLayout(context),
+                ),
               ),
-            ),
-            // A bounded width, because `disabledHint` renders the button and
-            // its explanation as a Column — and a Column in a Row with no
-            // constraint is an infinite width, which is a layout crash
-            // rather than a squashed button.
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 260),
-              child: KButton(
-                label: context.t('console.fleet.addLayout'),
-                fullWidth: false,
-                icon: Icons.add,
-                onPressed: () => _addLayout(context),
+              SizedBox(width: kilo.space.s2),
+              // Secondary, and next to the presets rather than behind them:
+              // an operator who needs it needs it on their first afternoon,
+              // and an operator who does not should not wonder what they are
+              // missing.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 220),
+                child: KButton(
+                  label: context.t('console.fleet.builder.open'),
+                  fullWidth: false,
+                  tone: KButtonTone.secondary,
+                  icon: Icons.grid_on,
+                  onPressed: () => _drawLayout(context),
+                ),
               ),
-            ),
-            SizedBox(width: kilo.space.s2),
-            // Secondary, and next to the presets rather than behind them: an
-            // operator who needs it needs it on their first afternoon, and an
-            // operator who does not should not wonder what they are missing.
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 220),
-              child: KButton(
-                label: context.t('console.fleet.builder.open'),
-                fullWidth: false,
-                tone: KButtonTone.secondary,
-                icon: Icons.grid_on,
-                onPressed: () => _drawLayout(context),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
-        SizedBox(height: kilo.space.s3),
 
         if (workspace.layouts.isEmpty)
           KCard(
@@ -110,37 +108,29 @@ final class FleetScreen extends StatelessWidget {
 
         SizedBox(height: kilo.space.s6),
 
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                context.t('console.fleet.vehicles'),
-                style: kilo.text.h2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
+        KSectionHeader(
+          context.t('console.fleet.vehicles'),
+          count: workspace.vehicles.length,
+          action: ConstrainedBox(
             // A bounded width, because `disabledHint` renders the button and
             // its explanation as a Column — and a Column in a Row with no
-            // constraint is an infinite width, which is a layout crash
-            // rather than a squashed button.
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 260),
-              child: KButton(
-                label: context.t('console.fleet.addVehicle'),
-                fullWidth: false,
-                icon: Icons.add,
-                onPressed: workspace.layouts.isEmpty
-                    ? null
-                    : () => _addVehicle(context),
-                // A coach has to point at a layout, so the order is forced. A
-                // greyed control with no explanation is the most common way an
-                // app strands somebody.
-                disabledHint: context.t('console.fleet.layoutFirst'),
-              ),
+            // constraint is an infinite width, which is a layout crash rather
+            // than a squashed button.
+            constraints: const BoxConstraints(maxWidth: 260),
+            child: KButton(
+              label: context.t('console.fleet.addVehicle'),
+              fullWidth: false,
+              icon: Icons.add,
+              onPressed: workspace.layouts.isEmpty
+                  ? null
+                  : () => _addVehicle(context),
+              // A coach has to point at a layout, so the order is forced. A
+              // greyed control with no explanation is the most common way an
+              // app strands somebody.
+              disabledHint: context.t('console.fleet.layoutFirst'),
             ),
-          ],
+          ),
         ),
-        SizedBox(height: kilo.space.s3),
 
         for (final vehicle in workspace.vehicles)
           Padding(

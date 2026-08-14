@@ -40,16 +40,12 @@ final class QueueScreen extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.all(kilo.space.s4),
       children: [
-        Text(
+        KPageHeader(
           context.t(showFilters ? 'admin.nav.operators' : 'admin.queue.title'),
-          style: kilo.text.h1,
+          subtitle: context.t('admin.queue.subtitle', {
+            'count': operators.length,
+          }),
         ),
-        SizedBox(height: kilo.space.s1),
-        Text(
-          context.t('admin.queue.subtitle', {'count': operators.length}),
-          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
-        ),
-        SizedBox(height: kilo.space.s4),
 
         if (showFilters) ...[
           Wrap(

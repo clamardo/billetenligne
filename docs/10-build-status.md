@@ -540,6 +540,68 @@ four components, and two catalog keys.
 
 ---
 
+## What the console-shots push changed, and what it cost
+
+The traveller app got a render harness during the design pass, and the
+server-rendered pages got one. The console did not — which meant the surface
+an operator sits in front of for eight hours a day was the one surface nobody
+had ever seen. Eleven screens, all written blind, all reviewed by reading the
+source.
+
+Building one meant extracting the 750-line scripted gateway out of the widget
+test so both suites could share it, along with the three fixture builders that
+had grown up beside it. No behaviour changed there; the 140 widget tests went
+on passing throughout, which is the only reason that refactor was safe to do
+in the same push.
+
+**The first shot found three things.**
+
+The day's summary strip stopped wherever its last figure did. A `Wrap` sizes
+to its content and a `Card` sizes to its child, so the strip was a box
+floating over a list of full-width rows — it read as unfinished rather than as
+the summary of them.
+
+Every departure row left the right third of its card empty. The actions sat in
+a `Flexible`, which is loose: the `Wrap` shrank to its buttons,
+`WrapAlignment.end` had no slack to align inside, and the unused half of the
+allotment stayed as dead space on every row of the screen somebody watches all
+morning.
+
+And one that is not cosmetic at all: **a cancelled departure was drawn exactly
+like a running one.** The board query has no status filter — cancelled coaches
+are on that list by design, because the dispatcher needs to see them — and
+`DepartureBoardDto` carried `status` all the way to the widget, which never
+read it. That is the one row on the screen somebody must not misread: the
+passengers have already been told, and the dispatcher is looking at the day to
+decide what to do about them. It carries a red chip now. `scheduled` draws
+nothing, because a label on every row is a label nobody reads, and two tests
+hold both halves.
+
+**The headings, second.** `KSectionHeader` was built in the components push
+and exactly one screen used it. The fleet, the network and the timetable now
+head their lists with it — counts included, which is a real fact on those
+screens — and the network's loose help line became the subtitle it always was.
+
+**And a drift between the two back-office surfaces is closed.** The console
+set its page titles in the body face at 21; the back office set the same thing
+in the serif at 26. Same job, same design system, two answers. `KPageHeader`
+is that job, and it is the serif: `h1` is the display face, a page title is
+the one place per screen it belongs, and a console whose every heading is set
+in the same face as its table rows is a console where nothing stands out —
+which is the complaint this entire pass exists to answer. Nine screens are on
+it.
+
+**What it did not build:** the back office has no render harness of its own.
+Its six screens changed only their header component, and the change is the
+same one the console shots verified, so a second harness would have been built
+to look at a change already looked at. It is the obvious next one.
+
+**What it cost:** 7 console shots, 2 console tests, 4 design tests, one new
+component, and one shared test fixture where there had been a private one.
+
+
+---
+
 ## What the accent push changed, and what it cost
 
 `operators.accent_hue` has held a closed set of eight since migration 0001 — a

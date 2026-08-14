@@ -33,35 +33,27 @@ final class TimetableScreen extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.all(kilo.space.s4),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                context.t('console.timetable.title'),
-                style: kilo.text.h2,
-                overflow: TextOverflow.ellipsis,
-              ),
+        KPageHeader(
+          context.t('console.timetable.title'),
+          count: workspace.schedules.length,
+          // A bounded width, because `disabledHint` renders the button and
+          // its explanation as a Column — and a Column in a Row with no
+          // constraint is an infinite width, which is a layout crash
+          // rather than a squashed button.
+          action: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 260),
+            child: KButton(
+              label: context.t('console.timetable.add'),
+              fullWidth: false,
+              icon: Icons.add,
+              onPressed: workspace.routes.isEmpty
+                  ? null
+                  : () => _addSchedule(context),
+              // A timetable runs on a route, so the order is forced.
+              disabledHint: context.t('console.timetable.routeFirst'),
             ),
-            // A bounded width, because `disabledHint` renders the button and
-            // its explanation as a Column — and a Column in a Row with no
-            // constraint is an infinite width, which is a layout crash
-            // rather than a squashed button.
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 260),
-              child: KButton(
-                label: context.t('console.timetable.add'),
-                fullWidth: false,
-                icon: Icons.add,
-                onPressed: workspace.routes.isEmpty
-                    ? null
-                    : () => _addSchedule(context),
-                // A timetable runs on a route, so the order is forced.
-                disabledHint: context.t('console.timetable.routeFirst'),
-              ),
-            ),
-          ],
+          ),
         ),
-        SizedBox(height: kilo.space.s3),
 
         if (workspace.schedules.isEmpty)
           KCard(

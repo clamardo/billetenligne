@@ -2,7 +2,6 @@ import 'package:bel_client/bel_client.dart';
 import 'package:bel_design/bel_design.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_console/src/application/console_workspace.dart';
-import 'package:bel_console/src/application/ports/console_gateway.dart';
 import 'package:bel_console/src/application/ports/file_picker.dart';
 import 'package:bel_console/src/application/ports/file_saver.dart';
 import 'package:bel_console/src/application/ports/onboarding_gateway.dart';
@@ -16,763 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'catalog_fixture.dart';
-
-/// A gateway the test drives directly.
-///
-/// Scripted rather than a demo twin, unlike the traveller app's: there is no
-/// demo console (`main.dart` says why — a fake one would be a second
-/// definition of every coach and route), so the only fake that should exist
-/// is one a test controls completely.
-final class _ScriptedConsole implements ConsoleGateway {
-  _ScriptedConsole({required this.capabilities});
-
-  List<String> capabilities;
-  ApiFailure? identityFailure;
-
-  List<LayoutDto> layoutList = const [];
-  List<VehicleDto> vehicleList = const [];
-  List<DepartureBoardDto> boardList = const [];
-
-  final saved = <String>[];
-  MaterialisationDto materialiseResult = const MaterialisationDto(
-    created: 3,
-    alreadyExisted: 0,
-    skipped: [],
-  );
-
-  @override
-  Future<ConsoleIdentityDto> identity() async {
-    if (identityFailure != null) throw identityFailure!;
-    return ConsoleIdentityDto(
-      userId: 'u-1',
-      operatorId: 'op-1',
-      roles: const ['org_admin'],
-      capabilities: capabilities,
-      stationIds: const ['st-bzv'],
-    );
-  }
-
-  /// Nothing dated by default. A test that wants the banner sets this.
-  ComplianceDto standing = const ComplianceDto(
-    operatorId: 'op-1',
-    stage: 'clear',
-  );
-
-  @override
-  Future<ComplianceDto> compliance() async => standing;
-
-  @override
-  Future<List<LayoutDto>> layouts() async => layoutList;
-
-  @override
-  Future<LayoutDto> saveLayout({
-    required String name,
-    required String preset,
-    int? rows,
-  }) async {
-    saved.add('layout:$name:$preset:$rows');
-    return LayoutDto(
-      id: 'l-1',
-      name: name,
-      version: 1,
-      capacity: 49,
-      mode: 'bus',
-      vehicleCount: 0,
-    );
-  }
-
-  /// Kept as the encoded JSON rather than the draft, because what a test
-  /// should assert about a drawn layout is what went on the wire — a draft
-  /// object can be right while its encoding drops a field.
-  Map<String, Object?>? drawn;
-
-  @override
-  Future<LayoutDto> drawLayout(LayoutDraft draft) async {
-    drawn = draft.toJson();
-    saved.add('draw:${draft.name}:${draft.capacity}');
-    return LayoutDto(
-      id: 'l-2',
-      name: draft.name,
-      version: 1,
-      capacity: draft.capacity,
-      mode: draft.mode.name,
-      vehicleCount: 0,
-    );
-  }
-
-  RefundOfferDto? offerResult;
-  IssuedRefundDto? issuedResult;
-
-  @override
-  Future<RefundOfferDto> refundOffer(String bookingRef) async {
-    saved.add('quote:$bookingRef');
-    return offerResult ??
-        RefundOfferDto(
-          bookingRef: bookingRef,
-          state: 'confirmed',
-          departsAt: DateTime.utc(2028, 3, 6),
-          fare: const Money.xaf(9000),
-          serviceFee: const Money.xaf(300),
-        );
-  }
-
-  @override
-  Future<IssuedRefundDto> refundBooking({
-    required String bookingRef,
-    required String reason,
-  }) async {
-    saved.add('refund:$bookingRef:$reason');
-    return issuedResult ??
-        IssuedRefundDto(
-          id: 'r-1',
-          bookingRef: bookingRef,
-          amount: const Money.xaf(8100),
-          destination: 'agencyCash',
-          state: 'claim_issued',
-          claimCode: 'K4M2QX',
-          claimExpiresAt: DateTime.utc(2028, 6, 1),
-        );
-  }
-
-  @override
-  Future<ClaimedRefundDto> claimRefund({
-    required String claimCode,
-    required String stationId,
-  }) async {
-    saved.add('claim:$claimCode:$stationId');
-    return ClaimedRefundDto(
-      id: 'r-1',
-      bookingRef: 'BEL-K4M2QX',
-      amount: const Money.xaf(8100),
-      stationId: stationId,
-    );
-  }
-
-  List<RefundPolicyDto> policyList = const [];
-  bool hasDefault = false;
-
-  /// The last policy written, kept as the domain object the screen produced —
-  /// what a test should assert about a wizard is the *terms* it built, since
-  /// the encoding is proven separately in `bel_contracts`.
-  RefundPolicy? written;
-
-  /// And the change terms beside them, for the same reason.
-  ChangePolicy? writtenChange;
-  MissedPolicy? writtenMissed;
-  MissedOptionsDto? missedResult;
-
-  @override
-  Future<({List<RefundPolicyDto> items, bool hasDefault})>
-  refundPolicies() async => (items: policyList, hasDefault: hasDefault);
-
-  @override
-  Future<RefundPolicyDto> saveRefundPolicy({
-    required String name,
-    required RefundPolicy policy,
-    ChangePolicy change = ChangePolicy.standard,
-    MissedPolicy missed = MissedPolicy.notOffered,
-  }) async {
-    written = policy;
-    writtenChange = change;
-    writtenMissed = missed;
-    saved.add('policy:$name:${policy.tiers.length}');
-    return RefundPolicyDto.fromDomain(
-      policy,
-      name: name,
-      isDefault: false,
-      change: change,
-      missed: missed,
-    );
-  }
-
-  @override
-  Future<MissedOptionsDto> missedOptions(String bookingRef) async {
-    saved.add('missedOptions:$bookingRef');
-    return missedResult ??
-        MissedOptionsDto(
-          bookingRef: bookingRef,
-          originCity: 'BZV',
-          destinationCity: 'PNR',
-          seatsNeeded: 1,
-          departedAt: DateTime.utc(2026, 8, 10, 5),
-          paidFare: const Money.xaf(12000),
-          options: const [],
-        );
-  }
-
-  @override
-  Future<MissedTransferDto> moveMissed({
-    required String bookingRef,
-    required String departureId,
-    String? stationId,
-  }) async {
-    saved.add('missedMove:$bookingRef:$departureId:$stationId');
-    return MissedTransferDto(
-      bookingRef: bookingRef,
-      departureId: departureId,
-      departsAt: DateTime.utc(2026, 8, 10, 8, 30),
-      seatLabels: const ['4C'],
-      paid: const Money.xaf(2700),
-      stationName: 'Gare de Kinsoundi',
-    );
-  }
-
-  @override
-  Future<RefundPolicyDto?> setDefaultRefundPolicy({
-    String? policyId,
-    int? version,
-  }) async {
-    saved.add('default:$policyId:$version');
-    if (policyId == null) return null;
-    return policyList.firstWhere(
-      (p) => p.id == policyId && p.version == version,
-    );
-  }
-
-  @override
-  Future<List<VehicleDto>> vehicles() async => vehicleList;
-
-  @override
-  Future<VehicleDto> saveVehicle({
-    required String registration,
-    required String layoutId,
-    String? nickname,
-    String? model,
-  }) async {
-    saved.add('vehicle:$registration:$layoutId');
-    return VehicleDto(
-      id: 'v-1',
-      registration: registration,
-      layoutId: layoutId,
-      layoutName: 'Coach',
-      capacity: 49,
-      status: 'active',
-      sellable: true,
-    );
-  }
-
-  @override
-  Future<List<String>> setVehicleStatus({
-    required String vehicleId,
-    required String status,
-  }) async {
-    saved.add('status:$vehicleId:$status');
-    return status == 'active' ? const [] : const ['dep-1', 'dep-2'];
-  }
-
-  /// The lines this operator runs. The agreement dialog offers corridors
-  /// built from these rather than a free-text field, so nobody agrees to
-  /// protect a road neither company serves.
-  List<RouteDto> routeList = const [];
-  List<StationDto> stationList = const [];
-
-  @override
-  Future<List<RouteDto>> routes() async => routeList;
-
-  /// The stops of the last road saved, so a test can assert what the form
-  /// actually sent rather than what it drew.
-  List<RouteStopDto>? savedStops;
-
-  /// And what it priced. Null and empty are different answers — one leaves
-  /// the list alone, the other takes every leg off sale.
-  List<SegmentFareDto>? savedSegments;
-
-  @override
-  Future<RouteDto> saveRoute({
-    required String code,
-    required String originCity,
-    required String destinationCity,
-    required int durationMinutes,
-    String? id,
-    List<RouteStopDto>? stops,
-    List<SegmentFareDto>? segments,
-  }) async {
-    saved.add('route:$code');
-    savedStops = stops;
-    savedSegments = segments;
-    return RouteDto(
-      id: id ?? 'r-1',
-      code: code,
-      originCity: originCity,
-      destinationCity: destinationCity,
-      durationMinutes: durationMinutes,
-      active: true,
-      stops: stops ?? const [],
-      segments: [
-        for (final fare in segments ?? const <SegmentFareDto>[])
-          SegmentFareDto(
-            fromCity: fare.fromCity,
-            toCity: fare.toCity,
-            fareMinor: fare.fareMinor,
-            fromPosition: 0,
-            toPosition: 1,
-          ),
-      ],
-    );
-  }
-
-  @override
-  Future<List<CityDto>> cities() async => const [
-    CityDto(code: 'BZV', name: 'Brazzaville'),
-    CityDto(code: 'PNR', name: 'Pointe-Noire'),
-    // A third town, so a road can have something between its endpoints: a
-    // stop dropdown offering only the two ends cannot describe a road that
-    // passes through anywhere.
-    CityDto(code: 'DOL', name: 'Dolisie'),
-  ];
-
-  @override
-  Future<List<StationDto>> stations() async => stationList;
-
-  @override
-  Future<StationDto> saveStation({
-    required String cityCode,
-    required String name,
-    String? id,
-    String? boardingNotes,
-    bool active = true,
-  }) async {
-    saved.add('station:$cityCode:$name:$active');
-    final station = StationDto(
-      id: id ?? 'st-new',
-      cityCode: cityCode,
-      name: name,
-      boardingNotes: boardingNotes,
-      active: active,
-    );
-    stationList = [...stationList.where((s) => s.id != station.id), station];
-    return station;
-  }
-
-  @override
-  Future<List<ScheduleDto>> schedules() async => const [];
-
-  @override
-  Future<ScheduleDto> saveSchedule({
-    required String routeId,
-    required String rrule,
-    required String departureTime,
-    required int fareMinor,
-    required DateTime validFrom,
-    String? vehicleId,
-    DateTime? validUntil,
-  }) async {
-    saved.add('schedule:$rrule:$departureTime');
-    return ScheduleDto(
-      id: 's-1',
-      routeId: routeId,
-      routeCode: 'BZV-PNR',
-      rrule: rrule,
-      departureTime: departureTime,
-      fare: Money(fareMinor, Currency.xaf),
-      validFrom: validFrom,
-      active: true,
-    );
-  }
-
-  @override
-  Future<MaterialisationDto> materialise({
-    required String scheduleId,
-    required DateTime from,
-    required DateTime to,
-  }) async => materialiseResult;
-
-  @override
-  Future<List<DepartureBoardDto>> board(DateTime localDate) async => boardList;
-
-  @override
-  Future<ManifestDto> manifest(String departureId) async => ManifestDto(
-    departureId: departureId,
-    routeCode: 'BZV-PNR',
-    departsAt: DateTime.utc(2026, 8, 10, 5),
-    capacity: 49,
-    sold: 1,
-    boarded: 0,
-    passengers: const [
-      ManifestPassengerDto(
-        seatLabel: '1A',
-        passengerName: 'Aline M.',
-        bookingRef: 'BEL-7QK4M2',
-        boarded: false,
-      ),
-      // Somebody who bought a piece of the road and gets off at Dolisie.
-      ManifestPassengerDto(
-        seatLabel: '2B',
-        passengerName: 'Serge N.',
-        bookingRef: 'BEL-3RT9P1',
-        boarded: false,
-        boardsAt: 'BZV',
-        alightsAt: 'DOL',
-      ),
-    ],
-  );
-
-  /// What the last declaration was answered with, and how many it reached.
-  int declaredAffected = 42;
-  bool declaredFree = true;
-
-  @override
-  Future<DeclaredDisruptionDto> declareDisruption({
-    required String departureId,
-    required DeclareDisruptionRequest request,
-  }) async {
-    saved.add(
-      'disruption:$departureId:${request.kind.name}:${request.cause.name}'
-      ':${request.note ?? ''}',
-    );
-    return DeclaredDisruptionDto(
-      disruption: DisruptionDto(
-        id: 'd-1',
-        kind: request.kind,
-        cause: request.cause,
-        declaredAt: DateTime.utc(2026, 8, 10, 5, 40),
-        marksInvoluntary: declaredFree,
-        note: request.note,
-        revisedDepartsAt: request.revisedDepartsAt,
-      ),
-      departureId: departureId,
-      bookingsAffected: declaredAffected,
-      departureStatus: 'cancelled',
-    );
-  }
-
-  /// This operator's statements, as the server would answer.
-  List<PayoutRunDto> statementList = const [];
-
-  /// The standing agreements, as the server would answer.
-  List<ProtectionAgreementDto> agreementList = const [];
-
-  @override
-  Future<List<ProtectionAgreementDto>> protectionAgreements() async {
-    saved.add('protection');
-    return agreementList;
-  }
-
-  @override
-  Future<ProtectionAgreementDto> proposeAgreement(
-    ProposeAgreementRequest request,
-  ) async {
-    saved.add(
-      'propose:${request.counterpartyCode}:${request.corridors.join(",")}'
-      ':${request.rebillDiscountBps}',
-    );
-    return _agreement(
-      id: 'agr-new',
-      state: 'proposed',
-      weProposed: true,
-      corridors: request.corridors,
-      discountBps: request.rebillDiscountBps,
-      cap: request.monthlyCapSeats,
-    );
-  }
-
-  @override
-  Future<ProtectionAgreementDto> decideAgreement({
-    required String agreementId,
-    required AgreementDecisionRequest request,
-  }) async {
-    saved.add('decide:$agreementId:${request.decision}');
-    return _agreement(
-      id: agreementId,
-      state: switch (request.decision) {
-        'accept' || 'resume' => 'active',
-        'suspend' => 'suspended',
-        _ => 'ended',
-      },
-      weProposed: false,
-    );
-  }
-
-  @override
-  Future<List<PayoutRunDto>> statements() async {
-    saved.add('statements');
-    return statementList;
-  }
-
-  /// What the download returns. Bytes and a name, the way the server sends
-  /// them — the client never composes the name of a commercial document.
-  var pdfBytes = const <int>[0x25, 0x50, 0x44, 0x46];
-  var pdfFilename = 'releve-ocean-du-nord-2026-08-01.pdf';
-
-  @override
-  Future<({List<int> bytes, String filename, String mimeType})> statementPdf(
-    String runId,
-  ) async {
-    saved.add('statementPdf:$runId');
-    return (
-      bytes: pdfBytes,
-      filename: pdfFilename,
-      mimeType: 'application/pdf',
-    );
-  }
-
-  /// The live requests, as the server would answer.
-  List<ProtectionRequestDto> requestList = const [];
-
-  /// Everybody's departures on a road, as the public search would answer.
-  List<DepartureSummaryDto> tripList = const [];
-
-  /// How many of the party the receiving coach could actually take. Set per
-  /// test: "everybody" and "1 of 2" are different sentences on the console,
-  /// and only one of them sends somebody looking for another coach.
-  int? movedSeats;
-
-  @override
-  Future<List<ProtectionRequestDto>> protectionRequests() async {
-    saved.add('requests');
-    return requestList;
-  }
-
-  @override
-  Future<ProtectionRequestDto> askForProtection(
-    ProtectionRequestBody request,
-  ) async {
-    saved.add(
-      'ask:${request.departureId}:${request.replacementDepartureId}'
-      ':${request.note ?? ''}',
-    );
-    return _request(id: 'req-new');
-  }
-
-  @override
-  Future<ProtectionRequestDto> decideProtectionRequest({
-    required String requestId,
-    required AgreementDecisionRequest request,
-  }) async {
-    saved.add('decideRequest:$requestId:${request.decision}');
-    // Answered from the row the console is showing, so "how many were asked
-    // for" survives the round trip — the difference between "everybody" and
-    // "2 of 5" is the whole point of the notice.
-    final asked = requestList
-        .where((r) => r.id == requestId)
-        .firstOrNull
-        ?.seatsRequested;
-    return _request(
-      id: requestId,
-      state: request.decision == 'accept' ? 'applied' : 'declined',
-      seatsRequested: asked ?? 2,
-      seatsMoved: request.decision == 'accept'
-          ? movedSeats ?? asked ?? 2
-          : null,
-      declineReason: request.reason,
-    );
-  }
-
-  /// The open-call inbox, and whether this operator is in the channel.
-  OpenCallsDto callInbox = const OpenCallsDto(receiving: false, calls: []);
-
-  @override
-  Future<OpenCallsDto> openProtectionCalls() async {
-    saved.add('openCalls');
-    return callInbox;
-  }
-
-  @override
-  Future<OpenCallDto> openProtectionCall(OpenCallBody body) async {
-    saved.add('openCall:${body.departureId}');
-    return _call(id: 'call-new', weOpened: true);
-  }
-
-  @override
-  Future<OpenCallDto> withdrawProtectionCall(String callId) async {
-    saved.add('withdrawCall:$callId');
-    return _call(id: callId, weOpened: true, state: 'withdrawn');
-  }
-
-  @override
-  Future<ProtectionRequestDto> answerProtectionCall({
-    required String callId,
-    required AnswerCallBody body,
-  }) async {
-    saved.add('answerCall:$callId:${body.replacementDepartureId}');
-    return _request(id: 'req-answered', state: 'applied', seatsMoved: 2);
-  }
-
-  @override
-  Future<bool> receiveOpenProtectionCalls(bool receiving) async {
-    saved.add('receiving:$receiving');
-    callInbox = OpenCallsDto(receiving: receiving, calls: callInbox.calls);
-    return receiving;
-  }
-
-  @override
-  Future<List<DepartureSummaryDto>> tripsOn({
-    required String originCity,
-    required String destinationCity,
-    required DateTime date,
-  }) async {
-    saved.add('trips:$originCity:$destinationCity');
-    return tripList;
-  }
-
-  /// How many of the moved party the replacement could take. Set per test:
-  /// the console renders "everybody" and "18 of 42" differently, and only one
-  /// of those tells a dispatcher what to do next.
-  int rebookLeft = 0;
-
-  @override
-  Future<RebookingAppliedDto> rebookOnto({
-    required String departureId,
-    required RebookRequest request,
-  }) async {
-    saved.add(
-      'rebook:$departureId:${request.replacementDepartureId}'
-      ':${request.note ?? ''}',
-    );
-    return RebookingAppliedDto(
-      departureId: departureId,
-      replacementDepartureId: request.replacementDepartureId,
-      replacementDepartsAt: DateTime.utc(2026, 8, 10, 13),
-      moved: const [
-        RebookedPartyDto(
-          bookingId: 'b-1',
-          ref: 'BEL-7QK4M2',
-          seatLabels: ['3A'],
-        ),
-      ],
-      passengersMoved: 18,
-      passengersLeft: rebookLeft,
-    );
-  }
-
-  /// How many seats the rescue moved. Set per test — the console renders the
-  /// difference between "everybody keeps their seat" and "nine people move".
-  int rescueMoves = 0;
-
-  @override
-  Future<RescueAppliedDto> assignRescueCoach({
-    required String departureId,
-    required RescueCoachRequest request,
-  }) async {
-    saved.add('rescue:$departureId:${request.vehicleId}:${request.note ?? ''}');
-    return RescueAppliedDto(
-      departureId: departureId,
-      registration: 'ODN-902',
-      moves: [
-        for (var i = 0; i < rescueMoves; i++)
-          SeatMoveDto(from: '${i + 1}A', to: '${i + 1}E'),
-      ],
-      passengersTold: 1,
-      ticketsReissued: rescueMoves,
-      holdsReleased: 0,
-    );
-  }
-
-  @override
-  Future<SeatMapDto> seatMap(String departureId) => throw UnimplementedError();
-
-  @override
-  Future<CounterSaleDto> collect({
-    required String paymentCode,
-    required String stationId,
-  }) async {
-    saved.add('collect:$paymentCode:$stationId');
-    return _sale;
-  }
-
-  VitrineDto vitrineRow = const VitrineDto(
-    operatorId: 'op-1',
-    code: 'ODN',
-    legalName: 'Ocean du Nord SARL',
-    tradingName: 'Ocean du Nord',
-    accentHue: 'foret',
-    headerPattern: 'flat',
-  );
-
-  @override
-  Future<VitrineDto> vitrine() async => vitrineRow;
-
-  @override
-  Future<VitrineDto> saveVitrine(SaveVitrineRequest request) async {
-    saved.add(
-      'vitrine:${request.accentHue}:${request.headerPattern}:'
-      '${request.titleFr}:${request.taglineFr}',
-    );
-    return vitrineRow = VitrineDto(
-      operatorId: vitrineRow.operatorId,
-      code: vitrineRow.code,
-      legalName: vitrineRow.legalName,
-      tradingName: vitrineRow.tradingName,
-      accentHue: request.accentHue,
-      headerPattern: request.headerPattern,
-      titleFr: request.titleFr,
-      titleEn: request.titleEn,
-      taglineFr: request.taglineFr,
-      taglineEn: request.taglineEn,
-    );
-  }
-
-  @override
-  Future<VitrineDto> uploadVitrineAsset({
-    required String asset,
-    required List<int> bytes,
-    required String mimeType,
-  }) async {
-    saved.add('upload:$asset:${bytes.length}:$mimeType');
-    // Only the asset that was sent comes back with a URL. A fake that lit up
-    // both would hide a screen wiring the cover button to the logo field.
-    return vitrineRow = vitrineRow.withAssetUrls(
-      logoUrl: asset == 'logo'
-          ? 'https://storage.test/operators/op-1/logo.png'
-          : vitrineRow.logoUrl,
-      coverUrl: asset == 'cover'
-          ? 'https://storage.test/operators/op-1/cover.jpg'
-          : vitrineRow.coverUrl,
-    );
-  }
-
-  @override
-  Future<VitrineDto> removeVitrineAsset(String asset) async {
-    saved.add('remove:$asset');
-    return vitrineRow = vitrineRow.withAssetUrls(
-      logoUrl: asset == 'logo' ? null : vitrineRow.logoUrl,
-      coverUrl: asset == 'cover' ? null : vitrineRow.coverUrl,
-    );
-  }
-
-  @override
-  Future<CounterSaleDto> sell({
-    required String departureId,
-    required String buyerPhone,
-    required List<PassengerDto> passengers,
-    required String stationId,
-    required String idempotencyKey,
-  }) async {
-    saved.add('sell:$departureId:$buyerPhone');
-    return _sale;
-  }
-
-  /// The address the vendor typed, echoed. The real server answers with what
-  /// it actually sent to, which on an empty field is the account's own.
-  @override
-  Future<TicketLinkSentDto> sendTicketLink({
-    required String bookingRef,
-    required String channel,
-    String? sendTo,
-  }) async {
-    saved.add('link:$bookingRef:$channel:${sendTo ?? ''}');
-    return TicketLinkSentDto(
-      channel: channel,
-      sentTo: sendTo ?? '+242069000001',
-    );
-  }
-
-  @override
-  Future<void> revokeTicketLinks(String bookingRef) async {
-    saved.add('unlink:$bookingRef');
-  }
-
-  static final _sale = CounterSaleDto(
-    id: 'bk-1',
-    ref: 'BEL-7QK4M2',
-    state: 'confirmed',
-    total: const Money.xaf(12300),
-    fare: const Money.xaf(12000),
-    serviceFee: const Money.xaf(300),
-    passengers: const [PassengerDto(fullName: 'Aline M.', seatLabel: '1A')],
-    tickets: const [(id: 't-1', seatLabel: '1A', qrPayload: 'payload')],
-  );
-}
+import 'scripted_console.dart';
 
 void main() {
   late TranslationCatalog catalog;
@@ -781,7 +24,7 @@ void main() {
 
   Future<ConsoleWorkspace> pump(
     WidgetTester tester,
-    _ScriptedConsole gateway, {
+    ScriptedConsole gateway, {
     FilePicker? files,
     FileSaver? downloads,
   }) async {
@@ -808,7 +51,7 @@ void main() {
     testWidgets('an owner sees every section', (tester) async {
       await pump(
         tester,
-        _ScriptedConsole(
+        ScriptedConsole(
           capabilities: const [
             'booking.read',
             'booking.sell',
@@ -833,7 +76,7 @@ void main() {
     testWidgets('a vendor has no Fleet tab at all', (tester) async {
       await pump(
         tester,
-        _ScriptedConsole(capabilities: const ['booking.read', 'booking.sell']),
+        ScriptedConsole(capabilities: const ['booking.read', 'booking.sell']),
       );
 
       // Not a greyed one, which invites a support call, and not a visible one
@@ -846,7 +89,7 @@ void main() {
     testWidgets('a failure to load identity is a retry, not a blank app', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(capabilities: const [])
+      final gateway = ScriptedConsole(capabilities: const [])
         ..identityFailure = const NetworkUnreachable();
       await pump(tester, gateway);
 
@@ -878,7 +121,7 @@ void main() {
       // stopped reading by the time it matters. The reminder went by SMS.
       await pump(
         tester,
-        _ScriptedConsole(capabilities: const ['booking.read'])
+        ScriptedConsole(capabilities: const ['booking.read'])
           ..standing = standing('noticed', days: 55),
       );
 
@@ -890,7 +133,7 @@ void main() {
     ) async {
       await pump(
         tester,
-        _ScriptedConsole(capabilities: const ['booking.read'])
+        ScriptedConsole(capabilities: const ['booking.read'])
           ..standing = standing('warned', days: 21),
       );
 
@@ -901,7 +144,7 @@ void main() {
     testWidgets('once it has lapsed, it says what still works', (tester) async {
       await pump(
         tester,
-        _ScriptedConsole(capabilities: const ['booking.read'])
+        ScriptedConsole(capabilities: const ['booking.read'])
           ..standing = standing('blocked', blockedDoc: 'fleet_insurance'),
       );
 
@@ -915,7 +158,7 @@ void main() {
       // banner that appears the week after they went on leave.
       await pump(
         tester,
-        _ScriptedConsole(capabilities: const ['booking.sell'])
+        ScriptedConsole(capabilities: const ['booking.sell'])
           ..standing = standing('blocked', blockedDoc: 'fleet_insurance'),
       );
 
@@ -925,7 +168,7 @@ void main() {
 
   group("the dispatcher's day", () {
     testWidgets('separates held from sold', (tester) async {
-      final gateway = _ScriptedConsole(capabilities: const ['booking.read'])
+      final gateway = ScriptedConsole(capabilities: const ['booking.read'])
         ..boardList = [
           DepartureBoardDto(
             id: 'dep-1',
@@ -953,8 +196,57 @@ void main() {
       expect(find.text('ODN-001'), findsOneWidget);
     });
 
+    // The board query has no status filter, so a cancelled coach is on this
+    // list — and it was drawn exactly like one that is running. That is the
+    // one row on this screen somebody must not misread: the passengers have
+    // been told, and the dispatcher is looking at the day to decide what to
+    // do about them.
+    testWidgets('a cancelled departure says so', (tester) async {
+      final gateway = ScriptedConsole(capabilities: const ['booking.read'])
+        ..boardList = [
+          DepartureBoardDto(
+            id: 'dep-1',
+            routeCode: 'BZV-PNR',
+            departsAt: DateTime.utc(2026, 8, 10, 5),
+            status: 'cancelled',
+            capacity: 49,
+            sold: 3,
+            held: 0,
+            available: 49,
+            vehicle: 'ODN-001',
+          ),
+        ];
+
+      await pump(tester, gateway);
+
+      expect(find.text('Annulé'), findsOneWidget);
+    });
+
+    // A label on every row is a label nobody reads, which is the whole reason
+    // the chip is conditional rather than always drawn.
+    testWidgets('and a scheduled one carries no badge at all', (tester) async {
+      final gateway = ScriptedConsole(capabilities: const ['booking.read'])
+        ..boardList = [
+          DepartureBoardDto(
+            id: 'dep-1',
+            routeCode: 'BZV-PNR',
+            departsAt: DateTime.utc(2026, 8, 10, 5),
+            status: 'scheduled',
+            capacity: 49,
+            sold: 3,
+            held: 0,
+            available: 46,
+            vehicle: 'ODN-001',
+          ),
+        ];
+
+      await pump(tester, gateway);
+
+      expect(find.byType(KChip), findsNothing);
+    });
+
     testWidgets('a departure with no coach says so, loudly', (tester) async {
-      final gateway = _ScriptedConsole(capabilities: const ['booking.read'])
+      final gateway = ScriptedConsole(capabilities: const ['booking.read'])
         ..boardList = [
           DepartureBoardDto(
             id: 'dep-1',
@@ -973,10 +265,7 @@ void main() {
     });
 
     testWidgets('an empty day names the cause', (tester) async {
-      await pump(
-        tester,
-        _ScriptedConsole(capabilities: const ['booking.read']),
-      );
+      await pump(tester, ScriptedConsole(capabilities: const ['booking.read']));
 
       // On a day with no departures the answer is almost always "the
       // timetable was never published", and that is two clicks away.
@@ -986,7 +275,7 @@ void main() {
     testWidgets('the manifest opens and lists confirmed passengers', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(capabilities: const ['booking.read'])
+      final gateway = ScriptedConsole(capabilities: const ['booking.read'])
         ..boardList = [
           DepartureBoardDto(
             id: 'dep-1',
@@ -1027,8 +316,8 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    _ScriptedConsole dispatcher({int sold = 42}) =>
-        _ScriptedConsole(
+    ScriptedConsole dispatcher({int sold = 42}) =>
+        ScriptedConsole(
             capabilities: const ['booking.read', 'disruption.declare'],
           )
           ..boardList = [
@@ -1046,7 +335,7 @@ void main() {
           ];
 
     testWidgets('a vendor is not offered the button at all', (tester) async {
-      final gateway = _ScriptedConsole(capabilities: const ['booking.read'])
+      final gateway = ScriptedConsole(capabilities: const ['booking.read'])
         ..boardList = dispatcher().boardList;
 
       await pump(tester, gateway);
@@ -1173,8 +462,8 @@ void main() {
     /// A dispatcher whose coach has broken down, plus a fleet to pick from.
     /// The 33-seater is deliberately too small for the 42 sold: the sheet has
     /// to say so rather than offering a swap the server will refuse.
-    _ScriptedConsole stranded({int sold = 42, String? vehicle = 'ODN-001'}) =>
-        _ScriptedConsole(
+    ScriptedConsole stranded({int sold = 42, String? vehicle = 'ODN-001'}) =>
+        ScriptedConsole(
             capabilities: const ['booking.read', 'disruption.declare'],
           )
           ..vehicleList = const [
@@ -1330,8 +619,8 @@ void main() {
   group('moving the passengers onto another departure', () {
     /// A broken 06:00 with forty-two aboard, a 14:00 with eighteen free
     /// seats, and a departure on another road that must never be offered.
-    _ScriptedConsole stranded() =>
-        _ScriptedConsole(
+    ScriptedConsole stranded() =>
+        ScriptedConsole(
             capabilities: const ['booking.read', 'disruption.declare'],
           )
           ..boardList = [
@@ -1441,8 +730,8 @@ void main() {
   });
 
   group('the yards', () {
-    _ScriptedConsole network() =>
-        _ScriptedConsole(capabilities: const ['booking.read', 'route.manage'])
+    ScriptedConsole network() =>
+        ScriptedConsole(capabilities: const ['booking.read', 'route.manage'])
           ..stationList = const [
             StationDto(
               id: 'st-1',
@@ -1522,11 +811,11 @@ void main() {
   });
 
   group('the towns on the road', () {
-    _ScriptedConsole roads({
+    ScriptedConsole roads({
       List<RouteStopDto> stops = const [],
       List<SegmentFareDto> segments = const [],
     }) =>
-        _ScriptedConsole(capabilities: const ['booking.read', 'route.manage'])
+        ScriptedConsole(capabilities: const ['booking.read', 'route.manage'])
           ..routeList = [
             RouteDto(
               id: 'r-1',
@@ -1762,8 +1051,8 @@ void main() {
           reference: state == 'paid' ? 'MOMO-4471-88' : null,
         );
 
-    _ScriptedConsole finance() =>
-        _ScriptedConsole(capabilities: const ['booking.read', 'finance.read'])
+    ScriptedConsole finance() =>
+        ScriptedConsole(capabilities: const ['booking.read', 'finance.read'])
           ..statementList = [statement()];
 
     testWidgets('the statement can be taken away as a document', (
@@ -1824,10 +1113,7 @@ void main() {
     });
 
     testWidgets('a vendor is not offered the tab at all', (tester) async {
-      await pump(
-        tester,
-        _ScriptedConsole(capabilities: const ['booking.read']),
-      );
+      await pump(tester, ScriptedConsole(capabilities: const ['booking.read']));
 
       // A vendor does not need to see what the company was paid last week,
       // and a tab they cannot use is a tab they eventually ask about.
@@ -1872,17 +1158,17 @@ void main() {
   });
 
   group('protection agreements', () {
-    _ScriptedConsole dispatcher() =>
-        _ScriptedConsole(capabilities: const ['booking.read']);
+    ScriptedConsole dispatcher() =>
+        ScriptedConsole(capabilities: const ['booking.read']);
 
-    _ScriptedConsole owner() => _ScriptedConsole(
+    ScriptedConsole owner() => ScriptedConsole(
       capabilities: const ['booking.read', 'protection.manage'],
     );
 
     testWidgets(
       'a dispatcher sees the tab, because option ③ is theirs to use',
       (tester) async {
-        final gateway = dispatcher()..agreementList = [_agreement()];
+        final gateway = dispatcher()..agreementList = [protectionAgreement()];
         final workspace = await pump(tester, gateway);
         workspace.openSection(ConsoleSection.protection);
         await tester.pumpAndSettle();
@@ -1897,7 +1183,7 @@ void main() {
     testWidgets('the rebill is money on a real fare, not basis points', (
       tester,
     ) async {
-      final gateway = owner()..agreementList = [_agreement()];
+      final gateway = owner()..agreementList = [protectionAgreement()];
       final workspace = await pump(tester, gateway);
       workspace.openSection(ConsoleSection.protection);
       await tester.pumpAndSettle();
@@ -1909,7 +1195,8 @@ void main() {
     });
 
     testWidgets('the ceiling is shown before it bites', (tester) async {
-      final gateway = owner()..agreementList = [_agreement(used: 31, cap: 40)];
+      final gateway = owner()
+        ..agreementList = [protectionAgreement(used: 31, cap: 40)];
       final workspace = await pump(tester, gateway);
       workspace.openSection(ConsoleSection.protection);
       await tester.pumpAndSettle();
@@ -1922,7 +1209,9 @@ void main() {
 
     testWidgets('our own proposal says nothing is covered yet', (tester) async {
       final gateway = owner()
-        ..agreementList = [_agreement(state: 'proposed', weProposed: true)];
+        ..agreementList = [
+          protectionAgreement(state: 'proposed', weProposed: true),
+        ];
       final workspace = await pump(tester, gateway);
       workspace.openSection(ConsoleSection.protection);
       await tester.pumpAndSettle();
@@ -1940,7 +1229,9 @@ void main() {
       tester,
     ) async {
       final gateway = owner()
-        ..agreementList = [_agreement(state: 'proposed', weProposed: false)];
+        ..agreementList = [
+          protectionAgreement(state: 'proposed', weProposed: false),
+        ];
       final workspace = await pump(tester, gateway);
       workspace.openSection(ConsoleSection.protection);
       await tester.pumpAndSettle();
@@ -1961,7 +1252,7 @@ void main() {
     testWidgets('a live one can be suspended without being torn up', (
       tester,
     ) async {
-      final gateway = owner()..agreementList = [_agreement()];
+      final gateway = owner()..agreementList = [protectionAgreement()];
       final workspace = await pump(tester, gateway);
       workspace.openSection(ConsoleSection.protection);
       await tester.pumpAndSettle();
@@ -2027,11 +1318,11 @@ void main() {
   group('asking another company for room', () {
     /// A dispatcher, a broken 06:00 with forty-two aboard, a live agreement
     /// on that road, and a competitor's 13:00 with six seats.
-    _ScriptedConsole stranded() =>
-        _ScriptedConsole(
+    ScriptedConsole stranded() =>
+        ScriptedConsole(
             capabilities: const ['booking.read', 'disruption.declare'],
           )
-          ..agreementList = [_agreement()]
+          ..agreementList = [protectionAgreement()]
           ..routeList = [
             const RouteDto(
               id: 'r-1',
@@ -2084,7 +1375,8 @@ void main() {
     });
 
     testWidgets('an exhausted ceiling hides it too', (tester) async {
-      final gateway = stranded()..agreementList = [_agreement(used: 40)];
+      final gateway = stranded()
+        ..agreementList = [protectionAgreement(used: 40)];
       await pump(tester, gateway);
 
       // In force and spent is refused all the same, until the first of the
@@ -2158,12 +1450,12 @@ void main() {
 
   group('calling the whole road', () {
     /// A dispatcher: may broadcast and may answer, may not sign anything.
-    _ScriptedConsole dispatcher() => _ScriptedConsole(
+    ScriptedConsole dispatcher() => ScriptedConsole(
       capabilities: const ['booking.read', 'disruption.declare'],
     );
 
     /// Somebody who can commit the company to the channel as well.
-    _ScriptedConsole owner() => _ScriptedConsole(
+    ScriptedConsole owner() => ScriptedConsole(
       capabilities: const [
         'booking.read',
         'disruption.declare',
@@ -2235,7 +1527,9 @@ void main() {
       final gateway = dispatcher()
         ..callInbox = OpenCallsDto(
           receiving: true,
-          calls: [_call(seatsRequested: 31, note: 'Boîte de vitesses, PK 84')],
+          calls: [
+            openCall(seatsRequested: 31, note: 'Boîte de vitesses, PK 84'),
+          ],
         );
       final workspace = await pump(tester, gateway);
       workspace.openSection(ConsoleSection.protection);
@@ -2265,7 +1559,7 @@ void main() {
       final gateway = dispatcher()
         ..callInbox = OpenCallsDto(
           receiving: true,
-          calls: [_call(weOpened: true, seatsRequested: 31)],
+          calls: [openCall(weOpened: true, seatsRequested: 31)],
         );
       final workspace = await pump(tester, gateway);
       workspace.openSection(ConsoleSection.protection);
@@ -2293,7 +1587,7 @@ void main() {
       final gateway = dispatcher()
         ..callInbox = OpenCallsDto(
           receiving: true,
-          calls: [_call(seatsRequested: 31)],
+          calls: [openCall(seatsRequested: 31)],
         )
         ..tripList = [
           // Ours, later, with room: the only kind that can answer.
@@ -2333,7 +1627,7 @@ void main() {
       tester,
     ) async {
       final gateway = dispatcher()
-        ..callInbox = OpenCallsDto(receiving: true, calls: [_call()])
+        ..callInbox = OpenCallsDto(receiving: true, calls: [openCall()])
         ..tripList = [_trip(id: 'dep-theirs', operatorId: 'op-bony')];
       final workspace = await pump(tester, gateway);
       workspace.openSection(ConsoleSection.protection);
@@ -2358,8 +1652,8 @@ void main() {
           ..callInbox = OpenCallsDto(
             receiving: true,
             calls: [
-              _call(id: 'call-theirs'),
-              _call(id: 'call-ours', weOpened: true),
+              openCall(id: 'call-theirs'),
+              openCall(id: 'call-ours', weOpened: true),
             ],
           );
         final workspace = await pump(tester, gateway);
@@ -2381,8 +1675,8 @@ void main() {
         ..callInbox = OpenCallsDto(
           receiving: true,
           calls: [
-            _call(state: 'answered'),
-            _call(id: 'c2', state: 'expired'),
+            openCall(state: 'answered'),
+            openCall(id: 'c2', state: 'expired'),
           ],
         );
       final workspace = await pump(tester, gateway);
@@ -2400,16 +1694,16 @@ void main() {
   });
 
   group('answering a protection request', () {
-    _ScriptedConsole receiving() =>
-        _ScriptedConsole(
+    ScriptedConsole receiving() =>
+        ScriptedConsole(
             capabilities: const ['booking.read', 'disruption.declare'],
           )
-          ..agreementList = [_agreement()]
-          ..requestList = [_request()];
+          ..agreementList = [protectionAgreement()]
+          ..requestList = [protectionRequest()];
 
     Future<ConsoleWorkspace> openQueue(
       WidgetTester tester,
-      _ScriptedConsole gateway,
+      ScriptedConsole gateway,
     ) async {
       final workspace = await pump(tester, gateway);
       workspace.openSection(ConsoleSection.protection);
@@ -2454,7 +1748,7 @@ void main() {
       tester,
     ) async {
       final gateway = receiving()
-        ..requestList = [_request(seatsRequested: 5, seatsFree: 2)]
+        ..requestList = [protectionRequest(seatsRequested: 5, seatsFree: 2)]
         ..movedSeats = 2;
       await openQueue(tester, gateway);
 
@@ -2470,7 +1764,8 @@ void main() {
     });
 
     testWidgets('a full coach cannot be accepted at all', (tester) async {
-      final gateway = receiving()..requestList = [_request(seatsFree: 0)];
+      final gateway = receiving()
+        ..requestList = [protectionRequest(seatsFree: 0)];
       await openQueue(tester, gateway);
 
       // Travelling to the server to be told what the screen already knows is
@@ -2496,7 +1791,9 @@ void main() {
       tester,
     ) async {
       final gateway = receiving()
-        ..requestList = [_request(weAsked: true, counterpartyName: 'TBV')];
+        ..requestList = [
+          protectionRequest(weAsked: true, counterpartyName: 'TBV'),
+        ];
       await openQueue(tester, gateway);
 
       expect(find.text('Vous demandez 2 place(s).'), findsOneWidget);
@@ -2507,7 +1804,7 @@ void main() {
 
     testWidgets('a decided request leaves the queue', (tester) async {
       final gateway = receiving()
-        ..requestList = [_request(state: 'applied', seatsMoved: 2)];
+        ..requestList = [protectionRequest(state: 'applied', seatsMoved: 2)];
       await openQueue(tester, gateway);
 
       // History on this screen is noise between a dispatcher and the coach
@@ -2529,7 +1826,7 @@ void main() {
 
   group('the guichet', () {
     testWidgets('collects a payment code and shows a receipt', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'booking.sell'],
       );
       await pump(tester, gateway);
@@ -2553,7 +1850,7 @@ void main() {
     // moment the customer is in front of the vendor and can spell their own
     // address.
     testWidgets('the receipt asks whether to send the ticket', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'booking.sell'],
       );
       await pump(tester, gateway);
@@ -2580,7 +1877,7 @@ void main() {
 
     // Ten seconds, when a customer says they forwarded it to the wrong person.
     testWidgets('and offers to take it back once it is sent', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'booking.sell'],
       );
       await pump(tester, gateway);
@@ -2606,7 +1903,7 @@ void main() {
     });
 
     testWidgets('a short code cannot be submitted', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'booking.sell'],
       );
       await pump(tester, gateway);
@@ -2625,7 +1922,7 @@ void main() {
     tester,
   ) async {
     final gateway =
-        _ScriptedConsole(capabilities: const ['booking.read', 'fleet.manage'])
+        ScriptedConsole(capabilities: const ['booking.read', 'fleet.manage'])
           ..vehicleList = const [
             VehicleDto(
               id: 'v-1',
@@ -2667,7 +1964,7 @@ void main() {
 
     Future<ConsoleWorkspace> openBuilder(
       WidgetTester tester,
-      _ScriptedConsole gateway,
+      ScriptedConsole gateway,
     ) async {
       final workspace = await pump(tester, gateway);
       workspace.openSection(ConsoleSection.fleet);
@@ -2693,7 +1990,7 @@ void main() {
     testWidgets('a coach is drawn, and the preview is the real seat map', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -2712,7 +2009,7 @@ void main() {
     testWidgets('a typo empties the preview instead of crashing it', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -2729,7 +2026,7 @@ void main() {
     });
 
     testWidgets('a nameless layout cannot be saved', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -2748,7 +2045,7 @@ void main() {
     testWidgets('a second section starts where the first one ends', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -2788,7 +2085,7 @@ void main() {
     });
 
     testWidgets('a VIP section is priced, and only one way', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -2816,7 +2113,7 @@ void main() {
     testWidgets('a decision can be taken back, and taken back again', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -2855,7 +2152,7 @@ void main() {
     testWidgets('undoing a deleted section brings back what was in it', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -2879,7 +2176,7 @@ void main() {
     });
 
     testWidgets('a new decision ends the redo line', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -2915,7 +2212,7 @@ void main() {
     });
 
     testWidgets('undoing a reorder takes the warning with it', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -2936,7 +2233,7 @@ void main() {
     });
 
     testWidgets('a cancelled draw sends nothing', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -2951,7 +2248,7 @@ void main() {
     testWidgets('a seat is taken out of service by touching it', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -2985,7 +2282,7 @@ void main() {
     testWidgets('every condemned seat can be given back at once', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -3003,7 +2300,7 @@ void main() {
     testWidgets('a seat that stopped existing stops being blocked', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -3025,7 +2322,7 @@ void main() {
     });
 
     testWidgets('a door is placed, and travels on the wire', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -3054,7 +2351,7 @@ void main() {
     testWidgets('a coordinate nobody could mean cannot be added', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -3082,7 +2379,7 @@ void main() {
     });
 
     testWidgets('a fitting is removed', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -3100,7 +2397,7 @@ void main() {
     });
 
     testWidgets('sections are reordered without being retyped', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -3134,7 +2431,7 @@ void main() {
     testWidgets('reordering says out loud that it dropped the blocks', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'fleet.manage'],
       );
       await openBuilder(tester, gateway);
@@ -3164,7 +2461,7 @@ void main() {
 
     Future<ConsoleWorkspace> openRefund(
       WidgetTester tester,
-      _ScriptedConsole gateway,
+      ScriptedConsole gateway,
     ) async {
       final workspace = await pump(tester, gateway);
       workspace.openSection(ConsoleSection.counter);
@@ -3174,7 +2471,7 @@ void main() {
       return workspace;
     }
 
-    _ScriptedConsole vendor() => _ScriptedConsole(
+    ScriptedConsole vendor() => ScriptedConsole(
       capabilities: const ['booking.read', 'booking.sell', 'booking.refund'],
     );
 
@@ -3317,7 +2614,7 @@ void main() {
       tester,
     ) async {
       final gateway =
-          _ScriptedConsole(
+          ScriptedConsole(
               capabilities: const [
                 'booking.read',
                 'booking.sell',
@@ -3397,7 +2694,7 @@ void main() {
 
     Future<void> moveMissed(
       WidgetTester tester,
-      _ScriptedConsole gateway,
+      ScriptedConsole gateway,
     ) async {
       final workspace = await pump(tester, gateway);
       workspace.openSection(ConsoleSection.counter);
@@ -3412,7 +2709,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    _ScriptedConsole agent() => _ScriptedConsole(
+    ScriptedConsole agent() => ScriptedConsole(
       capabilities: const [
         'booking.read',
         'booking.sell',
@@ -3444,7 +2741,7 @@ void main() {
       tester,
     ) async {
       final gateway =
-          _ScriptedConsole(
+          ScriptedConsole(
               capabilities: const [
                 'booking.read',
                 'booking.sell',
@@ -3482,7 +2779,7 @@ void main() {
     testWidgets('a vendor who cannot reschedule is not offered the tab', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'booking.sell'],
       );
       final workspace = await pump(tester, gateway);
@@ -3496,7 +2793,7 @@ void main() {
     testWidgets('a vendor who cannot refund is not offered the tab', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'booking.sell'],
       );
       final workspace = await pump(tester, gateway);
@@ -3543,7 +2840,7 @@ void main() {
 
     Future<ConsoleWorkspace> openPolicies(
       WidgetTester tester,
-      _ScriptedConsole gateway,
+      ScriptedConsole gateway,
     ) async {
       final workspace = await pump(tester, gateway);
       workspace.openSection(ConsoleSection.policies);
@@ -3552,7 +2849,7 @@ void main() {
     }
 
     testWidgets('no terms at all is stated, not left blank', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'policy.manage'],
       );
       await openPolicies(tester, gateway);
@@ -3569,7 +2866,7 @@ void main() {
     testWidgets('a stored policy is shown as sentences, never as numbers', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'policy.manage'],
       )..policyList = [stored('Standard', isDefault: true, bookingCount: 42)];
       await openPolicies(tester, gateway);
@@ -3598,7 +2895,7 @@ void main() {
     testWidgets('the wizard writes terms, and warns before it saves', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'policy.manage'],
       );
       await openPolicies(tester, gateway);
@@ -3630,7 +2927,7 @@ void main() {
     });
 
     testWidgets('bands in the wrong order cannot be saved', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'policy.manage'],
       );
       await openPolicies(tester, gateway);
@@ -3663,7 +2960,7 @@ void main() {
     testWidgets('the preview changes with the answer, before anything saves', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'policy.manage'],
       );
       await openPolicies(tester, gateway);
@@ -3692,7 +2989,7 @@ void main() {
     testWidgets('cash at the agency drops the promise it cannot keep', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'policy.manage'],
       );
       await openPolicies(tester, gateway);
@@ -3723,7 +3020,7 @@ void main() {
     testWidgets('the change terms are answered in the same wizard', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'policy.manage'],
       );
       await openPolicies(tester, gateway);
@@ -3774,7 +3071,7 @@ void main() {
     testWidgets('a cutoff past the free window cannot be saved', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'policy.manage'],
       );
       await openPolicies(tester, gateway);
@@ -3802,7 +3099,7 @@ void main() {
     });
 
     testWidgets('a stored policy reads its change terms too', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'policy.manage'],
       )..policyList = [stored('Standard', isDefault: true)];
       await openPolicies(tester, gateway);
@@ -3822,7 +3119,7 @@ void main() {
     testWidgets('a vendor may read the terms and not rewrite them', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(capabilities: const ['booking.read'])
+      final gateway = ScriptedConsole(capabilities: const ['booking.read'])
         ..policyList = [stored('Standard', isDefault: true)];
       await openPolicies(tester, gateway);
 
@@ -3835,7 +3132,7 @@ void main() {
     });
 
     testWidgets('a missed coach is a question the wizard asks', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'policy.manage'],
       );
       await openPolicies(tester, gateway);
@@ -3876,7 +3173,7 @@ void main() {
     testWidgets('an operator who answers nothing promises nothing', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'policy.manage'],
       );
       await openPolicies(tester, gateway);
@@ -3912,7 +3209,7 @@ void main() {
     testWidgets('with nowhere to pick a file, no upload button is offered', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'vitrine.manage'],
       );
       final workspace = await pump(tester, gateway);
@@ -3929,7 +3226,7 @@ void main() {
     testWidgets('a chosen file is sent, and the preview shows it', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'vitrine.manage'],
       );
       final picker = _ScriptedPicker(
@@ -3964,7 +3261,7 @@ void main() {
     testWidgets('a dismissed dialog sends nothing and shows no error', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'vitrine.manage'],
       );
       final workspace = await pump(
@@ -3985,7 +3282,7 @@ void main() {
     });
 
     testWidgets('removing it puts the monogram back', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'vitrine.manage'],
       );
       final workspace = await pump(
@@ -4028,7 +3325,7 @@ void main() {
     testWidgets('the preview is drawn from the form, before anything saves', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'vitrine.manage'],
       );
       final workspace = await pump(tester, gateway);
@@ -4053,7 +3350,7 @@ void main() {
     testWidgets('an accent is chosen from eight, and sent by name', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'vitrine.manage'],
       );
       final workspace = await pump(tester, gateway);
@@ -4078,7 +3375,7 @@ void main() {
     testWidgets('a vendor gets no vitrine tab, and no editor', (tester) async {
       await pump(
         tester,
-        _ScriptedConsole(capabilities: const ['booking.read', 'booking.sell']),
+        ScriptedConsole(capabilities: const ['booking.read', 'booking.sell']),
       );
 
       expect(find.text('Vitrine'), findsNothing);
@@ -4086,7 +3383,7 @@ void main() {
     testWidgets('a cover is optional, and the screen says so first', (
       tester,
     ) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'vitrine.manage'],
       );
       final workspace = await pump(
@@ -4106,7 +3403,7 @@ void main() {
     });
 
     testWidgets('the cover button uploads a cover, not a logo', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'vitrine.manage'],
       );
       final picker = _ScriptedPicker(
@@ -4133,7 +3430,7 @@ void main() {
     });
 
     testWidgets('a cover can be taken off again', (tester) async {
-      final gateway = _ScriptedConsole(
+      final gateway = ScriptedConsole(
         capabilities: const ['booking.read', 'vitrine.manage'],
       );
       final workspace = await pump(
@@ -4488,61 +3785,6 @@ final class _ScriptedPicker implements FilePicker {
   }
 }
 
-/// One request, as the other company's console would receive it.
-ProtectionRequestDto _request({
-  String id = 'req-1',
-  String state = 'pending',
-  bool weAsked = false,
-  String counterpartyName = 'Ocean du Nord',
-  int seatsRequested = 2,
-  int seatsFree = 6,
-  int? seatsMoved,
-  String? note,
-  String? declineReason,
-}) => ProtectionRequestDto(
-  id: id,
-  agreementId: 'agr-1',
-  counterpartyName: counterpartyName,
-  weAsked: weAsked,
-  fromDepartureId: 'dep-broken',
-  toDepartureId: 'dep-theirs',
-  seatsRequested: seatsRequested,
-  state: state,
-  requestedAt: DateTime.utc(2026, 8, 10, 5, 40),
-  note: note,
-  routeCode: 'BZV-PNR',
-  departsAt: DateTime.utc(2026, 8, 10, 5),
-  replacementDepartsAt: DateTime.utc(2026, 8, 10, 13),
-  seatsFree: seatsFree,
-  rebill: const Money.xaf(15300),
-  seatsMoved: seatsMoved,
-  declineReason: declineReason,
-);
-
-/// An open call, as either console reads it.
-OpenCallDto _call({
-  String id = 'call-1',
-  bool weOpened = false,
-  String state = 'open',
-  String sendingOperatorName = 'Ocean du Nord',
-  int seatsRequested = 12,
-  String? note,
-}) => OpenCallDto(
-  id: id,
-  sendingOperatorName: sendingOperatorName,
-  weOpened: weOpened,
-  fromDepartureId: 'dep-broken',
-  originCity: 'BZV',
-  destinationCity: 'PNR',
-  seatsRequested: seatsRequested,
-  rebillPerSeat: const Money.xaf(12000),
-  state: state,
-  openedAt: DateTime.utc(2026, 8, 10, 5, 40),
-  expiresAt: DateTime.utc(2026, 8, 10, 7, 40),
-  note: note,
-  departsAt: DateTime.utc(2026, 8, 10, 6),
-);
-
 /// A competitor's departure, as the public search returns it.
 DepartureSummaryDto _trip({
   String id = 'dep-theirs',
@@ -4566,29 +3808,4 @@ DepartureSummaryDto _trip({
   seatsAvailable: seatsAvailable,
   capacity: 49,
   seatSelectionEnabled: true,
-);
-
-/// One agreement, with the terms `08-disruption.md` §5 writes down.
-ProtectionAgreementDto _agreement({
-  String id = 'agr-1',
-  String state = 'active',
-  bool weProposed = true,
-  String counterpartyName = 'Trans Bony Voyages',
-  List<String> corridors = const ['BZV~PNR'],
-  int discountBps = 1500,
-  int? cap = 40,
-  int used = 0,
-}) => ProtectionAgreementDto(
-  id: id,
-  counterpartyId: 'op-bony',
-  counterpartyName: counterpartyName,
-  state: state,
-  corridors: corridors,
-  reciprocal: true,
-  rebillDiscountBps: discountBps,
-  weProposed: weProposed,
-  proposedAt: DateTime.utc(2026, 8, 1),
-  seatsUsedThisMonth: used,
-  monthlyCapSeats: cap,
-  acceptedAt: state == 'proposed' ? null : DateTime.utc(2026, 8, 2),
 );

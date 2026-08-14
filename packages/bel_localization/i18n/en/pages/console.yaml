@@ -31,6 +31,14 @@ console:
     departures: "Departures"
     disrupted: "Disruptions"
     manifest: "Manifest"
+    # The departure's own state, shown only when it is not
+    # `scheduled`: a label on every row is a label nobody reads.
+    status:
+      delayed: "Delayed"
+      boarding: "Boarding"
+      departed: "Departed"
+      arrived: "Arrived"
+      cancelled: "Cancelled"
     noVehicle: "No coach assigned"
     emptyTitle: "No departures on this day"
     emptyBody: "Publish a timetable from the Timetables tab to put departures on sale."

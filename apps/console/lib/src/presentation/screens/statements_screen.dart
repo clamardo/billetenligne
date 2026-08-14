@@ -35,7 +35,7 @@ final class StatementsScreen extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.all(kilo.space.s4),
       children: [
-        Text(context.t('console.statements.title'), style: kilo.text.h2),
+        KPageHeader(context.t('console.statements.title')),
         SizedBox(height: kilo.space.s1),
         Text(
           context.t('console.statements.subtitle'),

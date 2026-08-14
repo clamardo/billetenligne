@@ -85,6 +85,108 @@ final class KSectionHeader extends StatelessWidget {
   }
 }
 
+/// The top of a screen: what this page is, what it is about, and the one
+/// thing to do with it.
+///
+/// Separate from [KSectionHeader] because they are different jobs at
+/// different sizes, and because the two back-office surfaces had drifted: the
+/// console titled its pages in the body face at 21 and the back office used
+/// the serif at 26, for the same role, on the same design system. One
+/// component now, and it is the serif — `h1` is the display face, a page
+/// title is the one place per screen it belongs, and a console whose every
+/// heading is set in the same face as its table rows is a console where
+/// nothing stands out. That was the complaint this whole pass exists to
+/// answer.
+final class KPageHeader extends StatelessWidget {
+  const KPageHeader(
+    this.title, {
+    super.key,
+    this.count,
+    this.subtitle,
+    this.action,
+  });
+
+  final String title;
+
+  /// Drawn as a pill beside the title. Null and zero are different, the same
+  /// as on [KSectionHeader]: zero pending payouts is worth saying, and null
+  /// means nobody counted.
+  final int? count;
+
+  /// The line under the title. Usually the sentence that says what the list
+  /// below is, which several screens were spacing themselves.
+  final String? subtitle;
+
+  /// The page's own action, if it has exactly one. More than one belongs on
+  /// the rows, not up here.
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: kilo.space.s4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        style: kilo.text.h1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (count != null) ...[
+                      SizedBox(width: kilo.space.s3),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: scheme.primaryContainer,
+                          borderRadius: BorderRadius.all(kilo.radius.pill),
+                        ),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: kilo.space.s3,
+                            vertical: 2,
+                          ),
+                          child: Text(
+                            '$count',
+                            style: kilo.text.body.copyWith(
+                              color: scheme.onPrimaryContainer,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (subtitle != null) ...[
+                  SizedBox(height: kilo.space.s1),
+                  Text(
+                    subtitle!,
+                    style: kilo.text.bodySm.copyWith(
+                      color: kilo.color.contentSecondary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (action != null) action!,
+        ],
+      ),
+    );
+  }
+}
+
 /// One figure and what it is.
 ///
 /// The number is the point, so it is set in the tabular face at display size

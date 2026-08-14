@@ -340,7 +340,7 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
         ),
         SizedBox(height: kilo.space.s5),
 
-        Text(context.t('console.fleet.builder.sections'), style: kilo.text.h2),
+        KSectionHeader(context.t('console.fleet.builder.sections')),
         if (_movedBlocks) ...[
           SizedBox(height: kilo.space.s2),
           Text(
@@ -460,7 +460,7 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
         // The count is on the save bar, not here. Two places saying 40 is two
         // places to disagree the first time one of them is computed
         // differently.
-        Text(context.t('console.fleet.builder.preview'), style: kilo.text.h2),
+        KSectionHeader(context.t('console.fleet.builder.preview')),
         SizedBox(height: kilo.space.s3),
         if (labels.isNotEmpty) ...[
           Text(
@@ -554,7 +554,7 @@ class _LayoutBuilderScreenState extends State<LayoutBuilderScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(context.t('console.fleet.builder.features'), style: kilo.text.h2),
+        KSectionHeader(context.t('console.fleet.builder.features')),
         SizedBox(height: kilo.space.s2),
         Text(
           context.t('console.fleet.builder.featuresHint'),

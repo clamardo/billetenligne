@@ -86,39 +86,24 @@ final class ProtectionScreen extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.all(kilo.space.s4),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    context.t('console.protection.title'),
-                    style: kilo.text.h2,
+        KPageHeader(
+          context.t('console.protection.title'),
+          subtitle: context.t('console.protection.subtitle'),
+          // Null rather than a greyed control: a dispatcher who may not
+          // agree a rate with a competitor is not somebody to show the
+          // button to and refuse (ADR-0011).
+          action: canManage
+              ? ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 240),
+                  child: KButton(
+                    label: context.t('console.protection.propose'),
+                    fullWidth: false,
+                    icon: Icons.handshake,
+                    onPressed: () => _propose(context),
                   ),
-                  SizedBox(height: kilo.space.s1),
-                  Text(
-                    context.t('console.protection.subtitle'),
-                    style: kilo.text.caption.copyWith(
-                      color: kilo.color.contentSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (canManage)
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 240),
-                child: KButton(
-                  label: context.t('console.protection.propose'),
-                  fullWidth: false,
-                  icon: Icons.handshake,
-                  onPressed: () => _propose(context),
-                ),
-              ),
-          ],
+                )
+              : null,
         ),
-        SizedBox(height: kilo.space.s4),
 
         // The inbound queue, above the agreements and above everything else
         // on this screen. An agreement is read once a quarter; a request is

@@ -100,6 +100,67 @@ void main() {
     });
   });
 
+  group('KPageHeader', () {
+    // The reason this component exists: the console set its page titles in
+    // the body face at 21 and the back office set the same thing in the serif
+    // at 26. A page title is the one place per screen the display face
+    // belongs, and a console where every heading is the same face as its
+    // table rows is a console where nothing stands out.
+    testWidgets('a page title is set in the display face', (tester) async {
+      await tester.pumpWidget(host(const KPageHeader('Versements')));
+
+      final style = tester.widget<Text>(find.text('Versements')).style!;
+      final kilo = KiloTheme(color: KiloColors.light);
+      expect(style.fontFamily, kilo.text.h1.fontFamily);
+      expect(style.fontSize, kilo.text.h1.fontSize);
+      // And bigger than a section heading, which is the whole distinction
+      // between the two components.
+      expect(style.fontSize! > kilo.text.h3.fontSize!, isTrue);
+    });
+
+    testWidgets('zero and nothing-counted are different here too', (
+      tester,
+    ) async {
+      await tester.pumpWidget(host(const KPageHeader('Versements')));
+      expect(find.text('0'), findsNothing);
+
+      await tester.pumpWidget(host(const KPageHeader('Versements', count: 0)));
+      expect(find.text('0'), findsOneWidget);
+    });
+
+    testWidgets('carries a subtitle and an action', (tester) async {
+      await tester.pumpWidget(
+        host(
+          KPageHeader(
+            'Versements',
+            subtitle: '3 relevés en attente',
+            action: TextButton(onPressed: () {}, child: const Text('Payer')),
+          ),
+        ),
+      );
+
+      expect(find.text('3 relevés en attente'), findsOneWidget);
+      expect(find.text('Payer'), findsOneWidget);
+    });
+
+    // A page title is one line. An operator whose company name runs long gets
+    // an ellipsis, not an overflow stripe across the top of every screen.
+    testWidgets('a long title clips rather than overflowing', (tester) async {
+      await tester.pumpWidget(
+        host(
+          const SizedBox(
+            width: 240,
+            child: KPageHeader(
+              'Coopérative des transporteurs de la Bouenza et du Niari',
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('KStat', () {
     testWidgets('the figure is set in the tabular face', (tester) async {
       // A column of figures that does not line up is a column nobody scans.

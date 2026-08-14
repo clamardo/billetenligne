@@ -86,7 +86,7 @@ class _CounterScreenState extends State<CounterScreen> {
     return ListView(
       padding: EdgeInsets.all(kilo.space.s4),
       children: [
-        Text(context.t('console.counter.title'), style: kilo.text.h2),
+        KPageHeader(context.t('console.counter.title')),
         SizedBox(height: kilo.space.s4),
 
         SegmentedButton<_CounterMode>(

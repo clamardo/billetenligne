@@ -39,37 +39,22 @@ final class PoliciesScreen extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.all(kilo.space.s4),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    context.t('console.policies.title'),
-                    style: kilo.text.h2,
-                    overflow: TextOverflow.ellipsis,
+        KPageHeader(
+          context.t('console.policies.title'),
+          subtitle: context.t('console.policies.intro'),
+          // Null rather than a greyed control: staff who may not write terms
+          // are not shown a button that refuses them (ADR-0011).
+          action: _canManage
+              ? ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 240),
+                  child: KButton(
+                    label: context.t('console.policies.write'),
+                    fullWidth: false,
+                    icon: Icons.add,
+                    onPressed: () => _write(context),
                   ),
-                  Text(
-                    context.t('console.policies.intro'),
-                    style: kilo.text.caption.copyWith(
-                      color: kilo.color.contentSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (_canManage)
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 240),
-                child: KButton(
-                  label: context.t('console.policies.write'),
-                  fullWidth: false,
-                  icon: Icons.add,
-                  onPressed: () => _write(context),
-                ),
-              ),
-          ],
+                )
+              : null,
         ),
         SizedBox(height: kilo.space.s3),
 
@@ -631,7 +616,7 @@ class _PolicyWizardState extends State<PolicyWizard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(context.t('console.policies.preview'), style: kilo.text.h2),
+        KSectionHeader(context.t('console.policies.preview')),
         SizedBox(height: kilo.space.s3),
         KCard(
           child: Column(

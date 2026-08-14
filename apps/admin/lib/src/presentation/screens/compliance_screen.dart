@@ -31,11 +31,11 @@ final class ComplianceScreen extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.all(kilo.space.s4),
       children: [
-        Text(context.t('admin.compliance.title'), style: kilo.text.h1),
-        SizedBox(height: kilo.space.s1),
-        Text(
-          context.t('admin.compliance.subtitle', {'count': rows.length}),
-          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
+        KPageHeader(
+          context.t('admin.compliance.title'),
+          subtitle: context.t('admin.compliance.subtitle', {
+            'count': rows.length,
+          }),
         ),
         SizedBox(height: kilo.space.s3),
 
