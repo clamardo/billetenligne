@@ -324,6 +324,13 @@ final class DemoWorld {
     await _documents(alizes, licence: 900, insurance: 700);
     await _documents(kouilou, licence: 400, insurance: 20);
 
+    // Somewhere for the money to land. Without these the payment screen is
+    // empty for every departure in this world: `collectionAccounts` requires
+    // `verified_at`, so an operator with no verified wallet is offered no
+    // rail at all and the funnel dead-ends one tap before the money.
+    await _wallets(alizes, name: 'Alizés Transport', line: '00010');
+    await _wallets(kouilou, name: 'Kouilou Voyages', line: '00020');
+
     final lapsed = await _company(
       code: 'LKN',
       legalName: 'Cars Lékana SARL',
@@ -648,6 +655,50 @@ final class DemoWorld {
       'id': TypedValue(Type.uuid, operatorId),
       'licence': TypedValue(Type.integer, licence),
       'insurance': TypedValue(Type.integer, insurance),
+    },
+    ignoreRows: true,
+  );
+
+  /// The verified wallets a traveller's francs are pushed into.
+  ///
+  /// **Stamped verified by INSERT, which is the one place this world cheats**
+  /// — and it cheats because there is nothing to call. `savePaymentAccount`
+  /// deliberately writes every account unverified ("a typo here sends every
+  /// franc to a stranger, permanently"), and no desk, pass or route anywhere
+  /// in the tree ever sets `verified_at`. Until one exists, going through the
+  /// console would seed accounts that can never collect, so the demo would
+  /// still show an empty payment screen while looking like it had done the
+  /// right thing.
+  ///
+  /// Three rails per operator, because which one is reachable depends on the
+  /// deployment rather than on the seed: a stack holding MTN or Airtel
+  /// credentials matches one of the first two, and a developer holding none
+  /// gets `cg.fake_money`, the fallback `_railsFrom` installs for exactly
+  /// this reason. Offering all three costs nothing — the payment screen
+  /// intersects them with the rails this deployment can actually reach.
+  Future<void> _wallets(
+    String operatorId, {
+    required String name,
+    required String line,
+  }) => _seed.execute(
+    Sql.named('''
+      INSERT INTO operator_payment_accounts
+        (operator_id, rail_id, msisdn, display_name, verified_at)
+      VALUES
+        (@id, 'cg.mtn_momo',     @mtn,    @name, now()),
+        (@id, 'cg.airtel_money', @airtel, @name, now()),
+        (@id, 'cg.fake_money',   @mtn,    @name, now())
+      ON CONFLICT (operator_id, rail_id) WHERE active DO NOTHING
+    '''),
+    parameters: {
+      'id': TypedValue(Type.uuid, operatorId),
+      // 06 is MTN and 05 is Airtel in this market's prefix table, so the
+      // number a traveller reads on the screen belongs to the carrier beside
+      // it. A demo that showed an Airtel wallet on an MTN tile would be
+      // teaching the one thing this screen exists to get right.
+      'mtn': TypedValue(Type.text, '2420690$line'),
+      'airtel': TypedValue(Type.text, '2420590$line'),
+      'name': TypedValue(Type.text, name),
     },
     ignoreRows: true,
   );

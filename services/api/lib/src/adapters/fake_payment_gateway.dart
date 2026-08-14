@@ -47,9 +47,30 @@ final class FakePaymentGateway implements PaymentGateway {
   /// development are the ones that ship broken.
   static const decliningMsisdn = '242060000000';
 
+  /// A number that always settles, one poll later.
+  ///
+  /// The counterpart [decliningMsisdn] was missing, and the asymmetry showed:
+  /// a running dev stack could reach every failure screen and never the paid
+  /// one, because `statusScript` is set per test and a server has no test to
+  /// set it. So the local demo could open an intent and then watch it sit at
+  /// `pending` until it expired.
+  ///
+  /// Settles on the *query* rather than on the request, because that is the
+  /// shape of the real thing: the prompt goes out, the handset answers a
+  /// menu we do not control, and the poller finds out afterwards. A rail that
+  /// captured synchronously would skip the only interesting state.
+  static const capturingMsisdn = '242060000001';
+
+  /// Intents opened from [capturingMsisdn], remembered because `queryStatus`
+  /// is told an intent id and never a payer.
+  final Set<String> _capturing = {};
+
   @override
   Future<PaymentOutcome> requestPayment(PaymentRequest request) async {
     requests.add(request);
+
+    if (request.payerMsisdn == capturingMsisdn)
+      _capturing.add(request.intentId);
 
     if (request.payerMsisdn == decliningMsisdn) {
       return const PaymentOutcome(
@@ -81,7 +102,17 @@ final class FakePaymentGateway implements PaymentGateway {
     // The script drains; the last entry repeats. A poller that runs one more
     // time than the test expected must not fall off the end of a list — that
     // is a test failure about the fake rather than about the code.
-    if (statusScript.isEmpty) return PaymentOutcome.unknown;
+    if (statusScript.isEmpty) {
+      // An explicit script always wins, so every existing test is unaffected;
+      // this only answers where the alternative was `unknown` forever.
+      if (_capturing.contains(intentId)) {
+        return const PaymentOutcome(
+          state: PaymentState.captured,
+          raw: {'fake': 'captured (capturingMsisdn)'},
+        );
+      }
+      return PaymentOutcome.unknown;
+    }
     if (statusScript.length == 1) return statusScript.first;
     return statusScript.removeAt(0);
   }

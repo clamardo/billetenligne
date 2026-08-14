@@ -205,10 +205,13 @@ final class HoldSeats {
     required Money fare,
     required DateTime expiresAt,
   }) {
-    // Once per booking, not once per seat. A family of four is one
-    // transaction on one wallet and paying the fee four times would be
-    // indefensible when the receipt is read aloud at the counter.
-    final serviceFee = market.serviceFee;
+    // Per seat, because that is what actually gets charged. `reserveFromHold`
+    // takes a `serviceFeePerSeat` and multiplies by the seat count, and the
+    // ledger, the payout statement and the refund quote all read the total it
+    // wrote. Quoting once-per-booking here made the hold screen promise 24 300
+    // and the confirmation ask 24 600 — the fee is arguable, quoting a number
+    // we do not charge is not.
+    final serviceFee = market.serviceFee.multiply(seatLabels.length);
 
     return HoldDto(
       id: holdId,

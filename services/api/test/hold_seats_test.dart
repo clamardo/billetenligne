@@ -52,13 +52,16 @@ void main() {
       // opposite orders must lock the rows in the same sequence.
       expect(dto.seatLabels, ['3A', '3B']);
       expect(dto.fare, const Money.xaf(24000));
-      expect(dto.serviceFee, Market.current.serviceFee);
-      expect(dto.total, const Money.xaf(24000) + Market.current.serviceFee);
+      expect(dto.serviceFee, Market.current.serviceFee.multiply(2));
+      expect(
+        dto.total,
+        const Money.xaf(24000) + Market.current.serviceFee.multiply(2),
+      );
       expect(dto.expiresAt, now.add(HoldPolicy.standard.ttl));
     });
 
     test(
-      'charges the service fee once per booking, not once per seat',
+      'quotes the same fee per seat that reservation will actually charge',
       () async {
         final hold = HoldSeats(inventory: freshInventory());
 
@@ -75,9 +78,14 @@ void main() {
           idempotencyKey: 'k2',
         );
 
-        // A family of four is one transaction on one wallet. Four fees would be
-        // indefensible when the receipt is read aloud at the counter.
-        expect(four.valueOrNull!.serviceFee, one.valueOrNull!.serviceFee);
+        // Four seats is four fees. Not because four fees are obviously right —
+        // that is a pricing question — but because `reserveFromHold` multiplies
+        // by the seat count, and a hold that quotes less than the booking
+        // charges is a bait and switch on the last screen before payment.
+        expect(
+          four.valueOrNull!.serviceFee,
+          one.valueOrNull!.serviceFee.multiply(4),
+        );
       },
     );
 
