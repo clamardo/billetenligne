@@ -3,7 +3,9 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:bel_client/bel_client.dart';
+import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_secure_store/bel_secure_store.dart';
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -47,6 +49,21 @@ Future<void> main() async {
   final catalog = await CatalogAssets.load();
   final language = _deviceLanguage();
   final apiUrl = _reachable(const String.fromEnvironment('BEL_API_URL'));
+
+  // A release build with no server address runs the whole product on demo
+  // gateways: a search that returns invented coaches, a seat map, a payment
+  // code. In development that is the point — a fresh clone has reviewable
+  // screens without Postgres. Shipped, it is somebody being handed an APK by
+  // an agency, buying a fare that no operator has heard of and standing at a
+  // yard at half past five with a ticket the conductor's scanner has never
+  // seen. So the demo gateways exist in debug and profile, and a release
+  // build that was assembled without `BEL_API_URL` says so on its first frame
+  // instead of pretending. `tool/release_android.sh` refuses to produce one;
+  // this is the second lock, on the artifact rather than on the script.
+  if (kReleaseMode && apiUrl.isEmpty) {
+    runApp(UnconfiguredBuild(catalog: catalog, language: language));
+    return;
+  }
 
   final TravelGateway gateway;
   final IdentityGateway identity;
@@ -217,4 +234,53 @@ String _reachable(String value) {
 String _deviceLanguage() {
   final locale = Platform.localeName;
   return locale.startsWith('en') ? 'en' : 'fr';
+}
+
+/// What a release build with no server shows instead of a product.
+///
+/// Deliberately plain: no theme, no design system, no navigation. There is
+/// nothing here to do and nowhere to go, and a screen that looked like the app
+/// would invite somebody to try.
+final class UnconfiguredBuild extends StatelessWidget {
+  const UnconfiguredBuild({
+    required this.catalog,
+    required this.language,
+    super.key,
+  });
+
+  final TranslationCatalog catalog;
+  final String language;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = CatalogTranslator(catalog, language);
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  t('common.build.unconfiguredTitle'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  t('common.build.unconfiguredBody'),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

@@ -1,6 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Declared here, not only in the debug manifest.
+
+         The Flutter template puts INTERNET in `src/debug` and `src/profile`
+         with a comment about hot reload, and nowhere else — so every screen
+         works all the way through development and the **release** APK cannot
+         open a socket. It does not crash and it does not say why: every
+         request fails the way a dead network fails, on a handset with four
+         bars, and the first person to see it is holding the sideloaded build.
+    -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
-        android:label="bel_traveller"
+        android:label="BilletEnLigne"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -38,7 +49,7 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https"
-                      android:host="blt.cg"
+                      android:host="${belLinkHost}"
                       android:pathPrefix="/b/"/>
             </intent-filter>
         </activity>

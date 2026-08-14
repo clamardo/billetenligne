@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-13 · after commit *A ticket that looks like a ticket*
+**Updated:** 2026-08-13 · after commit *The release build, and five things only it could find*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -113,6 +113,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 | **Onboarding that reviews itself** | ✅ done | `03-operator-lifecycle.md` §2.3. The queue is worked oldest-first against a published 48-hour SLA, and the tail is mostly three-coach companies a reviewer has nothing to add to. Those now approve themselves; everything else arrives **pre-sorted with named reasons**. The bar is **exposure, not trust** — five coaches, six daily departures — and the safety net is the expiry ladder above: an operator approved here whose insurance lapses is blocked the day it does. Three bands rather than a score: `elevated` (screening hit · duplicate · prior offboarding) is never auto-approvable at any size. A licence with under ninety days left is a review, not an approval. The audit row carries `actor_type = 'system'` and a **NULL actor** — nobody decided — and a reviewer who reached the file first wins the race, because the activation is conditional on `under_review`. **Off by data, not by dead code:** there is no screening contract, so the port answers `notRun`, `notRun` is not `clear`, and every application still falls to a person while the sorting runs |
 | **A demo world, and the command that removes it** | ✅ done | `infra/dev/seed/README.md`. Several states this product branches on only arrive after months — paperwork three weeks from lapsing, an application small enough for the onboarding pass to approve on its own, a second operator on the same road to hand passengers to — so those paths were written and had never been watched working. Now five companies, a fortnight of departures and **twenty paid passengers** exist at once, **built through the real adapters**: the wizard starts the applications, the platform console approves them with a reason that lands in the audit log, the operator console draws the roads and materialises the departures, and the guichet sells the seats for cash — hold, reserve, capture, ledger, signed tickets — because most of what this product does only exists once somebody has paid, and a seed that INSERTed a booking would have skipped the ledger the payout run later reads. Tomorrow's 06:00 carries twelve people, which is what makes it **the coach to break**: a disruption with nobody to tell and an open call on an empty departure are both screens that render and prove nothing. Two of the five company states are produced by the **worker** rather than the seed, so the demonstration is *run the pass and watch*. **The mark is the delete path**: a `DEMO-` code on every operator, a reserved address on every person, and a `--purge` that removes exactly those — because seeded data whose removal is untested is seeded data still in production a year later with a real ticket sold against it. The removal **order is read out of the foreign keys at runtime**, since the tables that hold money are RESTRICT on purpose and a hand-written list would be wrong one migration later. The seeder needs a **superuser connection the product does not have** — creating people is a write no surface holds a grant for (0012), and `audit_log` refuses DELETE by grant *and* by trigger (0004), for the owner too. The purge **suspends that guarantee rather than breaking it**: `DISABLE TRIGGER` takes an ACCESS EXCLUSIVE lock so nobody else can write an audit row meanwhile, and Postgres DDL is transactional so a purge that fails halfway rolls the trigger back on with everything else. That unmaking a world takes a deliberate act is the right shape, not an inconvenience. And the screening adapter that finally makes auto-approval approve somebody is keyed to the operator's own `DEMO-` code, **not to an environment flag**, so the flag surviving into production approves nobody. 13 Postgres tests |
 | **The ticket you can always get to** | ✅ done | ADR-0026, and the first slice of it: **the link exists**. A ticket is worth what the person holding it can reach at the coach door, and the walk-in at an agency counter could reach nothing — the guichet creates them an account from the number the vendor types, SMS is off in this market until a sender number exists, and the confirmation mail tells somebody with no app that their ticket is in the app. `ticket_links` is `trip_shares`' shape with two differences that come from what this link is for: it lives **until the coach has arrived plus a day**, because a boarding pass has to survive a coach that left four hours late, and it **remembers the address it was sent to**, so the step-up code can only go where the ticket already went rather than to one the caller supplies. One live link per booking per channel, by partial unique index — re-sending revokes and re-mints, because two live links are two things to revoke and the traveller was told about one. **The plaintext token exists in the message and nowhere else**: the counter's POST answers 202 and an address to read back, not a URL, since the drain mints the token inside the transaction that composes the message (ADR-0019), and a link on a till screen is a ticket the next person in the queue can photograph. The reader is a SECURITY DEFINER function taking a hash and never a policy — a SELECT policy here would be row-enumerable, which is a list of every live ticket in the country — and the executed guarantee proves both halves at once: an anonymous session counts zero rows on the table and still opens its own ticket through the function. A revoked link, an expired one and a token nobody ever issued are **one 404**, so a dead link says nothing about whether it was ever real. **And the page exists.** `blt.cg/b/{token}` is rendered whole on the server, **QR included**, with no JavaScript at all: the follower page renders a shell and fetches, because it is watched for ten minutes; a boarding pass is looked at once, at the worst moment, and a second round trip there is a second chance to fail. The QR is inline SVG rather than an `<img>` at an endpoint, for the same reason — a request that fails after the page has painted is somebody holding a blank white square up to a conductor — and it is **black on white in both themes**, because a dark-theme QR is one the cheap scanner at the door refuses. `/b/` and not `/t/`: a follower link deliberately shows no seat, no price and no name, and this one is the seat and the name; one prefix serving both is how a follower link eventually renders a boarding pass. **A voided seat is shown and struck through, never dropped** — a family of three whose middle ticket was refunded must not find a page with two seats on it and no explanation. The yard is on it, with the company's own directions, which needed a second migration: Postgres refuses to change a function's return type in place, and that refusal is exactly the point — what the holder of a link may know is a decision taken in SQL, not a line somebody edits in a handler. A roadside stop that names no yard prints none, rather than the terminal in Brazzaville the coach left from. And the page says, once and while they still have signal, that the honest fix for no signal is the message in their inbox. **And the code is in the inbox.** The page is what they open; the message is what they still have when they cannot open anything, so the QR travels as a **file attached to the email**, one per live seat, named `BEL-4KQ2M9-12A.png` so three codes in one inbox are three findable codes. An `<img>` pointing back at us is an image that vanishes on a plane or in a village with no signal — which is the reader this whole feature exists for — and Gmail strips `data:` URIs while Outlook renders SVG as nothing at all. So a PNG, written here rather than pulled in: one-bit greyscale, no filtering, and a zlib stream of *stored* blocks, which is legal deflate every decoder reads and sixty lines rather than a compression library in the API for one attachment. The test decodes it with a real zlib decoder and compares every pixel against the encoder's grid, because a QR drawn one module wrong is not one that looks wrong — it is one that scans as something else. **A voided ticket is not attached at all**: an image in somebody's inbox that boards nothing is worse than no image, because they find out at the door. The HTML body carries the road, the company, the hour, the yard and its directions, the reference and every passenger — **in addition to the plain text and never instead of it**, which in this market is most of the handsets — and the drain's message became leg-aware on the way past: a passenger who bought Dolisie→Pointe-Noire is now told Dolisie, at the hour the coach reaches it, and sent to the yard there rather than the gate in Brazzaville the coach left from. **And the vendor is asked.** The question lands on the receipt — the dialog that appears the instant cash is taken — because that is the only moment the customer is standing in front of the vendor and can spell their own address. Two channels and one field, and the field is **allowed to be empty**: blank means the address already on the account, which for a counter sale is the number the vendor typed to create it, and re-typing it is how a wrong one gets in twice. The notice **names the address rather than saying sent**, because the vendor's next sentence is reading it back, and a typo caught at the counter costs ten seconds while one caught at the coach door costs a ticket. Revoking appears only once something has been sent, next to the send-again button: that pair is the whole of what a vendor can do in ten seconds when a customer says they forwarded it to the wrong person. Every refusal is a fact about the world — not paid yet, nowhere to send it, SMS not available in this market — because the person reading it is standing at a counter and has to know what to say next. **And seeing is now separated from changing.** The token opens a ticket and deliberately nothing else; cancelling, refunding or moving a seat takes a one-time code, and **the caller supplies no address** — the code goes to the one frozen on the link at mint time, because an endpoint that took a destination would be an open relay with our domain on it. It is **sign-in rather than a second auth system**: the challenge, the sixty-second cooldown, the five-attempt cap and the per-host limit are ADR-0013's, the code is answered at the ordinary `/auth/sessions`, and the traveller ends the flow holding an ordinary session. Asking where to send **does not count as an open**, or the open tally would be a lie. Then the claim, which is the highest-value line in the feature and the least visible: the booking is re-pointed at the account that just proved it holds the address, so a walk-in becomes somebody with an account without anybody selling them anything. Two rules, both in SQL rather than in a handler — it is **idempotent**, because a traveller claiming from two devices is one person twice and not a conflict, and **a booking held by a verified account is never re-pointed**, because the guichet's unverified account is what this is for while an account somebody has actually signed in to belongs to a person. Both are executed as a schema guarantee rather than trusted, and the refusal is a 403 rather than a 404 on purpose: the token was good, the booking was not available to take. **And the link opens the app, where there is one.** `blt.cg/b/{token}` is one URL with two renderings — the app when it is installed, the page when it is not — and deliberately **no interstitial in between**, because an *install our app* screen in front of a boarding pass at a coach door is the worst screen we could build. Android's manifest claims `https://blt.cg/b/*` with `autoVerify`, so there is no *which app?* chooser, and `flutter_deeplinking_enabled` hands the URL in as the initial route rather than through a plugin channel — one less package, and the path arrives before the first frame. The domain's half of both handshakes is **served by the API rather than dropped in a bucket**: a static file on another host is one that goes missing the day somebody changes hosting, and it fails silently, months later, as *the link stopped opening the app*. Apple's is served unsigned, with no `.json` extension, which is what iOS has required since 9 and the usual way the file is got wrong. **Blank is a supported state**: with no release certificate the fingerprint list is empty, the file is still well-formed and still served, and Android simply declines to verify — the link opens the page, which is the correct fallback rather than a failure. `/t/` is claimed by neither platform: the follower page is opened by strangers with no account and no app. iOS is one Xcode change away — the entitlement file exists and declares `applinks:blt.cg`, and attaching it to the target needs a Mac and an Apple team, neither of which this deployment has. **And the app opens on the ticket.** Android hands the URL in as the initial route before the first frame, so the app launches straight onto the ticket list rather than onto search and then jumping. The token is **remembered rather than acted on**, because a walk-in opening their first link is not signed in yet and a claim needs an account to claim for — it is taken on the way into the list, which is exactly where somebody who has just signed in arrives. **Once, and never retried**: a link that cannot be claimed, because it was revoked while they signed in or the booking is already somebody's, is dropped rather than re-attempted on every visit, and it never stops the tickets they do have from loading. What they see afterwards is the app's own ticket — the rotating freshness code, the offline vault, the whole screen — rather than a second read-only one with a static QR, which is the point of claiming rather than rendering. 49 unit · 18 Postgres · 4 worker · 35 smoke · 2 schema guarantees |
+| **Android release artifacts** | ✅ done | `tool/release_android.sh`. Per-ABI APKs for agency sideloading and an `.aab` for a Play listing that does not exist yet. **Building is not the check**: each artifact is opened and interrogated, and doing that found five defects nothing else here could reach — `INTERNET` declared only in the debug manifest, so the release build could not open a socket; release builds signed with the universal debug key, as the Flutter template ships them; the launcher label set to the package name; the App Links host written in as a constant, so a staging build would have claimed `blt.cg`; and `--split-per-abi`'s thousand-per-architecture offset colliding with a commit-count build number at commit 1000. A release built without `BEL_API_URL` would have run the demo gateways and sold invented coaches, and now says so on its first frame instead. **Not published**, **no launcher icon**, **iOS untouched**. 6 checks per artifact · 3 ABIs · 2 apps · 3 tests · 1 CI job |
 
 Thirteen items of it are built, out of order and deliberately. The follower page is
 what makes a disruption reach the person who would otherwise phone the agency,
@@ -487,6 +488,88 @@ counted with `services/api/build` present, so a stale copy of every package's
 tests was counted again as if it were the API's own — the exact trap the
 paragraph above warns about, walked into by whoever wrote the warning. Every
 figure here has been re-measured from a clean tree.
+
+---
+
+## What the release-build push changed, and what it cost
+
+One script, two manifests, two Gradle files. The interesting part is that
+building the artifact found five defects, and none of them was reachable from
+anything this repository already ran.
+
+A release APK is not a debug build with a flag flipped. It is a different
+manifest merge, a different signing certificate, and a set of
+`--dart-define`s compiled into a snapshot and unchangeable afterwards. Every
+check here until today ran on the Dart VM or on a debug build, so all three
+were unexamined.
+
+**The traveller app could not open a socket.** The Flutter template declares
+`INTERNET` in `src/debug` and `src/profile` — with a comment about hot reload
+— and nowhere else. Every screen therefore worked all the way through
+development, and the release build failed every request the way a dead network
+fails: no crash, no message, four bars of signal. The first person to see it
+would have been holding the sideloaded file. It is now declared in the main
+manifest of both mobile apps, and the check for it is the first thing the
+script does to an artifact. Removing the line and rebuilding was run once, on
+purpose, to watch the check fail.
+
+**Release builds were signed with the debug key.** That is how the template
+ships: `signingConfig = signingConfigs.getByName("debug")`, with a TODO above
+it. The debug certificate's password is `android` and it is on every machine
+that has ever built an Android app, so an agency sideloading a build signed
+with it has installed something any stranger can publish an update to. With no
+`android/key.properties` the release now produces an **unsigned** artifact that
+will not install — the loud failure instead of the quiet one — and the script
+refuses any APK whose certificate reads `CN=Android Debug`.
+
+**The launcher said `bel_traveller`.** Both apps carried their package name as
+their label.
+
+**The deep-link host was a constant.** `blt.cg` was written into the intent
+filter, so a staging build would have claimed production's links and been
+refused by an `assetlinks.json` it does not serve — which presents months
+later as "links stopped working" with nothing in any log. It is now a manifest
+placeholder defaulting to the host of `BEL_API_URL`, and the script reads the
+compiled manifest back to confirm it, because `aapt2 dump badging` does not
+print intent filters and a wrong domain is invisible in every summary.
+
+**`--split-per-abi` does not ship the build number you gave it.** Flutter's
+Gradle plugin adds a thousand per architecture, so one build becomes three
+versionCodes. With the commit count as the base, commit 1149's `armeabi-v7a`
+APK and commit 149's `arm64-v8a` APK are both 2149 — and Play refuses a
+versionCode a package has already used. That is a rejection at upload, months
+from now, with nothing wrong in the tree. The base is multiplied by ten
+thousand to leave room.
+
+**And a release build with no server address is a demo that looks like the
+product.** With `BEL_API_URL` empty the app runs on demo gateways: an invented
+search, a real-looking seat map, a payment code. In development that is the
+point — a fresh clone has reviewable screens without Postgres. Shipped, it is
+somebody at a yard at half past five holding a ticket no conductor's scanner
+has ever seen. A release build assembled without a server now says so on its
+first frame, in French and in English, on a screen with no button on it. The
+script refuses to produce one; the screen is the second lock, on the artifact
+rather than on the script.
+
+**What it cost:** `tool/release_android.sh` (build, and then six checks per
+artifact), `INTERNET` and a label and a link placeholder in two manifests, a
+signing block in two `build.gradle.kts`, `UnconfiguredBuild` and three tests,
+two catalog keys, and a CI job that generates a throwaway upload key and
+interrogates what it builds. Artifacts: `armeabi-v7a` 22 MB, `arm64-v8a` 26 MB,
+`x86_64` 28 MB.
+
+**What is honestly not done:** nothing is published. There is no Play Console
+account, so the `.aab` is built and goes nowhere, and the SHA-256 fingerprint
+the script prints has no `BEL__ANDROIDFINGERPRINTS` to be pasted into — which
+means App Links are declared by the app and not yet by the domain, and a
+ticket link opens a page rather than the app. **iOS is untouched**: it cannot
+be built on this machine, and none of the five defects above has been looked
+for in the Xcode project. **The launcher icon is still Flutter's default** —
+the four marks exist as SVGs in `brand/icons/` and nothing has rasterised them
+into a mipmap set. And R8 is left at the template's setting: shrinking the
+Kotlin host is not free of risk and there is no crash reporting yet to notice
+if it went wrong.
+
 
 ---
 

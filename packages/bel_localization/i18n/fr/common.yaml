@@ -55,6 +55,9 @@ common:
     empty: "Rien à afficher"
     errorTitle: "Une erreur est survenue"
     errorBody: "Réessayez dans un instant. Si le problème persiste, contactez-nous."
+  build:
+    unconfiguredTitle: "Cette installation n'est reliée à aucun serveur"
+    unconfiguredBody: "Cette version a été construite sans adresse de serveur. Rien de ce qu'elle afficherait ne serait réel et aucun billet ne peut y être acheté. Désinstallez-la et installez la version distribuée par BilletEnLigne."
   units:
     seatsLeft:
       one: "{count} place restante"

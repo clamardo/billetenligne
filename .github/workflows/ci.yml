@@ -196,6 +196,35 @@ jobs:
             exit 1
           fi
 
+  # The file somebody installs. A release APK is not a debug build with a flag
+  # flipped: a different manifest merge, a different signing certificate, and
+  # the `--dart-define`s compiled in and unchangeable. All three have been
+  # wrong here, so the artifacts are opened and interrogated rather than
+  # counted.
+  android:
+    name: Android release artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      # A key generated here and thrown away with the runner. It exists so the
+      # signing checks have something to check; the real upload key is not in
+      # this repository and never will be.
+      - name: A throwaway upload key
+        run: ./tool/release_android.sh --keystore
+      - name: Build and interrogate
+        env:
+          BEL_API_URL: https://blt.cg
+          BEL_FIREBASE_API_KEY: ci-placeholder
+        run: ./tool/release_android.sh
+
   # The infrastructure, checked the only way it can be without applying it.
   # `validate` catches a misspelled resource, a wrong argument name and a
   # provider version that no longer has the field being set — which is most of
