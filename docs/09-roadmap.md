@@ -6,6 +6,8 @@ Sequencing principle, unchanged and now proven: **the long poles are commercial,
 
 Per-feature state, updated on every push: **[`10-build-status.md`](10-build-status.md)**.
 
+**If you read one thing, read [`17-the-first-ticket.md`](17-the-first-ticket.md).** This roadmap now describes four verticals, two of which are specified in full and none of which is built. That document is the shortest path to one real coach ticket, and it says plainly what is parked until that happens — which is everything else.
+
 ---
 
 ## Where we actually are

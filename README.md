@@ -100,6 +100,7 @@ Full reasoning: **[`docs/adr/`](docs/adr/)** — 26 records, each with the alter
 
 | Doc | Contents |
 |---|---|
+| **[`17-the-first-ticket.md`](docs/17-the-first-ticket.md)** | **Start here.** The shortest path to one real person holding one real ticket. Everything else is instrumental to it |
 | [`00-product-brief.md`](docs/00-product-brief.md) | Market, personas, business model, risks |
 | [`01-feature-spec.md`](docs/01-feature-spec.md) | Every surface, screen by screen |
 | [`02-architecture.md`](docs/02-architecture.md) | Onion layers, data model, key flows, API design |
