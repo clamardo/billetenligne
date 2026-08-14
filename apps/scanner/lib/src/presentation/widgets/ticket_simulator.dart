@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../application/simulated_scan.dart';
+import '../l10n.dart';
 
 /// Feeds ticket payloads to the scanner without a camera.
 ///
@@ -72,15 +73,14 @@ class TicketSimulator extends StatelessWidget {
                 ),
                 SizedBox(width: kilo.space.s2),
                 Text(
-                  'SIMULATEUR — DEBUG',
+                  context.t('scanner.simulator.title'),
                   style: kilo.text.label.copyWith(color: kilo.color.warning),
                 ),
               ],
             ),
             SizedBox(height: kilo.space.s1),
             Text(
-              'Injecte de vrais billets signés dans le lecteur, sans caméra. '
-              'Absent des versions publiées.',
+              context.t('scanner.simulator.body'),
               style: kilo.text.bodySm.copyWith(
                 color: kilo.color.contentSecondary,
               ),

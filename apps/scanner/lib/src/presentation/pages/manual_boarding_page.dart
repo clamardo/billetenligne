@@ -3,6 +3,7 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:flutter/material.dart';
 
 import '../../application/boarding_session.dart';
+import '../l10n.dart';
 
 /// Boarding by name or reference, against the pinned offline manifest.
 ///
@@ -62,7 +63,7 @@ class _ManualBoardingPageState extends State<ManualBoardingPage> {
     return Scaffold(
       backgroundColor: kilo.color.surfaceBase,
       appBar: AppBar(
-        title: const Text('Embarquement manuel'),
+        title: Text(context.t('scanner.manual.title')),
         backgroundColor: kilo.color.surfaceRaised,
         foregroundColor: kilo.color.contentPrimary,
       ),
@@ -78,8 +79,8 @@ class _ManualBoardingPageState extends State<ManualBoardingPage> {
                 textCapitalization: TextCapitalization.characters,
                 style: kilo.text.bodyLg,
                 decoration: InputDecoration(
-                  labelText: 'Nom, référence ou siège',
-                  hintText: '7QK4M2  ·  Aline  ·  14A',
+                  labelText: context.t('scanner.manual.searchLabel'),
+                  hintText: context.t('scanner.manual.searchHint'),
                   prefixIcon: const Icon(Icons.search),
                   border: OutlineInputBorder(
                     borderRadius: kilo.radius.controlBorder,
@@ -93,7 +94,9 @@ class _ManualBoardingPageState extends State<ManualBoardingPage> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'PAS ENCORE EMBARQUÉS — ${_results.length}',
+                    context.t('scanner.manual.notBoarded', {
+                      'count': _results.length,
+                    }),
                     style: kilo.text.label.copyWith(
                       color: kilo.color.contentMuted,
                     ),
@@ -213,9 +216,11 @@ class _EmptyState extends StatelessWidget {
             ),
             SizedBox(height: kilo.space.s3),
             Text(
-              hasQuery
-                  ? 'Aucun passager ne correspond'
-                  : 'Tout le monde est embarqué',
+              context.t(
+                hasQuery
+                    ? 'scanner.manual.noMatch'
+                    : 'scanner.manual.allBoarded',
+              ),
               textAlign: TextAlign.center,
               style: kilo.text.bodyLg.copyWith(
                 color: kilo.color.contentSecondary,
@@ -224,7 +229,7 @@ class _EmptyState extends StatelessWidget {
             if (hasQuery) ...[
               SizedBox(height: kilo.space.s2),
               Text(
-                'Vérifiez la référence, ou synchronisez\nla liste si le billet vient d\'être acheté.',
+                context.t('scanner.manual.noMatchBody'),
                 textAlign: TextAlign.center,
                 style: kilo.text.bodySm.copyWith(
                   color: kilo.color.contentMuted,

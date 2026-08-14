@@ -1,14 +1,19 @@
 import 'package:bel_contracts/bel_contracts.dart';
-import 'package:bel_design/bel_design.dart';
+import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_scanner/src/presentation/pages/coach_picker_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'catalog_fixture.dart';
 
 /// The screen between signing in and the door.
 ///
 /// It is read once, in a yard, in the sun, by somebody holding a phone in one
 /// hand — so what is tested here is what it *says*, not how it is built.
 void main() {
+  late TranslationCatalog catalog;
+  setUpAll(() async => catalog = await loadTestCatalog());
+
   BoardingDepartureDto coach({
     String id = 'dep-1',
     String status = 'scheduled',
@@ -25,10 +30,8 @@ void main() {
     stationName: stationName,
   );
 
-  Widget wrap(Widget child) => MaterialApp(
-    theme: KiloTheme.materialTheme(brightness: KiloBrightness.pleinSoleil),
-    home: child,
-  );
+  Widget wrap(Widget child, {String language = 'fr'}) =>
+      scannerHarness(catalog, child, language: language);
 
   testWidgets('names the road, the count and the yard', (tester) async {
     await tester.pumpWidget(
@@ -141,5 +144,69 @@ void main() {
       find.text('Pas de réseau. Rapprochez-vous du bureau et réessayez.'),
       findsOneWidget,
     );
+  });
+
+  group('the language a conductor reads it in', () {
+    // Every string on this screen was a French literal in Dart until now — a
+    // hundred of them across the app, against one call to the catalog. A
+    // language menu on a surface like that would have been theatre.
+
+    testWidgets('the same screen reads in English', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          CoachPickerPage(
+            coaches: [coach()],
+            onPick: (_) {},
+            onRefresh: () async {},
+          ),
+          language: 'en',
+        ),
+      );
+
+      expect(find.text('My departures today'), findsOneWidget);
+      // The count is a plural rule, not an appended `s`: 41 tickets in
+      // English, and the rule belongs to whichever language is next.
+      expect(
+        find.text('41 tickets · 49 seats · Gare routière de Brazzaville'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a cancelled departure says so in English too', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          CoachPickerPage(
+            coaches: [coach(status: 'cancelled')],
+            onPick: (_) {},
+            onRefresh: () async {},
+          ),
+          language: 'en',
+        ),
+      );
+
+      expect(find.text('Departure cancelled'), findsOneWidget);
+    });
+
+    testWidgets('the switcher is on the screen every morning starts on', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          CoachPickerPage(
+            coaches: [coach()],
+            onPick: (_) {},
+            onRefresh: () async {},
+          ),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Langue'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('English'));
+      await tester.pumpAndSettle();
+
+      // Behind the door it would be two taps away with sixty people waiting.
+      expect(find.text('My departures today'), findsOneWidget);
+    });
   });
 }

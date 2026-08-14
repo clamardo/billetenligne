@@ -2,6 +2,8 @@ import 'package:bel_design/bel_design.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../l10n.dart';
+
 /// The camera, and the reticle over it.
 ///
 /// Two behaviours matter more than they look:
@@ -109,7 +111,9 @@ class _TorchButton extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: on ? 'Éteindre la lampe' : 'Allumer la lampe',
+      label: context.t(
+        on ? 'scanner.camera.torchOff' : 'scanner.camera.torchOn',
+      ),
       child: Material(
         color: on ? kilo.color.warning : kilo.color.surfaceOverlay,
         shape: const CircleBorder(),
@@ -157,14 +161,13 @@ class _CameraUnavailable extends StatelessWidget {
               ),
               SizedBox(height: kilo.space.s3),
               Text(
-                'Caméra indisponible',
+                context.t('scanner.camera.unavailable'),
                 style: kilo.text.h3,
                 textAlign: TextAlign.center,
               ),
               SizedBox(height: kilo.space.s2),
               Text(
-                'Utilisez l\'embarquement manuel ci-dessous.\n'
-                'Personne ne reste à quai.',
+                context.t('scanner.camera.unavailableBody'),
                 textAlign: TextAlign.center,
                 style: kilo.text.body.copyWith(
                   color: kilo.color.contentSecondary,

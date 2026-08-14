@@ -1,21 +1,27 @@
-import 'package:bel_design/bel_design.dart';
 import 'package:bel_domain/bel_domain.dart';
+import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_scanner/src/presentation/widgets/verdict_screen.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'catalog_fixture.dart';
 
 /// What the conductor reads at arm's length, in the sun, in the second before
 /// they wave somebody on.
 void main() {
-  Future<void> pump(WidgetTester tester, VerificationOutcome outcome) =>
-      tester.pumpWidget(
-        MaterialApp(
-          theme: KiloTheme.materialTheme(
-            brightness: KiloBrightness.pleinSoleil,
-          ),
-          home: VerdictScreen(outcome: outcome, onDismiss: () {}),
-        ),
-      );
+  late TranslationCatalog catalog;
+  setUpAll(() async => catalog = await loadTestCatalog());
+
+  Future<void> pump(
+    WidgetTester tester,
+    VerificationOutcome outcome, {
+    String language = 'fr',
+  }) => tester.pumpWidget(
+    scannerHarness(
+      catalog,
+      VerdictScreen(outcome: outcome, onDismiss: () {}),
+      language: language,
+    ),
+  );
 
   final payload = TicketPayload(
     bookingRef: 'ZZ1188',
@@ -70,5 +76,26 @@ void main() {
     // this door already knows. A line that is always there is a line nobody
     // reads.
     expect(find.textContaining('Descend à'), findsNothing);
+  });
+
+  testWidgets('the one word a conductor reads is translated too', (
+    tester,
+  ) async {
+    // The word is the whole message at arm's length in direct sun, which
+    // makes it the last thing that should have been readable in only one
+    // language. It was a switch over French literals.
+    await pump(
+      tester,
+      VerificationOutcome(
+        result: VerificationResult.alreadyBoarded,
+        payload: payload,
+        firstScannedAt: DateTime.utc(2026, 8, 15, 5, 42),
+      ),
+      language: 'en',
+    );
+
+    expect(find.text('ALREADY BOARDED'), findsOneWidget);
+    expect(find.textContaining('Already scanned at'), findsOneWidget);
+    expect(find.text('Tap to continue'), findsOneWidget);
   });
 }

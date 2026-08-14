@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-14 · after commit *Adding a language is a folder and a row*
+**Updated:** 2026-08-14 · after commit *The conductor's screen learns a second language*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -11,6 +11,36 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 ---
 
 ## What the last push changed
+
+**The scanner is translated.** It was the last surface holding out and the
+worst one to have been holding out: about a hundred French sentences written
+where they are shown, against a single `context.t` call in the whole app. A
+language menu on a surface like that would have been theatre, so the strings
+came first — `i18n/{lang}/pages/scanner.yaml`, both languages, and every
+screen rewired onto it.
+
+Three of them mattered more than the count suggests. The **verdict word** —
+VALIDE, DÉJÀ EMBARQUÉ, MAUVAIS DÉPART — was a switch over French literals, and
+it is the whole message at arm's length in direct sun, which makes it the last
+thing that should have been readable in only one language. The **plural** on
+"3 embarquements envoyés" was `settled > 1 ? 's' : ''`, an appended letter
+standing in for a rule that belongs to the language and that the next language
+will not share; it goes through the catalog's plural categories now. And the
+**refusals a conductor sees** were rendered at the moment they were caught and
+stored as a sentence, so a conductor who switched language with a refusal on
+screen kept reading it in the old one — the error object is stored now and the
+sentence is produced in `build`.
+
+The switcher sits in the coach picker's app bar, not behind the door: that is
+the screen every conductor passes through every morning, and the one they are
+standing on when they discover the handset is in a language they do not read.
+
+**Still French, and deliberately.** `demo_data.dart` — the labels on the debug
+ticket simulator, which is absent from published builds.
+
+---
+
+## What the push before that changed
 
 **A language is now a folder and a row, everywhere.** The stated requirement:
 adding Portuguese, Spanish or Mandarin should be a YAML directory under
@@ -58,7 +88,7 @@ slice.
 
 ---
 
-## What the two pushes before that changed
+## And before that
 
 Two defects reported from actually using the thing, and both were the same
 kind of gap the demo run turned up: a mechanism wired end to end with nothing
@@ -104,7 +134,7 @@ read no device locale and had no switcher.
 
 ---
 
-## What the push before that changed
+## And the demo walk before that
 
 The demo was walked end to end for the first time in a while — search, seat
 map, hold, booking, mobile-money capture, counter sale, ticket, ledger — and

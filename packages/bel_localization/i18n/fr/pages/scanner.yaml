@@ -1,0 +1,110 @@
+# L'écran du conducteur, à la porte du car (ADR-0013, ADR-0026).
+#
+# Toutes ces phrases étaient écrites en dur dans le Dart de l'application —
+# une centaine de chaînes françaises et un seul appel au catalogue. Un
+# sélecteur de langue sur cette surface n'aurait rien changé.
+#
+# Deux contraintes gouvernent l'écriture ici, et aucune ne vient d'un écran :
+# le verdict se lit d'un mètre, en plein soleil, pendant qu'on regarde déjà
+# le passager suivant — donc UN mot, en capitales. Et la ligne d'appui est ce
+# que le conducteur doit DIRE à voix haute : un nom, un siège, une heure,
+# jamais un code d'erreur.
+scanner:
+  title: "Embarquement"
+
+  coaches:
+    title: "Mes départs du jour"
+    refresh: "Actualiser"
+    tickets:
+      one: "{count} billet · {capacity} places"
+      other: "{count} billets · {capacity} places"
+    cancelled: "Départ annulé"
+    empty: "Aucun départ aujourd'hui."
+    # Ce n'est presque jamais une panne : c'est un conducteur que personne
+    # n'a encore rattaché au départ.
+    emptyBody: "Si vous attendez un car, votre exploitant ne vous a pas encore rattaché à ce départ."
+
+  boarding:
+    changeCoach: "Changer de car"
+    manual: "Embarquement manuel"
+    upToDate: "À jour"
+    staleOnline: "Liste synchronisée il y a {minutes} min — actualisez"
+    staleOffline: "Hors ligne · liste à jour il y a {minutes} min"
+    nothingToSend: "Rien à envoyer."
+    sent:
+      one: "{count} embarquement envoyé."
+      other: "{count} embarquements envoyés."
+    sentPending:
+      one: "{count} embarquement en attente envoyé."
+      other: "{count} embarquements en attente envoyés."
+    # Dit dans cet ordre exprès : le car part quand même. Un conducteur qui
+    # croit devoir attendre le réseau retient soixante personnes.
+    sendFailed: "Envoi impossible. {pending} en attente — le car peut partir, ils repartiront plus tard."
+    sendFailedShort: "Envoi impossible. Ils restent en attente."
+
+  verdict:
+    valid: "VALIDE"
+    alreadyBoarded: "DÉJÀ EMBARQUÉ"
+    wrongDeparture: "MAUVAIS DÉPART"
+    staleCode: "CODE PÉRIMÉ"
+    voided: "BILLET ANNULÉ"
+    notOnManifest: "ABSENT DE LA LISTE"
+    invalid: "INVALIDE"
+    dismiss: "Touchez pour continuer"
+    override: "Embarquer quand même"
+    # Seulement pour un morceau de route (ADR-0025) : le conducteur l'apprend
+    # à la porte plutôt qu'à Dolisie, quand quelqu'un se lève.
+    alightsAt: "Descend à {stop}"
+    alreadyScanned: "Ce billet a déjà été scanné."
+    alreadyScannedAt: "Déjà scanné à {time}."
+    # La réponse utile est vers quel car l'envoyer, pas « non ».
+    wrongDepartureBody: "Ce billet est pour un autre départ.\nOrientez le passager."
+    staleCodeBody: "Demandez au passager d'ouvrir\nson billet et de réessayer."
+    voidedBody: "Ce billet a été remboursé.\nIl n'est plus valable."
+    notOnManifestBody: "Billet absent de cette liste.\nSynchronisez avant d'embarquer."
+    invalidBody: "Billet non reconnu."
+
+  manual:
+    title: "Embarquement manuel"
+    searchLabel: "Nom, référence ou siège"
+    searchHint: "7QK4M2  ·  Aline  ·  14A"
+    notBoarded: "PAS ENCORE EMBARQUÉS — {count}"
+    noMatch: "Aucun passager ne correspond"
+    allBoarded: "Tout le monde est embarqué"
+    noMatchBody: "Vérifiez la référence, ou synchronisez\nla liste si le billet vient d'être acheté."
+
+  camera:
+    torchOn: "Allumer la lampe"
+    torchOff: "Éteindre la lampe"
+    unavailable: "Caméra indisponible"
+    unavailableBody: "Utilisez l'embarquement manuel.\nPersonne ne reste à quai."
+
+  road:
+    title: "Où sommes-nous ?"
+    body: "Touchez le lieu que le car vient de passer. Les proches qui suivent le voyage le verront."
+    passedAt: "Passé à {time}"
+    confirmed: "{place} confirmé."
+    report: "Passé {place} · signaler"
+
+  pending:
+    title:
+      one: "{count} embarquement non envoyé"
+      other: "{count} embarquements non envoyés"
+    body: "Ils restent sur le téléphone. Envoyez-les maintenant si vous avez du réseau."
+    later: "Plus tard"
+    send: "Envoyer"
+
+  # Une phrase sur laquelle un conducteur peut agir, jamais le toString d'une
+  # exception.
+  errors:
+    forbidden: "Votre compte n'a pas le droit d'embarquer sur ce car. Demandez à votre exploitant."
+    unavailable: "Le serveur est indisponible. Réessayez dans un instant."
+    refused: "Le serveur a refusé la demande ({status})."
+    offline: "Pas de réseau. Rapprochez-vous du bureau et réessayez."
+    manifest: "Impossible de charger la liste des passagers."
+
+  # Absent des versions publiées — mais traduit quand même, parce qu'une
+  # chaîne non traduite finit par sortir de l'écran où on l'avait mise.
+  simulator:
+    title: "SIMULATEUR — DEBUG"
+    body: "Injecte de vrais billets signés dans le lecteur, sans caméra. Absent des versions publiées."

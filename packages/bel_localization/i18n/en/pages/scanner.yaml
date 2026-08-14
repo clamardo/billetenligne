@@ -1,0 +1,109 @@
+# The conductor's screen, at the door of the coach (ADR-0013, ADR-0026).
+#
+# Every one of these sentences used to be a French literal in the app's Dart —
+# about a hundred of them, against a single call to the catalog. A language
+# switcher on that surface would have changed nothing.
+#
+# Two constraints govern the writing here and neither comes from a screen: the
+# verdict is read at arm's length, in direct sun, while already looking at the
+# next passenger — so ONE word, in capitals. And the supporting line is what
+# the conductor has to SAY OUT LOUD: a name, a seat, a time, never an error
+# code.
+scanner:
+  title: "Boarding"
+
+  coaches:
+    title: "My departures today"
+    refresh: "Refresh"
+    tickets:
+      one: "{count} ticket · {capacity} seats"
+      other: "{count} tickets · {capacity} seats"
+    cancelled: "Departure cancelled"
+    empty: "No departures today."
+    # Almost never a fault: it is a conductor nobody has attached to the
+    # departure yet.
+    emptyBody: "If you are expecting a coach, your operator has not attached you to this departure yet."
+
+  boarding:
+    changeCoach: "Change coach"
+    manual: "Board by hand"
+    upToDate: "Up to date"
+    staleOnline: "List synced {minutes} min ago — refresh"
+    staleOffline: "Offline · list up to date {minutes} min ago"
+    nothingToSend: "Nothing to send."
+    sent:
+      one: "{count} boarding sent."
+      other: "{count} boardings sent."
+    sentPending:
+      one: "{count} waiting boarding sent."
+      other: "{count} waiting boardings sent."
+    # Said in this order deliberately: the coach leaves anyway. A conductor
+    # who believes they must wait for a signal holds up sixty people.
+    sendFailed: "Could not send. {pending} waiting — the coach can leave, they will go later."
+    sendFailedShort: "Could not send. They stay waiting."
+
+  verdict:
+    valid: "VALID"
+    alreadyBoarded: "ALREADY BOARDED"
+    wrongDeparture: "WRONG DEPARTURE"
+    staleCode: "CODE EXPIRED"
+    voided: "TICKET VOIDED"
+    notOnManifest: "NOT ON THE LIST"
+    invalid: "INVALID"
+    dismiss: "Tap to continue"
+    override: "Board anyway"
+    # Only for a piece of the road (ADR-0025): the conductor learns it at the
+    # door rather than at Dolisie, when somebody stands up.
+    alightsAt: "Gets off at {stop}"
+    alreadyScanned: "This ticket has already been scanned."
+    alreadyScannedAt: "Already scanned at {time}."
+    # The useful answer is which coach to send them to, not "no".
+    wrongDepartureBody: "This ticket is for another departure.\nPoint the passenger there."
+    staleCodeBody: "Ask the passenger to open\ntheir ticket and try again."
+    voidedBody: "This ticket was refunded.\nIt is no longer valid."
+    notOnManifestBody: "Ticket not on this list.\nSync before boarding."
+    invalidBody: "Ticket not recognised."
+
+  manual:
+    title: "Board by hand"
+    searchLabel: "Name, reference or seat"
+    searchHint: "7QK4M2  ·  Aline  ·  14A"
+    notBoarded: "NOT BOARDED YET — {count}"
+    noMatch: "No passenger matches"
+    allBoarded: "Everybody is on board"
+    noMatchBody: "Check the reference, or sync the list\nif the ticket was just bought."
+
+  camera:
+    torchOn: "Turn the light on"
+    torchOff: "Turn the light off"
+    unavailable: "Camera unavailable"
+    unavailableBody: "Board by hand instead.\nNobody is left on the platform."
+
+  road:
+    title: "Where are we?"
+    body: "Tap the place the coach has just passed. The families following the trip will see it."
+    passedAt: "Passed at {time}"
+    confirmed: "{place} confirmed."
+    report: "Passed {place} · report"
+
+  pending:
+    title:
+      one: "{count} boarding not sent"
+      other: "{count} boardings not sent"
+    body: "They stay on the phone. Send them now if you have a signal."
+    later: "Later"
+    send: "Send"
+
+  # A sentence a conductor can act on, never an exception's toString.
+  errors:
+    forbidden: "Your account is not allowed to board this coach. Ask your operator."
+    unavailable: "The server is unavailable. Try again in a moment."
+    refused: "The server refused the request ({status})."
+    offline: "No signal. Move closer to the office and try again."
+    manifest: "Could not load the passenger list."
+
+  # Absent from published builds — but translated anyway, because an
+  # untranslated string eventually escapes the screen it was put on.
+  simulator:
+    title: "SIMULATOR — DEBUG"
+    body: "Injects real signed tickets into the reader, without a camera. Absent from published builds."

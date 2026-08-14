@@ -1,6 +1,9 @@
 import 'package:bel_design/bel_design.dart';
 import 'package:bel_domain/bel_domain.dart';
+import 'package:bel_localization/bel_localization.dart';
 import 'package:flutter/material.dart';
+
+import '../l10n.dart';
 
 /// The full-screen result of a scan.
 ///
@@ -31,13 +34,17 @@ class VerdictScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final kilo = context.kilo;
-    final style = _VerdictStyle.of(outcome.result, kilo.color);
+    // Taken once and handed down rather than read again in each helper: these
+    // are pure functions of a verdict, and a widget-tree lookup inside each of
+    // them would be four lookups to render one screen.
+    final t = context.translator;
+    final style = _VerdictStyle.of(outcome.result, kilo.color, t);
     final payload = outcome.payload;
-    final leg = _leg;
+    final leg = _legOf(t);
 
     return Semantics(
       liveRegion: true,
-      label: _spokenLabel,
+      label: _spokenLabel(t),
       child: GestureDetector(
         onTap: onDismiss,
         behavior: HitTestBehavior.opaque,
@@ -92,10 +99,10 @@ class VerdictScreen extends StatelessWidget {
                       style: kilo.text.h3.copyWith(color: style.foreground),
                     ),
                   ],
-                  if (_supportingLine != null) ...[
+                  if (_supportingLine(t) != null) ...[
                     SizedBox(height: kilo.space.s5),
                     Text(
-                      _supportingLine!,
+                      _supportingLine(t)!,
                       textAlign: TextAlign.center,
                       style: kilo.text.bodyLg.copyWith(
                         color: style.foreground.withValues(alpha: 0.9),
@@ -104,11 +111,15 @@ class VerdictScreen extends StatelessWidget {
                   ],
                   const Spacer(),
                   if (onOverride != null) ...[
-                    _OverrideButton(style: style, onPressed: onOverride!),
+                    _OverrideButton(
+                      style: style,
+                      label: t('scanner.verdict.override'),
+                      onPressed: onOverride!,
+                    ),
                     SizedBox(height: kilo.space.s3),
                   ],
                   Text(
-                    'Touchez pour continuer',
+                    t('scanner.verdict.dismiss'),
                     textAlign: TextAlign.center,
                     style: kilo.text.bodySm.copyWith(
                       color: style.foreground.withValues(alpha: 0.7),
@@ -126,34 +137,34 @@ class VerdictScreen extends StatelessWidget {
   /// Only for a piece of the road. A whole-journey ticket says the two towns
   /// the coach itself is going between, which is the one thing everybody at
   /// this door already knows.
-  String? get _leg {
+  String? _legOf(CatalogTranslator t) {
     final entry = outcome.entry;
     if (entry?.alightsAt == null) return null;
-    return 'Descend à ${entry!.alightsAt}';
+    return t('scanner.verdict.alightsAt', {'stop': entry!.alightsAt});
   }
 
-  String? get _supportingLine => switch (outcome.result) {
+  String? _supportingLine(CatalogTranslator t) => switch (outcome.result) {
     VerificationResult.alreadyBoarded =>
       outcome.firstScannedAt == null
-          ? 'Ce billet a déjà été scanné.'
-          : 'Déjà scanné à ${_hhmm(outcome.firstScannedAt!)}.',
+          ? t('scanner.verdict.alreadyScanned')
+          : t('scanner.verdict.alreadyScannedAt', {
+              'time': _hhmm(outcome.firstScannedAt!),
+            }),
     // The useful answer is which coach to send them to, not "no".
-    VerificationResult.wrongDeparture =>
-      'Ce billet est pour un autre départ.\nOrientez le passager.',
-    VerificationResult.staleCode =>
-      'Demandez au passager d\'ouvrir\nson billet et de réessayer.',
-    VerificationResult.voided =>
-      'Ce billet a été remboursé.\nIl n\'est plus valable.',
-    VerificationResult.notOnManifest =>
-      'Billet absent de cette liste.\nSynchronisez avant d\'embarquer.',
-    VerificationResult.invalid => 'Billet non reconnu.',
+    VerificationResult.wrongDeparture => t(
+      'scanner.verdict.wrongDepartureBody',
+    ),
+    VerificationResult.staleCode => t('scanner.verdict.staleCodeBody'),
+    VerificationResult.voided => t('scanner.verdict.voidedBody'),
+    VerificationResult.notOnManifest => t('scanner.verdict.notOnManifestBody'),
+    VerificationResult.invalid => t('scanner.verdict.invalidBody'),
     VerificationResult.valid => null,
   };
 
-  String get _spokenLabel {
+  String _spokenLabel(CatalogTranslator t) {
     final name = outcome.payload?.passengerName ?? '';
-    final leg = _leg;
-    return '${_VerdictStyle.wordFor(outcome.result)}. $name'
+    final leg = _legOf(t);
+    return '${_VerdictStyle.wordFor(outcome.result, t)}. $name'
         '${leg == null ? '' : '. $leg'}';
   }
 
@@ -165,9 +176,14 @@ class VerdictScreen extends StatelessWidget {
 }
 
 class _OverrideButton extends StatelessWidget {
-  const _OverrideButton({required this.style, required this.onPressed});
+  const _OverrideButton({
+    required this.style,
+    required this.label,
+    required this.onPressed,
+  });
 
   final _VerdictStyle style;
+  final String label;
   final VoidCallback onPressed;
 
   @override
@@ -185,7 +201,7 @@ class _OverrideButton extends StatelessWidget {
           ),
         ),
         child: Text(
-          'Embarquer quand même',
+          label,
           style: kilo.text.h3.copyWith(color: style.foreground),
         ),
       ),
@@ -212,59 +228,58 @@ final class _VerdictStyle {
   final Color foreground;
   final IconData icon;
 
-  static String wordFor(VerificationResult r) => switch (r) {
-    VerificationResult.valid => 'VALIDE',
-    VerificationResult.alreadyBoarded => 'DÉJÀ EMBARQUÉ',
-    VerificationResult.wrongDeparture => 'MAUVAIS DÉPART',
-    VerificationResult.staleCode => 'CODE PÉRIMÉ',
-    VerificationResult.voided => 'BILLET ANNULÉ',
-    VerificationResult.notOnManifest => 'ABSENT DE LA LISTE',
-    VerificationResult.invalid => 'INVALIDE',
-  };
+  /// One word per verdict, from the catalog rather than from a switch over
+  /// French: the word is the whole message at arm's length in direct sun, and
+  /// it is the last thing that should be readable in only one language.
+  static String wordFor(VerificationResult r, CatalogTranslator t) =>
+      t('scanner.verdict.${r.name}');
 
-  static _VerdictStyle of(VerificationResult result, KiloColors c) =>
-      switch (result) {
-        VerificationResult.valid => _VerdictStyle(
-          word: wordFor(result),
-          background: c.success,
-          foreground: const Color(0xFFFFFFFF),
-          icon: Icons.check_circle_outline,
-        ),
-        VerificationResult.alreadyBoarded => _VerdictStyle(
-          word: wordFor(result),
-          background: c.danger,
-          foreground: const Color(0xFFFFFFFF),
-          icon: Icons.do_not_disturb_on_outlined,
-        ),
-        VerificationResult.wrongDeparture => _VerdictStyle(
-          word: wordFor(result),
-          background: c.warning,
-          foreground: const Color(0xFFFFFFFF),
-          icon: Icons.swap_horiz,
-        ),
-        VerificationResult.staleCode => _VerdictStyle(
-          word: wordFor(result),
-          background: c.warning,
-          foreground: const Color(0xFFFFFFFF),
-          icon: Icons.timer_outlined,
-        ),
-        VerificationResult.voided => _VerdictStyle(
-          word: wordFor(result),
-          background: c.danger,
-          foreground: const Color(0xFFFFFFFF),
-          icon: Icons.money_off,
-        ),
-        VerificationResult.notOnManifest => _VerdictStyle(
-          word: wordFor(result),
-          background: c.warning,
-          foreground: const Color(0xFFFFFFFF),
-          icon: Icons.help_outline,
-        ),
-        VerificationResult.invalid => _VerdictStyle(
-          word: wordFor(result),
-          background: c.danger,
-          foreground: const Color(0xFFFFFFFF),
-          icon: Icons.close,
-        ),
-      };
+  static _VerdictStyle of(
+    VerificationResult result,
+    KiloColors c,
+    CatalogTranslator t,
+  ) => switch (result) {
+    VerificationResult.valid => _VerdictStyle(
+      word: wordFor(result, t),
+      background: c.success,
+      foreground: const Color(0xFFFFFFFF),
+      icon: Icons.check_circle_outline,
+    ),
+    VerificationResult.alreadyBoarded => _VerdictStyle(
+      word: wordFor(result, t),
+      background: c.danger,
+      foreground: const Color(0xFFFFFFFF),
+      icon: Icons.do_not_disturb_on_outlined,
+    ),
+    VerificationResult.wrongDeparture => _VerdictStyle(
+      word: wordFor(result, t),
+      background: c.warning,
+      foreground: const Color(0xFFFFFFFF),
+      icon: Icons.swap_horiz,
+    ),
+    VerificationResult.staleCode => _VerdictStyle(
+      word: wordFor(result, t),
+      background: c.warning,
+      foreground: const Color(0xFFFFFFFF),
+      icon: Icons.timer_outlined,
+    ),
+    VerificationResult.voided => _VerdictStyle(
+      word: wordFor(result, t),
+      background: c.danger,
+      foreground: const Color(0xFFFFFFFF),
+      icon: Icons.money_off,
+    ),
+    VerificationResult.notOnManifest => _VerdictStyle(
+      word: wordFor(result, t),
+      background: c.warning,
+      foreground: const Color(0xFFFFFFFF),
+      icon: Icons.help_outline,
+    ),
+    VerificationResult.invalid => _VerdictStyle(
+      word: wordFor(result, t),
+      background: c.danger,
+      foreground: const Color(0xFFFFFFFF),
+      icon: Icons.close,
+    ),
+  };
 }

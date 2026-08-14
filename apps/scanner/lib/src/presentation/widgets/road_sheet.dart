@@ -2,6 +2,7 @@ import 'package:bel_design/bel_design.dart';
 import 'package:flutter/material.dart';
 
 import '../../application/road_progress.dart';
+import '../l10n.dart';
 
 /// *Où sommes-nous ?* — the road, and one tap to say the coach is past a
 /// place (ADR-0014 §1, tier 2).
@@ -36,11 +37,10 @@ class _RoadSheetState extends State<RoadSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Où sommes-nous ?', style: kilo.text.h2),
+            Text(context.t('scanner.road.title'), style: kilo.text.h2),
             SizedBox(height: kilo.space.s2),
             Text(
-              'Touchez le lieu que le car vient de passer. Les proches qui '
-              'suivent le voyage le verront.',
+              context.t('scanner.road.body'),
               style: kilo.text.bodySm.copyWith(color: kilo.color.contentMuted),
             ),
             SizedBox(height: kilo.space.s4),
@@ -66,7 +66,9 @@ class _RoadSheetState extends State<RoadSheet> {
                     title: Text(p.name, style: kilo.text.body),
                     subtitle: p.isBehind
                         ? Text(
-                            'Passé à ${_hhmm(p.passedAt!)}',
+                            context.t('scanner.road.passedAt', {
+                              'time': _hhmm(p.passedAt!),
+                            }),
                             style: kilo.text.bodySm.copyWith(
                               color: kilo.color.contentMuted,
                             ),
@@ -90,9 +92,13 @@ class _RoadSheetState extends State<RoadSheet> {
     // hours confirms two or three places in a row, and a sheet that closed
     // after each one would make that three trips through the footer.
     setState(() => widget.road.confirm(point.stopId));
-    ScaffoldMessenger.maybeOf(
-      context,
-    )?.showSnackBar(SnackBar(content: Text('${point.name} confirmé.')));
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(
+          context.t('scanner.road.confirmed', {'place': point.name}),
+        ),
+      ),
+    );
   }
 
   static String _hhmm(DateTime at) {

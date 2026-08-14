@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:bel_backoffice/bel_backoffice.dart';
 import 'package:bel_client/bel_client.dart';
@@ -18,6 +19,7 @@ import 'src/application/simulated_scan.dart';
 import 'src/infrastructure/api_boarding_gateway.dart';
 import 'src/infrastructure/demo_boarding_gateway.dart';
 import 'src/infrastructure/memory_redemption_log.dart';
+import 'src/infrastructure/language_preference.dart';
 import 'src/infrastructure/sqlite_redemption_log.dart';
 import 'src/presentation/l10n.dart';
 import 'src/presentation/pages/boarding_page.dart';
@@ -40,6 +42,16 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final catalog = await CatalogAssets.load();
+
+  // A stored choice beats the handset. A conductor's phone is issued by the
+  // agency and set up once by whoever unboxed it, which is rarely the person
+  // holding it at half past five.
+  final language =
+      await loadLanguage() ??
+      catalog.bestMatch(
+        PlatformDispatcher.instance.locales.map((l) => l.toLanguageTag()),
+      );
+
   final apiUrl = _reachable(const String.fromEnvironment('BEL_API_URL'));
 
   // Where the boarding log lives between launches. A failure to open it is
@@ -58,6 +70,8 @@ Future<void> main() async {
     runApp(
       ScannerApp(
         catalog: catalog,
+        language: language,
+        onLanguage: saveLanguage,
         gateway: DemoBoardingGateway(),
         deviceId: 'demo-device',
         log: log,
@@ -84,6 +98,20 @@ Future<void> main() async {
   runApp(
     ScannerApp(
       catalog: catalog,
+      language: language,
+      // Three places: the tree has already repainted, the preference store
+      // survives a relaunch, and the account row is what the server writes
+      // this conductor's own messages in tomorrow (ADR-0019 rule 3).
+      // Best-effort on the last, like `touch` — a conductor in a yard with no
+      // signal still gets the app in the language they asked for.
+      onLanguage: (code) async {
+        await saveLanguage(code);
+        try {
+          await client.setLanguage(code);
+        } on Object {
+          // Nothing to tell them. The screen already changed.
+        }
+      },
       gateway: ApiBoardingGateway(client, clock: const SystemClock()),
       deviceId: _deviceId(),
       log: log,
@@ -156,6 +184,8 @@ class ScannerApp extends StatelessWidget {
     this.log,
     this.session,
     this.client,
+    this.language = 'fr',
+    this.onLanguage,
     super.key,
   });
 
@@ -176,11 +206,25 @@ class ScannerApp extends StatelessWidget {
   final BelSession? session;
   final BelApiClient? client;
 
+  /// The language this handset opens in — its own locale, resolved against
+  /// the catalog, unless somebody has chosen otherwise.
+  final String language;
+
+  /// Persists a choice. Null in tests, where a switch holds for the run.
+  final void Function(String code)? onLanguage;
+
   @override
   Widget build(BuildContext context) => Localized(
     catalog: catalog,
+    initialLanguage: language,
+    onChanged: onLanguage,
     child: MaterialApp(
-      title: 'BilletEnLigne — Embarquement',
+      // `onGenerateTitle` rather than `title`, because this string is read
+      // in the handset's task switcher and `title` takes a `String` with no
+      // context to translate it from. The builder runs below `Localized`,
+      // which is above this `MaterialApp`.
+      onGenerateTitle: (context) =>
+          'BilletEnLigne — ${context.t('scanner.title')}',
       debugShowCheckedModeBanner: false,
       // `plein soleil` is the DEFAULT here, not an option. A conductor
       // validating sixty tickets in direct equatorial sun is our least
@@ -228,7 +272,7 @@ class _RootState extends State<_Root> {
       return BackOfficeSignIn(
         client: client,
         session: session,
-        title: 'Embarquement',
+        title: context.t('scanner.title'),
         icon: Icons.qr_code_scanner,
         t: context.t,
         onSignedIn: () => setState(() => _signedIn = true),
@@ -261,7 +305,14 @@ class _CoachFlow extends StatefulWidget {
 
 class _CoachFlowState extends State<_CoachFlow> {
   List<BoardingDepartureDto>? _coaches;
-  String? _failure;
+
+  /// The error itself, not a sentence about it.
+  ///
+  /// Rendered in `build` rather than at the moment it was caught, so a
+  /// conductor who switches language while a refusal is on screen reads the
+  /// refusal in the language they just chose — a stored sentence would sit
+  /// there in the old one until they did something else.
+  Object? _failure;
   String? _pinning;
 
   BoardingSession? _session;
@@ -288,7 +339,7 @@ class _CoachFlowState extends State<_CoachFlow> {
       if (mounted) {
         setState(() {
           _coaches ??= const [];
-          _failure = _sentence(e);
+          _failure = e;
         });
       }
     }
@@ -325,10 +376,9 @@ class _CoachFlowState extends State<_CoachFlow> {
     }
 
     if (settled == 0 || !mounted) return;
-    final plural = settled > 1 ? 's' : '';
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(
-        content: Text('$settled embarquement$plural en attente envoyé$plural.'),
+        content: Text(context.tPlural('scanner.boarding.sentPending', settled)),
       ),
     );
   }
@@ -395,7 +445,7 @@ class _CoachFlowState extends State<_CoachFlow> {
       if (mounted) {
         setState(() {
           _pinning = null;
-          _failure = _sentence(e);
+          _failure = e;
         });
       }
     }
@@ -413,19 +463,18 @@ class _CoachFlowState extends State<_CoachFlow> {
       final send = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('${sync.pendingCount} embarquements non envoyés'),
-          content: const Text(
-            'Ils restent sur le téléphone. Envoyez-les maintenant si vous '
-            'avez du réseau.',
+          title: Text(
+            context.tPlural('scanner.pending.title', sync.pendingCount),
           ),
+          content: Text(context.t('scanner.pending.body')),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Plus tard'),
+              child: Text(context.t('scanner.pending.later')),
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Envoyer'),
+              child: Text(context.t('scanner.pending.send')),
             ),
           ],
         ),
@@ -438,8 +487,8 @@ class _CoachFlowState extends State<_CoachFlow> {
         if (!mounted) return;
         if (!report.ok) {
           ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-            const SnackBar(
-              content: Text('Envoi impossible. Ils restent en attente.'),
+            SnackBar(
+              content: Text(context.t('scanner.boarding.sendFailedShort')),
             ),
           );
         }
@@ -483,24 +532,24 @@ class _CoachFlowState extends State<_CoachFlow> {
       onPick: _pin,
       onRefresh: _load,
       pinning: _pinning,
-      failure: _failure,
+      failure: _failure == null
+          ? null
+          : _sentence(context.translator, _failure!),
     );
   }
 
   /// A sentence a conductor can act on, rather than an exception's toString.
-  static String _sentence(Object error) {
+  static String _sentence(CatalogTranslator t, Object error) {
     if (error is ServerRefused) {
       return switch (error.status) {
-        401 || 403 =>
-          "Votre compte n'a pas le droit d'embarquer sur ce car. "
-              'Demandez à votre exploitant.',
-        503 => 'Le serveur est indisponible. Réessayez dans un instant.',
-        _ => 'Le serveur a refusé la demande (${error.status}).',
+        401 || 403 => t('scanner.errors.forbidden'),
+        503 => t('scanner.errors.unavailable'),
+        _ => t('scanner.errors.refused', {'status': error.status}),
       };
     }
     if (error is ApiFailure) {
-      return 'Pas de réseau. Rapprochez-vous du bureau et réessayez.';
+      return t('scanner.errors.offline');
     }
-    return 'Impossible de charger la liste des passagers.';
+    return t('scanner.errors.manifest');
   }
 }

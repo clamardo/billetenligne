@@ -1,11 +1,13 @@
 import 'package:bel_contracts/bel_contracts.dart';
-import 'package:bel_design/bel_design.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_scanner/src/application/road_progress.dart';
 import 'package:bel_scanner/src/infrastructure/memory_redemption_log.dart';
 import 'package:bel_scanner/src/presentation/widgets/road_sheet.dart';
 import 'package:flutter/material.dart';
+import 'package:bel_localization/bel_localization.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'catalog_fixture.dart';
 
 /// *Où sommes-nous ?* — the one screen behind ADR-0014's second tier.
 ///
@@ -13,6 +15,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// no signal can publish a fact somebody at the far end is waiting for, and
 /// that the app never lets them publish it twice or take it back.
 void main() {
+  late TranslationCatalog catalog;
+  setUpAll(() async => catalog = await loadTestCatalog());
+
   final now = DateTime.utc(2026, 8, 15, 10, 42);
 
   const road = [
@@ -34,10 +39,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp(
-        theme: KiloTheme.materialTheme(brightness: KiloBrightness.pleinSoleil),
-        home: Scaffold(body: RoadSheet(road: progress)),
-      ),
+      scannerHarness(catalog, Scaffold(body: RoadSheet(road: progress))),
     );
     await tester.pumpAndSettle();
     return progress;

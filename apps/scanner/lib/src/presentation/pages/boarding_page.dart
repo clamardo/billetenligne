@@ -12,6 +12,7 @@ import '../widgets/camera_view.dart';
 import '../widgets/road_sheet.dart';
 import '../widgets/ticket_simulator.dart';
 import '../widgets/verdict_screen.dart';
+import '../l10n.dart';
 import 'manual_boarding_page.dart';
 
 /// The scanner's only real screen.
@@ -85,16 +86,18 @@ class _BoardingPageState extends State<BoardingPage> {
     setState(() => _syncing = false);
 
     final settled = report.settled;
-    final plural = settled > 1 ? 's' : '';
+    // Plural through the catalog, not through appending an `s`: the rule is a
+    // property of the language, and the next language added will not have it.
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(
         content: Text(
           !report.ok
-              ? "Envoi impossible. ${report.stillPending} en attente — "
-                    'le car peut partir, ils repartiront plus tard.'
+              ? context.t('scanner.boarding.sendFailed', {
+                  'pending': report.stillPending,
+                })
               : settled == 0
-              ? 'Rien à envoyer.'
-              : '$settled embarquement$plural envoyé$plural.',
+              ? context.t('scanner.boarding.nothingToSend')
+              : context.tPlural('scanner.boarding.sent', settled),
         ),
       ),
     );
@@ -224,7 +227,7 @@ class _DepartureHeader extends StatelessWidget {
                 IconButton(
                   onPressed: onLeave,
                   icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Changer de car',
+                  tooltip: context.t('scanner.boarding.changeCoach'),
                   visualDensity: VisualDensity.compact,
                 ),
               Text(_hhmm(m.departsAt), style: kilo.text.h2),
@@ -297,7 +300,9 @@ class _SyncButton extends StatelessWidget {
               pending == 0 ? Icons.cloud_done_outlined : Icons.cloud_upload,
               size: 20,
             ),
-      label: Text(pending == 0 ? 'À jour' : '$pending'),
+      label: Text(
+        pending == 0 ? context.t('scanner.boarding.upToDate') : '$pending',
+      ),
       style: TextButton.styleFrom(
         foregroundColor: pending == 0
             ? kilo.color.contentMuted
@@ -337,9 +342,12 @@ class _StalenessChip extends StatelessWidget {
         ),
         SizedBox(width: kilo.space.s1),
         Text(
-          stale
-              ? 'Liste synchronisée il y a ${age.inMinutes} min — actualisez'
-              : 'Hors ligne · liste à jour il y a ${age.inMinutes} min',
+          context.t(
+            stale
+                ? 'scanner.boarding.staleOnline'
+                : 'scanner.boarding.staleOffline',
+            {'minutes': age.inMinutes},
+          ),
           style: kilo.text.bodySm.copyWith(color: color),
         ),
       ],
@@ -384,7 +392,7 @@ class _BoardingFooter extends StatelessWidget {
             child: OutlinedButton.icon(
               onPressed: onManual,
               icon: const Icon(Icons.keyboard_alt_outlined),
-              label: const Text('Embarquement manuel'),
+              label: Text(context.t('scanner.boarding.manual')),
               style: outlined,
             ),
           ),
@@ -400,8 +408,8 @@ class _BoardingFooter extends StatelessWidget {
                 icon: const Icon(Icons.place_outlined),
                 label: Text(
                   last == null
-                      ? 'Où sommes-nous ?'
-                      : 'Passé ${last.name} · signaler',
+                      ? context.t('scanner.road.title')
+                      : context.t('scanner.road.report', {'place': last.name}),
                 ),
                 style: outlined,
               ),

@@ -2,6 +2,8 @@ import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_design/bel_design.dart';
 import 'package:flutter/material.dart';
 
+import '../l10n.dart';
+
 /// Which of today's coaches is mine?
 ///
 /// The only question between signing in and the door, and the last one that
@@ -36,12 +38,26 @@ class CoachPickerPage extends StatelessWidget {
       backgroundColor: kilo.color.surfaceBase,
       appBar: AppBar(
         backgroundColor: kilo.color.surfaceRaised,
-        title: const Text('Mes départs du jour'),
+        title: Text(context.t('scanner.coaches.title')),
         actions: [
           IconButton(
             onPressed: pinning == null ? onRefresh : null,
             icon: const Icon(Icons.refresh),
-            tooltip: 'Actualiser',
+            tooltip: context.t('scanner.coaches.refresh'),
+          ),
+          // Here rather than behind the door: this is the screen every
+          // conductor passes through, every morning, and the one they are
+          // standing on when they discover the handset is not in a language
+          // they read. Behind the door it would be two taps away with sixty
+          // people waiting.
+          KLanguageMenu(
+            tooltip: context.t('common.language'),
+            current: context.language,
+            languages: [
+              for (final language in context.languages)
+                (code: language.code, nativeName: language.nativeName),
+            ],
+            onChanged: context.setLanguage,
           ),
         ],
       ),
@@ -126,8 +142,14 @@ class _CoachTile extends StatelessWidget {
                     ),
                     SizedBox(height: kilo.space.s1),
                     Text(
-                      '${coach.expected} billets · ${coach.capacity} places'
-                      '${coach.stationName == null ? '' : ' · ${coach.stationName}'}',
+                      context.tPlural(
+                            'scanner.coaches.tickets',
+                            coach.expected,
+                            {'capacity': coach.capacity},
+                          ) +
+                          (coach.stationName == null
+                              ? ''
+                              : ' · ${coach.stationName}'),
                       style: kilo.text.bodySm.copyWith(
                         color: kilo.color.contentSecondary,
                       ),
@@ -135,7 +157,7 @@ class _CoachTile extends StatelessWidget {
                     if (cancelled) ...[
                       SizedBox(height: kilo.space.s1),
                       Text(
-                        'Départ annulé',
+                        context.t('scanner.coaches.cancelled'),
                         style: kilo.text.bodySm.copyWith(
                           color: kilo.color.danger,
                         ),
@@ -188,14 +210,13 @@ class _Empty extends StatelessWidget {
             ),
             SizedBox(height: kilo.space.s4),
             Text(
-              "Aucun départ aujourd'hui.",
+              context.t('scanner.coaches.empty'),
               style: kilo.text.h3,
               textAlign: TextAlign.center,
             ),
             SizedBox(height: kilo.space.s2),
             Text(
-              'Si vous attendez un car, votre exploitant ne vous a pas encore '
-              'rattaché à ce départ.',
+              context.t('scanner.coaches.emptyBody'),
               style: kilo.text.body.copyWith(
                 color: kilo.color.contentSecondary,
               ),
@@ -205,7 +226,7 @@ class _Empty extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: onRefresh,
               icon: const Icon(Icons.refresh),
-              label: const Text('Actualiser'),
+              label: Text(context.t('scanner.coaches.refresh')),
             ),
           ],
         ),
