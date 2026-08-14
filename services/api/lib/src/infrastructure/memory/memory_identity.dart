@@ -127,6 +127,29 @@ final class MemoryUserDirectory implements UserDirectory {
   }
 
   @override
+  Future<bool> setLanguage({
+    required String userId,
+    required String language,
+  }) async {
+    final existing = _byId[userId];
+    if (existing == null) return false;
+    _byId[userId] = Account(
+      id: existing.id,
+      language: language,
+      authUid: existing.authUid,
+      email: existing.email,
+      phone: existing.phone,
+      fullName: existing.fullName,
+      emailVerifiedAt: existing.emailVerifiedAt,
+      phoneVerifiedAt: existing.phoneVerifiedAt,
+      disabledAt: existing.disabledAt,
+      staff: existing.staff,
+      platformRole: existing.platformRole,
+    );
+    return true;
+  }
+
+  @override
   Future<void> touch(String userId) async {}
 
   /// Test seam: put a known account in place, disabled or otherwise.

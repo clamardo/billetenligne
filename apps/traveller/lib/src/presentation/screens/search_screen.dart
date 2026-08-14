@@ -28,6 +28,7 @@ final class SearchScreen extends StatefulWidget {
     required this.onSearch,
     this.initialQuery,
     this.onOpenTickets,
+    this.onOpenSettings,
     super.key,
   });
 
@@ -40,6 +41,10 @@ final class SearchScreen extends StatefulWidget {
   /// reasons — to buy a seat, or to show one they already own — and the
   /// second must not cost a search.
   final VoidCallback? onOpenTickets;
+
+  /// Language, and the three-way theme choice. An icon rather than a word,
+  /// because somebody who cannot read this screen is exactly who needs it.
+  final VoidCallback? onOpenSettings;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -74,7 +79,10 @@ class _SearchScreenState extends State<SearchScreen> {
       body: ListView(
         padding: EdgeInsets.zero,
         children: [
-          _Hero(onOpenTickets: widget.onOpenTickets),
+          _Hero(
+            onOpenTickets: widget.onOpenTickets,
+            onOpenSettings: widget.onOpenSettings,
+          ),
           Padding(
             padding: EdgeInsets.fromLTRB(
               kilo.space.s4,
@@ -238,9 +246,10 @@ class _SearchScreenState extends State<SearchScreen> {
 /// theme tokens rather than loaded, so it costs no request, cannot fail to
 /// arrive on 2G, and recolours itself in dark mode.
 class _Hero extends StatelessWidget {
-  const _Hero({this.onOpenTickets});
+  const _Hero({this.onOpenTickets, this.onOpenSettings});
 
   final VoidCallback? onOpenTickets;
+  final VoidCallback? onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -278,7 +287,17 @@ class _Hero extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Kept alongside the settings screen rather than folded
+                    // into it. Dark mode is the one setting somebody changes
+                    // because of where they are standing, and a control that
+                    // moved two taps away at dusk is a control that got worse.
                     const KModeToggle(),
+                    if (onOpenSettings != null)
+                      IconButton(
+                        onPressed: onOpenSettings,
+                        icon: const Icon(Icons.settings_outlined),
+                        tooltip: context.t('travel.settings.open'),
+                      ),
                     if (onOpenTickets != null)
                       IconButton(
                         onPressed: onOpenTickets,

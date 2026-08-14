@@ -98,6 +98,19 @@ travel:
     phoneHelp: "The ticket goes to this number, not to yours."
     nameRequired: "Give each passenger's name"
     submit: "Reserve — {total}"
+  # The only screen where somebody changes anything about the app itself.
+  # The language names are not here: they are written in their own language
+  # (`settings_screen.dart`), because a person scans for the word they would
+  # write themselves, not for its translation into a language they cannot read.
+  settings:
+    title: "Settings"
+    open: "Settings"
+    language: "Language"
+    languageNote: "Your tickets, receipts and text messages will be sent to you in this language."
+    theme: "Appearance"
+    themeSystem: "System"
+    themeLight: "Light"
+    themeDark: "Dark"
   tickets:
     title: "My tickets"
     open: "My tickets"

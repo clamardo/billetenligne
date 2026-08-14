@@ -130,6 +130,21 @@ abstract interface class UserDirectory {
     String language = 'fr',
   });
 
+  /// The language this person reads, chosen rather than guessed.
+  ///
+  /// **Why it needs writing at all.** `language` was set once, when the
+  /// account was first created, from whatever the handset's locale happened to
+  /// be — and never again. So somebody who first signed in on a phone set to
+  /// English received French for the rest of their life, and there was no
+  /// screen anywhere in any app that could change it. The stored value is what
+  /// the server renders every e-mail and every SMS in (ADR-0019 rule 3), which
+  /// makes it the only copy that matters once the app is closed.
+  ///
+  /// Unsupported codes are refused rather than stored: a row saying `de` would
+  /// silently fall back to French on every message and look like a bug in the
+  /// catalog.
+  Future<bool> setLanguage({required String userId, required String language});
+
   /// Records that we saw them. Best-effort and deliberately not awaited on the
   /// request path — a failure to update a timestamp must never fail a booking.
   Future<void> touch(String userId);

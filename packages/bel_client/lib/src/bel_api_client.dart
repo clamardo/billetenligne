@@ -51,7 +51,16 @@ final class BelApiClient {
   final http.Client _http;
   final TokenProvider? _token;
 
-  final String language;
+  /// The language every request announces, and the one the server renders its
+  /// prose in.
+  ///
+  /// **Mutable, because it is a choice rather than a property of the build.**
+  /// It used to be captured once at construction from the handset's locale,
+  /// which was fine while nothing could change it and wrong the moment a
+  /// settings screen existed: a switch that repainted the app but kept sending
+  /// the old header would leave every server-rendered sentence — a refusal, a
+  /// receipt, an SMS — in the language the person just left.
+  String language;
   final String? appVersion;
   final String? deviceId;
   final RetryPolicy retry;
@@ -217,6 +226,24 @@ final class BelApiClient {
   /// still a customer" are different claims and only this settles the second.
   Future<AccountDto> me() async =>
       AccountDto.fromJson(await _get('/public/v1/me'));
+
+  /// Change the language this account is written to in.
+  ///
+  /// **Two places, and both are needed.** [language] on this client decides
+  /// what the next request *asks* for; the account row decides what an e-mail
+  /// or an SMS sent tomorrow, with no app open anywhere, is written in
+  /// (ADR-0019 rule 3). Setting only the first leaves the second as it was on
+  /// the day the account was created.
+  ///
+  /// The local field moves first so a failed call leaves the app speaking the
+  /// language the person just chose rather than silently refusing them.
+  Future<AccountDto> setLanguage(String code) async {
+    language = code;
+    return AccountDto.fromJson(
+      await _send('PATCH', '/public/v1/me', body: {'language': code}) ??
+          const {},
+    );
+  }
 
   // ── Inventory ─────────────────────────────────────────────────────────────
 

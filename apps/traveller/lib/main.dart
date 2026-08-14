@@ -21,6 +21,7 @@ import 'src/infrastructure/api_travel_gateway.dart';
 import 'src/infrastructure/demo_identity_gateway.dart';
 import 'src/infrastructure/demo_travel_gateway.dart';
 import 'src/infrastructure/sqlite_ticket_vault.dart';
+import 'src/infrastructure/language_preference.dart';
 import 'src/infrastructure/theme_preference.dart';
 import 'src/presentation/app.dart';
 import 'src/presentation/l10n.dart';
@@ -47,7 +48,12 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final catalog = await CatalogAssets.load();
-  final language = _deviceLanguage();
+
+  // A stored choice beats the handset. Plenty of phones here are secondhand
+  // and arrive set to a language their owner does not read, so the locale is a
+  // first guess rather than an answer — and until there was a screen to say
+  // otherwise, it was the answer for life.
+  final language = await loadLanguage() ?? _deviceLanguage();
   final apiUrl = _reachable(const String.fromEnvironment('BEL_API_URL'));
 
   // A release build with no server address runs the whole product on demo
@@ -68,6 +74,11 @@ Future<void> main() async {
   final TravelGateway gateway;
   final IdentityGateway identity;
 
+  // Held outside the branch because the settings screen needs it: a language
+  // choice has to reach the account row, and a demo build simply has nowhere
+  // to send it.
+  BelApiClient? client;
+
   if (apiUrl.isEmpty) {
     gateway = DemoTravelGateway();
     identity = DemoIdentityGateway();
@@ -82,7 +93,7 @@ Future<void> main() async {
       store: const SecureSessionStore(),
     );
 
-    final client = BelApiClient(
+    client = BelApiClient(
       baseUrl: Uri.parse(apiUrl),
       // Asked per request, not captured once: tokens expire mid-session and
       // BelSession refreshes them behind this call.
@@ -155,6 +166,24 @@ Future<void> main() async {
         launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
       ),
       language: language,
+      // Three places, and all three matter. The widget tree repaints (done by
+      // the screen itself, before this is awaited); the preference store
+      // survives a relaunch; and the account row is what the server writes
+      // tomorrow's receipt in, with no app open anywhere (ADR-0019 rule 3).
+      onLanguage: (code) async {
+        await saveLanguage(code);
+        if (apiUrl.isEmpty) return;
+        // Best-effort, exactly like `touch`: somebody on a dead connection
+        // still gets the app in the language they asked for, and the account
+        // catches up the next time they change it. Failing here would mean
+        // refusing to switch language because the network is down, which is
+        // the opposite of useful.
+        try {
+          await client?.setLanguage(code);
+        } on Object {
+          // Nothing to tell them. The screen already changed.
+        }
+      },
     ),
   );
 }

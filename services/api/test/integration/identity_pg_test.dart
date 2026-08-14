@@ -281,6 +281,40 @@ void main() {
       expect(again.created, isFalse);
       // The original verification time is kept, not overwritten on every visit.
       expect(again.account.emailVerifiedAt, seeded.account.emailVerifiedAt);
+
+      // And the language is NOT overwritten by a later sign-in either — which
+      // is exactly why `setLanguage` had to exist. Signing in on a borrowed
+      // English handset must not silently rewrite what somebody reads.
+      expect(again.account.language, 'fr');
+    },
+  );
+
+  test(
+    'the language on an account can be changed, and only to a real one',
+    () async {
+      final email = freshEmail();
+      final seeded = await directory.forVerifiedEmail(
+        email: email,
+        language: 'fr',
+      );
+
+      expect(
+        await directory.setLanguage(userId: seeded.account.id, language: 'en'),
+        isTrue,
+      );
+
+      final after = await directory.byId(seeded.account.id);
+      expect(after!.language, 'en');
+
+      // A row for an account that is not there is not an error worth throwing —
+      // the caller turns it into the same 401 every other vanished account gets.
+      expect(
+        await directory.setLanguage(
+          userId: '00000000-0000-0000-0000-000000000000',
+          language: 'en',
+        ),
+        isFalse,
+      );
     },
   );
 

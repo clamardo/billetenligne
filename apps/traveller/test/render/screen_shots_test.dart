@@ -5,6 +5,7 @@ import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_traveller/src/presentation/l10n.dart';
 import 'package:bel_traveller/src/presentation/screens/results_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/search_screen.dart';
+import 'package:bel_traveller/src/presentation/screens/settings_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/seat_map_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/ticket_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/tickets_screen.dart';
@@ -25,6 +26,24 @@ void main() {
     CityOption('PNR', 'Pointe-Noire'),
     CityOption('DOL', 'Dolisie'),
   ];
+
+  testWidgets('settings, in both languages', (tester) async {
+    for (final language in ['fr', 'en']) {
+      await shoot(
+        tester,
+        'traveller-settings-$language',
+        Localized(
+          catalog: catalog,
+          initialLanguage: language,
+          child: KiloModeScope(
+            notifier: KiloModeController(),
+            child: SettingsScreen(onLanguage: (_) {}, onBack: () {}),
+          ),
+        ),
+        size: const Size(360, 640),
+      );
+    }
+  });
 
   testWidgets('search on the narrowest handset', (tester) async {
     await shoot(

@@ -51,6 +51,7 @@ void main() {
     // that passes false.
     bool signedIn = true,
     List<String> channels = const ['email'],
+    void Function(String code)? onLanguage,
   }) async {
     final gateway = DemoTravelGateway(now: DateTime.utc(2026, 8, 9, 6))
       // Instant, so the tests are about behaviour rather than about waiting.
@@ -83,6 +84,11 @@ void main() {
         payment: PaymentFlow(gateway: gateway),
         tickets: TicketsFlow(gateway: gateway),
         language: language,
+        // Null unless a test asks, so the settings icon is absent by default
+        // and every other test in this file keeps the screen it expects.
+        onLanguage: onLanguage == null
+            ? null
+            : (code) async => onLanguage(code),
       ),
     );
     await tester.pumpAndSettle();
@@ -528,6 +534,70 @@ void main() {
       // French is the source and the fallback (ADR-0008). Every traveller in
       // this market reads it; far fewer read English.
       expect(find.text('Où allez-vous ?'), findsOneWidget);
+    });
+
+    // Everything below this line was unreachable before the settings screen
+    // existed: `setLanguage` was wired through the tree and called from
+    // nowhere, so a handset that arrived set to the wrong language stayed
+    // that way for the life of the account.
+    testWidgets('a traveller can change the language and the app follows', (
+      tester,
+    ) async {
+      final chosen = <String>[];
+      await pumpApp(tester, onLanguage: chosen.add);
+
+      await tester.tap(find.byIcon(Icons.settings_outlined));
+      await tester.pumpAndSettle();
+
+      // Written in their own language, from the catalog's own manifest — a
+      // person looking for English scans for "English", not for "Anglais".
+      expect(find.text('Français'), findsOneWidget);
+      expect(find.text('English'), findsOneWidget);
+
+      await tester.tap(find.text('English'));
+      await tester.pumpAndSettle();
+
+      // The screen you are standing on repaints, before anything is awaited.
+      expect(find.text('Settings'), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.text('Where are you going?'), findsOneWidget);
+
+      // And it is handed out, because the widget tree is the one copy that
+      // does not survive the app closing: the account row is what tomorrow's
+      // receipt is written in.
+      expect(chosen, ['en']);
+    });
+
+    testWidgets('choosing the language already in use tells nobody', (
+      tester,
+    ) async {
+      final chosen = <String>[];
+      await pumpApp(tester, onLanguage: chosen.add);
+
+      await tester.tap(find.byIcon(Icons.settings_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Français'));
+      await tester.pumpAndSettle();
+
+      expect(chosen, isEmpty);
+    });
+
+    testWidgets('the settings screen offers the way back to the handset', (
+      tester,
+    ) async {
+      await pumpApp(tester, onLanguage: (_) {});
+
+      await tester.tap(find.byIcon(Icons.settings_outlined));
+      await tester.pumpAndSettle();
+
+      // The one-tap toggle on the hero cannot express "follow the handset",
+      // which is the only way back once somebody has chosen. That is why the
+      // three-way choice is here rather than a second toggle.
+      expect(find.text('Système'), findsOneWidget);
+      expect(find.text('Clair'), findsOneWidget);
+      expect(find.text('Sombre'), findsOneWidget);
     });
   });
 

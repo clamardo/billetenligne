@@ -100,6 +100,19 @@ travel:
     phoneHelp: "Le billet part sur ce numéro, pas sur le vôtre."
     nameRequired: "Indiquez le nom de chaque passager"
     submit: "Réserver — {total}"
+  # Le seul écran où quelqu'un change quelque chose sur l'app elle-même.
+  # Les noms de langue ne sont pas ici : ils sont écrits dans leur propre
+  # langue (`settings_screen.dart`), parce qu'on cherche le mot qu'on écrirait
+  # soi-même, pas sa traduction dans une langue qu'on ne lit pas.
+  settings:
+    title: "Réglages"
+    open: "Réglages"
+    language: "Langue"
+    languageNote: "Vos billets, vos reçus et vos SMS vous seront envoyés dans cette langue."
+    theme: "Apparence"
+    themeSystem: "Système"
+    themeLight: "Clair"
+    themeDark: "Sombre"
   tickets:
     title: "Mes billets"
     open: "Mes billets"

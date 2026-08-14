@@ -27,6 +27,23 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
 
+# One run at a time, and not as tidiness. Every run drops and recreates the
+# same database in the same container, so a second run started while the first
+# is still going does not queue behind it — it pulls the database out from
+# under it mid-suite. What that looks like is a hundred and fifty failures
+# spread across suites the change never touched, a different set each time,
+# and an afternoon spent bisecting a diff that was never wrong. `flock` is
+# util-linux and not universal; where it is missing the old behaviour is what
+# you get, which is the same thing as today rather than a refusal to run.
+if command -v flock >/dev/null 2>&1; then
+  exec {bel_lock}>"${TMPDIR:-/tmp}/bel-integration-$CONTAINER.lock"
+  if ! flock -n "$bel_lock"; then
+    printf 'another integration run holds %s; waiting' "$CONTAINER"
+    flock "$bel_lock"
+    echo
+  fi
+fi
+
 psql_admin() {
   docker exec -i "$CONTAINER" psql -U postgres -d "$1" -v ON_ERROR_STOP=1 -q "${@:2}"
 }

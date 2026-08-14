@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-14 · after commit *The price on the last screen is the price we charge*
+**Updated:** 2026-08-14 · after commit *A language somebody can actually choose*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -10,7 +10,54 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 ---
 
-## What the last push changed
+## What the last two pushes changed
+
+Two defects reported from actually using the thing, and both were the same
+kind of gap the demo run turned up: a mechanism wired end to end with nothing
+calling it.
+
+**Every e-mail was plain text.** Thirteen of the fourteen messages this
+product sends had no HTML at all — including the sign-in code, which is the
+first thing anybody ever receives from BilletEnLigne. The fourteenth, the
+ticket, carried its own palette, and that palette had drifted from the design
+token (`#0f6b4f` against `#0A6B4F`). `EmailShell` is now the house chrome,
+applied as a decorator around whichever gateway a deployment got, so all
+fourteen are styled at one seam and no call site chooses a colour. It invents
+no prose: the heading is the subject already rendered from the catalog, the
+paragraphs are the plain-text body split where it was already split, and the
+plain text is untouched. Two bugs surfaced on the way — `multipart/mixed`
+listed text and HTML as siblings, which makes Gmail show both, and the
+catalog's seventy-column hard wrapping was becoming `<br>` mid-sentence.
+
+**The traveller app could not switch language.** `setLanguage` was threaded
+through `Localized`, the scope and a `context.setLanguage` extension, and
+called from **nowhere in any of the four apps**; `context.languages` sat
+beside it, also unread; and `bel_design` had shipped `KModeChoice` with a doc
+comment describing "a settings screen" that no app had. Worse, the stored
+`user_accounts.language` was written **only when the account was created**,
+from whatever locale the handset happened to be in — so somebody whose first
+sign-in was on a borrowed English phone received French for life, and nothing
+anywhere could change it. There is now a settings screen, `PATCH
+/public/v1/me`, a `UserDirectory.setLanguage`, and a stored preference that
+beats the device locale on the next launch.
+
+**And one thing about the tooling, because it cost an afternoon.**
+`./tool/integration.sh` drops and recreates the same database in the same
+container on every run. Two runs started close together therefore do not queue
+— the second pulls the database out from under the first, which reports a
+hundred and fifty failures spread across suites the change never touched, a
+different set each time. It looked exactly like a regression in the language
+work and was not: the same commit passes `+442 ~1` and `+81` when it runs
+alone. The script now takes an exclusive lock and waits.
+
+**Still hardcoded.** The console, the back office and the scanner all pass
+`language: 'fr'` literally — they do not read the device locale and have no
+switcher. That is defensible for staff tools in Congo and it is not a
+decision anybody made; it is three untouched lines.
+
+---
+
+## What the push before that changed
 
 The demo was walked end to end for the first time in a while — search, seat
 map, hold, booking, mobile-money capture, counter sale, ticket, ledger — and

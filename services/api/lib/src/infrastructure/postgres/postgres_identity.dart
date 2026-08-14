@@ -259,6 +259,28 @@ final class PostgresUserDirectory implements UserDirectory {
   });
 
   @override
+  Future<bool> setLanguage({
+    required String userId,
+    required String language,
+  }) => _db.transaction(const DbScope.identity(), (tx) async {
+    final rows = await tx.execute(
+      Sql.named(
+        // No `updated_at` on this table, and none added for this: the row
+        // already carries `last_seen_at`, which `touch` owns, and a second
+        // timestamp that only one writer maintains is a column that lies
+        // about every other write.
+        'UPDATE user_accounts SET language = @language '
+        'WHERE id = @id RETURNING id',
+      ),
+      parameters: {
+        'id': TypedValue(Type.uuid, userId),
+        'language': TypedValue(Type.text, language),
+      },
+    );
+    return rows.isNotEmpty;
+  });
+
+  @override
   Future<void> touch(String userId) =>
       _db.transaction(const DbScope.identity(), (tx) async {
         await tx.execute(

@@ -13,6 +13,7 @@ import 'l10n.dart';
 import 'screens/hold_screen.dart';
 import 'screens/results_screen.dart';
 import 'screens/search_screen.dart';
+import 'screens/settings_screen.dart';
 import 'screens/passengers_screen.dart';
 import 'screens/payment_confirm_screen.dart';
 import 'screens/payment_result_screen.dart';
@@ -49,6 +50,7 @@ final class TravellerApp extends StatelessWidget {
     this.openUrl,
     this.openTicketsOnLaunch = false,
     this.language = 'fr',
+    this.onLanguage,
     this.mode,
     super.key,
   });
@@ -78,6 +80,10 @@ final class TravellerApp extends StatelessWidget {
 
   final String language;
 
+  /// Persists a language choice and tells the server about it. Null in tests
+  /// and in the demo build, where a switch holds for the run and no further.
+  final Future<void> Function(String code)? onLanguage;
+
   /// The theme choice, held outside the widget tree so it survives a rebuild
   /// and can be written to disk by whoever composed the app. Absent in tests
   /// and in any surface that has not wired persistence — following the
@@ -105,6 +111,8 @@ final class TravellerApp extends StatelessWidget {
             tickets: tickets,
             currentUserId: currentUserId,
             openUrl: openUrl,
+            onLanguage: onLanguage,
+            mode: mode,
             openTicketsOnLaunch: openTicketsOnLaunch,
           ),
         ),
@@ -126,6 +134,8 @@ class _Funnel extends StatefulWidget {
     required this.tickets,
     this.currentUserId,
     this.openUrl,
+    this.onLanguage,
+    this.mode,
     this.openTicketsOnLaunch = false,
   });
 
@@ -135,6 +145,12 @@ class _Funnel extends StatefulWidget {
   final TicketsFlow tickets;
   final String? Function()? currentUserId;
   final void Function(String url)? openUrl;
+
+  /// Persists the choice and tells the server, so the language survives a
+  /// relaunch and reaches the messages sent when no app is open. Null on a
+  /// surface with no persistence — the switch then holds for this run only.
+  final Future<void> Function(String code)? onLanguage;
+  final KiloModeController? mode;
   final bool openTicketsOnLaunch;
 
   @override
@@ -159,6 +175,9 @@ class _FunnelState extends State<_Funnel> {
   /// underneath, and closing the ticket returns them to it rather than to the
   /// top of the app.
   var _viewingTickets = false;
+
+  /// True while the settings screen owns the screen, layered the same way.
+  var _viewingSettings = false;
 
   /// True while the payment flow owns the screen. The booking flow's step is
   /// still `Reserved` underneath, which is what makes backing out of paying
@@ -215,6 +234,19 @@ class _FunnelState extends State<_Funnel> {
   Widget build(BuildContext context) {
     // Tickets first: somebody who opened their ticket while a hold was
     // counting down is looking at the ticket, not at the countdown.
+    if (_viewingSettings) {
+      return SettingsScreen(
+        mode: widget.mode,
+        onBack: () => setState(() => _viewingSettings = false),
+        onLanguage: (code) {
+          // Repaint first. The write to disk and the call to the server are
+          // both allowed to be slow, and neither is allowed to hold up the
+          // screen somebody just asked to be able to read.
+          context.setLanguage(code);
+          unawaited(widget.onLanguage?.call(code) ?? Future<void>.value());
+        },
+      );
+    }
     if (_viewingTickets) return _ticketsScreen(context);
     if (_paying) return _paymentScreen(context);
 
@@ -232,6 +264,7 @@ class _FunnelState extends State<_Funnel> {
         initialQuery: _flow.lastQuery,
         onSearch: _flow.search,
         onOpenTickets: _openTickets,
+        onOpenSettings: () => setState(() => _viewingSettings = true),
       ),
 
       Searching() => Scaffold(
