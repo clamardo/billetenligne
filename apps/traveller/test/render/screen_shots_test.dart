@@ -5,6 +5,7 @@ import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_traveller/src/presentation/l10n.dart';
 import 'package:bel_traveller/src/presentation/screens/results_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/search_screen.dart';
+import 'package:bel_traveller/src/presentation/screens/seat_map_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/ticket_screen.dart';
 import 'package:bel_traveller/src/presentation/screens/tickets_screen.dart';
 import 'package:flutter/material.dart';
@@ -100,6 +101,32 @@ void main() {
             ticket: booking.tickets.single,
             seatIndex: 0,
             onClose: () {},
+          ),
+        ),
+        size: const Size(400, 900),
+        brightness: b,
+      );
+    });
+  }
+
+  // The coach itself, which is the screen the whole funnel narrows to and the
+  // only one where a traveller is looking at a picture rather than a list.
+  // Three states in one frame: taken, chosen, and the last row still free.
+  for (final b in [KiloBrightness.light, KiloBrightness.dark]) {
+    testWidgets('seat map ${b.name}', (tester) async {
+      await shoot(
+        tester,
+        'traveller-seats-${b.name}',
+        Localized(
+          catalog: catalog,
+          initialLanguage: 'fr',
+          child: SeatMapScreen(
+            departure: _departure('dep-shot', 6, 21),
+            seatMap: _seatMap(),
+            selected: const {'2C'},
+            onToggle: (_) {},
+            onContinue: () {},
+            onBack: () {},
           ),
         ),
         size: const Size(400, 900),
@@ -214,3 +241,32 @@ DepartureSummaryDto _departure(String id, int hour, int available) =>
       capacity: 52,
       seatSelectionEnabled: true,
     );
+
+SeatMapDto _seatMap() => SeatMapDto(
+  departureId: 'dep-shot',
+  mode: 'bus',
+  layoutVersion: 1,
+  sections: const [
+    CabinSectionDto(
+      code: 'STD',
+      labelKey: 'seat.class.standard',
+      rows: 8,
+      abreast: '2+2',
+    ),
+  ],
+  seats: [
+    for (var row = 1; row <= 8; row++)
+      for (final col in const ['A', 'B', 'C', 'D'])
+        SeatDto(
+          label: '$row$col',
+          sectionCode: 'STD',
+          // A coach nobody has bought a seat on is not a coach anybody sees.
+          status: row < 3 && col != 'C'
+              ? SeatStatusDto.sold
+              : row == 4 && col == 'A'
+              ? SeatStatusDto.held
+              : SeatStatusDto.available,
+          fare: const Money.xaf(12000),
+        ),
+  ],
+);
