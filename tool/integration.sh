@@ -93,6 +93,13 @@ export SEED_DATABASE_URL="postgres://postgres:postgres@localhost:$PORT/$DB?sslmo
 # its own package rather than the repo root.
 export BEL_I18N_DIR="$HERE/packages/bel_localization/i18n"
 
+# A throwaway signing seed, and deliberately a *configured* one rather than
+# BEL__ENV=development: this suite talks to a real database, which is the exact
+# situation the guard exists for, so it should exercise the path a deployment
+# takes. Fixed rather than random so a failure is reproducible, and it is not
+# the development seed — that value is refused by name.
+export TICKETS__SIGNINGSEED="aW50ZWdyYXRpb24tc3VpdGUtc2VlZC0zMi1ieXRlcyE="
+
 echo "── api"
 cd "$HERE/services/api"
 if ! dart test test/integration --concurrency=1 "$@"; then

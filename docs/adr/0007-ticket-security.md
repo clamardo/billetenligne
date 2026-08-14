@@ -39,6 +39,12 @@ Ed25519 over ECDSA: 64-byte signatures, fast verification on weak ARM cores, no 
 - Devices carry **public** keys only. Key set is fetched at login and refreshed on every sync; `k` selects the key so rotation is seamless.
 - Rotation quarterly, and immediately on any suspected compromise. Old public keys are retained until the last ticket signed with them has departed.
 
+**As built, and the gap named.** There is no KMS. The seed comes from `TICKETS__SIGNINGSEED` — 32 bytes of base64, injected as a Kubernetes secret, held in the process for as long as it runs. That is weaker than this section describes: an operator with cluster access can read it, and the key exists in memory rather than behind an API that only ever signs.
+
+What has been closed is worse than that gap and was live: the seed was a **literal in the adapter**, handed to the database composition as readily as to the fakes, so a deployment would have signed real tickets with 32 bytes printed in a public repository. Anybody who could read the source could have minted a ticket for any seat on any coach, and the scanner would have gone green on it. A process talking to a real database now refuses to start without a configured seed, and refuses the development one by value — `BEL__ENV=development` is the only way to reach it, which `infra/dev/.env` sets and no deployment does.
+
+Moving to a KMS changes one file (`infrastructure/config/ticket_signing_key.dart`) and the shape of `Ed25519TicketSigner`, which already selects by key id — the wire format has carried `k` since the first ticket, so rotation does not need the app to change.
+
 ### Anti-replay — the part that actually matters
 
 A signature proves authenticity, not single use. Screenshots are the real threat.

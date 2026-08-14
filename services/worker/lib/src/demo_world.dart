@@ -8,6 +8,7 @@ import 'package:bel_api/src/infrastructure/postgres/postgres_operator_applicatio
 import 'package:bel_api/src/infrastructure/postgres/postgres_operator_console.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_platform_console.dart';
 import 'package:bel_api/src/adapters/ed25519_ticket_issuer.dart';
+import 'package:bel_api/src/infrastructure/config/ticket_signing_key.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_booking_store.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_protection.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_seat_inventory.dart';
@@ -695,11 +696,15 @@ final class DemoWorld {
     final departureId = rows.first.toColumnMap()['id'] as String;
     final stationId = rows.first.toColumnMap()['station'] as String;
 
-    // The development signer, whose seed is fixed (ADR-0020), so a ticket in
-    // yesterday's screenshot still scans today.
+    // The same seed the API in front of this database will sign with, rather
+    // than the development one unconditionally: a stack whose seeded tickets
+    // do not verify against its own scanner is a demo that fails at the coach
+    // door, which is the one place this world exists to rehearse.
     final bookings = PostgresBookingStore(
       _db,
-      issuer: await Ed25519TicketIssuer.development(),
+      issuer: await Ed25519TicketIssuer.fromSeed(
+        TicketSigningKey.from(Platform.environment, usingDatabase: true),
+      ),
     );
     final holds = HoldSeats(inventory: PostgresSeatInventory(_db));
     final reserve = ReserveBooking(bookings: bookings);

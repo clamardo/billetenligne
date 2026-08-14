@@ -18,6 +18,7 @@ import 'adapters/memory_idempotency_store.dart';
 import 'application/hold_seats.dart';
 import 'infrastructure/web/app_link_claims.dart';
 import 'infrastructure/web/store_listings.dart';
+import 'infrastructure/config/ticket_signing_key.dart';
 import 'adapters/airtel_money_gateway.dart';
 import 'adapters/ed25519_ticket_issuer.dart';
 import 'adapters/fake_payment_gateway.dart';
@@ -381,13 +382,15 @@ final class Services {
 
     final directory = PostgresUserDirectory(db);
 
-    // Tickets are signed with the KMS key in a real environment; the fixed
-    // development seed keeps a ticket signed by yesterday's run verifiable
-    // today (ADR-0020). Resolved once, at startup, because key material is
+    // Read before anything else that could issue one, because a seed this
+    // process must not sign with is a refusal to start rather than a warning
+    // somebody reads afterwards. Resolved once, at startup: key material is
     // not something to fetch per request.
-    final bookings = PostgresBookingStore(db, issuer: _ticketIssuer);
+    final tickets = _issuerFor(env, usingDatabase: true);
+
+    final bookings = PostgresBookingStore(db, issuer: tickets);
     final paymentStore = PostgresPaymentStore(db);
-    final reschedules = PostgresReschedules(db, issuer: _ticketIssuer);
+    final reschedules = PostgresReschedules(db, issuer: tickets);
     final rails = _railsFrom(env, market);
 
     return Services._(
@@ -421,10 +424,10 @@ final class Services {
       reserveBooking: ReserveBooking(bookings: bookings, market: market),
       bookings: bookings,
       console: PostgresOperatorConsole(db, timeZone: market.timeZone),
-      disruptions: PostgresDisruptions(db, issuer: _ticketIssuer),
+      disruptions: PostgresDisruptions(db, issuer: tickets),
       payouts: PostgresPayouts(db),
-      protection: PostgresProtection(db, issuer: _ticketIssuer),
-      choices: PostgresPassengerChoices(db, issuer: _ticketIssuer),
+      protection: PostgresProtection(db, issuer: tickets),
+      choices: PostgresPassengerChoices(db, issuer: tickets),
       sharing: PostgresTripSharing(
         db,
         shareBase: Uri.parse(env['BEL__SHAREBASEURL'] ?? 'https://blt.cg'),
@@ -498,7 +501,7 @@ final class Services {
         PostgresIdempotencyStore(db, scope: const DbScope.anonymous()),
       ),
       clock: clock,
-      tickets: _ticketIssuer,
+      tickets: tickets,
       usingDatabase: true,
       mailChannel: _mailChannel(env),
       smsConfigured: (env['COMMS__SMSFROM'] ?? '').isNotEmpty,
@@ -572,9 +575,13 @@ final class Services {
           emailVerifiedAt: clock.now(),
         ),
       );
+    // The fixed seed, with no ceremony: this composition issues tickets for
+    // departures that do not exist.
+    final tickets = _issuerFor(environment ?? const {}, usingDatabase: false);
+
     final memoryBookings = MemoryBookingStore(
       inventory: inventory,
-      issuer: _ticketIssuer,
+      issuer: tickets,
       clock: clock,
     );
     final memoryPayments = MemoryPaymentStore(
@@ -695,7 +702,7 @@ final class Services {
       inventory: inventory,
       idempotency: Idempotency(MemoryIdempotencyStore()),
       clock: clock,
-      tickets: _ticketIssuer,
+      tickets: tickets,
       usingDatabase: false,
       mailChannel: _mailChannel(environment ?? const {}),
       // The logging sender will happily "send" an SMS to the console, and a
@@ -1004,11 +1011,25 @@ final class Services {
 
   /// Signs every ticket this process issues.
   ///
-  /// A fixed development seed, so a ticket signed by yesterday's run still
-  /// verifies today (ADR-0020) — production keys are generated in and never
-  /// leave the KMS, and swapping this line is the whole change. Lazily
-  /// resolved because key generation is async and composition is not.
-  static final TicketIssuer _ticketIssuer = _LazyTicketIssuer();
+  /// The seed comes from `TICKETS__SIGNINGSEED` by way of [TicketSigningKey],
+  /// which refuses the ones a deployment must not sign with — the development
+  /// seed is printed in this repository, and a ticket is worth exactly what it
+  /// costs to forge. Lazily resolved because key generation is async and
+  /// composition is not, and shared per seed so that two compositions in one
+  /// process do not generate two keys and issue tickets the other cannot
+  /// verify.
+  static final Map<String, TicketIssuer> _issuers = {};
+
+  static TicketIssuer _issuerFor(
+    Map<String, String> env, {
+    required bool usingDatabase,
+  }) {
+    final seed = TicketSigningKey.from(env, usingDatabase: usingDatabase);
+    return _issuers.putIfAbsent(
+      base64Encode(seed),
+      () => _LazyTicketIssuer(seed),
+    );
+  }
 
   /// The shared catalog, for the one thing that renders prose server-side and
   /// is not a message: the payout statement PDF.
@@ -1069,11 +1090,14 @@ final class Services {
 /// context read. The signer is created once and reused; concurrent first
 /// issues share one future rather than generating two keys.
 final class _LazyTicketIssuer implements TicketIssuer {
+  _LazyTicketIssuer(this._seed);
+
+  final List<int> _seed;
   Future<Ed25519TicketIssuer>? _resolved;
 
   @override
   Future<Map<int, List<int>>> verificationKeys() async {
-    final issuer = await (_resolved ??= Ed25519TicketIssuer.development());
+    final issuer = await (_resolved ??= Ed25519TicketIssuer.fromSeed(_seed));
     return issuer.verificationKeys();
   }
 
@@ -1086,7 +1110,7 @@ final class _LazyTicketIssuer implements TicketIssuer {
     required String operatorCode,
     required List<({String seatLabel, String passengerName})> seats,
   }) async {
-    final issuer = await (_resolved ??= Ed25519TicketIssuer.development());
+    final issuer = await (_resolved ??= Ed25519TicketIssuer.fromSeed(_seed));
     return issuer.issue(
       bookingRef: bookingRef,
       departureId: departureId,

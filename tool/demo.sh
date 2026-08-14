@@ -36,6 +36,15 @@ green() { printf '\033[32m%s\033[0m\n' "$*"; }
 export DATABASE_URL="${DATABASE_URL:-postgres://bel_api:bel_api@localhost:$PORT/$DB?sslmode=disable}"
 export SEED_DATABASE_URL="${SEED_DATABASE_URL:-postgres://bel:bel@localhost:$PORT/$DB?sslmode=disable}"
 
+# A world seeded into the local stack is a development one and says so, so the
+# seeder signs its tickets with the fixed seed the local API verifies with
+# (ADR-0020). A staging box is not: point TICKETS__SIGNINGSEED at the *same*
+# value that deployment's API signs with, or the demo tickets will not scan —
+# which is the one failure a demo cannot survive, at the coach door.
+if [[ "$DATABASE_URL" == *"@localhost:"* ]]; then
+  export BEL__ENV="${BEL__ENV:-development}"
+fi
+
 psql_seed() {
   docker compose -f "$COMPOSE" exec -T postgres \
     psql -U bel -d "$DB" -v ON_ERROR_STOP=1 -q "$@"
