@@ -331,6 +331,13 @@ final class DemoWorld {
     await _wallets(alizes, name: 'Alizés Transport', line: '00010');
     await _wallets(kouilou, name: 'Kouilou Voyages', line: '00020');
 
+    // Somebody behind the counter. Without this the guichet — the screen a
+    // cash-first market spends most of its day on — says "aucune agence
+    // rattachée" to every person in this world, including the two owners who
+    // are selling.
+    await _tills(alizes, owner: 'angele');
+    await _tills(kouilou, owner: 'prosper');
+
     final lapsed = await _company(
       code: 'LKN',
       legalName: 'Cars Lékana SARL',
@@ -658,6 +665,37 @@ final class DemoWorld {
     },
     ignoreRows: true,
   );
+
+  /// The agency an owner sells from.
+  ///
+  /// **The second place this world cheats, and for the same reason as the
+  /// first.** `operator_staff.station_ids` is read by `PostgresIdentity` and
+  /// written by nothing anywhere in the tree — there is no route, no console
+  /// screen and no pass that attaches a person to an agency, because there is
+  /// no team-management surface at all. The column has had its DDL default
+  /// since `0001_foundation.sql` and has never held a value in production
+  /// code.
+  ///
+  /// The owner rather than a clerk, because a clerk cannot be invited either.
+  /// That is also true of the smallest operators this is built for, where the
+  /// person who owns the company is the person at the window — but here it is
+  /// the only option rather than a choice.
+  Future<void> _tills(String operatorId, {required String owner}) async {
+    final userId = await _userIdOf(owner);
+    await _seed.execute(
+      Sql.named('''
+        UPDATE operator_staff
+           SET station_ids = ARRAY(SELECT id FROM stations
+                                    WHERE operator_id = @op)
+         WHERE operator_id = @op AND user_id = @user
+      '''),
+      parameters: {
+        'op': TypedValue(Type.uuid, operatorId),
+        'user': TypedValue(Type.uuid, userId),
+      },
+      ignoreRows: true,
+    );
+  }
 
   /// The verified wallets a traveller's francs are pushed into.
   ///

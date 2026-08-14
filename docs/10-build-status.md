@@ -1,12 +1,43 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-14 · after commit *A fifth of the domain moves, and one deferral does not survive*
+**Updated:** 2026-08-14 · after commit *The price on the last screen is the price we charge*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
 implied. Nothing is marked done because it compiles.
 
 Legend: ✅ done · 🔨 in progress · ⬜ not started
+
+---
+
+## What the last push changed
+
+The demo was walked end to end for the first time in a while — search, seat
+map, hold, booking, mobile-money capture, counter sale, ticket, ledger — and
+it found four things. Three were fixed in that push; two are open and named.
+
+**Fixed.** The hold quoted the service fee once per booking while everything
+that banks money charges it per seat, so two seats were quoted at 24 300 and
+confirmed at 24 600. `market.serviceFee` documents itself as per seat and
+`reserveFromHold` multiplies by the seat count; the hold was the only
+dissenter, and it had a test holding it there. The demo world seeded no
+`operator_payment_accounts`, so the payment screen was empty for every
+departure in it. And `FakePaymentGateway` had a number that always declines
+with no counterpart, so a dev stack could reach every failure screen and never
+the paid one — `capturingMsisdn` settles on the poll, and an explicit
+`statusScript` still wins so no existing test changed.
+
+**Open, and both on the critical path.** `operator_payment_accounts.verified_at`
+and `operator_staff.station_ids` are each read by product code, defaulted by an
+old migration, and written by nothing anywhere in the tree. The first means no
+operator can ever be paid by mobile money; the second means nobody can sell at
+a counter, because there is no team surface in the console at all. The demo
+world now seeds both directly and says in both comments that it is cheating.
+`docs/17-the-first-ticket.md` §*Two columns nothing writes* has the detail.
+
+Also worth recording: the console must be served on port 5000 or 5001, because
+`BEL__WEBORIGINS` allows only those two and the sign-in screen reports the CORS
+refusal as "Pas de connexion. Vérifiez votre réseau."
 
 ---
 

@@ -83,7 +83,21 @@ Ships without a PSP. The point is to prove inventory, ticketing, boarding and th
 
 ### Remaining, in dependency order
 
-**Nothing.** Every engineering item on this phase's list is built. What is left is commercial: an ACS sender number for SMS, telco merchant onboarding, and an anchor operator's signature.
+**One thing, found by walking the demo on 2026-08-14 and not by reading the list.**
+
+**Nobody can be attached to a till.** `operator_staff.station_ids` decides
+which agency a person may sell from. It is read by `PostgresIdentity`, it has
+carried its DDL default since `0001_foundation.sql`, and **nothing anywhere in
+the tree writes it** — there is no team surface in the console at all: no route
+to invite a clerk, none to attach anyone to an agency. So the guichet answers
+"aucune agence rattachée" to every person in every operator, including the
+owner. This phase's exit is *cash across a counter through our console*, and
+that is the screen it happens on. It is a list, an invite and a multi-select of
+stations, against a capability check that already exists.
+
+Everything else on this phase's list is built. What is left beyond the above is
+commercial: an ACS sender number for SMS, telco merchant onboarding, and an
+anchor operator's signature.
 
 The unbuilt engineering has moved to Phase 2, where it belongs: the re-accommodation plan and payout runs — both since built, along with the `config/markets.yaml` loader.
 
@@ -91,7 +105,8 @@ The unbuilt engineering has moved to Phase 2, where it belongs: the re-accommoda
 
 **Exit:** the anchor operator sells real seats through our console for real cash, and conductors board with our scanner. *Revenue: zero. Learning: maximum.*
 
-Everything that exit requires is now built. What is left is a signature.
+What that exit requires is built except for the till attachment above — which
+is the difference between a demo that walks and an agency that opens.
 
 **In parallel, from now:** Airtel and MTN merchant paperwork, the Orange Money conversation, the anchor operator LOI. **This is the actual critical path and no amount of engineering shortens it.**
 
@@ -99,7 +114,21 @@ Everything that exit requires is now built. What is left is a signature.
 
 ## Phase 2 — Mobile money · **built, awaiting credentials**
 
-The engineering is done. What is missing is a merchant agreement, which is the long pole this roadmap has said it was from the first line.
+The orchestration is done. What is missing is a merchant agreement — the long
+pole this roadmap has said it was from the first line — **and one writer.**
+
+**No operator's wallet can ever be verified.** `collectionAccounts()` offers a
+rail only where `operator_payment_accounts.verified_at` is non-null, and
+`POST /console/v1/payment-accounts` saves every account unverified on purpose:
+"a typo here sends every franc to a stranger, permanently." That half is right
+and should stay. The half that says yes afterwards does not exist — no route,
+no back-office screen, no pass writes that column. So on the day the MTN
+credentials arrive, the payment screen will still be empty, and it will look
+like a credentials problem. Found by walking the demo, not by reading the list.
+
+The decision this needs is *who says yes and on what evidence* — a back office
+reviewer, a micro-deposit with a returned amount, an SMS to the wallet itself.
+That decision is the whole of the work; the column and the reader are there.
 
 - ✅ Payment orchestration and the intent state machine (`indeterminate` is a first-class state, with a queue, a worker pass and a screen that does not call it a failure)
 - ✅ **Airtel Money and MTN MoMo adapters**, both against the real APIs. Independent, so whichever set of credentials lands first ships first
