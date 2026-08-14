@@ -1,4 +1,5 @@
-import '../money/money.dart';
+import 'package:bel_platform/bel_platform.dart';
+
 import 'transport_mode.dart';
 
 /// How seats in a section are labelled.

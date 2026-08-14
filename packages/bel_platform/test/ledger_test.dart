@@ -1,4 +1,4 @@
-import 'package:bel_domain/bel_domain.dart';
+import 'package:bel_platform/bel_platform.dart';
 import 'package:test/test.dart';
 
 Money xaf(int minor) => Money(minor, Currency.xaf);

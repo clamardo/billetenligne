@@ -1,6 +1,6 @@
+import 'package:bel_platform/bel_platform.dart';
+
 import '../policy/refund_policy.dart';
-import '../shared/failure.dart';
-import '../shared/result.dart';
 
 /// Where a booking stands when somebody presses *Annuler*.
 ///

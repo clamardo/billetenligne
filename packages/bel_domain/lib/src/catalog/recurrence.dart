@@ -1,5 +1,4 @@
-import '../shared/failure.dart';
-import '../shared/result.dart';
+import 'package:bel_platform/bel_platform.dart';
 
 final class InvalidRecurrence extends DomainFailure {
   const InvalidRecurrence(this.reason);

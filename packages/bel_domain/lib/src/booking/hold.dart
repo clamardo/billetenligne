@@ -1,45 +1,4 @@
-import '../shared/failure.dart';
-import '../shared/result.dart';
-
-/// How long a seat is held while the traveller pays.
-///
-/// The relationship between these two is the single most important timing
-/// fact in the system (ADR-0012, `04-payments.md` §3):
-///
-/// ```
-/// t=0     hold created ─────────────────────────── 15:00 TTL
-/// t=0     payment window opens ────────── 10:00
-/// t=10m   payment window closes → EXPIRED
-/// t=15m   hold expires
-/// ```
-///
-/// The hold must always outlive the payment window. Invert them and the seat
-/// is released out from under someone who is at that moment entering their
-/// mobile money PIN — which is the worst experience this product can produce.
-final class HoldPolicy {
-  const HoldPolicy({
-    this.ttl = const Duration(minutes: 15),
-    this.paymentWindow = const Duration(minutes: 10),
-    this.warnAt = const Duration(minutes: 2),
-  }) : assert(
-         true,
-         'invariant is asserted by isValid — const asserts cannot compare '
-         'Durations in all Dart versions',
-       );
-
-  final Duration ttl;
-  final Duration paymentWindow;
-
-  /// When the countdown turns amber. Never red until it is genuinely urgent —
-  /// crying wolf on a countdown teaches people to ignore it.
-  final Duration warnAt;
-
-  /// The invariant, checked rather than assumed. `hold_policy_test.dart`
-  /// asserts this for every configuration we ship.
-  bool get isValid => ttl > paymentWindow && warnAt < paymentWindow;
-
-  static const standard = HoldPolicy();
-}
+import 'package:bel_platform/bel_platform.dart';
 
 sealed class HoldFailure extends DomainFailure {
   const HoldFailure();

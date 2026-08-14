@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:bel_domain/bel_domain.dart';
+import 'package:bel_platform/bel_platform.dart';
 import 'package:test/test.dart';
 
 /// A PNG header with real dimensions and nothing after it. Enough for every

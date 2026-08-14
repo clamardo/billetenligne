@@ -1,5 +1,4 @@
-import '../shared/failure.dart';
-import '../shared/result.dart';
+import 'package:bel_platform/bel_platform.dart';
 
 /// The six things a dispatcher declares (`08-disruption.md` §1).
 ///

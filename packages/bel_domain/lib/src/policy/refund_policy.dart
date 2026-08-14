@@ -1,6 +1,4 @@
-import '../money/money.dart';
-import '../shared/failure.dart';
-import '../shared/result.dart';
+import 'package:bel_platform/bel_platform.dart';
 
 /// Where a refund goes. Configured by the operator (ADR-0015).
 ///

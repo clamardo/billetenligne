@@ -1,12 +1,15 @@
 name: bel_domain
 description: >-
-  BilletEnLigne domain core. Pure Dart, zero dependencies — compiled into the
+  BilletEnLigne transport domain: departures, seat layouts, tickets, boarding,
+  disruption and segments. Pure Dart over bel_platform — compiled into the
   Flutter apps AND the Dart Frog server so a rule is implemented exactly once
-  (ADR-0001, ADR-0004).
+  (ADR-0001, ADR-0004). It may not import another vertical (ADR-0027).
 version: 0.1.0
 publish_to: none
 resolution: workspace
 environment:
   sdk: ^3.8.0
+dependencies:
+  bel_platform: ^0.1.0
 dev_dependencies:
   test: ^1.25.0

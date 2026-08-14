@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import '../ticketing/crypto_ports.dart';
+import '../crypto/crypto_ports.dart';
 
 /// RFC 6238 time-based one-time passwords, for back-office sign-in.
 ///

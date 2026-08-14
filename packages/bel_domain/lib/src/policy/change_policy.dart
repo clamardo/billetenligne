@@ -1,6 +1,4 @@
-import '../money/money.dart';
-import '../shared/failure.dart';
-import '../shared/result.dart';
+import 'package:bel_platform/bel_platform.dart';
 
 /// What an operator charges to move somebody to another departure.
 ///

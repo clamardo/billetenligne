@@ -22,8 +22,7 @@
 ///     4), so no policy can configure it away.
 library;
 
-import '../money/money.dart';
-import '../shared/failure.dart';
+import 'package:bel_platform/bel_platform.dart';
 import 'reaccommodation.dart';
 
 /// What a passenger can do about a disrupted journey.

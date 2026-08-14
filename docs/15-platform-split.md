@@ -134,13 +134,23 @@ trip/trip_share.dart
 
 ADR-0027's rule for `bel_platform` membership: **a type belongs there only if at least two verticals need it and neither owns it.** Applied honestly, three tempting candidates fail it today. Each is listed with the trigger that moves it, so the decision is deferred rather than forgotten.
 
-**`booking/booking_ref.dart` — `BookingRef`, `PaymentCode`.** A formatted human reference and an agency-till code. Rental and stays will both want a customer-facing reference. **Trigger:** the first time a second vertical needs one — `12-rental.md` R2 (`rental.rentals.ref`) or `13-stays.md` S3. Move it then, keeping the class names.
+**`booking/booking_ref.dart` — `BookingRef`, `PaymentCode`. Still deferred, and P2a did not disturb it.** A formatted human reference and an agency-till code. Rental and stays will both want a customer-facing reference. **Trigger:** the first time a second vertical needs one — `12-rental.md` R2 (`rental.rentals.ref`) or `13-stays.md` S3. Move it then, keeping the class names.
 
-**`booking/hold.dart` — `HoldPolicy`, `HoldState`.** `HoldPolicy` carries the `ttl > paymentWindow > warnAt` invariant, which is a payment fact rather than a seat fact. But `Hold` itself has `departureId` and `seatLabels`, so the file would have to be split, and today exactly one vertical uses any of it. **Trigger:** rental's hold slice, R6. Split then: `HoldPolicy`/`HoldState`/`HoldExpired`/`HoldAlreadyConsumed` to platform, `Hold`/`SeatUnavailable` stay.
+**`booking/hold.dart` — `HoldPolicy`. ~~Deferred.~~ Moved in P2a: the deferral was wrong.**
 
-**`policy/refund_policy.dart` — `RefundDestination`.** `source | agencyCash | creditNote | travellerChoice` is a property of how money goes back, not of coaches. The rest of the file — `RefundTier`, `RefundQuote`, `AlreadyDeparted` — is anchored on a departure and is transport's. **Trigger:** `13-stays.md` S11, the cancellation slice, which is the first non-transport code that needs to say where a refund goes.
+The reasoning was that `HoldPolicy` carries a payment fact but only one vertical uses it. Executing P2a disproved it in the most direct way available — `payment_intent_test.dart` moved to `bel_platform`, and stopped compiling. It holds a group called *"the timing invariant that stops a seat being sold twice"* whose three tests assert `PaymentIntent.indeterminateAfter` against `HoldPolicy.standard` in both directions: beyond `paymentWindow`, and within `ttl`.
 
-Deferring all three keeps P2 to a mechanical move of files that need no surgery. **A refactor that also makes three judgement calls is a refactor whose regressions are hard to attribute.**
+So the platform's own reconciliation cutoff **cannot be stated without this type**. That is not one vertical needing it; that is the platform needing it, which is the first half of ADR-0027's rule met before any second vertical exists.
+
+`HoldPolicy` now lives at `bel_platform/lib/src/payment/hold_policy.dart` — under `payment/`, beside the constant that depends on it, because filing it under `booking/` is what made it look like inventory in the first place.
+
+**Only `HoldPolicy` moved.** `HoldFailure` is `sealed`, so its subtypes must stay in its own library; `Hold`, `HoldState`, `HoldFailure`, `HoldExpired`, `HoldAlreadyConsumed` and `SeatUnavailable` all stay in `bel_domain` together. That constraint decided the cut line, and it is a better cut than the one §3.1 originally proposed — which would have split a sealed hierarchy across two packages and not compiled.
+
+**`policy/refund_policy.dart` — `RefundDestination`. Still deferred.** `source | agencyCash | creditNote | travellerChoice` is a property of how money goes back, not of coaches. The rest of the file — `RefundTier`, `RefundQuote`, `AlreadyDeparted` — is anchored on a departure and is transport's. **Trigger:** `13-stays.md` S11, the cancellation slice, which is the first non-transport code that needs to say where a refund goes.
+
+Deferring keeps P2 to a mechanical move of files that need no surgery. **A refactor that also makes three judgement calls is a refactor whose regressions are hard to attribute.**
+
+One of the three did not survive contact, and that is the deferral working rather than failing: the question was asked, the answer was "wait for evidence", and the evidence arrived four hours later in the form of a test that would not compile. The other two are untouched and their triggers stand.
 
 ---
 
@@ -201,7 +211,7 @@ The layer checker went from 447 files to 450: `bel_platform.dart`, and two other
 
 ---
 
-## 5. P2a — move the files, with a transitional re-export
+## 5. P2a — move the files, with a transitional re-export · **done, 2026-08-14**
 
 `git mv` the 19 files in §3, fixing their relative imports, and move `ticketing/crypto_ports.dart` to `crypto/crypto_ports.dart`.
 
@@ -226,6 +236,30 @@ export 'package:bel_platform/bel_platform.dart';
 Move the corresponding tests too — `packages/bel_domain/test` has 24 files and they follow their subjects.
 
 **Done when:** the full suite passes with **zero behaviour changes**, `dart run tool/check_layers.dart` is clean, and `git diff --stat` shows renames, import-path edits and pubspec lines — and nothing else. If a diff hunk changes a condition, an operator or a constant, it does not belong in this commit.
+
+### 5.1 What it actually cost
+
+Twenty files moved (19 plus `HoldPolicy`, §3.1), ten test files followed them, 16 transport files had relative imports rewritten to `package:bel_platform`, and two barrels were rewritten. Then:
+
+```
+dart analyze --fatal-infos            No issues found!
+dart run tool/check_layers.dart       OK  dependencies point inward — 451 files
+dart test <the six pure-Dart pkgs>    +651 ~1   All tests passed!
+dart test services/api                +1370 ~62 All tests passed!
+flutter test × 7 surfaces             +252 +149 +40 +62 +163 +11 +5
+```
+
+**The pure-Dart count is 651 before the split and 651 after, with the same single pre-existing skip.** That was checked by stashing the whole change and re-running, not inferred. Identical counts across a move of a fifth of the domain is the strongest available evidence of "zero behaviour change" — no test was lost in a directory, none was silently duplicated, and none started skipping.
+
+### 5.2 Four things the move found
+
+**The rewriter's first version missed bare same-directory imports.** It matched `../shared/failure.dart` and `./x.dart` but not `import 'crypto_ports.dart';`, so `ticketing/rotating_code.dart` and `ticketing/verification.dart` were left pointing at a file that had moved. The fixed pattern is *any import that is not `dart:` or `package:`*, and it is worth stating that way round: enumerating relative forms invites missing one, and there are only two absolute forms to exclude.
+
+**Two files put `library;` after a doc comment**, so prepending an import to the top produced `library_directive_not_first`. The import belongs immediately after the `library;` line. Only `disruption/self_service.dart` and `trip/trip_share.dart` are shaped that way, and a rewriter that assumes line 1 is safe will hit them.
+
+**`market_test.dart` was not a platform test.** Two of its cases — *"policy quoting is market-agnostic"* and *"seat layouts, refs and holds carry no country assumption"* — assert that the **transport** domain carries no country assumption, using `quoteRefund`, `RefundPolicy`, `SeatLayout` and `BookingRef`. `bel_platform` cannot see any of those, and after ADR-0027 that is the point rather than a gap. They moved to `bel_domain/test/market_agnostic_test.dart`. Neither needed the DRC `Market` const they used to borrow: one needed a service fee, which is a `Money`, and the other needed nothing at all. **That they can be stated without a market is itself the claim they were making.**
+
+**The re-export announces itself.** The new test imports both packages and the analyser calls the second import unnecessary — because the re-export is providing it. It carries a `// P2b:`-marked ignore rather than being written to today's resolution, so the file is correct after the re-export goes and the marker is greppable. That warning is the smell §6 exists to remove, showing up on schedule.
 
 ### Why the re-export, given it is admitted to be wrong
 
@@ -499,7 +533,7 @@ Named so that scope does not creep into a refactor whose entire value is that it
 ## 13. Slice summary
 
 - **P1** — ✅ **done.** `bel_platform` exists and is empty. Nine pubspecs, the workspace list, and both hand-maintained fast-suite lists. *Green with an empty package: analyze, layers, 610 + 1 370 pure-Dart tests, and seven Flutter surfaces.*
-- **P2a** — 19 files move; `bel_domain` re-exports transitionally. *Full suite green, diff is renames and imports only.*
+- **P2a** — ✅ **done.** 20 files move (19, plus `HoldPolicy` once P2a disproved its deferral); 10 test files follow; 16 transport files repointed; both barrels rewritten. *651 pure-Dart tests before and after, same single skip; 1 370 API; seven Flutter surfaces; layers clean at 451 files.*
 - **P2b** — the re-export is removed; ~206 import edits by script; the barrel-re-export rule and the `export`-matching checker. *149 files end up on `bel_platform` alone.*
 - **P3** — three layering rules, each with a test that proves it fires.
 - **P4** — per-schema migration sequences, the vertical roles, and the `public`-holds-no-key-into-a-vertical check. *An existing 45-migration database gains no rows.*

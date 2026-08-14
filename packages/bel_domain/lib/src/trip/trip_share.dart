@@ -1,6 +1,6 @@
 library;
 
-import '../shared/result.dart';
+import 'package:bel_platform/bel_platform.dart';
 
 /// Sharing a trip with somebody who is not a customer (ADR-0014 §2).
 ///

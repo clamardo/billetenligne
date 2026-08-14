@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:bel_domain/bel_domain.dart';
+import 'package:bel_platform/bel_platform.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -151,32 +151,12 @@ void main() {
       expect(fare.currency.exponent, 0, reason: 'CDF is also zero-decimal');
     });
 
-    test('policy quoting is market-agnostic', () {
-      // The refund engine never asks which country it is in — it only ever
-      // sees Money, and Money already knows its currency.
-      final departure = DateTime.utc(2026, 9, 1, 8);
-      final quote = quoteRefund(
-        faceValue: const Money(45000, Currency.cdf),
-        serviceFee: drc.serviceFee,
-        departsAt: departure,
-        now: departure.subtract(const Duration(days: 2)),
-        policy: RefundPolicy.souple(),
-      ).valueOrNull!;
-
-      expect(quote.refundable, const Money(45000, Currency.cdf));
-      expect(quote.refundable.currency, Currency.cdf);
-    });
-
-    test('seat layouts, refs and holds carry no country assumption', () {
-      final layout = SeatLayout.busStandard49();
-      expect(layout.capacity, 49);
-
-      final ref = BookingRef.parse('7QK4M2');
-      expect(ref.isOk, isTrue);
-
-      const policy = HoldPolicy.standard;
-      expect(policy.isValid, isTrue);
-    });
+    // Two tests that used to sit here — "policy quoting is market-agnostic"
+    // and "seat layouts, refs and holds carry no country assumption" — moved
+    // to bel_domain/test/market_agnostic_test.dart in the platform split.
+    // They assert that the TRANSPORT domain carries no country assumption,
+    // which is a claim bel_platform cannot make: it cannot see SeatLayout or
+    // BookingRef, and after ADR-0027 that is the point rather than a gap.
 
     test('a shared carrier reuses its adapter across markets', () {
       final cg = Market.congoBrazzaville.railForOperator(

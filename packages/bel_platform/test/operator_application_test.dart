@@ -1,4 +1,4 @@
-import 'package:bel_domain/bel_domain.dart';
+import 'package:bel_platform/bel_platform.dart';
 import 'package:test/test.dart';
 
 /// Far enough out that these tests do not start failing on a Tuesday.

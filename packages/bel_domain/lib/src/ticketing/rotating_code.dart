@@ -1,6 +1,6 @@
-import 'dart:convert';
+import 'package:bel_platform/bel_platform.dart';
 
-import 'crypto_ports.dart';
+import 'dart:convert';
 
 /// The six digits under the QR that change every 30 seconds.
 ///

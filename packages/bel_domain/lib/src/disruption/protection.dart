@@ -1,7 +1,4 @@
-import '../money/money.dart';
-import '../money/ledger.dart';
-import '../shared/failure.dart';
-import '../shared/result.dart';
+import 'package:bel_platform/bel_platform.dart';
 
 /// A corridor an agreement covers, direction-agnostic: `BZV↔PNR`.
 ///

@@ -1,5 +1,4 @@
-import '../shared/failure.dart';
-import '../shared/result.dart';
+import 'package:bel_platform/bel_platform.dart';
 
 final class InvalidBookingRef extends DomainFailure {
   const InvalidBookingRef(this.reason);

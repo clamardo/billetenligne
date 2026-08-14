@@ -1,6 +1,5 @@
-import '../money/money.dart';
-import '../shared/failure.dart';
-import '../shared/result.dart';
+import 'package:bel_platform/bel_platform.dart';
+
 import 'itinerary.dart';
 
 /// Why a piece of a road could not be sold.
