@@ -44,6 +44,15 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// The operator page is a long ListView and off-screen children are not
+  /// built, so a card below the fold is genuinely absent from the tree.
+  Future<void> scrollToEnd(WidgetTester tester) async {
+    for (var i = 0; i < 6; i++) {
+      await tester.drag(find.byType(ListView).first, const Offset(0, -400));
+      await tester.pumpAndSettle();
+    }
+  }
+
   group('the language this back office is read in', () {
     // It passed the literal `'fr'` in three places and asked nobody.
 
@@ -123,15 +132,6 @@ void main() {
   });
 
   group("the applicant's own answers", () {
-    /// The operator page is a long ListView and off-screen children are not
-    /// built, so a card below the fold is genuinely absent from the tree.
-    Future<void> scrollToEnd(WidgetTester tester) async {
-      for (var i = 0; i < 6; i++) {
-        await tester.drag(find.byType(ListView).first, const Offset(0, -400));
-        await tester.pumpAndSettle();
-      }
-    }
-
     testWidgets('the checklist is the applicant\'s, not a second one', (
       tester,
     ) async {
@@ -379,6 +379,117 @@ void main() {
       gateway.calls,
       contains('commission:op-1:750:dossier complet, RCCM vérifié'),
     );
+  });
+
+  group("an operator's mobile-money accounts", () {
+    testWidgets('an unverified account offers verify and reject', (
+      tester,
+    ) async {
+      final gateway = ScriptedAdmin(
+        capabilities: const [
+          'platform.operator.review',
+          'platform.payment_account.verify',
+        ],
+      )..roster = [adminOperator()];
+      gateway.file = AdminOperatorDetailDto(
+        operator: adminOperator(),
+        paymentAccounts: [paymentAccount(verified: false)],
+      );
+
+      final workspace = await pump(tester, gateway);
+      await workspace.open('op-1');
+      await tester.pumpAndSettle();
+      await scrollToEnd(tester);
+
+      expect(find.text('Vérifier'), findsOneWidget);
+      expect(find.text('Rejeter'), findsOneWidget);
+      expect(find.text('En attente de vérification'), findsOneWidget);
+    });
+
+    testWidgets('a verified account offers only reject', (tester) async {
+      final gateway = ScriptedAdmin(
+        capabilities: const [
+          'platform.operator.review',
+          'platform.payment_account.verify',
+        ],
+      )..roster = [adminOperator()];
+      gateway.file = AdminOperatorDetailDto(
+        operator: adminOperator(),
+        paymentAccounts: [paymentAccount(verified: true)],
+      );
+
+      final workspace = await pump(tester, gateway);
+      await workspace.open('op-1');
+      await tester.pumpAndSettle();
+      await scrollToEnd(tester);
+
+      expect(find.text('Vérifier'), findsNothing);
+      expect(find.text('Rejeter'), findsOneWidget);
+      expect(find.text('Vérifié'), findsOneWidget);
+    });
+
+    testWidgets('a reviewer without the capability cannot verify', (
+      tester,
+    ) async {
+      final gateway = ScriptedAdmin(
+        capabilities: const ['platform.operator.review'],
+      )..roster = [adminOperator()];
+      gateway.file = AdminOperatorDetailDto(
+        operator: adminOperator(),
+        paymentAccounts: [paymentAccount(verified: false)],
+      );
+
+      final workspace = await pump(tester, gateway);
+      await workspace.open('op-1');
+      await tester.pumpAndSettle();
+      await statePolicy(tester, workspace);
+      await scrollToEnd(tester);
+
+      final verify = tester.widget<InkWell>(
+        find
+            .ancestor(of: find.text('Vérifier'), matching: find.byType(InkWell))
+            .first,
+      );
+      expect(verify.onTap, isNull);
+      expect(find.textContaining('Votre rôle ne permet pas'), findsWidgets);
+    });
+
+    testWidgets('verifying carries the reason and the detail', (tester) async {
+      final gateway = ScriptedAdmin(
+        capabilities: const [
+          'platform.operator.review',
+          'platform.payment_account.verify',
+        ],
+      )..roster = [adminOperator()];
+      gateway.file = AdminOperatorDetailDto(
+        operator: adminOperator(),
+        paymentAccounts: [paymentAccount(verified: false)],
+      );
+
+      final workspace = await pump(tester, gateway);
+      await workspace.open('op-1');
+      await tester.pumpAndSettle();
+      await statePolicy(tester, workspace);
+      await scrollToEnd(tester);
+
+      await tester.tap(find.text('Vérifier'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byType(TextField).last,
+        'accord marchand vu le 12/09',
+      );
+      await tester.tap(find.text('Valider la décision'));
+      await tester.pumpAndSettle();
+
+      expect(
+        gateway.calls,
+        contains(
+          'paymentAccount:op-1:acct-1:verify:dossier complet, RCCM vérifié:'
+          'accord marchand vu le 12/09',
+        ),
+      );
+    });
   });
 
   group('the queue arrives pre-sorted', () {

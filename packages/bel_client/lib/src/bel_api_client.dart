@@ -1342,6 +1342,21 @@ final class BelApiClient {
     }, reason: reason),
   );
 
+  /// verify · reject, on one of this operator's mobile-money accounts.
+  Future<PaymentAccountDto> decidePaymentAccount({
+    required String operatorId,
+    required String accountId,
+    required String decision,
+    required String reason,
+    String? detail,
+  }) async => PaymentAccountDto.fromJson(
+    await _postJson(
+      '/admin/v1/operators/$operatorId/payment_accounts/$accountId/decision',
+      {'decision': decision, if (detail != null) 'detail': detail},
+      reason: reason,
+    ),
+  );
+
   /// What this client negotiated, in basis points.
   Future<AdminOperatorDto> setOperatorCommission({
     required String id,

@@ -50,6 +50,13 @@ final class Capability {
   static const paymentReconcile = 'platform.payment.reconcile';
   static const supportImpersonate = 'platform.support.impersonate';
 
+  /// Confirming an operator's mobile-money account is real, so the rail can
+  /// be offered to a traveller. A manual human judgement — "somebody who saw
+  /// the merchant agreement" — not a route every reviewer holds by having
+  /// `operator.review`: reviewing paperwork and moving somebody's payout
+  /// destination are different weights of consequence.
+  static const paymentAccountVerify = 'platform.payment_account.verify';
+
   /// Operator roles (ADR-0011). Most people hold several: in a five-coach
   /// operator the owner is also the finance office and often the dispatcher.
   static const operatorRoles = <String, Set<String>>{
@@ -123,6 +130,7 @@ final class Capability {
       operatorSuspend,
       operatorOffboard,
       paymentReconcile,
+      paymentAccountVerify,
       supportImpersonate,
       bookingRead,
       bookingRefund,
@@ -134,6 +142,7 @@ final class Capability {
       operatorReview,
       operatorSuspend,
       paymentReconcile,
+      paymentAccountVerify,
       supportImpersonate,
       bookingRead,
       bookingRefund,

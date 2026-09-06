@@ -108,23 +108,31 @@ open with nothing more than the console.
 The orchestration is done. What is missing is a merchant agreement — the long
 pole this roadmap has said it was from the first line — **and one writer.**
 
-**No operator's wallet can ever be verified.** `collectionAccounts()` offers a
-rail only where `operator_payment_accounts.verified_at` is non-null, and
-`POST /console/v1/payment-accounts` saves every account unverified on purpose:
-"a typo here sends every franc to a stranger, permanently." That half is right
-and should stay. The half that says yes afterwards does not exist — no route,
-no back-office screen, no pass writes that column. So on the day the MTN
-credentials arrive, the payment screen will still be empty, and it will look
-like a credentials problem. Found by walking the demo, not by reading the list.
-
-The decision this needs is *who says yes and on what evidence* — a back office
-reviewer, a micro-deposit with a returned amount, an SMS to the wallet itself.
-That decision is the whole of the work; the column and the reader are there.
+**An operator's wallet can now be verified — by a human, not by us calling
+anyone.** `collectionAccounts()` still offers a rail only where
+`operator_payment_accounts.verified_at` is non-null, and
+`POST /console/v1/payment-accounts` still saves every account unverified on
+purpose: "a typo here sends every franc to a stranger, permanently." What was
+missing was the half that says yes afterwards — no route, no back-office
+screen, no pass wrote that column, so on the day the MTN credentials arrived
+the payment screen would have stayed empty and looked like a credentials
+problem. Found by walking the demo, not by reading the list; closed the same
+way `platform.decide()` closes an operator's own application — a reviewer with
+`platform.payment_account.verify`, a mandatory reason, and a decision written
+to `operator_payment_accounts` and `audit_log` in the same transaction. Verify
+requires the account be active and not already verified; reject deactivates
+rather than deletes, the same rule `savePaymentAccount` already followed when
+an operator replaces a number — both conditional in the SQL itself, so two
+reviewers deciding the same account at the same moment produce one decision,
+not a race. This is still a manual human judgement — a micro-deposit or an SMS
+to the wallet is a different, automatable answer to *who says yes and on what
+evidence*, not built here — but the column now has a writer.
 
 - ✅ Payment orchestration and the intent state machine (`indeterminate` is a first-class state, with a queue, a worker pass and a screen that does not call it a failure)
 - ✅ **Airtel Money and MTN MoMo adapters**, both against the real APIs. Independent, so whichever set of credentials lands first ships first
 - ✅ The in-app experience end to end: choose a wallet, name the number to debit (**not necessarily your own**), confirm where the money is going, watch for the PIN prompt, receipt
 - ✅ Operator collection accounts in the console, saved unverified because mobile money has no chargeback
+- ✅ **Wallet verification** — a back-office reviewer verifies or rejects an operator's mobile-money account on the operator's own page, the same reason-and-audit pattern as every other platform decision. Verify and reject are each conditional in SQL on the account's current state, so a decision is refused rather than silently repeated
 - ✅ The poller, because callbacks get lost — that is a fact about these networks, not a hypothetical
 - ✅ **Commission netted at source, at the rate each operator negotiated** — a term of one contract, read from their row when the fare settles, in basis points. Not a market rate and not a constant: the number a large carrier argues for is not the one a two-coach family business gets
 - ✅ The full failure taxonomy, each case with its own copy and its own recovery

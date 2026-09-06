@@ -229,6 +229,28 @@ final class AdminWorkspace {
     await _load();
   });
 
+  /// `verify` or `reject`, on one of the open operator's mobile-money
+  /// accounts. Refused here without a reason for the same reason [decide] is.
+  Future<void> decidePaymentAccount({
+    required String operatorId,
+    required String accountId,
+    required String decision,
+    String? detail,
+  }) => _run(() async {
+    if (!hasReason) return;
+    final updated = await _gateway.decidePaymentAccount(
+      operatorId: operatorId,
+      accountId: accountId,
+      decision: decision,
+      reason: _reason.trim(),
+      detail: detail,
+    );
+    _notice = decision == 'verify'
+        ? 'paymentAccount.verified|${updated.displayName}'
+        : 'paymentAccount.rejected|${updated.displayName}';
+    await _load();
+  });
+
   Future<void> setCommission({
     required String operatorId,
     required int commissionBps,

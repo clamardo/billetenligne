@@ -84,6 +84,17 @@ Future<Response> onRequest(RequestContext context, String id) async {
             createdAt: e.createdAt,
           ),
       ],
+      paymentAccounts: [
+        for (final a in detail.paymentAccounts)
+          PaymentAccountDto(
+            id: a.id,
+            railId: a.railId,
+            msisdn: a.msisdn,
+            displayName: a.displayName,
+            verified: a.verified,
+            active: a.active,
+          ),
+      ],
     ).toJson(),
     headers: {
       BelHeaders.traceId: trace,

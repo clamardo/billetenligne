@@ -76,6 +76,15 @@ admin:
     decisions: "Decisions"
     notAllowed: "Your role does not allow this."
     unavailableHere: "Not possible from \"{status}\"."
+    paymentAccounts: "Mobile-money accounts"
+    noPaymentAccounts: "No account on file. This operator cannot yet collect mobile-money payments directly."
+    accountVerified: "Verified"
+    accountPending: "Awaiting verification"
+    accountVerify: "Verify"
+    accountReject: "Reject"
+    accountDecisionTitle:
+      verify: "Verify {account}?"
+      reject: "Reject {account}?"
   docType:
     rccm: "RCCM"
     insurance: "Insurance certificate"
@@ -184,6 +193,8 @@ admin:
     payout.approved: "Statement approved: {a1}. The money has not gone yet."
     payout.released: "{a1} sent. Reference {a2}."
     payout.needsReference: "Enter the transfer reference before sending."
+    paymentAccount.verified: "{a1} verified. Travellers can now pay it directly."
+    paymentAccount.rejected: "{a1} rejected."
   # The Compliance screen (03-operator-lifecycle.md §6). A calendar, not a
   # queue: nothing here arrived because somebody submitted it, and the
   # deadline lands whether or not this tab was opened — the worker stops the

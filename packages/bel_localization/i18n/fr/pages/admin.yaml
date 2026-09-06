@@ -77,6 +77,15 @@ admin:
     decisions: "Décisions"
     notAllowed: "Votre rôle ne permet pas cette action."
     unavailableHere: "Impossible depuis l'état « {status} »."
+    paymentAccounts: "Comptes mobile money"
+    noPaymentAccounts: "Aucun compte enregistré. Cet opérateur ne peut pas encore encaisser de paiements mobile money directement."
+    accountVerified: "Vérifié"
+    accountPending: "En attente de vérification"
+    accountVerify: "Vérifier"
+    accountReject: "Rejeter"
+    accountDecisionTitle:
+      verify: "Vérifier {account} ?"
+      reject: "Rejeter {account} ?"
   docType:
     rccm: "RCCM"
     insurance: "Attestation d'assurance"
@@ -185,6 +194,8 @@ admin:
     payout.approved: "Relevé approuvé : {a1}. L'argent n'est pas encore parti."
     payout.released: "{a1} envoyés. Référence {a2}."
     payout.needsReference: "Indiquez la référence du virement avant d'envoyer."
+    paymentAccount.verified: "{a1} vérifié. Les voyageurs peuvent maintenant payer directement ce compte."
+    paymentAccount.rejected: "{a1} rejeté."
   # L'écran Conformité (03-operator-lifecycle.md §6). Un calendrier, pas une
   # file : rien n'y arrive parce que quelqu'un a déposé un dossier, et
   # l'échéance tombe que l'onglet ait été ouvert ou non — le worker arrête les

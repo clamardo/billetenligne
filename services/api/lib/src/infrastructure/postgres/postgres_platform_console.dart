@@ -2,6 +2,7 @@ import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart' hide Result;
 
+import '../../application/ports/operator_console.dart' show PaymentAccountSummary;
 import '../../application/ports/platform_console.dart';
 import '../db/database.dart';
 
@@ -158,6 +159,16 @@ final class PostgresPlatformConsole implements PlatformConsole {
       parameters: {'id': TypedValue(Type.uuid, operatorId)},
     );
 
+    final accounts = await tx.execute(
+      Sql.named('''
+            SELECT id, rail_id, msisdn, display_name, verified_at, active
+              FROM operator_payment_accounts
+             WHERE operator_id = @id AND active
+             ORDER BY rail_id
+          '''),
+      parameters: {'id': TypedValue(Type.uuid, operatorId)},
+    );
+
     return OperatorDetail(
       summary: _summary(rows.first.toColumnMap()),
       application: application.isEmpty
@@ -166,6 +177,9 @@ final class PostgresPlatformConsole implements PlatformConsole {
               application.first.toColumnMap(),
               rows.first.toColumnMap(),
             ),
+      paymentAccounts: [
+        for (final row in accounts) _paymentAccount(row.toColumnMap()),
+      ],
       documents: [
         for (final row in documents)
           KybDocument(
@@ -314,6 +328,71 @@ final class PostgresPlatformConsole implements PlatformConsole {
     );
 
     return Ok((await _reread(tx, operatorId))!);
+  });
+
+  @override
+  Future<Result<PaymentAccountSummary, DecisionRefusal>> decidePaymentAccount({
+    required String operatorId,
+    required String accountId,
+    required PaymentAccountDecision decision,
+    required String actorUserId,
+    required String reason,
+    String? detail,
+  }) => _db.transaction(DbScope.platform(actorUserId), (tx) async {
+    final before = await tx.execute(
+      Sql.named('''
+        SELECT verified_at, active FROM operator_payment_accounts
+         WHERE id = @id AND operator_id = @operator
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, accountId),
+        'operator': TypedValue(Type.uuid, operatorId),
+      },
+    );
+    if (before.isEmpty) return const Err(DecisionRefusal.unknownOperator);
+    final wasVerified = before.first.toColumnMap()['verified_at'] != null;
+    final wasActive = before.first.toColumnMap()['active'] as bool;
+
+    // Conditional on the account's current state, same as `decide()` above:
+    // two reviewers verifying the same account at the same moment must
+    // produce one verification, not two audit rows disagreeing with a race.
+    final moved = await tx.execute(
+      Sql.named(switch (decision) {
+        PaymentAccountDecision.verify => '''
+          UPDATE operator_payment_accounts
+             SET verified_at = now(), updated_at = now()
+           WHERE id = @id AND operator_id = @operator
+             AND active AND verified_at IS NULL
+          RETURNING id, rail_id, msisdn, display_name, verified_at, active
+        ''',
+        PaymentAccountDecision.reject => '''
+          UPDATE operator_payment_accounts
+             SET active = FALSE, updated_at = now()
+           WHERE id = @id AND operator_id = @operator AND active
+          RETURNING id, rail_id, msisdn, display_name, verified_at, active
+        ''',
+      }),
+      parameters: {
+        'id': TypedValue(Type.uuid, accountId),
+        'operator': TypedValue(Type.uuid, operatorId),
+      },
+    );
+    if (moved.isEmpty) return const Err(DecisionRefusal.illegalTransition);
+
+    final after = _paymentAccount(moved.first.toColumnMap());
+    await _audit(
+      tx,
+      actorUserId: actorUserId,
+      action: decision.action,
+      reason: detail == null || detail.isEmpty ? reason : '$reason — $detail',
+      operatorId: operatorId,
+      subjectType: 'operator_payment_account',
+      subjectId: accountId,
+      before: {'verified': wasVerified, 'active': wasActive},
+      after: {'verified': after.verified, 'active': after.active},
+    );
+
+    return Ok(after);
   });
 
   @override
@@ -601,6 +680,16 @@ final class PostgresPlatformConsole implements PlatformConsole {
       agreementAccepted: a['agreement_accepted_at'] != null,
     ),
   );
+
+  static PaymentAccountSummary _paymentAccount(Map<String, dynamic> r) =>
+      PaymentAccountSummary(
+        id: r['id'].toString(),
+        railId: r['rail_id'] as String,
+        msisdn: r['msisdn'] as String,
+        displayName: r['display_name'] as String,
+        verified: r['verified_at'] != null,
+        active: r['active'] as bool,
+      );
 
   static DateTime? _date(Object? v) => switch (v) {
     DateTime d => DateTime.utc(d.year, d.month, d.day),

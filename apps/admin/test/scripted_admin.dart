@@ -75,6 +75,21 @@ final class ScriptedAdmin implements AdminGateway {
   }
 
   @override
+  Future<PaymentAccountDto> decidePaymentAccount({
+    required String operatorId,
+    required String accountId,
+    required String decision,
+    required String reason,
+    String? detail,
+  }) async {
+    calls.add(
+      'paymentAccount:$operatorId:$accountId:$decision:$reason:'
+      '${detail ?? ''}',
+    );
+    return file!.paymentAccounts.firstWhere((a) => a.id == accountId);
+  }
+
+  @override
   Future<List<UnresolvedPaymentDto>> unresolvedPayments({
     required String reason,
   }) async {
@@ -200,6 +215,22 @@ AdminOperatorDto adminOperator({
   staffCount: 9,
   riskBand: riskBand,
   riskReasons: riskReasons,
+);
+
+PaymentAccountDto paymentAccount({
+  String id = 'acct-1',
+  String railId = 'mtn',
+  String msisdn = '+242061234567',
+  String displayName = 'Océan du Nord',
+  bool verified = false,
+  bool active = true,
+}) => PaymentAccountDto(
+  id: id,
+  railId: railId,
+  msisdn: msisdn,
+  displayName: displayName,
+  verified: verified,
+  active: active,
 );
 
 UnresolvedPaymentDto unresolvedPayment() => UnresolvedPaymentDto(

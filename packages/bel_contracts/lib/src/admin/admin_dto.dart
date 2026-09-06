@@ -194,12 +194,59 @@ final class AuditEntryDto {
   );
 }
 
+/// One of an operator's mobile-money accounts, as the back office sees it.
+///
+/// Not the console's own `PaymentAccountSummary` DTO shape reused verbatim —
+/// this crosses to a reviewer who is not this operator's own staff, and a
+/// wire shape two surfaces happen to share today is one of them will
+/// eventually need to diverge from without touching the other.
+final class PaymentAccountDto {
+  const PaymentAccountDto({
+    required this.id,
+    required this.railId,
+    required this.msisdn,
+    required this.displayName,
+    required this.verified,
+    required this.active,
+  });
+
+  final String id;
+  final String railId;
+  final String msisdn;
+  final String displayName;
+
+  /// Until this is true the rail is not offered to a single traveller —
+  /// nothing in this deployment sets it but a reviewer's own decision.
+  final bool verified;
+  final bool active;
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'railId': railId,
+    'msisdn': msisdn,
+    'displayName': displayName,
+    'verified': verified,
+    'active': active,
+  };
+
+  factory PaymentAccountDto.fromJson(Map<String, Object?> json) =>
+      PaymentAccountDto(
+        id: Wire.requireString(json['id'], 'id'),
+        railId: Wire.requireString(json['railId'], 'railId'),
+        msisdn: Wire.requireString(json['msisdn'], 'msisdn'),
+        displayName: Wire.requireString(json['displayName'], 'displayName'),
+        verified: json['verified'] as bool? ?? false,
+        active: json['active'] as bool? ?? true,
+      );
+}
+
 /// Everything about one operator on one page.
 final class AdminOperatorDetailDto {
   const AdminOperatorDetailDto({
     required this.operator,
     this.documents = const [],
     this.trail = const [],
+    this.paymentAccounts = const [],
     this.application,
     this.submittedAt,
   });
@@ -215,6 +262,7 @@ final class AdminOperatorDetailDto {
   final DateTime? submittedAt;
   final List<KybDocumentDto> documents;
   final List<AuditEntryDto> trail;
+  final List<PaymentAccountDto> paymentAccounts;
 
   Map<String, Object?> toJson() => Wire.compact({
     'operator': operator.toJson(),
@@ -224,6 +272,7 @@ final class AdminOperatorDetailDto {
     'submittedAt': submittedAt == null ? null : Wire.instant(submittedAt!),
     'documents': [for (final d in documents) d.toJson()],
     'trail': [for (final e in trail) e.toJson()],
+    'paymentAccounts': [for (final a in paymentAccounts) a.toJson()],
   });
 
   factory AdminOperatorDetailDto.fromJson(Map<String, Object?> json) =>
@@ -250,6 +299,11 @@ final class AdminOperatorDetailDto {
           AuditEntryDto.fromJson,
           field: 'trail',
         ),
+        paymentAccounts: Wire.readList(
+          json['paymentAccounts'],
+          PaymentAccountDto.fromJson,
+          field: 'paymentAccounts',
+        ),
       );
 }
 
@@ -275,6 +329,23 @@ final class OperatorDecisionRequest {
       OperatorDecisionRequest(
         decision: Wire.requireString(json['decision'], 'decision'),
         reason: Wire.requireString(json['reason'], 'reason'),
+        detail: json['detail'] as String?,
+      );
+}
+
+/// Verify · reject, on one of an operator's mobile-money accounts.
+final class PaymentAccountDecisionRequest {
+  const PaymentAccountDecisionRequest({required this.decision, this.detail});
+
+  final String decision;
+  final String? detail;
+
+  Map<String, Object?> toJson() =>
+      Wire.compact({'decision': decision, 'detail': detail});
+
+  factory PaymentAccountDecisionRequest.fromJson(Map<String, Object?> json) =>
+      PaymentAccountDecisionRequest(
+        decision: Wire.requireString(json['decision'], 'decision'),
         detail: json['detail'] as String?,
       );
 }

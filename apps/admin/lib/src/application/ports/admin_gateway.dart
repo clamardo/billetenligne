@@ -40,6 +40,15 @@ abstract interface class AdminGateway {
     required String reason,
   });
 
+  /// `verify` or `reject`, on one of this operator's mobile-money accounts.
+  Future<PaymentAccountDto> decidePaymentAccount({
+    required String operatorId,
+    required String accountId,
+    required String decision,
+    required String reason,
+    String? detail,
+  });
+
   Future<List<UnresolvedPaymentDto>> unresolvedPayments({
     required String reason,
   });

@@ -83,6 +83,13 @@ final class OperatorScreen extends StatelessWidget {
         _Commission(workspace: workspace, operator: operator),
         SizedBox(height: kilo.space.s4),
 
+        _PaymentAccounts(
+          workspace: workspace,
+          operator: operator,
+          accounts: detail.paymentAccounts,
+        ),
+        SizedBox(height: kilo.space.s4),
+
         if (detail.application != null) ...[
           _Application(
             facts: detail.application!,
@@ -438,6 +445,214 @@ class _CommissionState extends State<_Commission> {
     final bps = (value * 100).round();
     if (bps < 0 || bps > CommissionTerm.maxBps) return null;
     return bps;
+  }
+}
+
+/// This operator's mobile-money accounts, and the one decision this screen
+/// can make about them: verify, or reject.
+///
+/// **This is the only place in the app that writes `verified_at`.** The
+/// operator's own console can add a number (`savePaymentAccount`) but never
+/// confirm one — the check is "somebody who saw the merchant agreement", and
+/// that is a back-office judgement, not a self-certification. An unverified
+/// account is never offered to a traveller, so a row sitting here pending is
+/// a rail nobody can collect on yet.
+class _PaymentAccounts extends StatelessWidget {
+  const _PaymentAccounts({
+    required this.workspace,
+    required this.operator,
+    required this.accounts,
+  });
+
+  final AdminWorkspace workspace;
+  final AdminOperatorDto operator;
+  final List<PaymentAccountDto> accounts;
+
+  static const _capability = 'platform.payment_account.verify';
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+
+    return KCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            context.t('admin.operator.paymentAccounts'),
+            style: kilo.text.h2,
+          ),
+          SizedBox(height: kilo.space.s3),
+          if (accounts.isEmpty)
+            Text(
+              context.t('admin.operator.noPaymentAccounts'),
+              style: kilo.text.body.copyWith(
+                color: kilo.color.contentSecondary,
+              ),
+            )
+          else
+            for (final account in accounts)
+              Padding(
+                padding: EdgeInsets.only(bottom: kilo.space.s3),
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: kilo.space.s2,
+                  runSpacing: kilo.space.s2,
+                  children: [
+                    SizedBox(
+                      width: 260,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(account.displayName, style: kilo.text.body),
+                          Text(
+                            '${account.railId} · ${account.msisdn}',
+                            style: kilo.text.caption.copyWith(
+                              color: kilo.color.contentSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    KChip(
+                      account.verified
+                          ? context.t('admin.operator.accountVerified')
+                          : context.t('admin.operator.accountPending'),
+                      tone: account.verified
+                          ? KChipTone.success
+                          : KChipTone.warning,
+                    ),
+                    if (!account.verified)
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 200),
+                        child: KButton(
+                          label: context.t('admin.operator.accountVerify'),
+                          fullWidth: false,
+                          onPressed:
+                              workspace.can(_capability) && workspace.hasReason
+                              ? () => _confirm(context, account, 'verify')
+                              : null,
+                          disabledHint: !workspace.can(_capability)
+                              ? context.t('admin.operator.notAllowed')
+                              : context.t('admin.reason.required'),
+                        ),
+                      ),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 200),
+                      child: KButton(
+                        label: context.t('admin.operator.accountReject'),
+                        fullWidth: false,
+                        tone: KButtonTone.danger,
+                        onPressed:
+                            workspace.can(_capability) && workspace.hasReason
+                            ? () => _confirm(context, account, 'reject')
+                            : null,
+                        disabledHint: !workspace.can(_capability)
+                            ? context.t('admin.operator.notAllowed')
+                            : context.t('admin.reason.required'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirm(
+    BuildContext context,
+    PaymentAccountDto account,
+    String decision,
+  ) async {
+    final detail = await showDialog<String>(
+      context: context,
+      builder: (_) => _PaymentAccountDecisionDialog(
+        decision: decision,
+        accountLabel: '${account.displayName} · ${account.msisdn}',
+        reason: workspace.reason,
+      ),
+    );
+    if (detail == null) return;
+    await workspace.decidePaymentAccount(
+      operatorId: operator.id,
+      accountId: account.id,
+      decision: decision,
+      detail: detail.isEmpty ? null : detail,
+    );
+  }
+}
+
+/// Confirming a verify/reject, with room to say why.
+class _PaymentAccountDecisionDialog extends StatefulWidget {
+  const _PaymentAccountDecisionDialog({
+    required this.decision,
+    required this.accountLabel,
+    required this.reason,
+  });
+
+  final String decision;
+  final String accountLabel;
+  final String reason;
+
+  @override
+  State<_PaymentAccountDecisionDialog> createState() =>
+      _PaymentAccountDecisionDialogState();
+}
+
+class _PaymentAccountDecisionDialogState
+    extends State<_PaymentAccountDecisionDialog> {
+  final _detail = TextEditingController();
+
+  @override
+  void dispose() {
+    _detail.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+
+    return AlertDialog(
+      title: Text(
+        context.t('admin.operator.accountDecisionTitle.${widget.decision}', {
+          'account': widget.accountLabel,
+        }),
+      ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.reason,
+              style: kilo.text.body.copyWith(
+                color: kilo.color.contentSecondary,
+              ),
+            ),
+            SizedBox(height: kilo.space.s3),
+            KField(
+              label: context.t('admin.decision.detail'),
+              helper: context.t('admin.decision.detailHelp'),
+              controller: _detail,
+              maxLines: 3,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(context.t('common.actions.cancel')),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_detail.text.trim()),
+          child: Text(context.t('admin.decision.submit')),
+        ),
+      ],
+    );
   }
 }
 

@@ -54,6 +54,21 @@ final class ApiAdminGateway implements AdminGateway {
   );
 
   @override
+  Future<PaymentAccountDto> decidePaymentAccount({
+    required String operatorId,
+    required String accountId,
+    required String decision,
+    required String reason,
+    String? detail,
+  }) => _client.decidePaymentAccount(
+    operatorId: operatorId,
+    accountId: accountId,
+    decision: decision,
+    reason: reason,
+    detail: detail,
+  );
+
+  @override
   Future<List<UnresolvedPaymentDto>> unresolvedPayments({
     required String reason,
   }) => _client.unresolvedPayments(reason: reason);

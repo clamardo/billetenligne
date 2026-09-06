@@ -1,5 +1,7 @@
 import 'package:bel_domain/bel_domain.dart';
 
+import 'operator_console.dart' show PaymentAccountSummary;
+
 /// An operator, as our own back office lists them.
 final class OperatorSummary {
   const OperatorSummary({
@@ -159,6 +161,7 @@ final class OperatorDetail {
     required this.documents,
     required this.trail,
     this.application,
+    this.paymentAccounts = const [],
   });
 
   final OperatorSummary summary;
@@ -168,6 +171,12 @@ final class OperatorDetail {
   /// Newest first, and capped: the point is what has happened to this
   /// operator lately, not an export.
   final List<AuditEntry> trail;
+
+  /// This operator's mobile-money accounts, verified and not. The same shape
+  /// the operator's own console reads — `savePaymentAccount`'s doc-comment is
+  /// the reason a row can sit here unverified indefinitely: nothing in this
+  /// deployment verifies one automatically, so somebody on this side has to.
+  final List<PaymentAccountSummary> paymentAccounts;
 }
 
 /// What a reviewer decided.
@@ -194,6 +203,32 @@ enum OperatorDecision {
 
   static OperatorDecision? byName(String raw) {
     for (final d in OperatorDecision.values) {
+      if (d.name == raw) return d;
+    }
+    return null;
+  }
+}
+
+/// Verify · reject, on one of an operator's mobile-money accounts.
+///
+/// Two outcomes, not a boolean, for the same reason [OperatorDecision] is
+/// named rather than a status string: the audit log should say what a
+/// reviewer *did*, and "false" is not a sentence. There is no dedicated
+/// rejected column on `operator_payment_accounts` — reject reuses `active =
+/// false`, the same "deactivate rather than delete" move `savePaymentAccount`
+/// already makes when a number is replaced, so a rejected account still
+/// answers "who tried to use this number" on a dispute six weeks later.
+enum PaymentAccountDecision {
+  verify('payment_account.verify'),
+  reject('payment_account.reject');
+
+  const PaymentAccountDecision(this.action);
+
+  /// What lands in the audit log.
+  final String action;
+
+  static PaymentAccountDecision? byName(String raw) {
+    for (final d in PaymentAccountDecision.values) {
       if (d.name == raw) return d;
     }
     return null;
@@ -333,6 +368,24 @@ abstract interface class PlatformConsole {
     required CommissionTerm term,
     required String actorUserId,
     required String reason,
+  });
+
+  /// Verify · reject one of an operator's mobile-money accounts.
+  ///
+  /// This is the only writer of `verified_at` in this deployment
+  /// (`SubmittedApplication.settlementVerifiedAt`'s doc-comment explains why:
+  /// the check is a third-party call this deployment does not make, so a
+  /// human on this side of the platform does it instead). Nothing else may
+  /// mark an account verified, which is what makes the traveller-facing rail
+  /// list ("has somebody actually seen the merchant agreement for this
+  /// number") trustworthy.
+  Future<Result<PaymentAccountSummary, DecisionRefusal>> decidePaymentAccount({
+    required String operatorId,
+    required String accountId,
+    required PaymentAccountDecision decision,
+    required String actorUserId,
+    required String reason,
+    String? detail,
   });
 
   // ── Reconciliation (ADR-0005) ─────────────────────────────────────────────

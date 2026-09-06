@@ -187,18 +187,26 @@ with no counterpart, so a dev stack could reach every failure screen and never
 the paid one — `capturingMsisdn` settles on the poll, and an explicit
 `statusScript` still wins so no existing test changed.
 
-**One open, one now closed.** `operator_payment_accounts.verified_at` is still
-read by product code, defaulted by an old migration, and written by nothing
-anywhere in the tree — no operator can ever be paid by mobile money until a
-verification step exists. `operator_staff.station_ids` was the same shape and
-no longer is: the console's **Personnel** screen (behind `staff.manage`) now
-invites staff and assigns them to stations for real, so a vendor scoped to one
-station needs no seeding at all. The demo world's `_tills` seed still sets the
-*owner's* row directly, but for a narrower reason now — `counter_screen.dart`
-still resolves the till from the first entry of `identity.stationIds` with no
-picker, so a whole-org owner still cannot sell in person without one.
-`docs/17-the-first-ticket.md` §*One column nothing writes, and one that now
-does* has the detail.
+**Both now closed.** `operator_staff.station_ids` was written by nothing: the
+console's **Personnel** screen (behind `staff.manage`) now invites staff and
+assigns them to stations for real, so a vendor scoped to one station needs no
+seeding at all. The demo world's `_tills` seed still sets the *owner's* row
+directly, but for a narrower reason now — `counter_screen.dart` still resolves
+the till from the first entry of `identity.stationIds` with no picker, so a
+whole-org owner still cannot sell in person without one. `operator_payment_accounts.verified_at` was the other: read by product code,
+defaulted by an old migration, written by nothing anywhere in the tree — no
+operator could ever be paid by mobile money until a verification step
+existed. The admin app's **operator page** now offers verify/reject (behind
+`platform.payment_account.verify`), the same reason-and-audit pattern as
+every other platform decision, each conditional in SQL on the account's
+current state so a decision cannot be silently repeated. Closing it also
+surfaced a real gap one layer down: the table was created in migration 0011,
+*after* 0004's blanket grant had already run, and 0011 only granted
+`bel_public` read access — so `bel_app`'s own `savePaymentAccount` had been
+running against a table it had no privilege on the whole time, caught by the
+first real-Postgres integration test either surface wrote against this table
+(migration 0046). `docs/17-the-first-ticket.md` §*One column nothing writes,
+and one that now does* has the detail on the staff half.
 
 Also worth recording: the console must be served on port 5000 or 5001, because
 `BEL__WEBORIGINS` allows only those two and the sign-in screen reports the CORS
@@ -270,6 +278,7 @@ refusal as "Pas de connexion. Vérifiez votre réseau."
 | **Payment intents + state machine** | ✅ done | `indeterminate` first-class; illegal transitions refused; every answer written to `payment_events` |
 | **Traveller payment experience** | ✅ done | Wallet, payer number, confirmation, waiting, receipt, refusal, unresolved. 13 flow tests |
 | **Operator collection accounts** | ✅ done | Per rail, saved unverified, replacing deactivates rather than edits |
+| **Wallet verification** | ✅ done | A back-office reviewer verifies or rejects an operator's mobile-money account from the operator's own page, behind `platform.payment_account.verify` — reason and audit row, same as every other platform decision. Verify and reject are each conditional in SQL on the account's current state (active/not yet verified for verify, active for reject), so a decision cannot be silently repeated; reject deactivates rather than deletes. Also closed a pre-existing gap: `operator_payment_accounts` never got a GRANT for `bel_app` or `bel_admin` (migration 0011 ran after 0004's blanket grant, and only granted `bel_public`), so every real write to this table would have failed with "permission denied" — fixed in migration 0046, caught by the first real-Postgres integration test against this table |
 | **Callback endpoint** | ✅ done | Body trusted only to select a row; state always re-queried. Answers 200 to everything |
 | **Payment poller** | ✅ done | Backoff from the domain; 15 min of silence becomes `indeterminate` |
 | **Commission, per operator** | ✅ done | `CommissionTerm` in basis points, read from `operators.commission_bps` when a fare settles. Netted at source; unreadable terms keep nothing rather than guess |
