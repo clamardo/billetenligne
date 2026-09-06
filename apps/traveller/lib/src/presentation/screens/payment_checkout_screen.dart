@@ -104,16 +104,25 @@ final class PaymentCheckoutScreen extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
               ] else ...[
-                Text(
-                  context.t('payment.checkout.copyLink'),
-                  style: kilo.text.body,
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: kilo.space.s2),
-                SelectableText(
-                  url,
-                  style: kilo.text.code,
-                  textAlign: TextAlign.center,
+                // Matches `PaymentWaitingScreen`'s treatment of its USSD
+                // code: the one thing on this screen somebody has to copy
+                // by hand gets a card, not bare text.
+                KCard(
+                  child: Column(
+                    children: [
+                      Text(
+                        context.t('payment.checkout.copyLink'),
+                        style: kilo.text.bodySm,
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: kilo.space.s2),
+                      SelectableText(
+                        url,
+                        style: kilo.text.code,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ],
