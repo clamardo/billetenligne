@@ -484,6 +484,56 @@ void main() {
     });
   });
 
+  group('KAvatar', () {
+    testWidgets('draws initials from a full name', (tester) async {
+      await tester.pumpWidget(
+        host(const KAvatar(seed: 'u1', label: 'Angèle Loubaki')),
+      );
+
+      expect(find.text('AL'), findsOneWidget);
+    });
+
+    testWidgets('falls back to the seed when there is no name yet', (
+      tester,
+    ) async {
+      await tester.pumpWidget(host(const KAvatar(seed: '+242061112233')));
+
+      expect(find.text('+2'), findsOneWidget);
+    });
+
+    testWidgets('the same seed always lands on the same colour', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          const Row(
+            children: [
+              KAvatar(seed: 'traveller-42', label: 'Yvon'),
+              KAvatar(seed: 'traveller-42', label: 'Yvon'),
+            ],
+          ),
+        ),
+      );
+
+      final containers = tester
+          .widgetList<Container>(find.byType(Container))
+          .where((c) => c.decoration is BoxDecoration)
+          .toList();
+      final colours = containers
+          .map((c) => (c.decoration as BoxDecoration).color)
+          .toList();
+      expect(colours[0], colours[1]);
+    });
+
+    testWidgets('is announced by its name, not its initials', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(host(const KAvatar(seed: 'u1', label: 'Angèle')));
+
+      expect(find.bySemanticsLabel('Angèle'), findsOneWidget);
+      handle.dispose();
+    });
+  });
+
   group('KBrandHeader', () {
     /// The gradient between a photograph and the text drawn on it.
     ///

@@ -321,12 +321,13 @@ final class TravelChosenScreen extends StatelessWidget {
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s4),
           children: [
-            Icon(
-              applied.kind == 'refund' ? Icons.payments : Icons.check_circle,
-              size: 56,
-              color: kilo.color.success,
+            Center(
+              child: KIllustration(
+                applied.kind == 'refund' ? KArt.payment : KArt.success,
+                size: 140,
+              ),
             ),
-            SizedBox(height: kilo.space.s3),
+            SizedBox(height: kilo.space.s2),
             Text(
               context.t(switch (applied.kind) {
                 'refund' => 'travel.choice.refundedTitle',

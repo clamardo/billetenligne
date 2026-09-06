@@ -38,8 +38,8 @@ final class PaymentReceiptScreen extends StatelessWidget {
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s5),
           children: [
-            Icon(Icons.check_circle, size: 56, color: kilo.color.success),
-            SizedBox(height: kilo.space.s3),
+            Center(child: KIllustration(KArt.success, size: 140)),
+            SizedBox(height: kilo.space.s2),
             Text(
               context.t('payment.success.title'),
               style: kilo.text.h2,

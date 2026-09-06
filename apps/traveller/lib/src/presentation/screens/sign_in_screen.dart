@@ -110,14 +110,27 @@ class _SignInScreenState extends State<SignInScreen> {
         title: Text(context.t('auth.gate.title'), style: kilo.text.h3),
       ),
       body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s4),
-          children: switch (step) {
-            NeedsAddress() || SendingCode() => _addressStep(context, step),
-            AwaitingCode() || VerifyingCode() => _codeStep(context, step),
-            // Handled by the listener above; the funnel has already moved on.
-            SignedIn() => const [SizedBox.shrink()],
-          },
+        child: Column(
+          children: [
+            // Only on the way in. By the code step the keyboard is up and the
+            // six digits are the whole of what matters — the picture would be
+            // fighting the numeric pad for a small handset's one screenful.
+            if (step is NeedsAddress || step is SendingCode)
+              const KScene(KSceneArt.roadtrip, height: 120),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.all(kilo.space.s4),
+                children: switch (step) {
+                  NeedsAddress() ||
+                  SendingCode() => _addressStep(context, step),
+                  AwaitingCode() || VerifyingCode() => _codeStep(context, step),
+                  // Handled by the listener above; the funnel has already
+                  // moved on.
+                  SignedIn() => const [SizedBox.shrink()],
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );

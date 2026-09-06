@@ -107,6 +107,7 @@ travel:
   settings:
     title: "Réglages"
     open: "Réglages"
+    you: "Vous"
     language: "Langue"
     languageNote: "Vos billets, vos reçus et vos SMS vous seront envoyés dans cette langue."
     theme: "Apparence"

@@ -1,3 +1,4 @@
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_design/bel_design.dart';
 import 'package:flutter/material.dart';
 
@@ -26,6 +27,7 @@ final class SettingsScreen extends StatelessWidget {
     required this.onLanguage,
     required this.onBack,
     this.mode,
+    this.account,
     super.key,
   });
 
@@ -36,6 +38,10 @@ final class SettingsScreen extends StatelessWidget {
   /// which case the appearance section is simply not drawn — the same contract
   /// `KModeToggle` already follows.
   final KiloModeController? mode;
+
+  /// Who is signed in. Null when nobody has claimed a booking yet — the
+  /// screen still works, it simply has nobody to draw an avatar for.
+  final AccountDto? account;
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +64,41 @@ final class SettingsScreen extends StatelessWidget {
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s4),
           children: [
+            if (account != null) ...[
+              KCard(
+                child: Row(
+                  children: [
+                    KAvatar(
+                      seed: account!.id,
+                      label:
+                          account!.fullName ?? account!.phone ?? account!.email,
+                      size: KAvatarSize.large,
+                    ),
+                    SizedBox(width: kilo.space.s3),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            account!.fullName ??
+                                context.t('travel.settings.you'),
+                            style: kilo.text.h3,
+                          ),
+                          if (account!.phone != null || account!.email != null)
+                            Text(
+                              account!.phone ?? account!.email!,
+                              style: kilo.text.bodySm.copyWith(
+                                color: kilo.color.contentSecondary,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: kilo.space.s5),
+            ],
             Text(context.t('travel.settings.language'), style: kilo.text.label),
             SizedBox(height: kilo.space.s2),
             KCard(

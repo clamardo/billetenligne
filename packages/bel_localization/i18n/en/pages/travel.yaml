@@ -105,6 +105,7 @@ travel:
   settings:
     title: "Settings"
     open: "Settings"
+    you: "You"
     language: "Language"
     languageNote: "Your tickets, receipts and text messages will be sent to you in this language."
     theme: "Appearance"

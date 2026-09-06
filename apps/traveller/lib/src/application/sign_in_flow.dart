@@ -94,6 +94,12 @@ final class SignInFlow {
   final IdentityGateway _gateway;
   final Clock _clock;
 
+  /// Who is signed in, for the screens that draw an avatar rather than a
+  /// blank circle — read straight through to the gateway rather than cached
+  /// here, so it never drifts from what `restore()` or `submitCode()` just
+  /// set.
+  AccountDto? get account => _gateway.account;
+
   final _steps = StreamController<SignInStep>.broadcast();
 
   SignInStep _step = const NeedsAddress();

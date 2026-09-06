@@ -235,6 +235,7 @@ class _FunnelState extends State<_Funnel> {
         // `Localized` repaints and then persists — the screen never waits on
         // a disk or a network for a language somebody just asked to read in.
         onLanguage: context.setLanguage,
+        account: widget.signIn.account,
       );
     }
     if (_viewingTickets) return _ticketsScreen(context);

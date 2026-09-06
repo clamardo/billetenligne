@@ -278,10 +278,35 @@ class _TicketScreenState extends State<TicketScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _line(
-                    context,
-                    context.t('travel.ticket.passenger'),
-                    ticket.passengerName,
+                  Padding(
+                    padding: EdgeInsets.symmetric(vertical: kilo.space.s2),
+                    child: Row(
+                      children: [
+                        // The one face on this screen. Not a photo — nothing
+                        // here fetches (ADR-0003) — but a coloured initial is
+                        // still one person's ticket rather than anybody's.
+                        KAvatar(
+                          seed: ticket.bookingRef,
+                          label: ticket.passengerName,
+                          size: KAvatarSize.small,
+                        ),
+                        SizedBox(width: kilo.space.s3),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                context.t('travel.ticket.passenger'),
+                                style: kilo.text.bodySm.copyWith(
+                                  color: kilo.color.contentSecondary,
+                                ),
+                              ),
+                              Text(ticket.passengerName, style: kilo.text.body),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   _line(
                     context,
