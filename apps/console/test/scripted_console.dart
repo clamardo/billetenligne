@@ -872,6 +872,70 @@ final class ScriptedConsole implements ConsoleGateway {
     ];
   }
 
+  /// This operator's own roles, mutated in place by create/update/delete
+  /// below, exactly as [staffList] is.
+  List<CustomRoleDto> customRoleList = const [];
+  List<DefaultRoleDto> defaultRoleList = const [
+    DefaultRoleDto(
+      name: 'vendor',
+      capabilities: ['booking.read', 'booking.sell'],
+    ),
+    DefaultRoleDto(name: 'conductor', capabilities: ['boarding.scan']),
+  ];
+
+  @override
+  Future<({List<CustomRoleDto> items, List<DefaultRoleDto> defaults})>
+  roles() async => (items: customRoleList, defaults: defaultRoleList);
+
+  @override
+  Future<CustomRoleDto> createCustomRole({
+    required String name,
+    required List<String> capabilities,
+    String? clonedFromRole,
+  }) async {
+    saved.add('createRole:$name:${capabilities.join(",")}');
+    final role = CustomRoleDto(
+      id: 'role-new',
+      name: name,
+      capabilities: capabilities,
+      clonedFromRole: clonedFromRole,
+      createdAt: DateTime.utc(2026, 8, 10),
+    );
+    customRoleList = [...customRoleList, role];
+    return role;
+  }
+
+  @override
+  Future<CustomRoleDto> updateCustomRole({
+    required String roleId,
+    required String name,
+    required List<String> capabilities,
+  }) async {
+    saved.add('updateRole:$roleId:$name:${capabilities.join(",")}');
+    final existing = customRoleList.firstWhere((r) => r.id == roleId);
+    final updated = CustomRoleDto(
+      id: existing.id,
+      name: name,
+      capabilities: capabilities,
+      clonedFromRole: existing.clonedFromRole,
+      createdAt: existing.createdAt,
+    );
+    customRoleList = [
+      for (final r in customRoleList)
+        if (r.id == roleId) updated else r,
+    ];
+    return updated;
+  }
+
+  @override
+  Future<void> deleteCustomRole(String roleId) async {
+    saved.add('deleteRole:$roleId');
+    customRoleList = [
+      for (final r in customRoleList)
+        if (r.id != roleId) r,
+    ];
+  }
+
   static final _sale = CounterSaleDto(
     id: 'bk-1',
     ref: 'BEL-7QK4M2',

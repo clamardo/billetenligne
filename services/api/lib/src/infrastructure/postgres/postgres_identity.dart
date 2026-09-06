@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:postgres/postgres.dart';
 
@@ -51,6 +53,22 @@ final class PostgresUserDirectory implements UserDirectory {
     ) staff ON TRUE
   ''';
 
+  /// Any of this operator's own roles (`CustomRoleDefinition`, `bel_platform`)
+  /// that appear in `staff.roles`, read on the same request for the same
+  /// reason `_staffJoin` is: `TenantScope.forPrincipal` is pure and
+  /// synchronous by design, so a custom role's capabilities cannot be
+  /// resolved there — this is the one round trip on the whole request where
+  /// they still can be. Depends on `staff`, so it must appear after it in the
+  /// FROM clause.
+  static const _customRolesJoin = '''
+    LEFT JOIN LATERAL (
+      SELECT jsonb_object_agg(cr.name, to_jsonb(cr.capabilities)) AS by_name
+        FROM operator_custom_roles cr
+       WHERE cr.operator_id = staff.operator_id
+         AND cr.name = ANY(staff.roles)
+    ) custom_roles ON TRUE
+  ''';
+
   /// Our own staff, read on the same request for the same reason.
   ///
   /// A second LATERAL rather than a second round trip. `revoked_at IS NULL`,
@@ -76,8 +94,9 @@ final class PostgresUserDirectory implements UserDirectory {
                    staff.operator_id AS staff_operator_id,
                    staff.roles       AS staff_roles,
                    staff.station_ids AS staff_station_ids,
+                   custom_roles.by_name AS custom_role_caps,
                    platform.role     AS platform_role
-              FROM user_accounts $_staffJoin $_platformJoin
+              FROM user_accounts $_staffJoin $_customRolesJoin $_platformJoin
              WHERE auth_uid = @uid
           '''),
           parameters: {'uid': TypedValue(Type.text, authUid)},
@@ -94,8 +113,9 @@ final class PostgresUserDirectory implements UserDirectory {
                    staff.operator_id AS staff_operator_id,
                    staff.roles       AS staff_roles,
                    staff.station_ids AS staff_station_ids,
+                   custom_roles.by_name AS custom_role_caps,
                    platform.role     AS platform_role
-              FROM user_accounts $_staffJoin $_platformJoin
+              FROM user_accounts $_staffJoin $_customRolesJoin $_platformJoin
              WHERE user_accounts.id = @id
           '''),
           parameters: {'id': TypedValue(Type.uuid, id)},
@@ -302,6 +322,7 @@ final class PostgresUserDirectory implements UserDirectory {
               for (final id in (r['staff_station_ids'] as List?) ?? const [])
                 id.toString(),
             ],
+            customRoleCapabilities: _customRoleCaps(r['custom_role_caps']),
           ),
     id: r['id'].toString(),
     authUid: r['auth_uid'] as String?,
@@ -314,6 +335,21 @@ final class PostgresUserDirectory implements UserDirectory {
     disabledAt: r['disabled_at'] as DateTime?,
     platformRole: r['platform_role'] as String?,
   );
+
+  /// `jsonb_object_agg` back to `{roleName: {capability, ...}}`. Null when
+  /// this account is not staff, or is staff under no custom role at all —
+  /// both mean the same thing here, an empty map.
+  static Map<String, Set<String>> _customRoleCaps(Object? raw) {
+    if (raw == null) return const {};
+    final decoded = raw is String ? jsonDecode(raw) : raw;
+    if (decoded is! Map) return const {};
+    return {
+      for (final entry in decoded.entries)
+        '${entry.key}': {
+          for (final c in (entry.value as List?) ?? const []) '$c',
+        },
+    };
+  }
 }
 
 /// One-time codes, on the same surface.

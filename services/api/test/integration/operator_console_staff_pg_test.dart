@@ -123,35 +123,32 @@ void main() {
     expect(updated, isNull);
   });
 
-  test(
-    'revoking sets revoked_at and the member is still listed',
-    () async {
-      final account = await freshAccount();
-      final invited = await console.inviteStaff(
-        operatorId: operatorId,
-        accountId: account,
-        roles: ['vendor'],
-        stationIds: const [],
-      );
+  test('revoking sets revoked_at and the member is still listed', () async {
+    final account = await freshAccount();
+    final invited = await console.inviteStaff(
+      operatorId: operatorId,
+      accountId: account,
+      roles: ['vendor'],
+      stationIds: const [],
+    );
 
-      final revoked = await console.revokeStaff(
-        operatorId: operatorId,
-        staffId: invited.staff!.id,
-      );
-      expect(revoked, isTrue);
+    final revoked = await console.revokeStaff(
+      operatorId: operatorId,
+      staffId: invited.staff!.id,
+    );
+    expect(revoked, isTrue);
 
-      // A second revoke is not a second event — nothing left to revoke.
-      final again = await console.revokeStaff(
-        operatorId: operatorId,
-        staffId: invited.staff!.id,
-      );
-      expect(again, isFalse);
+    // A second revoke is not a second event — nothing left to revoke.
+    final again = await console.revokeStaff(
+      operatorId: operatorId,
+      staffId: invited.staff!.id,
+    );
+    expect(again, isFalse);
 
-      final listed = await console.staff(operatorId);
-      final row = listed.firstWhere((s) => s.id == invited.staff!.id);
-      expect(row.isRevoked, isTrue);
-    },
-  );
+    final listed = await console.staff(operatorId);
+    final row = listed.firstWhere((s) => s.id == invited.staff!.id);
+    expect(row.isRevoked, isTrue);
+  });
 
   test(
     'RLS keeps one operator from ever seeing another operator staff',

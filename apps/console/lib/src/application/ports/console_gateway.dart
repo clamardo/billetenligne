@@ -310,4 +310,27 @@ abstract interface class ConsoleGateway {
   /// Instantly: the very next request from this person is a member of the
   /// public, not their last one re-read from a stale token.
   Future<void> revokeStaff(String staffId);
+
+  /// This operator's own roles, and the default roles
+  /// (`Capability.operatorRoles`) any of them may be cloned from.
+  Future<({List<CustomRoleDto> items, List<DefaultRoleDto> defaults})> roles();
+
+  /// Clones a default role or designs one from scratch. [clonedFromRole] is
+  /// kept only as a hint for a later edit — the server does not read it back.
+  Future<CustomRoleDto> createCustomRole({
+    required String name,
+    required List<String> capabilities,
+    String? clonedFromRole,
+  });
+
+  /// Renames a custom role and/or replaces its capability set.
+  Future<CustomRoleDto> updateCustomRole({
+    required String roleId,
+    required String name,
+    required List<String> capabilities,
+  });
+
+  /// Refused (as a [ServerRefused] 409) while any active staff member still
+  /// carries this role.
+  Future<void> deleteCustomRole(String roleId);
 }

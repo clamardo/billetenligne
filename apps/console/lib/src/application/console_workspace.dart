@@ -284,6 +284,11 @@ final class ConsoleWorkspace {
         // The invite dialog offers a multi-select of stations, and cannot
         // offer one it has not loaded.
         stations = await _gateway.stations();
+        // Gated server-side the same as [staff] (`staff.manage`), so this is
+        // never a wasted request on this section.
+        final loadedRoles = await _gateway.roles();
+        customRoles = loadedRoles.items;
+        defaultRoles = loadedRoles.defaults;
     }
   }
 
@@ -770,6 +775,16 @@ final class ConsoleWorkspace {
   /// included.
   List<StaffDto> staff = const [];
 
+  /// This operator's own roles — a configuration row, not a release
+  /// (ADR-0011) — mixed and matched from whatever [defaultRoles] carries.
+  List<CustomRoleDto> customRoles = const [];
+
+  /// The built-in roles any custom role may be cloned from, and what each one
+  /// grants today. Doubles as the master list of capability strings the
+  /// design dialog offers, so the console never hardcodes its own copy of
+  /// `Capability.operatorRoles`.
+  List<DefaultRoleDto> defaultRoles = const [];
+
   Future<void> inviteStaff({
     required String phone,
     required List<String> roles,
@@ -803,6 +818,43 @@ final class ConsoleWorkspace {
   Future<void> revokeStaff(String staffId) => _run(() async {
     await _gateway.revokeStaff(staffId);
     _notice = 'staff.revoked';
+    await _loadSection();
+  });
+
+  /// Clones a default role or designs one from scratch.
+  Future<void> createCustomRole({
+    required String name,
+    required List<String> capabilities,
+    String? clonedFromRole,
+  }) => _run(() async {
+    final created = await _gateway.createCustomRole(
+      name: name,
+      capabilities: capabilities,
+      clonedFromRole: clonedFromRole,
+    );
+    _notice = 'role.created|${created.name}';
+    await _loadSection();
+  });
+
+  Future<void> updateCustomRole({
+    required String roleId,
+    required String name,
+    required List<String> capabilities,
+  }) => _run(() async {
+    await _gateway.updateCustomRole(
+      roleId: roleId,
+      name: name,
+      capabilities: capabilities,
+    );
+    _notice = 'role.updated|$name';
+    await _loadSection();
+  });
+
+  /// Refused server-side while anybody still carries the role — surfaced
+  /// through [failure] like any other refusal, never silently ignored.
+  Future<void> deleteCustomRole(String roleId) => _run(() async {
+    await _gateway.deleteCustomRole(roleId);
+    _notice = 'role.deleted';
     await _loadSection();
   });
 

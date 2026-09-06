@@ -767,7 +767,59 @@ abstract interface class OperatorConsole {
   /// surface's staff join (`postgres_identity.dart`) already filters on it —
   /// their *next* request is a member of the public, not their last one
   /// re-read from a stale token. True when a row was actually revoked.
-  Future<bool> revokeStaff({required String operatorId, required String staffId});
+  Future<bool> revokeStaff({
+    required String operatorId,
+    required String staffId,
+  });
+
+  // ── Custom roles ──────────────────────────────────────────────────────────
+
+  /// This operator's own roles — cloned from one of `Capability.operatorRoles`
+  /// or built from scratch, then renamed and given whatever capability set
+  /// the operator chose. Grantable to staff exactly like `org_owner` or
+  /// `vendor` once created.
+  Future<List<CustomRoleSummary>> customRoles(String operatorId);
+
+  /// [CustomRoleDefinition.validate] must already have passed against the
+  /// caller's own capabilities before this is called, same division of labour
+  /// as [inviteStaff] and [StaffAssignment.validate]. What this method itself
+  /// refuses is the fact only the database's own uniqueness constraint truly
+  /// guarantees: null means [name] is already in use by this operator (a
+  /// case-insensitive collision, alongside a built-in role name, is what
+  /// makes two roles named `ticket_seller` and `Ticket_Seller` genuinely
+  /// ambiguous in a console dropdown).
+  Future<CustomRoleSummary?> createCustomRole({
+    required String operatorId,
+    required String name,
+    required List<String> capabilities,
+    String? clonedFromRole,
+  });
+
+  /// Renames a custom role and/or replaces its capability set.
+  ///
+  /// `role` is null when [roleId] is not one of this operator's own roles —
+  /// distinct from `nameConflict`, which is true when it *is* one of this
+  /// operator's roles but [name] is already the name of a *different* one.
+  /// Kept apart, the same way [inviteStaff] keeps `staff` and `alreadyStaff`
+  /// apart, because a route answering "not found" for what is actually a
+  /// name collision would send an editor looking for a row that exists.
+  Future<({CustomRoleSummary? role, bool nameConflict})> updateCustomRole({
+    required String operatorId,
+    required String roleId,
+    required String name,
+    required List<String> capabilities,
+  });
+
+  /// Refused while any active staff member still carries this role — a
+  /// custom role stranded on a live assignment is exactly the "row nobody can
+  /// explain" `StaffAssignment.unknownRole` exists to prevent, so deleting
+  /// one out from under a staff member must never be allowed to happen
+  /// silently. `null` when [roleId] is not one of this operator's own roles;
+  /// `false` when it is still in use; `true` once removed.
+  Future<bool?> deleteCustomRole({
+    required String operatorId,
+    required String roleId,
+  });
 }
 
 /// One member of an operator's staff, as the application layer sees it —
@@ -798,6 +850,25 @@ final class StaffSummary {
   final DateTime? revokedAt;
 
   bool get isRevoked => revokedAt != null;
+}
+
+/// One of an operator's own roles, as the application layer sees it —
+/// distinct from `CustomRoleDto` (`bel_contracts`) for the same reason
+/// [StaffSummary] is distinct from `StaffDto`.
+final class CustomRoleSummary {
+  const CustomRoleSummary({
+    required this.id,
+    required this.name,
+    required this.capabilities,
+    required this.createdAt,
+    this.clonedFromRole,
+  });
+
+  final String id;
+  final String name;
+  final List<String> capabilities;
+  final String? clonedFromRole;
+  final DateTime createdAt;
 }
 
 /// A collection account, as the console shows it.

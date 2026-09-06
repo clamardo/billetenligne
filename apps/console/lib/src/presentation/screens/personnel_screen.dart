@@ -120,12 +120,99 @@ final class PersonnelScreen extends StatelessWidget {
                 ),
               ),
             ),
+        // Designing what a role *means* is a whole-org decision, the same as
+        // granting `finance` (`CustomRoleDefinition`) — a station manager
+        // never sees this section, the same reason they never see the
+        // whole-org roles above.
+        if (wholeOrg) ...[
+          SizedBox(height: kilo.space.s4),
+          KPageHeader(
+            context.t('console.personnel.rolesTitle'),
+            count: workspace.customRoles.length,
+            action: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 260),
+              child: KButton(
+                label: context.t('console.personnel.roleNew'),
+                fullWidth: false,
+                icon: Icons.add_moderator_outlined,
+                onPressed: () => _openRoleDialog(context),
+              ),
+            ),
+          ),
+          if (workspace.customRoles.isEmpty)
+            KCard(
+              child: Text(
+                context.t('console.personnel.rolesEmpty'),
+                style: kilo.text.body,
+              ),
+            )
+          else
+            for (final role in workspace.customRoles)
+              Padding(
+                padding: EdgeInsets.only(bottom: kilo.space.s2),
+                child: KCard(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(role.name, style: kilo.text.body),
+                            SizedBox(height: kilo.space.s2),
+                            Wrap(
+                              spacing: kilo.space.s2,
+                              runSpacing: kilo.space.s2,
+                              children: [
+                                for (final cap in role.capabilities)
+                                  KChip(_capabilityLabel(cap)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined),
+                        tooltip: context.t('console.personnel.edit'),
+                        onPressed: () =>
+                            _openRoleDialog(context, existing: role),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        tooltip: context.t('console.personnel.roleDelete'),
+                        onPressed: () => _confirmDeleteRole(context, role),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+        ],
       ],
     );
   }
 
+  /// A built-in role's name is a translation key (`console.personnel.role.*`).
+  /// A custom role's name is free-form text somebody typed into the design
+  /// dialog, and has no key to look up — it is shown as written.
   String _roleLabel(BuildContext context, String role) =>
-      context.t('console.personnel.role.$role');
+      StaffAssignment.knownRoles.contains(role)
+      ? context.t('console.personnel.role.$role')
+      : role;
+
+  /// A readable label for a capability string like `booking.sell`.
+  ///
+  /// No i18n key per capability: there are around thirty of them across two
+  /// languages, and this is the operator's own back office rather than
+  /// passenger-facing copy — a light transform of the wire string is legible
+  /// enough for the person designing a role.
+  String _capabilityLabel(String capability) => capability
+      .split(RegExp('[._]'))
+      .map(
+        (word) => word.isEmpty
+            ? word
+            : '${word[0].toUpperCase()}${word.substring(1)}',
+      )
+      .join(' ');
 
   String _stationNames(List<String> stationIds) {
     final names = [for (final id in stationIds) _stationName(id)];
@@ -143,12 +230,12 @@ final class PersonnelScreen extends StatelessWidget {
   /// at — a client-side mirror of `StaffAssignment.validate`, not a
   /// replacement for it. The server still enforces the real rule; this is
   /// only why a station manager never sees `finance` in the first place.
-  List<String> _grantableRoles(bool wholeOrg) =>
-      (wholeOrg
-              ? StaffAssignment.knownRoles
-              : StaffAssignment.stationScopedRoles)
-          .toList()
-        ..sort();
+  List<String> _grantableRoles(bool wholeOrg) => wholeOrg
+      ? ([
+          ...StaffAssignment.knownRoles,
+          for (final role in workspace.customRoles) role.name,
+        ]..sort())
+      : (StaffAssignment.stationScopedRoles.toList()..sort());
 
   List<StationDto> _grantableStations(bool wholeOrg) {
     final identity = workspace.identity;
@@ -367,6 +454,187 @@ final class PersonnelScreen extends StatelessWidget {
 
     if (confirmed == true) {
       await workspace.revokeStaff(member.id);
+    }
+  }
+
+  /// One dialog for cloning a default role and for editing a custom one.
+  /// [existing] absent means "design one" — a "clone from" picker is offered,
+  /// the same idea as `_openDialog`'s absent-phone meaning "invite" rather
+  /// than "edit".
+  Future<void> _openRoleDialog(
+    BuildContext context, {
+    CustomRoleDto? existing,
+  }) async {
+    // The union of every default role's own capabilities is the only
+    // capability vocabulary the console knows about — the server never
+    // hands over `Capability`'s ~30-entry universe directly, and this is
+    // that universe's DTO-side stand-in (`DefaultRoleDto`).
+    final allCapabilities = {
+      for (final role in workspace.defaultRoles) ...role.capabilities,
+    }.toList()..sort();
+
+    final name = TextEditingController(text: existing?.name ?? '');
+    final selected = {...(existing?.capabilities ?? const <String>[])};
+    String? cloneFrom = existing?.clonedFromRole;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setState) {
+          final canSave = name.text.trim().isNotEmpty && selected.isNotEmpty;
+
+          return AlertDialog(
+            title: Text(
+              dialogContext.t(
+                existing == null
+                    ? 'console.personnel.roleNew'
+                    : 'console.personnel.roleEditTitle',
+              ),
+            ),
+            content: SizedBox(
+              width: 460,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (existing == null &&
+                        workspace.defaultRoles.isNotEmpty) ...[
+                      Text(
+                        dialogContext.t('console.personnel.roleCloneFrom'),
+                        style: dialogContext.kilo.text.label,
+                      ),
+                      SizedBox(height: dialogContext.kilo.space.s1),
+                      DropdownButton<String?>(
+                        value: cloneFrom,
+                        isExpanded: true,
+                        hint: Text(
+                          dialogContext.t('console.personnel.roleFromScratch'),
+                        ),
+                        items: [
+                          DropdownMenuItem(
+                            child: Text(
+                              dialogContext.t(
+                                'console.personnel.roleFromScratch',
+                              ),
+                            ),
+                          ),
+                          for (final role in workspace.defaultRoles)
+                            DropdownMenuItem(
+                              value: role.name,
+                              child: Text(_roleLabel(dialogContext, role.name)),
+                            ),
+                        ],
+                        onChanged: (value) => setState(() {
+                          cloneFrom = value;
+                          final base = workspace.defaultRoles
+                              .where((role) => role.name == value)
+                              .firstOrNull;
+                          selected
+                            ..clear()
+                            ..addAll(base?.capabilities ?? const []);
+                          if (base != null && name.text.trim().isEmpty) {
+                            name.text = dialogContext.t(
+                              'console.personnel.roleClonedName',
+                              {'a1': _roleLabel(dialogContext, base.name)},
+                            );
+                          }
+                        }),
+                      ),
+                      SizedBox(height: dialogContext.kilo.space.s3),
+                    ],
+                    KField(
+                      label: dialogContext.t('console.personnel.roleName'),
+                      controller: name,
+                      autofocus: true,
+                    ),
+                    SizedBox(height: dialogContext.kilo.space.s4),
+                    Text(
+                      dialogContext.t('console.personnel.roleCapabilities'),
+                      style: dialogContext.kilo.text.label,
+                    ),
+                    SizedBox(height: dialogContext.kilo.space.s1),
+                    for (final capability in allCapabilities)
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        title: Text(_capabilityLabel(capability)),
+                        value: selected.contains(capability),
+                        onChanged: (checked) => setState(() {
+                          if (checked ?? false) {
+                            selected.add(capability);
+                          } else {
+                            selected.remove(capability);
+                          }
+                        }),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: Text(dialogContext.t('common.actions.cancel')),
+              ),
+              FilledButton(
+                onPressed: canSave
+                    ? () => Navigator.of(dialogContext).pop(true)
+                    : null,
+                child: Text(dialogContext.t('common.actions.save')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (saved != true) return;
+
+    if (existing == null) {
+      await workspace.createCustomRole(
+        name: name.text.trim(),
+        capabilities: selected.toList(),
+        clonedFromRole: cloneFrom,
+      );
+    } else {
+      await workspace.updateCustomRole(
+        roleId: existing.id,
+        name: name.text.trim(),
+        capabilities: selected.toList(),
+      );
+    }
+  }
+
+  Future<void> _confirmDeleteRole(
+    BuildContext context,
+    CustomRoleDto role,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(dialogContext.t('console.personnel.roleDelete')),
+        content: Text(
+          dialogContext.t('console.personnel.roleDeleteConfirm', {
+            'a1': role.name,
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(dialogContext.t('common.actions.cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(dialogContext.t('console.personnel.roleDelete')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await workspace.deleteCustomRole(role.id);
     }
   }
 }

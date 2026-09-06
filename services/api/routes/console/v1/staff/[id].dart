@@ -42,11 +42,13 @@ Future<Response> onRequest(RequestContext context, String id) async {
         for (final s in (rawStations as List?) ?? const []) '$s',
       ];
 
+      final customRoles = await services.console.customRoles(scope.operatorId);
       final refusal = StaffAssignment.validate(
         callerIsWholeOrg: scope.stationIds.isEmpty,
         callerStationIds: scope.stationIds,
         requestedRoles: roles,
         requestedStationIds: stationIds,
+        customRoleNames: {for (final r in customRoles) r.name},
       );
       if (refusal != null) return refusedAssignment(refusal, trace);
 

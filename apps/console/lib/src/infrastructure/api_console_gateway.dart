@@ -400,4 +400,34 @@ final class ApiConsoleGateway implements ConsoleGateway {
 
   @override
   Future<void> revokeStaff(String staffId) => _client.revokeStaff(staffId);
+
+  @override
+  Future<({List<CustomRoleDto> items, List<DefaultRoleDto> defaults})>
+  roles() => _client.roles();
+
+  @override
+  Future<CustomRoleDto> createCustomRole({
+    required String name,
+    required List<String> capabilities,
+    String? clonedFromRole,
+  }) => _client.createCustomRole(
+    name: name,
+    capabilities: capabilities,
+    clonedFromRole: clonedFromRole,
+  );
+
+  @override
+  Future<CustomRoleDto> updateCustomRole({
+    required String roleId,
+    required String name,
+    required List<String> capabilities,
+  }) => _client.updateCustomRole(
+    roleId: roleId,
+    name: name,
+    capabilities: capabilities,
+  );
+
+  @override
+  Future<void> deleteCustomRole(String roleId) =>
+      _client.deleteCustomRole(roleId);
 }

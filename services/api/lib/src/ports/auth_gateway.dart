@@ -10,6 +10,7 @@ final class Principal {
     this.tenantId,
     this.roles = const [],
     this.stationIds = const [],
+    this.customRoleCapabilities = const {},
     this.isPlatform = false,
     this.platformRole,
     this.language = 'fr',
@@ -23,6 +24,12 @@ final class Principal {
 
   final List<String> roles;
   final List<String> stationIds;
+
+  /// The capability set behind any of this operator's own custom roles that
+  /// appear in [roles] (`StaffMembership.customRoleCapabilities`, carried
+  /// through unchanged). `TenantScope.forPrincipal` merges this in alongside
+  /// `Capability.forRoles(roles)`, which only knows the built-in roles.
+  final Map<String, Set<String>> customRoleCapabilities;
 
   /// True only for our own staff, and only on the admin surface.
   final bool isPlatform;

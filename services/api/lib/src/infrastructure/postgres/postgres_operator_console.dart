@@ -2262,6 +2262,165 @@ final class PostgresOperatorConsole implements OperatorConsole {
     return rows.isNotEmpty;
   });
 
+  static CustomRoleSummary _customRoleFrom(Map<String, dynamic> row) =>
+      CustomRoleSummary(
+        id: row['id'].toString(),
+        name: row['name'] as String,
+        capabilities: [
+          for (final c in (row['capabilities'] as List?) ?? const []) '$c',
+        ],
+        clonedFromRole: row['cloned_from_role'] as String?,
+        createdAt: (row['created_at'] as DateTime).toUtc(),
+      );
+
+  static const _customRoleColumns =
+      'id, name, capabilities, cloned_from_role, created_at';
+
+  @override
+  Future<List<CustomRoleSummary>> customRoles(String operatorId) =>
+      _db.transaction(DbScope.tenant(operatorId), (tx) async {
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT $_customRoleColumns
+              FROM operator_custom_roles
+             WHERE operator_id = @operator
+             ORDER BY created_at
+          '''),
+          parameters: {'operator': TypedValue(Type.uuid, operatorId)},
+        );
+        return [for (final row in rows) _customRoleFrom(row.toColumnMap())];
+      });
+
+  @override
+  Future<CustomRoleSummary?> createCustomRole({
+    required String operatorId,
+    required String name,
+    required List<String> capabilities,
+    String? clonedFromRole,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // `ON CONFLICT ... DO NOTHING RETURNING` with an empty result is this
+    // codebase's own idiom for "refuse if a duplicate already exists" in one
+    // round trip — the same shape `postgres_operator_applications.dart` uses.
+    // `lower(name)` mirrors the migration's own unique index, so a caller who
+    // tries `Ticket_Seller` against an existing `ticket_seller` is refused
+    // here rather than silently creating a second, confusable role.
+    final rows = await tx.execute(
+      Sql.named('''
+        INSERT INTO operator_custom_roles
+          (operator_id, name, capabilities, cloned_from_role)
+        VALUES (@operator, @name, @capabilities, @clonedFrom)
+        ON CONFLICT (operator_id, lower(name)) DO NOTHING
+        RETURNING $_customRoleColumns
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'name': TypedValue(Type.text, name),
+        'capabilities': TypedValue(Type.textArray, capabilities),
+        'clonedFrom': TypedValue(Type.text, clonedFromRole),
+      },
+    );
+
+    return rows.isEmpty ? null : _customRoleFrom(rows.first.toColumnMap());
+  });
+
+  @override
+  Future<({CustomRoleSummary? role, bool nameConflict})> updateCustomRole({
+    required String operatorId,
+    required String roleId,
+    required String name,
+    required List<String> capabilities,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final existing = await tx.execute(
+      Sql.named('''
+        SELECT 1 FROM operator_custom_roles
+         WHERE operator_id = @operator AND id = @role
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'role': TypedValue(Type.uuid, roleId),
+      },
+    );
+    if (existing.isEmpty) return (role: null, nameConflict: false);
+
+    final rows = await tx.execute(
+      Sql.named('''
+        UPDATE operator_custom_roles
+           SET name = @name, capabilities = @capabilities
+         WHERE operator_id = @operator AND id = @role
+           AND NOT EXISTS (
+             SELECT 1 FROM operator_custom_roles other
+              WHERE other.operator_id = @operator
+                AND other.id <> @role
+                AND lower(other.name) = lower(@name)
+           )
+        RETURNING $_customRoleColumns
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'role': TypedValue(Type.uuid, roleId),
+        'name': TypedValue(Type.text, name),
+        'capabilities': TypedValue(Type.textArray, capabilities),
+      },
+    );
+
+    // The row exists (checked above) but the update touched nothing: the
+    // only way that happens is the NOT EXISTS guard tripping on another
+    // role's name.
+    if (rows.isEmpty) return (role: null, nameConflict: true);
+    return (
+      role: _customRoleFrom(rows.first.toColumnMap()),
+      nameConflict: false,
+    );
+  });
+
+  @override
+  Future<bool?> deleteCustomRole({
+    required String operatorId,
+    required String roleId,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final existing = await tx.execute(
+      Sql.named('''
+        SELECT name FROM operator_custom_roles
+         WHERE operator_id = @operator AND id = @role
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'role': TypedValue(Type.uuid, roleId),
+      },
+    );
+    if (existing.isEmpty) return null;
+    final name = existing.first.toColumnMap()['name'] as String;
+
+    // Refused while any active staff member still carries this role — a
+    // stranded role name on a live assignment is exactly the "row nobody can
+    // explain" `StaffAssignment.unknownRole` exists to prevent.
+    final inUse = await tx.execute(
+      Sql.named('''
+        SELECT 1 FROM operator_staff
+         WHERE operator_id = @operator AND revoked_at IS NULL
+           AND @name = ANY(roles)
+         LIMIT 1
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'name': TypedValue(Type.text, name),
+      },
+    );
+    if (inUse.isNotEmpty) return false;
+
+    await tx.execute(
+      Sql.named('''
+        DELETE FROM operator_custom_roles
+         WHERE operator_id = @operator AND id = @role
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'role': TypedValue(Type.uuid, roleId),
+      },
+    );
+    return true;
+  });
+
   // ── Encoding ──────────────────────────────────────────────────────────────
 
   static VehicleSummary _vehicle(Map<String, dynamic> r) => VehicleSummary(

@@ -149,6 +149,85 @@ void main() {
     });
   });
 
+  group('a custom role\'s capabilities travel with the membership', () {
+    // The whole reason `TenantScope.forPrincipal` stays pure and synchronous
+    // is that this join already read the custom role fresh — so this is the
+    // one place the feature can be cosmetic without a single unit test
+    // noticing: a Dart map cannot prove `operator_custom_roles` was actually
+    // joined, only a query against it can.
+    test(
+      'resolves to the capabilities stored under the role\'s name',
+      () async {
+        final signedIn = await signInWith(freshEmail());
+        final uid = signedIn.account.authUid!;
+
+        final roleRows = await fixture.rows("""
+        INSERT INTO operator_custom_roles (operator_id, name, capabilities)
+        VALUES ('${PgFixture.operatorId}', 'ticket_seller_id_${DateTime.now().microsecondsSinceEpoch}',
+                ARRAY['booking.read', 'booking.sell'])
+        RETURNING name
+      """);
+        final roleName = roleRows.single['name'] as String;
+
+        await fixture.rows("""
+        INSERT INTO operator_staff (operator_id, user_id, roles, accepted_at)
+        VALUES ('${PgFixture.operatorId}', '${signedIn.account.id}',
+                ARRAY['$roleName'], now())
+      """);
+
+        final account = await directory.byAuthUid(uid);
+        expect(account!.staff!.roles, contains(roleName));
+        expect(
+          account.staff!.customRoleCapabilities[roleName],
+          unorderedEquals(['booking.read', 'booking.sell']),
+        );
+      },
+    );
+
+    test(
+      'a role name nobody defined resolves to no extra capabilities',
+      () async {
+        final signedIn = await signInWith(freshEmail());
+        await fixture.rows("""
+        INSERT INTO operator_staff (operator_id, user_id, roles, accepted_at)
+        VALUES ('${PgFixture.operatorId}', '${signedIn.account.id}',
+                ARRAY['a_role_nobody_defined'], now())
+      """);
+
+        final account = await directory.byAuthUid(signedIn.account.authUid!);
+        expect(account!.staff!.customRoleCapabilities, isEmpty);
+      },
+    );
+
+    test(
+      'a role by the same name at a different operator grants nothing here',
+      () async {
+        final signedIn = await signInWith(freshEmail());
+        final otherRows = await fixture.rows("""
+          INSERT INTO operators (code, legal_name, trading_name, status,
+                                 market_code)
+          VALUES ('OTH-${DateTime.now().microsecondsSinceEpoch}',
+                  'Autre SARL', 'Autre', 'active', 'CG')
+          RETURNING id
+        """);
+        final otherOperatorId = otherRows.single['id'];
+
+        await fixture.rows("""
+          INSERT INTO operator_custom_roles (operator_id, name, capabilities)
+          VALUES ('$otherOperatorId', 'shared_name', ARRAY['staff.manage'])
+        """);
+        await fixture.rows("""
+          INSERT INTO operator_staff (operator_id, user_id, roles, accepted_at)
+          VALUES ('${PgFixture.operatorId}', '${signedIn.account.id}',
+                  ARRAY['shared_name'], now())
+        """);
+
+        final account = await directory.byAuthUid(signedIn.account.authUid!);
+        expect(account!.staff!.customRoleCapabilities, isEmpty);
+      },
+    );
+  });
+
   test('a first sign-in creates the account and its Firebase UID', () async {
     final email = freshEmail();
     final result = await signInWith(email);

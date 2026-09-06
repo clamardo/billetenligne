@@ -27,7 +27,16 @@ final class Problem {
     ErrorCode.staffUnknownRole ||
     ErrorCode.staffRoleNotPermitted ||
     ErrorCode.staffStationRequired ||
-    ErrorCode.staffStationNotCovered => 400,
+    ErrorCode.staffStationNotCovered ||
+    // Same reasoning as the staff refusals just above: a station-scoped
+    // caller designing a role at all, or asking for a capability they do not
+    // themselves hold, is a request the console's own screen could have
+    // refused before it was ever sent.
+    ErrorCode.customRoleCallerNotWholeOrg ||
+    ErrorCode.customRoleNameRequired ||
+    ErrorCode.customRoleNameCollidesWithDefault ||
+    ErrorCode.customRoleNoCapabilities ||
+    ErrorCode.customRoleExceedsOwnCapabilities => 400,
     ErrorCode.unauthorized ||
     ErrorCode.otpIncorrect ||
     ErrorCode.otpExpired ||
@@ -47,7 +56,9 @@ final class Problem {
     ErrorCode.holdAlreadyConsumed ||
     ErrorCode.departureSoldOut ||
     ErrorCode.idempotencyKeyReused ||
-    ErrorCode.mfaAlreadyEnrolled => 409,
+    ErrorCode.mfaAlreadyEnrolled ||
+    ErrorCode.customRoleNameInUse ||
+    ErrorCode.customRoleInUse => 409,
     // 410: the resource genuinely existed and is now gone. A hold that
     // timed out is not a 400 — the client did nothing wrong.
     ErrorCode.holdExpired || ErrorCode.holdExpiredDuringPayment => 410,

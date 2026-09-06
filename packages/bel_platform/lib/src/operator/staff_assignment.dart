@@ -42,15 +42,25 @@ final class StaffAssignment {
   /// Null on success; a reason otherwise. Pure and total: every input either
   /// passes or names exactly why it does not, so a route never has to guess
   /// which check failed.
+  ///
+  /// [customRoleNames] are this operator's own cloned roles (`CustomRole`,
+  /// resolved by the caller against the database — this function stays
+  /// DB-free). No custom role is ever a member of [stationScopedRoles]: a
+  /// custom role is always a whole-org decision, the same as `finance` or
+  /// `fleet_manager` and for the same reason (only a whole-org caller may
+  /// design one — see `CustomRoleDefinition`), so a station-scoped caller
+  /// naming one falls straight into [StaffAssignmentRefusal.roleNotPermitted]
+  /// below without a separate check.
   static StaffAssignmentRefusal? validate({
     required bool callerIsWholeOrg,
     required List<String> callerStationIds,
     required Set<String> requestedRoles,
     required List<String> requestedStationIds,
+    Set<String> customRoleNames = const {},
   }) {
     if (requestedRoles.isEmpty) return StaffAssignmentRefusal.noRoles;
     for (final role in requestedRoles) {
-      if (!knownRoles.contains(role)) {
+      if (!knownRoles.contains(role) && !customRoleNames.contains(role)) {
         return StaffAssignmentRefusal.unknownRole;
       }
     }

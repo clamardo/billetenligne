@@ -65,15 +65,18 @@ void main() {
       expect(refusal, StaffAssignmentRefusal.roleNotPermitted);
     });
 
-    test('is refused an empty station list — that would mean every station', () {
-      final refusal = StaffAssignment.validate(
-        callerIsWholeOrg: false,
-        callerStationIds: const ['station-a'],
-        requestedRoles: const {'vendor'},
-        requestedStationIds: const [],
-      );
-      expect(refusal, StaffAssignmentRefusal.stationRequired);
-    });
+    test(
+      'is refused an empty station list — that would mean every station',
+      () {
+        final refusal = StaffAssignment.validate(
+          callerIsWholeOrg: false,
+          callerStationIds: const ['station-a'],
+          requestedRoles: const {'vendor'},
+          requestedStationIds: const [],
+        );
+        expect(refusal, StaffAssignmentRefusal.stationRequired);
+      },
+    );
 
     test('is refused a station they do not themselves cover', () {
       final refusal = StaffAssignment.validate(
@@ -104,5 +107,40 @@ void main() {
       requestedStationIds: const [],
     );
     expect(refusal, StaffAssignmentRefusal.unknownRole);
+  });
+
+  group('a custom role', () {
+    test('may be granted by a whole-org caller once named', () {
+      final refusal = StaffAssignment.validate(
+        callerIsWholeOrg: true,
+        callerStationIds: const [],
+        requestedRoles: const {'ticket_seller'},
+        requestedStationIds: const [],
+        customRoleNames: const {'ticket_seller'},
+      );
+      expect(refusal, isNull);
+    });
+
+    test('is unknown until named in customRoleNames', () {
+      final refusal = StaffAssignment.validate(
+        callerIsWholeOrg: true,
+        callerStationIds: const [],
+        requestedRoles: const {'ticket_seller'},
+        requestedStationIds: const [],
+      );
+      expect(refusal, StaffAssignmentRefusal.unknownRole);
+    });
+
+    test('is never grantable by a station-scoped caller, whole-org decision '
+        'or not', () {
+      final refusal = StaffAssignment.validate(
+        callerIsWholeOrg: false,
+        callerStationIds: const ['station-a'],
+        requestedRoles: const {'ticket_seller'},
+        requestedStationIds: const [],
+        customRoleNames: const {'ticket_seller'},
+      );
+      expect(refusal, StaffAssignmentRefusal.roleNotPermitted);
+    });
   });
 }

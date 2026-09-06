@@ -170,6 +170,19 @@ final class ErrorCode {
   static const staffStationRequired = 'staff.station_required';
   static const staffStationNotCovered = 'staff.station_not_covered';
 
+  // One per [CustomRoleRefusal] value (`bel_platform`), plus the two facts
+  // only the database itself can guarantee: whether the name is already
+  // taken, and whether a role is still in use.
+  static const customRoleCallerNotWholeOrg = 'custom_role.caller_not_whole_org';
+  static const customRoleNameRequired = 'custom_role.name_required';
+  static const customRoleNameCollidesWithDefault =
+      'custom_role.name_collides_with_default';
+  static const customRoleNoCapabilities = 'custom_role.no_capabilities';
+  static const customRoleExceedsOwnCapabilities =
+      'custom_role.exceeds_own_capabilities';
+  static const customRoleNameInUse = 'custom_role.name_in_use';
+  static const customRoleInUse = 'custom_role.in_use';
+
   /// Codes a client may retry unchanged. Anything absent needs the user to do
   /// something different first, and offering "try again" would be dishonest.
   static const retryable = <String>{

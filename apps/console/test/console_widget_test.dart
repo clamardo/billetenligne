@@ -1167,13 +1167,15 @@ languages:
       List<String> capabilities = const ['staff.manage'],
       List<String> identityStationIds = const [],
       List<StaffDto> staff = const [],
+      List<CustomRoleDto> customRoles = const [],
     }) => ScriptedConsole(capabilities: capabilities)
       ..identityStationIds = identityStationIds
       ..stationList = const [
         StationDto(id: 'st-bzv', cityCode: 'BZV', name: 'Gare de Bacongo'),
         StationDto(id: 'st-pnr', cityCode: 'PNR', name: 'Gare Elf'),
       ]
-      ..staffList = staff;
+      ..staffList = staff
+      ..customRoleList = customRoles;
 
     testWidgets('a vendor gets no Personnel tab', (tester) async {
       await pump(
@@ -1334,6 +1336,156 @@ languages:
 
       expect(gateway.saved, contains('revokeStaff:staff-1'));
       expect(find.text('Révoqué'), findsOneWidget);
+    });
+
+    testWidgets("a custom role's name is shown as written, not looked up", (
+      tester,
+    ) async {
+      // `ticket_seller` has no `console.personnel.role.*` key — it is
+      // somebody's own text, not one of the nine built-in roles.
+      await pump(
+        tester,
+        personnel(
+          staff: [
+            StaffDto(
+              id: 'staff-2',
+              phone: '+242069000005',
+              roles: const ['ticket_seller'],
+              stationIds: const [],
+              invitedAt: DateTime.utc(2026, 1, 1),
+            ),
+          ],
+        ),
+      );
+      await tester.tap(find.text('Personnel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ticket_seller'), findsOneWidget);
+    });
+
+    testWidgets('a station manager sees no role design section at all', (
+      tester,
+    ) async {
+      // Designing what a role means is a whole-org decision
+      // (`CustomRoleDefinition`), the same boundary as granting `finance`.
+      await pump(tester, personnel(identityStationIds: const ['st-bzv']));
+      await tester.tap(find.text('Personnel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Nouveau rôle'), findsNothing);
+    });
+
+    testWidgets('designing a role from scratch sends the chosen capabilities', (
+      tester,
+    ) async {
+      final gateway = personnel();
+      await pump(tester, gateway);
+      await tester.tap(find.text('Personnel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Nouveau rôle'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Nom du rôle'),
+            matching: find.byType(KField),
+          ),
+          matching: find.byType(TextField),
+        ),
+        'Vendeur de billets',
+      );
+      await tester.tap(find.text('Booking Sell'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Enregistrer'));
+      await tester.pumpAndSettle();
+
+      expect(
+        gateway.saved,
+        contains('createRole:Vendeur de billets:booking.sell'),
+      );
+    });
+
+    testWidgets('cloning a default role prefills its name and capabilities', (
+      tester,
+    ) async {
+      final gateway = personnel();
+      await pump(tester, gateway);
+      await tester.tap(find.text('Personnel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Nouveau rôle'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Partir de zéro'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Guichet').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Guichet (copie)'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Enregistrer'));
+      await tester.pumpAndSettle();
+
+      expect(
+        gateway.saved,
+        contains('createRole:Guichet (copie):booking.read,booking.sell'),
+      );
+    });
+
+    testWidgets('editing a custom role can rename it and change its grants', (
+      tester,
+    ) async {
+      final gateway = personnel(
+        customRoles: [
+          CustomRoleDto(
+            id: 'role-1',
+            name: 'ticket_seller',
+            capabilities: ['booking.sell'],
+            createdAt: DateTime.utc(2026, 1, 1),
+          ),
+        ],
+      );
+      await pump(tester, gateway);
+      await tester.tap(find.text('Personnel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Modifier').last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Booking Read'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Enregistrer'));
+      await tester.pumpAndSettle();
+
+      expect(
+        gateway.saved,
+        contains('updateRole:role-1:ticket_seller:booking.sell,booking.read'),
+      );
+    });
+
+    testWidgets('deleting a custom role asks first', (tester) async {
+      final gateway = personnel(
+        customRoles: [
+          CustomRoleDto(
+            id: 'role-1',
+            name: 'ticket_seller',
+            capabilities: ['booking.sell'],
+            createdAt: DateTime.utc(2026, 1, 1),
+          ),
+        ],
+      );
+      await pump(tester, gateway);
+      await tester.tap(find.text('Personnel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Supprimer le rôle'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Supprimer le rôle'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('deleteRole:role-1'));
     });
   });
 

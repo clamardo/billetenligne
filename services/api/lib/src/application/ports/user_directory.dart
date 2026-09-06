@@ -68,6 +68,7 @@ final class StaffMembership {
     required this.operatorId,
     required this.roles,
     this.stationIds = const [],
+    this.customRoleCapabilities = const {},
   });
 
   final String operatorId;
@@ -76,6 +77,14 @@ final class StaffMembership {
   /// A vendor is scoped to their station(s): the Pointe-Noire agent must not
   /// be able to open the Brazzaville till. Empty means every station.
   final List<String> stationIds;
+
+  /// The capability set behind every one of this operator's own roles that
+  /// appears in [roles] — `Capability.forRoles` only knows the built-in
+  /// roles, so a custom role's meaning has to travel with the membership
+  /// itself. Read fresh alongside [roles] on every request, for the same
+  /// reason [roles] is: a custom role's capabilities can change between one
+  /// request and the next, and a stale copy must never outlive the edit.
+  final Map<String, Set<String>> customRoleCapabilities;
 }
 
 /// Accounts, keyed the three ways they are actually looked up.

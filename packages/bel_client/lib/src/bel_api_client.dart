@@ -814,6 +814,57 @@ final class BelApiClient {
   Future<void> revokeStaff(String staffId) =>
       _send('DELETE', '/console/v1/staff/${Uri.encodeComponent(staffId)}');
 
+  /// This operator's own roles, and the default roles any of them may be
+  /// cloned from.
+  Future<({List<CustomRoleDto> items, List<DefaultRoleDto> defaults})>
+  roles() async {
+    final body = await _get('/console/v1/roles');
+    return (
+      items: Wire.readList(
+        body['items'],
+        CustomRoleDto.fromJson,
+        field: 'items',
+      ),
+      defaults: Wire.readList(
+        body['defaults'],
+        DefaultRoleDto.fromJson,
+        field: 'defaults',
+      ),
+    );
+  }
+
+  /// Clones a default role or designs one from scratch.
+  Future<CustomRoleDto> createCustomRole({
+    required String name,
+    required List<String> capabilities,
+    String? clonedFromRole,
+  }) async => CustomRoleDto.fromJson(
+    await _postJson('/console/v1/roles', {
+      'name': name,
+      'capabilities': capabilities,
+      if (clonedFromRole != null) 'clonedFromRole': clonedFromRole,
+    }),
+  );
+
+  /// Renames a custom role and/or replaces its capability set.
+  Future<CustomRoleDto> updateCustomRole({
+    required String roleId,
+    required String name,
+    required List<String> capabilities,
+  }) async => CustomRoleDto.fromJson(
+    (await _send(
+          'PATCH',
+          '/console/v1/roles/${Uri.encodeComponent(roleId)}',
+          body: {'name': name, 'capabilities': capabilities},
+          idempotent: true,
+        )) ??
+        const {},
+  );
+
+  /// Refused (409) while any active staff member still carries this role.
+  Future<void> deleteCustomRole(String roleId) =>
+      _send('DELETE', '/console/v1/roles/${Uri.encodeComponent(roleId)}');
+
   Future<List<ScheduleDto>> schedules() async => Wire.readList(
     (await _get('/console/v1/schedules'))['items'],
     ScheduleDto.fromJson,

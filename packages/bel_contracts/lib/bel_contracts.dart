@@ -39,6 +39,7 @@ export 'src/console/layout_draft.dart';
 export 'src/console/refund_dto.dart';
 export 'src/console/refund_policy_dto.dart';
 export 'src/console/staff_dto.dart';
+export 'src/console/custom_role_dto.dart';
 export 'src/disruption/disruption_dto.dart';
 export 'src/disruption/protection_dto.dart';
 export 'src/disruption/choice_dto.dart';

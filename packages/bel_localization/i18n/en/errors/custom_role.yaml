@@ -1,0 +1,12 @@
+# Refusals from the role design dialog (ADR-0011). Each one says what the
+# form got wrong, never what the server rejected — mirrors errors/staff.yaml
+# for the same reason.
+errors:
+  custom_role:
+    caller_not_whole_org: "Only somebody who manages the whole company may design a role."
+    name_required: "Give the role a name."
+    name_collides_with_default: "That name is already one of the built-in roles."
+    no_capabilities: "Choose at least one capability."
+    exceeds_own_capabilities: "You cannot grant a capability you do not hold yourself."
+    name_in_use: "Another role already has that name."
+    in_use: "Somebody still carries this role. Reassign them first."

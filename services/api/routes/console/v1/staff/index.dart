@@ -61,15 +61,20 @@ Future<Response> onRequest(RequestContext context) async {
         for (final s in (rawStations as List?) ?? const []) '$s',
       ];
 
+      final customRoles = await services.console.customRoles(scope.operatorId);
       final refusal = StaffAssignment.validate(
         callerIsWholeOrg: scope.stationIds.isEmpty,
         callerStationIds: scope.stationIds,
         requestedRoles: roles,
         requestedStationIds: stationIds,
+        customRoleNames: {for (final r in customRoles) r.name},
       );
       if (refusal != null) return refusedAssignment(refusal, trace);
 
-      final number = PhoneNumber.parse(phone.trim(), table: services.market.msisdn);
+      final number = PhoneNumber.parse(
+        phone.trim(),
+        table: services.market.msisdn,
+      );
       if (number case Err(:final failure)) {
         return Response.json(
           statusCode: HttpStatus.badRequest,

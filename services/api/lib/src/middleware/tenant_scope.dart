@@ -21,10 +21,25 @@ final class TenantScope {
   bool coversStation(String stationId) =>
       stationIds.isEmpty || stationIds.contains(stationId);
 
+  /// The caller's own capabilities, unabridged. Every other place on this
+  /// class asks "may I do this one thing" — this one exists only for
+  /// `CustomRoleDefinition.validate`, which has to check a whole set against
+  /// another: a custom role a caller designs must never carry a capability
+  /// this set does not.
+  Set<String> get capabilities => Set.unmodifiable(_capabilities);
+
   static TenantScope? forPrincipal(Principal p) {
     final tenant = p.tenantId;
     if (tenant == null || tenant.isEmpty) return null;
-    return TenantScope._(tenant, Capability.forRoles(p.roles), p.stationIds);
+    // `Capability.forRoles` only knows the built-in roles
+    // (`Capability.operatorRoles`) — a custom role's own capabilities travel
+    // separately on the principal, because no static map can hold a set an
+    // operator defines at runtime.
+    final capabilities = {
+      ...Capability.forRoles(p.roles),
+      for (final role in p.roles) ...?p.customRoleCapabilities[role],
+    };
+    return TenantScope._(tenant, capabilities, p.stationIds);
   }
 
   @override

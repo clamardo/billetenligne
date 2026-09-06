@@ -120,6 +120,56 @@ void main() {
     });
   });
 
+  group('a custom role', () {
+    const ticketSeller = Principal(
+      userId: 'u6',
+      authUid: 'a6',
+      tenantId: 'op-odn',
+      roles: ['ticket_seller'],
+      customRoleCapabilities: {
+        'ticket_seller': {Capability.bookingRead, Capability.bookingSell},
+      },
+    );
+
+    test('grants exactly the capabilities stored against its name', () {
+      final scope = TenantScope.forPrincipal(ticketSeller)!;
+      expect(scope.can(Capability.bookingRead), isTrue);
+      expect(scope.can(Capability.bookingSell), isTrue);
+      expect(scope.can(Capability.bookingRefund), isFalse);
+      expect(scope.can(Capability.staffManage), isFalse);
+    });
+
+    test('merges with a built-in role held at the same time', () {
+      const both = Principal(
+        userId: 'u7',
+        authUid: 'a7',
+        tenantId: 'op-odn',
+        roles: ['conductor', 'ticket_seller'],
+        customRoleCapabilities: {
+          'ticket_seller': {Capability.bookingSell},
+        },
+      );
+      final scope = TenantScope.forPrincipal(both)!;
+      expect(scope.can(Capability.boardingScan), isTrue);
+      expect(scope.can(Capability.bookingSell), isTrue);
+    });
+
+    test('a name absent from customRoleCapabilities grants nothing extra', () {
+      // `Principal.roles` naming a role this map has nothing for is not a
+      // crash — it is exactly what a revoked or renamed custom role looks
+      // like on a stale request, and it must resolve to no capabilities at
+      // all rather than throwing.
+      const stale = Principal(
+        userId: 'u8',
+        authUid: 'a8',
+        tenantId: 'op-odn',
+        roles: ['ticket_seller'],
+      );
+      final scope = TenantScope.forPrincipal(stale)!;
+      expect(scope.can(Capability.bookingSell), isFalse);
+    });
+  });
+
   group('station scoping', () {
     test('a vendor is bound to their own station', () {
       final scope = TenantScope.forPrincipal(vendor)!;

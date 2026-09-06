@@ -1,0 +1,11 @@
+# Les refus de la boîte de dialogue de conception d'un rôle (ADR-0011).
+# Miroir de errors/staff.yaml, pour la même raison.
+errors:
+  custom_role:
+    caller_not_whole_org: "Seule une personne qui gère toute l'entreprise peut concevoir un rôle."
+    name_required: "Donnez un nom au rôle."
+    name_collides_with_default: "Ce nom est déjà celui d'un rôle par défaut."
+    no_capabilities: "Choisissez au moins une permission."
+    exceeds_own_capabilities: "Vous ne pouvez pas accorder une permission que vous n'avez pas vous-même."
+    name_in_use: "Un autre rôle porte déjà ce nom."
+    in_use: "Quelqu'un porte encore ce rôle. Réaffectez-le d'abord."

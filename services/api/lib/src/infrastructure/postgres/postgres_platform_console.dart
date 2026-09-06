@@ -2,7 +2,8 @@ import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart' hide Result;
 
-import '../../application/ports/operator_console.dart' show PaymentAccountSummary;
+import '../../application/ports/operator_console.dart'
+    show PaymentAccountSummary;
 import '../../application/ports/platform_console.dart';
 import '../db/database.dart';
 
@@ -358,14 +359,16 @@ final class PostgresPlatformConsole implements PlatformConsole {
     // produce one verification, not two audit rows disagreeing with a race.
     final moved = await tx.execute(
       Sql.named(switch (decision) {
-        PaymentAccountDecision.verify => '''
+        PaymentAccountDecision.verify =>
+          '''
           UPDATE operator_payment_accounts
              SET verified_at = now(), updated_at = now()
            WHERE id = @id AND operator_id = @operator
              AND active AND verified_at IS NULL
           RETURNING id, rail_id, msisdn, display_name, verified_at, active
         ''',
-        PaymentAccountDecision.reject => '''
+        PaymentAccountDecision.reject =>
+          '''
           UPDATE operator_payment_accounts
              SET active = FALSE, updated_at = now()
            WHERE id = @id AND operator_id = @operator AND active
