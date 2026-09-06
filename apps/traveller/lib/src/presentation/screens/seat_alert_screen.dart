@@ -76,6 +76,22 @@ final class SeatAlertScreen extends StatelessWidget {
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s5),
           children: [
+            Center(
+              child: Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: kilo.color.brandPrimarySoft,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.notifications_none,
+                  color: kilo.color.brandPrimary,
+                  size: 32,
+                ),
+              ),
+            ),
+            SizedBox(height: kilo.space.s4),
             Text(
               context.t('travel.alert.lead', {
                 'operator': departure.operatorName,

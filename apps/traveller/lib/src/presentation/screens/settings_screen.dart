@@ -62,93 +62,123 @@ final class SettingsScreen extends StatelessWidget {
       ),
       body: SafeArea(
         child: ListView(
-          padding: EdgeInsets.all(kilo.space.s4),
+          padding: EdgeInsets.zero,
           children: [
-            if (account != null) ...[
-              KCard(
-                child: Row(
-                  children: [
-                    KAvatar(
-                      seed: account!.id,
-                      label:
-                          account!.fullName ?? account!.phone ?? account!.email,
-                      size: KAvatarSize.large,
-                    ),
-                    SizedBox(width: kilo.space.s3),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+            // A seam, not a picture: this screen is controls, not a place to
+            // linger, and the strip is the whole enhancement it needs.
+            KPattern(
+              motif: KPatternMotif.diagonale,
+              height: 10,
+              opacity: 0.12,
+              color: kilo.color.brandPrimary,
+              background: kilo.color.surfaceBase,
+            ),
+            Padding(
+              padding: EdgeInsets.all(kilo.space.s4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (account != null) ...[
+                    KCard(
+                      child: Row(
                         children: [
-                          Text(
-                            account!.fullName ??
-                                context.t('travel.settings.you'),
-                            style: kilo.text.h3,
+                          KAvatar(
+                            seed: account!.id,
+                            label:
+                                account!.fullName ??
+                                account!.phone ??
+                                account!.email,
+                            size: KAvatarSize.large,
                           ),
-                          if (account!.phone != null || account!.email != null)
-                            Text(
-                              account!.phone ?? account!.email!,
-                              style: kilo.text.bodySm.copyWith(
-                                color: kilo.color.contentSecondary,
-                              ),
+                          SizedBox(width: kilo.space.s3),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  account!.fullName ??
+                                      context.t('travel.settings.you'),
+                                  style: kilo.text.h3,
+                                ),
+                                if (account!.phone != null ||
+                                    account!.email != null)
+                                  Text(
+                                    account!.phone ?? account!.email!,
+                                    style: kilo.text.bodySm.copyWith(
+                                      color: kilo.color.contentSecondary,
+                                    ),
+                                  ),
+                              ],
                             ),
+                          ),
                         ],
                       ),
                     ),
+                    SizedBox(height: kilo.space.s5),
                   ],
-                ),
-              ),
-              SizedBox(height: kilo.space.s5),
-            ],
-            Text(context.t('travel.settings.language'), style: kilo.text.label),
-            SizedBox(height: kilo.space.s2),
-            KCard(
-              // `KCard` is a decorated box, and a `ListTile` paints its ripple
-              // on the nearest `Material` ancestor — which without this is the
-              // page underneath, so the tap feedback is drawn behind the card
-              // and never seen. Flutter asserts on exactly this in debug.
-              child: Material(
-                color: Colors.transparent,
-                child: RadioGroup<String>(
-                  groupValue: current,
-                  onChanged: (picked) {
-                    if (picked != null && picked != current) onLanguage(picked);
-                  },
-                  child: Column(
-                    children: [
-                      for (final language in languages)
-                        RadioListTile<String>(
-                          value: language.code,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            language.nativeName,
-                            style: kilo.text.body,
-                          ),
-                        ),
-                    ],
+                  Text(
+                    context.t('travel.settings.language'),
+                    style: kilo.text.label,
                   ),
-                ),
-              ),
-            ),
-            SizedBox(height: kilo.space.s2),
-            // Said plainly, because the surprising half happens when the app
-            // is shut: a receipt at two in the morning is written in whatever
-            // this says, by a server that has never seen this screen.
-            Text(
-              context.t('travel.settings.languageNote'),
-              style: kilo.text.bodySm.copyWith(color: kilo.color.contentMuted),
-            ),
+                  SizedBox(height: kilo.space.s2),
+                  KCard(
+                    // `KCard` is a decorated box, and a `ListTile` paints its ripple
+                    // on the nearest `Material` ancestor — which without this is the
+                    // page underneath, so the tap feedback is drawn behind the card
+                    // and never seen. Flutter asserts on exactly this in debug.
+                    child: Material(
+                      color: Colors.transparent,
+                      child: RadioGroup<String>(
+                        groupValue: current,
+                        onChanged: (picked) {
+                          if (picked != null && picked != current) {
+                            onLanguage(picked);
+                          }
+                        },
+                        child: Column(
+                          children: [
+                            for (final language in languages)
+                              RadioListTile<String>(
+                                value: language.code,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(
+                                  language.nativeName,
+                                  style: kilo.text.body,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: kilo.space.s2),
+                  // Said plainly, because the surprising half happens when the app
+                  // is shut: a receipt at two in the morning is written in whatever
+                  // this says, by a server that has never seen this screen.
+                  Text(
+                    context.t('travel.settings.languageNote'),
+                    style: kilo.text.bodySm.copyWith(
+                      color: kilo.color.contentMuted,
+                    ),
+                  ),
 
-            if (held != null) ...[
-              SizedBox(height: kilo.space.s5),
-              Text(context.t('travel.settings.theme'), style: kilo.text.label),
-              SizedBox(height: kilo.space.s2),
-              KModeChoice(
-                controller: held,
-                systemLabel: context.t('travel.settings.themeSystem'),
-                lightLabel: context.t('travel.settings.themeLight'),
-                darkLabel: context.t('travel.settings.themeDark'),
+                  if (held != null) ...[
+                    SizedBox(height: kilo.space.s5),
+                    Text(
+                      context.t('travel.settings.theme'),
+                      style: kilo.text.label,
+                    ),
+                    SizedBox(height: kilo.space.s2),
+                    KModeChoice(
+                      controller: held,
+                      systemLabel: context.t('travel.settings.themeSystem'),
+                      lightLabel: context.t('travel.settings.themeLight'),
+                      darkLabel: context.t('travel.settings.themeDark'),
+                    ),
+                  ],
+                ],
               ),
-            ],
+            ),
           ],
         ),
       ),

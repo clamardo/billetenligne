@@ -304,6 +304,16 @@ final class CancelledScreen extends StatelessWidget {
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s4),
           children: [
+            Center(
+              child: KIllustration(
+                // Mirrors `TravelChosenScreen`'s outcome art: money moving
+                // reads as `payment`, seat freed with nothing owed as
+                // `success`.
+                (refunded?.minor ?? 0) > 0 ? KArt.payment : KArt.success,
+                size: 140,
+              ),
+            ),
+            SizedBox(height: kilo.space.s2),
             if (done.kind == 'release')
               Text(
                 context.t('travel.cancel.releaseDone'),

@@ -83,24 +83,36 @@ final class PaymentConfirmScreen extends StatelessWidget {
 
             // What happens next, in order. Somebody who does not know a PIN
             // prompt is coming reads the pause as a failure and taps again.
-            Text(context.t('payment.confirm.whatNext'), style: kilo.text.label),
-            SizedBox(height: kilo.space.s2),
-            for (final step in const [1, 2, 3])
-              Padding(
-                padding: EdgeInsets.only(bottom: kilo.space.s2),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('$step. ', style: kilo.text.body),
-                    Expanded(
-                      child: Text(
-                        context.t('payment.confirm.step$step'),
-                        style: kilo.text.body,
+            // A card, like the details above it — not decoration, parity: the
+            // two things worth reading on this screen should look alike.
+            KCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    context.t('payment.confirm.whatNext'),
+                    style: kilo.text.label,
+                  ),
+                  SizedBox(height: kilo.space.s2),
+                  for (final step in const [1, 2, 3])
+                    Padding(
+                      padding: EdgeInsets.only(bottom: kilo.space.s2),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('$step. ', style: kilo.text.body),
+                          Expanded(
+                            child: Text(
+                              context.t('payment.confirm.step$step'),
+                              style: kilo.text.body,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
+                ],
               ),
+            ),
 
             SizedBox(height: kilo.space.s5),
             KButton(

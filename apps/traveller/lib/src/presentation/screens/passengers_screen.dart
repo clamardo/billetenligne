@@ -79,6 +79,8 @@ class _PassengersScreenState extends State<PassengersScreen> {
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s4),
           children: [
+            Center(child: KIllustration(KArt.boarding, size: 96)),
+            SizedBox(height: kilo.space.s2),
             Text(context.t('travel.passengers.intro'), style: kilo.text.body),
             SizedBox(height: kilo.space.s4),
 

@@ -54,6 +54,8 @@ final class ReservedScreen extends StatelessWidget {
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s4),
           children: [
+            Center(child: KIllustration(KArt.boarding, size: 120)),
+            SizedBox(height: kilo.space.s2),
             KCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -74,6 +74,22 @@ final class PaymentCheckoutScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
             ] else ...[
+              Center(
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: kilo.color.brandPrimarySoft,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.open_in_new,
+                    color: kilo.color.brandPrimary,
+                    size: 32,
+                  ),
+                ),
+              ),
+              SizedBox(height: kilo.space.s4),
               Text(
                 context.t('payment.checkout.lead', {'rail': rail}),
                 style: kilo.text.bodyLg,

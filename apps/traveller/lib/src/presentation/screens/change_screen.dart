@@ -414,6 +414,8 @@ final class DepartureChangedScreen extends StatelessWidget {
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s4),
           children: [
+            Center(child: KIllustration(KArt.success, size: 140)),
+            SizedBox(height: kilo.space.s2),
             Text(
               context.t('travel.change.doneBody', {
                 'time': Format.time(applied.departsAt),

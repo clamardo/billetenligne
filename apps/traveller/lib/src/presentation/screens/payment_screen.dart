@@ -57,6 +57,8 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s4),
           children: [
+            Center(child: KIllustration(KArt.payment, size: 120)),
+            SizedBox(height: kilo.space.s2),
             KCard(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,

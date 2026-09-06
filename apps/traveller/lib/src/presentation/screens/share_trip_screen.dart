@@ -63,6 +63,8 @@ final class ShareTripScreen extends StatelessWidget {
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s4),
           children: [
+            Center(child: KIllustration(KArt.route, size: 120)),
+            SizedBox(height: kilo.space.s2),
             Text(
               context.t('travel.share.lead', {
                 'origin': booking.originCity,

@@ -40,7 +40,35 @@ final class PaymentWaitingScreen extends StatelessWidget {
           padding: EdgeInsets.all(kilo.space.s5),
           children: [
             SizedBox(height: kilo.space.s5),
-            const Center(child: CircularProgressIndicator()),
+            Center(
+              child: SizedBox(
+                width: 96,
+                height: 96,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: kilo.color.brandPrimarySoft,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(
+                      width: 96,
+                      height: 96,
+                      child: CircularProgressIndicator(),
+                    ),
+                    Icon(
+                      // Names where to look: their own handset, not this
+                      // screen — people stare at the app and miss the prompt.
+                      Icons.smartphone,
+                      color: kilo.color.brandPrimary,
+                      size: 32,
+                    ),
+                  ],
+                ),
+              ),
+            ),
             SizedBox(height: kilo.space.s5),
 
             Text(
