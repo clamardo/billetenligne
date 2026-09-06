@@ -2122,6 +2122,146 @@ final class PostgresOperatorConsole implements OperatorConsole {
     );
   });
 
+  // ── Personnel ─────────────────────────────────────────────────────────────
+  //
+  // `user_accounts` is not itself tenant-scoped — a traveller belongs to no
+  // operator — so `bel_app`'s grant on it is table-wide (0004). What keeps
+  // this join safe is `operator_staff`: RLS forces every row read here to
+  // already satisfy `operator_id = @operator`, so the join can only ever
+  // surface the account of somebody who is genuinely this operator's staff,
+  // never an arbitrary traveller. The same shape `postgres_identity.dart`
+  // uses in reverse, under `bel_identity`, to go from account to staff row.
+
+  static const _staffColumns = '''
+    s.id, s.roles, s.station_ids, s.invited_at, s.revoked_at,
+    u.phone_e164, u.full_name
+  ''';
+
+  static StaffSummary _staffFrom(Map<String, dynamic> row) => StaffSummary(
+    id: row['id'].toString(),
+    phone: row['phone_e164'] as String?,
+    fullName: row['full_name'] as String?,
+    roles: [for (final r in (row['roles'] as List?) ?? const []) '$r'],
+    stationIds: [
+      for (final s in (row['station_ids'] as List?) ?? const []) '$s',
+    ],
+    invitedAt: (row['invited_at'] as DateTime).toUtc(),
+    revokedAt: (row['revoked_at'] as DateTime?)?.toUtc(),
+  );
+
+  @override
+  Future<List<StaffSummary>> staff(String operatorId) =>
+      _db.transaction(DbScope.tenant(operatorId), (tx) async {
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT $_staffColumns
+              FROM operator_staff s
+              JOIN user_accounts u ON u.id = s.user_id
+             WHERE s.operator_id = @operator
+             ORDER BY (s.revoked_at IS NULL) DESC, s.invited_at DESC
+          '''),
+          parameters: {'operator': TypedValue(Type.uuid, operatorId)},
+        );
+        return [for (final row in rows) _staffFrom(row.toColumnMap())];
+      });
+
+  @override
+  Future<({StaffSummary? staff, bool alreadyStaff})> inviteStaff({
+    required String operatorId,
+    required String accountId,
+    required List<String> roles,
+    required List<String> stationIds,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // `xmax = 0` is Postgres's own tell for "this row was just inserted, not
+    // updated by the ON CONFLICT arm" — cheaper than a second round trip to
+    // ask whether the row existed before this statement ran, and exact where
+    // a SELECT-then-INSERT race would not be.
+    final rows = await tx.execute(
+      Sql.named('''
+        WITH upsert AS (
+          INSERT INTO operator_staff
+            (operator_id, user_id, roles, station_ids, accepted_at)
+          VALUES (@operator, @account, @roles, @stations, now())
+          ON CONFLICT (operator_id, user_id) DO UPDATE
+             SET roles = EXCLUDED.roles,
+                 station_ids = EXCLUDED.station_ids,
+                 revoked_at = NULL
+          RETURNING id, user_id, roles, station_ids, invited_at, revoked_at,
+                    (xmax = 0) AS just_inserted
+        )
+        SELECT $_staffColumns, s.just_inserted
+          FROM upsert s
+          JOIN user_accounts u ON u.id = s.user_id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'account': TypedValue(Type.uuid, accountId),
+        'roles': TypedValue(Type.textArray, roles),
+        'stations': TypedValue(Type.uuidArray, stationIds),
+      },
+    );
+
+    if (rows.isEmpty) return (staff: null, alreadyStaff: false);
+
+    final row = rows.first.toColumnMap();
+    return (
+      staff: _staffFrom(row),
+      alreadyStaff: !(row['just_inserted'] as bool),
+    );
+  });
+
+  @override
+  Future<StaffSummary?> updateStaffAssignment({
+    required String operatorId,
+    required String staffId,
+    required List<String> roles,
+    required List<String> stationIds,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        WITH updated AS (
+          UPDATE operator_staff
+             SET roles = @roles, station_ids = @stations
+           WHERE operator_id = @operator AND id = @staff
+             AND revoked_at IS NULL
+          RETURNING id, user_id, roles, station_ids, invited_at, revoked_at
+        )
+        SELECT $_staffColumns
+          FROM updated s
+          JOIN user_accounts u ON u.id = s.user_id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'staff': TypedValue(Type.uuid, staffId),
+        'roles': TypedValue(Type.textArray, roles),
+        'stations': TypedValue(Type.uuidArray, stationIds),
+      },
+    );
+
+    return rows.isEmpty ? null : _staffFrom(rows.first.toColumnMap());
+  });
+
+  @override
+  Future<bool> revokeStaff({
+    required String operatorId,
+    required String staffId,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        UPDATE operator_staff
+           SET revoked_at = now()
+         WHERE operator_id = @operator AND id = @staff AND revoked_at IS NULL
+        RETURNING id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'staff': TypedValue(Type.uuid, staffId),
+      },
+    );
+
+    return rows.isNotEmpty;
+  });
+
   // ── Encoding ──────────────────────────────────────────────────────────────
 
   static VehicleSummary _vehicle(Map<String, dynamic> r) => VehicleSummary(

@@ -160,6 +160,16 @@ final class ErrorCode {
   static const operatorNotActive = 'operator.not_active';
   static const bookingInvalidRef = 'booking.invalid_ref';
 
+  // ── Personnel (ADR-0011) ────────────────────────────────────────────────
+  // One per [StaffAssignmentRefusal] value (`bel_platform`), so a route can
+  // map the pure domain refusal straight onto the wire without inventing a
+  // second vocabulary for the same five reasons.
+  static const staffNoRoles = 'staff.no_roles';
+  static const staffUnknownRole = 'staff.unknown_role';
+  static const staffRoleNotPermitted = 'staff.role_not_permitted';
+  static const staffStationRequired = 'staff.station_required';
+  static const staffStationNotCovered = 'staff.station_not_covered';
+
   /// Codes a client may retry unchanged. Anything absent needs the user to do
   /// something different first, and offering "try again" would be dishonest.
   static const retryable = <String>{

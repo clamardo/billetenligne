@@ -668,18 +668,15 @@ final class DemoWorld {
 
   /// The agency an owner sells from.
   ///
-  /// **The second place this world cheats, and for the same reason as the
-  /// first.** `operator_staff.station_ids` is read by `PostgresIdentity` and
-  /// written by nothing anywhere in the tree — there is no route, no console
-  /// screen and no pass that attaches a person to an agency, because there is
-  /// no team-management surface at all. The column has had its DDL default
-  /// since `0001_foundation.sql` and has never held a value in production
-  /// code.
-  ///
-  /// The owner rather than a clerk, because a clerk cannot be invited either.
-  /// That is also true of the smallest operators this is built for, where the
-  /// person who owns the company is the person at the window — but here it is
-  /// the only option rather than a choice.
+  /// **Narrower than it used to be.** The console's Personnel screen now
+  /// writes `operator_staff.station_ids` for real, so a vendor invited and
+  /// scoped to one station needs no seeding at all. This still exists because
+  /// `counter_screen.dart` resolves the till from the *first* entry of
+  /// `identity.stationIds` and offers no picker — an owner is whole-org by
+  /// design (empty means every station), so without this the owner's own
+  /// session can never resolve a concrete till to sell from. That gap is in
+  /// the counter screen, not in Personnel, and is smaller: a picker, not a
+  /// missing feature.
   Future<void> _tills(String operatorId, {required String owner}) async {
     final userId = await _userIdOf(owner);
     await _seed.execute(

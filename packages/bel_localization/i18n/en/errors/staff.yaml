@@ -1,0 +1,10 @@
+# Refusals from the Personnel screen (ADR-0011). Each one says what the
+# form is missing, never what the server rejected — the person inviting is
+# looking at a form, not a server log.
+errors:
+  staff:
+    no_roles: "Choose at least one role."
+    unknown_role: "That role does not exist."
+    role_not_permitted: "You may only assign the counter and conductor roles."
+    station_required: "Choose at least one station for this role."
+    station_not_covered: "You may only assign stations you manage yourself."

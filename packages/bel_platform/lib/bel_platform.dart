@@ -38,6 +38,7 @@ export 'src/branding/brand_asset.dart';
 export 'src/operator/operator_application.dart';
 export 'src/operator/document_expiry.dart';
 export 'src/operator/onboarding_risk.dart';
+export 'src/operator/staff_assignment.dart';
 // Filed under `ticketing/` until this split, because ticketing was its first
 // caller. It is four interfaces over Ed25519 and HMAC and it was never about
 // tickets — `identity/totp.dart` needs it too, which is what forced the move:

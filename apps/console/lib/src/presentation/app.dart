@@ -9,6 +9,7 @@ import 'l10n.dart';
 import 'screens/counter_screen.dart';
 import 'screens/fleet_screen.dart';
 import 'screens/network_screen.dart';
+import 'screens/personnel_screen.dart';
 import 'screens/timetable_screen.dart';
 import 'screens/today_screen.dart';
 import 'screens/policies_screen.dart';
@@ -148,6 +149,7 @@ class _ConsoleState extends State<_Console> {
         ConsoleSection.vitrine => VitrineScreen(workspace: _work),
         ConsoleSection.finance => StatementsScreen(workspace: _work),
         ConsoleSection.protection => ProtectionScreen(workspace: _work),
+        ConsoleSection.personnel => PersonnelScreen(workspace: _work),
       },
     );
   }

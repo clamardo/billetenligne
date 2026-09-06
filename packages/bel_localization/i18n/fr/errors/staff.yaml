@@ -1,0 +1,10 @@
+# Les refus de l'écran Personnel (ADR-0011). Chacun dit ce qui manque au
+# formulaire, jamais ce que le serveur a rejeté : la personne qui invite est
+# devant un formulaire, pas devant un journal serveur.
+errors:
+  staff:
+    no_roles: "Choisissez au moins un rôle."
+    unknown_role: "Ce rôle n'existe pas."
+    role_not_permitted: "Vous ne pouvez attribuer que les rôles guichet et conducteur."
+    station_required: "Choisissez au moins une gare pour ce rôle."
+    station_not_covered: "Vous ne pouvez attribuer que les gares que vous gérez vous-même."

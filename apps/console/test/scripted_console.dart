@@ -15,6 +15,11 @@ final class ScriptedConsole implements ConsoleGateway {
   List<String> capabilities;
   ApiFailure? identityFailure;
 
+  /// Empty means whole-org, exactly as everywhere else in this codebase.
+  /// Defaults to a single station because that is what the existing
+  /// counter-station tests already assume of `st-bzv`.
+  List<String> identityStationIds = const ['st-bzv'];
+
   List<LayoutDto> layoutList = const [];
   List<VehicleDto> vehicleList = const [];
   List<DepartureBoardDto> boardList = const [];
@@ -34,7 +39,7 @@ final class ScriptedConsole implements ConsoleGateway {
       operatorId: 'op-1',
       roles: const ['org_admin'],
       capabilities: capabilities,
-      stationIds: const ['st-bzv'],
+      stationIds: identityStationIds,
     );
   }
 
@@ -750,6 +755,80 @@ final class ScriptedConsole implements ConsoleGateway {
   @override
   Future<void> revokeTicketLinks(String bookingRef) async {
     saved.add('unlink:$bookingRef');
+  }
+
+  /// This operator's staff, as the server would answer. Mutated in place by
+  /// invite/update/revoke below, exactly as the real round trip would leave
+  /// it after the console reloads the section.
+  List<StaffDto> staffList = const [];
+
+  @override
+  Future<List<StaffDto>> staff() async => staffList;
+
+  @override
+  Future<StaffDto> inviteStaff({
+    required String phone,
+    required List<String> roles,
+    required List<String> stationIds,
+    String? fullName,
+  }) async {
+    saved.add('invite:$phone:${roles.join(",")}:${stationIds.join(",")}');
+    final member = StaffDto(
+      id: 'staff-new',
+      phone: phone,
+      fullName: fullName,
+      roles: roles,
+      stationIds: stationIds,
+      invitedAt: DateTime.utc(2026, 8, 10),
+    );
+    staffList = [...staffList, member];
+    return member;
+  }
+
+  @override
+  Future<StaffDto> updateStaffAssignment({
+    required String staffId,
+    required List<String> roles,
+    required List<String> stationIds,
+  }) async {
+    saved.add(
+      'updateStaff:$staffId:${roles.join(",")}:${stationIds.join(",")}',
+    );
+    final existing = staffList.firstWhere((s) => s.id == staffId);
+    final updated = StaffDto(
+      id: existing.id,
+      phone: existing.phone,
+      fullName: existing.fullName,
+      roles: roles,
+      stationIds: stationIds,
+      invitedAt: existing.invitedAt,
+      revokedAt: existing.revokedAt,
+    );
+    staffList = [
+      for (final s in staffList)
+        if (s.id == staffId) updated else s,
+    ];
+    return updated;
+  }
+
+  @override
+  Future<void> revokeStaff(String staffId) async {
+    saved.add('revokeStaff:$staffId');
+    staffList = [
+      for (final s in staffList)
+        if (s.id == staffId)
+          StaffDto(
+            id: s.id,
+            phone: s.phone,
+            fullName: s.fullName,
+            roles: s.roles,
+            stationIds: s.stationIds,
+            invitedAt: s.invitedAt,
+            revokedAt: DateTime.utc(2026, 8, 10),
+          )
+        else
+          s,
+    ];
   }
 
   static final _sale = CounterSaleDto(

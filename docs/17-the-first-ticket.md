@@ -69,11 +69,11 @@ Do this before spending a single franc on infrastructure.
 
 ---
 
-## Two columns nothing writes
+## One column nothing writes, and one that now does
 
-Walking the demo found two gaps of the same shape, and both sit on the
+Walking the demo found two gaps of the same shape, both sitting on the
 critical path of Step 3. In each case the column exists, the reader exists,
-the migration that created it is old — and nothing in the tree has ever
+the migration that created it is old — and nothing in the tree had ever
 written a value to it.
 
 **`operator_payment_accounts.verified_at`.** `collectionAccounts()` requires
@@ -82,24 +82,32 @@ saves every account unverified *on purpose*: "a typo here sends every franc to
 a stranger, permanently." That reasoning is right. The missing half is the
 step that later says yes. Until it exists, an operator can enter their MTN
 number and no traveller can ever pay them by mobile money — the payment screen
-comes back empty, which is exactly what it did on this run.
+comes back empty, which is exactly what it did on this run. **Still open** —
+it wants a decision about who says yes: a back office reviewer, a
+micro-deposit, an SMS to the wallet.
 
 **`operator_staff.station_ids`.** Read by `PostgresIdentity` to decide which
-till a person may sell from; written nowhere. There is no team surface at all
-in the console — no route to invite a clerk, none to attach anyone to an
-agency — so the guichet says "aucune agence rattachée" to every person in
-every operator, including the owner. For a market where the first hundred
-tickets are cash across a counter, this is the screen that matters most.
+till a person may sell from — was written nowhere. There was no team surface
+at all in the console: no route to invite a clerk, none to attach anyone to
+an agency, so the guichet said "aucune agence rattachée" to every person in
+every operator, including the owner. **Now built.** A Personnel screen sits
+behind `staff.manage` — the capability ADR-0011 already grants `org_owner`,
+`org_admin` and `station_manager` — with a list, an invite dialog and an edit
+dialog. `StaffAssignment.validate` in `bel_platform` enforces the one
+restriction that matters: a station manager may grant only the two roles that
+work a till (`vendor`, `conductor`), and only at the stations they themselves
+cover, so `staff.manage` covers a shift change without ever escalating to the
+owner.
 
-`services/worker/lib/src/demo_world.dart` now seeds both directly, which is
-the only place this world writes a column no product code writes. Both
-comments say so and say why. **The demo walks; the product still cannot do
-either of these things.**
-
-Neither is large. Verification wants a decision about who says yes — a back
-office reviewer, a micro-deposit, an SMS to the wallet — and that decision is
-the whole of the work. The team surface is a list, an invite and a
-multi-select of stations, plus the capability check that already exists.
+`services/worker/lib/src/demo_world.dart`'s `_tills` still seeds the *owner's*
+row directly, and that line stays for a narrower reason than before: it is no
+longer standing in for a missing screen, it is standing in for
+`counter_screen.dart`'s own `_stationId` — the first entry of
+`identity.stationIds`, with no picker behind it — which still cannot resolve a
+concrete till for a whole-org caller. A real vendor invited through Personnel
+and scoped to one station sells at their own counter with no seeding at all;
+an owner selling in person still needs a station picker that does not exist
+yet. That gap is smaller and differently shaped, and is not this one.
 
 ---
 
@@ -143,7 +151,7 @@ Nothing on this list is engineering, and none of it can be started by me.
 ## What I can do next, today
 
 - Walk through the `terraform apply` with you, step by step, and fix what it finds
-- ~~Do a full local demo run end to end and hand you the exact commands that worked, with screenshots of each screen~~ — done 2026-08-14; the commands are in Step 1 and what it found is in *Two columns nothing writes*
+- ~~Do a full local demo run end to end and hand you the exact commands that worked, with screenshots of each screen~~ — done 2026-08-14; the commands are in Step 1 and what it found is in *One column nothing writes, and one that now does*
 - Build the two missing writers: wallet verification, and a team surface that can attach somebody to a till
 - A Play Console listing costs \$25 once, and the signed `.aab` already builds — but sideloading an APK at an agency needs no account at all, and for a pilot that is enough
 

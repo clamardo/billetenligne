@@ -276,4 +276,30 @@ abstract interface class ConsoleGateway {
 
   /// Kills every live link on a booking.
   Future<void> revokeTicketLinks(String bookingRef);
+
+  // ── Personnel ─────────────────────────────────────────────────────────────
+
+  /// Everyone who has ever held a key to this console, revoked staff
+  /// included: the list is also the record of who was trusted when.
+  Future<List<StaffDto>> staff();
+
+  /// Invites somebody by phone, or changes an existing member's roles and
+  /// stations if that phone is already staff here.
+  Future<StaffDto> inviteStaff({
+    required String phone,
+    required List<String> roles,
+    required List<String> stationIds,
+    String? fullName,
+  });
+
+  /// Changes an existing member's roles or stations without the phone.
+  Future<StaffDto> updateStaffAssignment({
+    required String staffId,
+    required List<String> roles,
+    required List<String> stationIds,
+  });
+
+  /// Instantly: the very next request from this person is a member of the
+  /// public, not their last one re-read from a stale token.
+  Future<void> revokeStaff(String staffId);
 }

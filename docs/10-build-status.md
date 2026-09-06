@@ -1,6 +1,6 @@
 # BilletEnLigne — Build Status
 
-**Updated:** 2026-08-14 · after commit *The conductor's screen learns a second language*
+**Updated:** 2026-09-06 · after commit *Somebody can finally be attached to a till*
 
 Updated on every push. Each row is either **done** — built, tested and green in
 CI — or **in progress**, with what is actually missing named rather than
@@ -11,6 +11,42 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 ---
 
 ## What the last push changed
+
+**Somebody can finally be attached to a till.** Found by walking the demo on
+2026-08-14 and not by reading the list: `operator_staff.station_ids` decided
+which agency a person may sell from since `0001_foundation.sql`, and nothing
+anywhere in the tree wrote it. There was no team surface in the console at
+all — no route to invite a clerk, none to attach anyone to an agency — so the
+guichet answered "aucune agence rattachée" to every person in every operator,
+including the owner.
+
+A **Personnel** screen now sits in the console behind `staff.manage` — the
+capability ADR-0011 already grants `org_owner`, `org_admin` and
+`station_manager` — with a list, an invite dialog and an edit dialog, each a
+multi-select of roles and stations. The restriction that matters is on
+**scope, not on capability**: a station manager holds `staff.manage` too, so a
+shift can be covered without escalating to the owner, but they may only grant
+the two roles that work a till (`vendor`, `conductor`) and only at the
+stations they themselves cover. That rule lives once, in
+`StaffAssignment.validate` in `bel_platform`, and is checked regardless of
+which surface calls it — the console's own dialog mirrors it for the form,
+never replaces it. Phone resolution happens at the route rather than inside
+the tenant-scoped port, the same split `bookings.dart`'s counter-sale flow
+already uses: no single database role spans both the identity lookup
+(`bel_identity`) and the tenant write (`bel_app`). A revoked member stays
+listed rather than being dropped, because the staff list is also the record of
+who has ever held a key to this till.
+
+`services/worker/lib/src/demo_world.dart`'s seed for the owner's own station
+scope stays, but for a narrower reason now: it stands in for
+`counter_screen.dart`'s own `_stationId`, which resolves only the first entry
+of `identity.stationIds` with no picker behind it, not for a missing
+Personnel screen. A vendor invited through Personnel and scoped to one station
+needs no seeding at all.
+
+---
+
+## What the push before that changed
 
 **The scanner is translated.** It was the last surface holding out and the
 worst one to have been holding out: about a hundred French sentences written
@@ -40,7 +76,7 @@ ticket simulator, which is absent from published builds.
 
 ---
 
-## What the push before that changed
+## And before that
 
 **A language is now a folder and a row, everywhere.** The stated requirement:
 adding Portuguese, Spanish or Mandarin should be a YAML directory under
@@ -88,7 +124,7 @@ slice.
 
 ---
 
-## And before that
+## And the demo walk before that
 
 Two defects reported from actually using the thing, and both were the same
 kind of gap the demo run turned up: a mechanism wired end to end with nothing
@@ -134,7 +170,7 @@ read no device locale and had no switcher.
 
 ---
 
-## And the demo walk before that
+## What the demo-walk push changed, and what it cost
 
 The demo was walked end to end for the first time in a while — search, seat
 map, hold, booking, mobile-money capture, counter sale, ticket, ledger — and
@@ -151,13 +187,18 @@ with no counterpart, so a dev stack could reach every failure screen and never
 the paid one — `capturingMsisdn` settles on the poll, and an explicit
 `statusScript` still wins so no existing test changed.
 
-**Open, and both on the critical path.** `operator_payment_accounts.verified_at`
-and `operator_staff.station_ids` are each read by product code, defaulted by an
-old migration, and written by nothing anywhere in the tree. The first means no
-operator can ever be paid by mobile money; the second means nobody can sell at
-a counter, because there is no team surface in the console at all. The demo
-world now seeds both directly and says in both comments that it is cheating.
-`docs/17-the-first-ticket.md` §*Two columns nothing writes* has the detail.
+**One open, one now closed.** `operator_payment_accounts.verified_at` is still
+read by product code, defaulted by an old migration, and written by nothing
+anywhere in the tree — no operator can ever be paid by mobile money until a
+verification step exists. `operator_staff.station_ids` was the same shape and
+no longer is: the console's **Personnel** screen (behind `staff.manage`) now
+invites staff and assigns them to stations for real, so a vendor scoped to one
+station needs no seeding at all. The demo world's `_tills` seed still sets the
+*owner's* row directly, but for a narrower reason now — `counter_screen.dart`
+still resolves the till from the first entry of `identity.stationIds` with no
+picker, so a whole-org owner still cannot sell in person without one.
+`docs/17-the-first-ticket.md` §*One column nothing writes, and one that now
+does* has the detail.
 
 Also worth recording: the console must be served on port 5000 or 5001, because
 `BEL__WEBORIGINS` allows only those two and the sign-in screen reports the CORS

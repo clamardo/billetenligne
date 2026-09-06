@@ -19,6 +19,7 @@ console:
     vitrine: "Vitrine"
     finance: "Versements"
     protection: "Accords"
+    personnel: "Personnel"
   signIn:
     title: "Console opérateur"
   today:
@@ -365,6 +366,39 @@ console:
     closed: "Fermée"
     close: "Fermer cette gare"
     reopen: "Rouvrir cette gare"
+  # Qui peut être affecté à un guichet (ADR-0011). Un chef de gare voit cet
+  # écran comme un propriétaire, en plus étroit : il ne peut inviter que pour
+  # les gares qu'il gère lui-même, et seulement aux rôles guichet et
+  # conducteur — la restriction vient de sa propre affectation, pas de son
+  # nom de rôle.
+  personnel:
+    title: "Personnel"
+    invite: "Inviter"
+    editTitle: "Modifier l'affectation"
+    empty: "Personne n'est encore invité."
+    phone: "Téléphone"
+    phoneHint: "Le numéro qui reçoit le code de connexion."
+    fullName: "Nom complet (facultatif)"
+    fullNameHint: "Pour reconnaître cette personne dans la liste."
+    roles: "Rôles"
+    stations: "Gares"
+    stationsHelpWholeOrg: "Laissez vide pour toutes les gares."
+    stationsHelpScoped: "Seules les gares que vous gérez sont proposées."
+    wholeOrg: "Toutes les gares"
+    revoked: "Révoqué"
+    edit: "Modifier"
+    revoke: "Révoquer"
+    revokeConfirm: "Révoquer l'accès de {a1} ? Cette personne ne pourra plus se connecter à la console."
+    role:
+      org_owner: "Propriétaire"
+      org_admin: "Administrateur"
+      finance: "Finance"
+      fleet_manager: "Responsable flotte"
+      dispatcher: "Régulateur"
+      station_manager: "Chef de gare"
+      vendor: "Guichet"
+      conductor: "Conducteur"
+      viewer: "Lecture seule"
   timetable:
     title: "Horaires"
     add: "Nouvel horaire"
@@ -620,6 +654,9 @@ console:
     counter.sold: "Vendu. Référence {a1}."
     ticketLink.sent: "Billet envoyé à {a1}. Relisez l'adresse au client."
     ticketLink.revoked: "Lien annulé. Le billet reste valable."
+    staff.invited: "Invitation envoyée à {a1}."
+    staff.updated: "Affectation mise à jour."
+    staff.revoked: "Accès révoqué."
     protection.proposed: "Proposition envoyée à {a1}. Rien n'est couvert tant qu'ils n'ont pas accepté."
     protection.accept: "Accord avec {a1} en vigueur."
     protection.decline: "Proposition de {a1} refusée."

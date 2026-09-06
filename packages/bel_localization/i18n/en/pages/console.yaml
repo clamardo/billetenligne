@@ -19,6 +19,7 @@ console:
     vitrine: "Storefront"
     finance: "Payouts"
     protection: "Agreements"
+    personnel: "Personnel"
   signIn:
     title: "Operator console"
   today:
@@ -362,6 +363,39 @@ console:
     closed: "Closed"
     close: "Close this station"
     reopen: "Reopen this station"
+  # Who can be attached to a till (ADR-0011). A station manager sees this
+  # screen the same way an owner does, only narrower: they can only invite
+  # for the stations they manage themselves, and only into the counter and
+  # conductor roles — the restriction comes from their own assignment, not
+  # from their role's name.
+  personnel:
+    title: "Personnel"
+    invite: "Invite"
+    editTitle: "Edit assignment"
+    empty: "Nobody has been invited yet."
+    phone: "Phone"
+    phoneHint: "The number that receives the sign-in code."
+    fullName: "Full name (optional)"
+    fullNameHint: "So this person is recognisable in the list."
+    roles: "Roles"
+    stations: "Stations"
+    stationsHelpWholeOrg: "Leave empty for every station."
+    stationsHelpScoped: "Only the stations you manage are offered."
+    wholeOrg: "Every station"
+    revoked: "Revoked"
+    edit: "Edit"
+    revoke: "Revoke"
+    revokeConfirm: "Revoke {a1}'s access? This person will no longer be able to sign in to the console."
+    role:
+      org_owner: "Owner"
+      org_admin: "Administrator"
+      finance: "Finance"
+      fleet_manager: "Fleet manager"
+      dispatcher: "Dispatcher"
+      station_manager: "Station manager"
+      vendor: "Counter"
+      conductor: "Conductor"
+      viewer: "Read only"
   timetable:
     title: "Timetables"
     add: "New timetable"
@@ -615,6 +649,9 @@ console:
     counter.sold: "Sold. Reference {a1}."
     ticketLink.sent: "Ticket sent to {a1}. Read the address back to the customer."
     ticketLink.revoked: "Link revoked. The ticket is still valid."
+    staff.invited: "Invitation sent to {a1}."
+    staff.updated: "Assignment updated."
+    staff.revoked: "Access revoked."
     protection.proposed: "Proposal sent to {a1}. Nothing is covered until they accept."
     protection.accept: "Agreement with {a1} is in force."
     protection.decline: "Proposal from {a1} declined."

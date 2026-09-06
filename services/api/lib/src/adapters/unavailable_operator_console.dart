@@ -216,6 +216,31 @@ final class UnavailableOperatorConsole implements OperatorConsole {
     required String msisdn,
     required String displayName,
   }) async => _refuse();
+
+  @override
+  Future<List<StaffSummary>> staff(String operatorId) async => _refuse();
+
+  @override
+  Future<({StaffSummary? staff, bool alreadyStaff})> inviteStaff({
+    required String operatorId,
+    required String accountId,
+    required List<String> roles,
+    required List<String> stationIds,
+  }) async => _refuse();
+
+  @override
+  Future<StaffSummary?> updateStaffAssignment({
+    required String operatorId,
+    required String staffId,
+    required List<String> roles,
+    required List<String> stationIds,
+  }) async => _refuse();
+
+  @override
+  Future<bool> revokeStaff({
+    required String operatorId,
+    required String staffId,
+  }) async => _refuse();
 }
 
 /// The console needs a real database and there is not one.

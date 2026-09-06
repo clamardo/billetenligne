@@ -770,6 +770,50 @@ final class BelApiClient {
     }),
   );
 
+  /// Everyone who has ever held a key to this console, revoked staff
+  /// included: the list is also the record of who was trusted when.
+  Future<List<StaffDto>> staff() async => Wire.readList(
+    (await _get('/console/v1/staff'))['items'],
+    StaffDto.fromJson,
+    field: 'items',
+  );
+
+  /// Invites somebody by phone, or changes an existing member's roles and
+  /// stations if that phone is already staff here.
+  Future<StaffDto> inviteStaff({
+    required String phone,
+    required List<String> roles,
+    required List<String> stationIds,
+    String? fullName,
+  }) async => StaffDto.fromJson(
+    await _postJson('/console/v1/staff', {
+      'phone': phone,
+      'roles': roles,
+      'stationIds': stationIds,
+      if (fullName != null && fullName.isNotEmpty) 'fullName': fullName,
+    }),
+  );
+
+  /// Changes an existing member's roles or stations without the phone.
+  Future<StaffDto> updateStaffAssignment({
+    required String staffId,
+    required List<String> roles,
+    required List<String> stationIds,
+  }) async => StaffDto.fromJson(
+    (await _send(
+          'PATCH',
+          '/console/v1/staff/${Uri.encodeComponent(staffId)}',
+          body: {'roles': roles, 'stationIds': stationIds},
+          idempotent: true,
+        )) ??
+        const {},
+  );
+
+  /// Instantly: the very next request from this person is a member of the
+  /// public, not their last one re-read from a stale token.
+  Future<void> revokeStaff(String staffId) =>
+      _send('DELETE', '/console/v1/staff/${Uri.encodeComponent(staffId)}');
+
   Future<List<ScheduleDto>> schedules() async => Wire.readList(
     (await _get('/console/v1/schedules'))['items'],
     ScheduleDto.fromJson,

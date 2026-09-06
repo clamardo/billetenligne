@@ -363,4 +363,34 @@ final class ApiConsoleGateway implements ConsoleGateway {
   @override
   Future<void> revokeTicketLinks(String bookingRef) =>
       _client.revokeTicketLinks(bookingRef);
+
+  @override
+  Future<List<StaffDto>> staff() => _client.staff();
+
+  @override
+  Future<StaffDto> inviteStaff({
+    required String phone,
+    required List<String> roles,
+    required List<String> stationIds,
+    String? fullName,
+  }) => _client.inviteStaff(
+    phone: phone,
+    roles: roles,
+    stationIds: stationIds,
+    fullName: fullName,
+  );
+
+  @override
+  Future<StaffDto> updateStaffAssignment({
+    required String staffId,
+    required List<String> roles,
+    required List<String> stationIds,
+  }) => _client.updateStaffAssignment(
+    staffId: staffId,
+    roles: roles,
+    stationIds: stationIds,
+  );
+
+  @override
+  Future<void> revokeStaff(String staffId) => _client.revokeStaff(staffId);
 }

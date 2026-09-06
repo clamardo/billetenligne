@@ -19,7 +19,15 @@ final class Problem {
     // wrong in a way retrying will not fix.
     ErrorCode.badRequest ||
     ErrorCode.emailInvalid ||
-    ErrorCode.phoneInvalid => 400,
+    ErrorCode.phoneInvalid ||
+    // A station-scoped caller asking for a role or a station outside their
+    // own reach is a request they could have checked themselves — the same
+    // console screen already knows their own station list.
+    ErrorCode.staffNoRoles ||
+    ErrorCode.staffUnknownRole ||
+    ErrorCode.staffRoleNotPermitted ||
+    ErrorCode.staffStationRequired ||
+    ErrorCode.staffStationNotCovered => 400,
     ErrorCode.unauthorized ||
     ErrorCode.otpIncorrect ||
     ErrorCode.otpExpired ||

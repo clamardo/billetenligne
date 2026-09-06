@@ -84,23 +84,11 @@ Ships without a PSP. The point is to prove inventory, ticketing, boarding and th
 - ✅ **Adding a language is a folder and a row** — the stated requirement, and four things were quietly in the way of it. Every app **hard-coded the resolution of a locale to a language**: three passed the literal `'fr'` and asked nobody, and the traveller compared `Platform.localeName` to the string `en` — which answers French for `en_GB` and throws outright on the web, where `dart:io` has no `Platform` at all. One `catalog.bestMatch` now does it everywhere, resolving each tag in the caller's own order of preference, so `fr-CA, en` reads French and `de-DE, en-GB` reads English: the list is somebody's preference and it outranks how precisely they wrote any one entry. Every app also **listed every file of every language** — thirteen entries in Dart and six `assets:` directories in its pubspec, per language, per app — so Portuguese meant editing eight files that have nothing to do with Portuguese, and the day somebody edited seven of them the eighth shipped an app that silently read half a catalog and rendered raw keys. `tool/sync_i18n.sh` flattens the bundle now and writes an index beside it, because a Flutter `assets:` entry names one directory and does not recurse; each pubspec is **one line, forever**, and each app enumerates the index rather than the file system. `PATCH /public/v1/me` validated against `config/markets.yaml`, which would have refused a language the server had the strings for — it validates against the catalog now, because which languages a *country* is marketed in is a different question from which language one *person* is written to in. And the console and the back office had no switcher at all: both carry one in the navigation rail beside the theme toggle, every language **written in its own name** from the catalog's manifest. Proved rather than asserted — a synthetic three-language catalog stood up in `catalog_test.dart` and again in the console's widget test, neither touching disk. Nothing in any app names a language, counts them, or decides which exist. **Named rather than implied:** the scanner is not translated at all — roughly a hundred French sentences written where they are shown, one `context.t` call in the whole app. A language menu on that surface would be theatre, so it does not have one yet
 - ✅ **The conductor's screen learns a second language** — the last surface holding out, and the worst one to have been. About a hundred French sentences written where they are shown, against **one** `context.t` call in the whole app: a language menu on a surface like that is theatre, so the strings came first — `pages/scanner.yaml` in both languages, every screen rewired onto it. Three of them mattered more than the count suggests. The **verdict word** — VALIDE, DÉJÀ EMBARQUÉ, MAUVAIS DÉPART — was a switch over French literals, and it is the whole message at arm's length in direct equatorial sun, which makes it the last thing that should have been readable in only one language. The **plural** on *3 embarquements envoyés* was `settled > 1 ? 's' : ''` — an appended letter standing in for a rule that belongs to a language and that the next language will not share; it goes through the catalog's plural categories now. And the **refusals** were rendered at the moment they were caught and stored as a sentence, so a conductor who switched language with a refusal on screen went on reading it in the language they had just left: the error object is stored now and the sentence is produced in `build`. The switcher sits in the coach picker's app bar rather than behind the door — that is the screen every conductor passes through every morning, and the one they are standing on when they find the handset is in a language they do not read; behind the door it would be two taps away with sixty people waiting. **Still French and deliberately so:** `demo_data.dart`, the labels on the debug ticket simulator, which is absent from published builds
 
+- ✅ **Somebody can finally be attached to a till** — found by walking the demo on 2026-08-14 and not by reading the list. `operator_staff.station_ids` decided which agency a person may sell from since `0001_foundation.sql` and nothing anywhere in the tree wrote it: no route to invite a clerk, none to attach anyone to an agency, so the guichet answered "aucune agence rattachée" to every person in every operator, including the owner. A **Personnel** screen now sits in the console behind `staff.manage` — the same capability ADR-0011 already grants to `org_owner`, `org_admin` and `station_manager` — with a list, an invite dialog and an edit dialog, each a multi-select of roles and stations. The restriction that matters is not on capability but on **scope**: a station manager holds `staff.manage` too, so a shift can be covered without escalating to the owner, but they may only grant the two roles that work a till (`vendor`, `conductor`) and only at the stations they themselves cover — enforced twice, once in `StaffAssignment.validate` in `bel_platform` so the rule is checked regardless of which surface calls it, and mirrored client-side so the form never offers what the server would refuse. Phone resolution happens at the route rather than inside the tenant-scoped port, the same split `bookings.dart`'s counter-sale flow already uses, because no single database role spans both the identity lookup and the tenant write. A revoked member stays listed rather than being dropped — the staff list is also the record of who has ever held a key to this till.
+
 ### Remaining, in dependency order
 
-**One thing, found by walking the demo on 2026-08-14 and not by reading the list.**
-
-**Nobody can be attached to a till.** `operator_staff.station_ids` decides
-which agency a person may sell from. It is read by `PostgresIdentity`, it has
-carried its DDL default since `0001_foundation.sql`, and **nothing anywhere in
-the tree writes it** — there is no team surface in the console at all: no route
-to invite a clerk, none to attach anyone to an agency. So the guichet answers
-"aucune agence rattachée" to every person in every operator, including the
-owner. This phase's exit is *cash across a counter through our console*, and
-that is the screen it happens on. It is a list, an invite and a multi-select of
-stations, against a capability check that already exists.
-
-Everything else on this phase's list is built. What is left beyond the above is
-commercial: an ACS sender number for SMS, telco merchant onboarding, and an
-anchor operator's signature.
+Everything on this phase's list is built. What is left is commercial: an ACS sender number for SMS, telco merchant onboarding, and an anchor operator's signature.
 
 The unbuilt engineering has moved to Phase 2, where it belongs: the re-accommodation plan and payout runs — both since built, along with the `config/markets.yaml` loader.
 
@@ -108,8 +96,8 @@ The unbuilt engineering has moved to Phase 2, where it belongs: the re-accommoda
 
 **Exit:** the anchor operator sells real seats through our console for real cash, and conductors board with our scanner. *Revenue: zero. Learning: maximum.*
 
-What that exit requires is built except for the till attachment above — which
-is the difference between a demo that walks and an agency that opens.
+What that exit requires is built, till attachment included — an agency can now
+open with nothing more than the console.
 
 **In parallel, from now:** Airtel and MTN merchant paperwork, the Orange Money conversation, the anchor operator LOI. **This is the actual critical path and no amount of engineering shortens it.**
 
@@ -294,6 +282,20 @@ Ten slices, V1–V10. Worth building alongside the first vertical that ships rat
 ### Suggested order
 
 **P → stays → reviews → rental → air.** Stays first because the supply is largest and the ship date is ours; reviews next because a hotel is the purchase people most want other people's opinion of; rental after because the deposit question has no clean answer yet; air last because it is the only one of the four whose gate is somebody else's signature.
+
+---
+
+## Recommended, not gated by any phase above — regional data residency
+
+[ADR-0032](adr/0032-regional-data-residency.md), **status: Proposed.** Every operator's data lives
+in one Postgres instance today, isolated by RLS (ADR-0011) but not by geography. If a regulator or
+an enterprise operator ever requires data to stay in a named jurisdiction, the recommended shape is
+a small global control plane plus one full data-plane deployment per region — copying Cogitova's
+control/data-plane separation, not its tenancy model — with the one real cost named up front: a
+protection agreement (`08-disruption.md` §5) can only be signed between two operators in the same
+region, because that transaction runs in one `COMMIT` against one database. **No customer has asked
+for this.** It is written down so the choice is made once, deliberately, rather than improvised
+under a contract deadline — not scheduled against any phase above.
 
 ---
 

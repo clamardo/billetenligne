@@ -23,6 +23,7 @@ enum ConsoleSection {
   vitrine,
   finance,
   protection,
+  personnel,
 }
 
 /// Everything the console has loaded, and what it is doing.
@@ -270,6 +271,11 @@ final class ConsoleWorkspace {
         // loading them lazily would mean an empty dropdown on first open.
         routes = await _gateway.routes();
         vehicles = await _gateway.vehicles();
+      case ConsoleSection.personnel:
+        staff = await _gateway.staff();
+        // The invite dialog offers a multi-select of stations, and cannot
+        // offer one it has not loaded.
+        stations = await _gateway.stations();
     }
   }
 
@@ -749,6 +755,46 @@ final class ConsoleWorkspace {
       active: active,
     );
     _notice = 'station.saved|$name';
+    await _loadSection();
+  });
+
+  /// Everyone who has ever held a key to this console, revoked staff
+  /// included.
+  List<StaffDto> staff = const [];
+
+  Future<void> inviteStaff({
+    required String phone,
+    required List<String> roles,
+    required List<String> stationIds,
+    String? fullName,
+  }) => _run(() async {
+    await _gateway.inviteStaff(
+      phone: phone,
+      roles: roles,
+      stationIds: stationIds,
+      fullName: fullName,
+    );
+    _notice = 'staff.invited|$phone';
+    await _loadSection();
+  });
+
+  Future<void> updateStaffAssignment({
+    required String staffId,
+    required List<String> roles,
+    required List<String> stationIds,
+  }) => _run(() async {
+    await _gateway.updateStaffAssignment(
+      staffId: staffId,
+      roles: roles,
+      stationIds: stationIds,
+    );
+    _notice = 'staff.updated';
+    await _loadSection();
+  });
+
+  Future<void> revokeStaff(String staffId) => _run(() async {
+    await _gateway.revokeStaff(staffId);
+    _notice = 'staff.revoked';
     await _loadSection();
   });
 

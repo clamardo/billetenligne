@@ -1162,6 +1162,181 @@ languages:
     });
   });
 
+  group('who can be attached to a till', () {
+    ScriptedConsole personnel({
+      List<String> capabilities = const ['staff.manage'],
+      List<String> identityStationIds = const [],
+      List<StaffDto> staff = const [],
+    }) => ScriptedConsole(capabilities: capabilities)
+      ..identityStationIds = identityStationIds
+      ..stationList = const [
+        StationDto(id: 'st-bzv', cityCode: 'BZV', name: 'Gare de Bacongo'),
+        StationDto(id: 'st-pnr', cityCode: 'PNR', name: 'Gare Elf'),
+      ]
+      ..staffList = staff;
+
+    testWidgets('a vendor gets no Personnel tab', (tester) async {
+      await pump(
+        tester,
+        ScriptedConsole(capabilities: const ['booking.read', 'booking.sell']),
+      );
+
+      expect(find.text('Personnel'), findsNothing);
+    });
+
+    testWidgets('nobody invited yet says so', (tester) async {
+      await pump(tester, personnel());
+      await tester.tap(find.text('Personnel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Personne n'est encore invité."), findsOneWidget);
+    });
+
+    testWidgets('an owner inviting a whole-org role sends no station at all', (
+      tester,
+    ) async {
+      // Empty means every station everywhere else in this codebase — an
+      // owner granting `finance` has not narrowed it to one yard, so the
+      // form must not invent a station list the caller never chose.
+      final gateway = personnel();
+      await pump(tester, gateway);
+      await tester.tap(find.text('Personnel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Inviter'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Téléphone'),
+            matching: find.byType(KField),
+          ),
+          matching: find.byType(TextField),
+        ),
+        '+242069000001',
+      );
+      await tester.tap(find.text('Finance'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Enregistrer'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('invite:+242069000001:finance:'));
+    });
+
+    testWidgets('an owner scoping a counter role to one yard sends it', (
+      tester,
+    ) async {
+      final gateway = personnel();
+      await pump(tester, gateway);
+      await tester.tap(find.text('Personnel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Inviter'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Téléphone'),
+            matching: find.byType(KField),
+          ),
+          matching: find.byType(TextField),
+        ),
+        '+242069000002',
+      );
+      await tester.tap(find.text('Guichet'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Gare Elf'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Gare Elf'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Enregistrer'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('invite:+242069000002:vendor:st-pnr'));
+    });
+
+    testWidgets('a station manager only sees the roles and yards they cover', (
+      tester,
+    ) async {
+      // `station_manager` holds `staff.manage` too (ADR-0011), so a shift
+      // can be covered without escalating to the owner — but they cannot
+      // see `finance` in the list, and the only yard offered is their own.
+      await pump(tester, personnel(identityStationIds: const ['st-bzv']));
+      await tester.tap(find.text('Personnel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Inviter'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Finance'), findsNothing);
+      expect(find.text('Guichet'), findsOneWidget);
+      expect(find.text('Gare de Bacongo'), findsOneWidget);
+      expect(find.text('Gare Elf'), findsNothing);
+    });
+
+    testWidgets(
+      'a station manager cannot save a counter role with no yard checked',
+      (tester) async {
+        await pump(tester, personnel(identityStationIds: const ['st-bzv']));
+        await tester.tap(find.text('Personnel'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Inviter'));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.descendant(
+            of: find.ancestor(
+              of: find.text('Téléphone'),
+              matching: find.byType(KField),
+            ),
+            matching: find.byType(TextField),
+          ),
+          '+242069000003',
+        );
+        await tester.tap(find.text('Guichet'));
+        await tester.pumpAndSettle();
+
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'Enregistrer'),
+              )
+              .onPressed,
+          isNull,
+        );
+      },
+    );
+
+    testWidgets('a revoked member is still listed, and marked', (tester) async {
+      final gateway = personnel(
+        staff: [
+          StaffDto(
+            id: 'staff-1',
+            phone: '+242069000004',
+            roles: const ['vendor'],
+            stationIds: const ['st-bzv'],
+            invitedAt: DateTime.utc(2026, 1, 1),
+          ),
+        ],
+      );
+      await pump(tester, gateway);
+      await tester.tap(find.text('Personnel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Révoquer'));
+      await tester.pumpAndSettle();
+      // The confirmation dialog's own button, not the tooltip trigger.
+      await tester.tap(find.widgetWithText(FilledButton, 'Révoquer'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('revokeStaff:staff-1'));
+      expect(find.text('Révoqué'), findsOneWidget);
+    });
+  });
+
   group('the statements screen', () {
     PayoutRunDto statement({int net = 3516000, String state = 'paid'}) =>
         PayoutRunDto(

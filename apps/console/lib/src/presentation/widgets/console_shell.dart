@@ -203,6 +203,9 @@ final class ConsoleShell extends StatelessWidget {
     // exists before a breakdown, not after. Writing needs `protection.manage`,
     // which the screen checks separately.
     if (w.can('booking.read')) ConsoleSection.protection,
+    // Held by org_owner, org_admin and station_manager — seeing who can sell
+    // a ticket here is the same authority as deciding who can.
+    if (w.can('staff.manage')) ConsoleSection.personnel,
   ];
 
   /// How many things on a tab are waiting on this person to answer.
@@ -221,6 +224,7 @@ final class ConsoleShell extends StatelessWidget {
     ConsoleSection.vitrine => Icons.storefront,
     ConsoleSection.finance => Icons.receipt_long,
     ConsoleSection.protection => Icons.handshake,
+    ConsoleSection.personnel => Icons.badge,
   };
 
   static String _labelKey(ConsoleSection s) => switch (s) {
@@ -233,6 +237,7 @@ final class ConsoleShell extends StatelessWidget {
     ConsoleSection.vitrine => 'console.nav.vitrine',
     ConsoleSection.finance => 'console.nav.finance',
     ConsoleSection.protection => 'console.nav.protection',
+    ConsoleSection.personnel => 'console.nav.personnel',
   };
 
   /// Notices travel as `key|arg|arg`, so the *workspace* never holds prose.

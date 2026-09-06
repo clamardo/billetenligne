@@ -714,6 +714,90 @@ abstract interface class OperatorConsole {
     required String msisdn,
     required String displayName,
   });
+
+  // ── Personnel ─────────────────────────────────────────────────────────────
+
+  /// Everyone who has ever had a key to this operator's console, revoked
+  /// staff included: reopening somebody's access should not need a database,
+  /// and neither should answering "who could sell a ticket here in March."
+  Future<List<StaffSummary>> staff(String operatorId);
+
+  /// Invites somebody already resolved to an account, or changes an existing
+  /// member's roles and stations if that account is already staff here.
+  ///
+  /// **This is the only way `operator_staff.station_ids` is ever written.**
+  /// Nobody can be attached to a till without it — the guichet answers "no
+  /// station" to every person in every operator until this exists.
+  ///
+  /// Takes [accountId] rather than a phone number on purpose, mirroring how
+  /// `bookings.dart` resolves a counter sale: turning a phone into an account
+  /// needs `services.directory`, which runs under the narrow `bel_identity`
+  /// role, while this write runs under the tenant-scoped `bel_app` role. A
+  /// single method spanning both would need one transaction holding both
+  /// roles, which does not exist and should not — so the route resolves the
+  /// phone first (`directory.forCounterSale`) and hands this the id.
+  ///
+  /// [StaffAssignment.validate] must already have passed against the
+  /// *caller's* scope before this is called — that is a pure check with no
+  /// database in it, and belongs at the route, not repeated here. What this
+  /// method itself refuses is narrower: the roles must be non-empty, because
+  /// that is a fact only the database's own constraint truly guarantees.
+  ///
+  /// `alreadyStaff` is true and `staff` is the updated row when the account
+  /// was already an active member — inviting somebody a second time is how
+  /// their roles or stations actually get changed, not an error.
+  Future<({StaffSummary? staff, bool alreadyStaff})> inviteStaff({
+    required String operatorId,
+    required String accountId,
+    required List<String> roles,
+    required List<String> stationIds,
+  });
+
+  /// Changes an existing member's roles or stations without going through
+  /// the phone lookup again — the edit screen, as opposed to the invite one.
+  /// Null when [staffId] is not an active member of this operator.
+  Future<StaffSummary?> updateStaffAssignment({
+    required String operatorId,
+    required String staffId,
+    required List<String> roles,
+    required List<String> stationIds,
+  });
+
+  /// Instantly, per the spec: this sets `revoked_at`, and the identity
+  /// surface's staff join (`postgres_identity.dart`) already filters on it —
+  /// their *next* request is a member of the public, not their last one
+  /// re-read from a stale token. True when a row was actually revoked.
+  Future<bool> revokeStaff({required String operatorId, required String staffId});
+}
+
+/// One member of an operator's staff, as the application layer sees it —
+/// distinct from [StaffDto] (`bel_contracts`), which is the wire shape a
+/// route maps this to. Kept separate because [StaffAssignmentRefusal] checks
+/// run against a caller's [TenantScope], not against a DTO already headed
+/// out over HTTP.
+final class StaffSummary {
+  const StaffSummary({
+    required this.id,
+    required this.roles,
+    required this.stationIds,
+    required this.invitedAt,
+    this.phone,
+    this.fullName,
+    this.revokedAt,
+  });
+
+  final String id;
+  final String? phone;
+  final String? fullName;
+  final List<String> roles;
+
+  /// Empty means every station — only ever true of a whole-org role.
+  final List<String> stationIds;
+
+  final DateTime invitedAt;
+  final DateTime? revokedAt;
+
+  bool get isRevoked => revokedAt != null;
 }
 
 /// A collection account, as the console shows it.
