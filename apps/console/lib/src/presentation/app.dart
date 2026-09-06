@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../application/console_workspace.dart';
 import 'l10n.dart';
+import 'screens/billing_screen.dart';
 import 'screens/counter_screen.dart';
 import 'screens/fleet_screen.dart';
 import 'screens/network_screen.dart';
@@ -148,6 +149,7 @@ class _ConsoleState extends State<_Console> {
         ConsoleSection.policies => PoliciesScreen(workspace: _work),
         ConsoleSection.vitrine => VitrineScreen(workspace: _work),
         ConsoleSection.finance => StatementsScreen(workspace: _work),
+        ConsoleSection.billing => BillingScreen(workspace: _work),
         ConsoleSection.protection => ProtectionScreen(workspace: _work),
         ConsoleSection.personnel => PersonnelScreen(workspace: _work),
       },

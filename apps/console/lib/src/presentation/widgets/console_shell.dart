@@ -199,6 +199,10 @@ final class ConsoleShell extends StatelessWidget {
     // company was paid last week, and a tab they cannot use is a tab they
     // eventually ask about.
     if (w.can('finance.read')) ConsoleSection.finance,
+    // The platform's own bill — entirely separate from the payout run above,
+    // held by finance and by whoever owns or administers the company
+    // (`04-payments.md` §6.2 note).
+    if (w.can('billing.manage')) ConsoleSection.billing,
     // Reading needs only `booking.read`: a dispatcher has to know option ③
     // exists before a breakdown, not after. Writing needs `protection.manage`,
     // which the screen checks separately.
@@ -223,6 +227,7 @@ final class ConsoleShell extends StatelessWidget {
     ConsoleSection.policies => Icons.gavel,
     ConsoleSection.vitrine => Icons.storefront,
     ConsoleSection.finance => Icons.receipt_long,
+    ConsoleSection.billing => Icons.credit_card,
     ConsoleSection.protection => Icons.handshake,
     ConsoleSection.personnel => Icons.badge,
   };
@@ -236,6 +241,7 @@ final class ConsoleShell extends StatelessWidget {
     ConsoleSection.policies => 'console.nav.policies',
     ConsoleSection.vitrine => 'console.nav.vitrine',
     ConsoleSection.finance => 'console.nav.finance',
+    ConsoleSection.billing => 'console.nav.billing',
     ConsoleSection.protection => 'console.nav.protection',
     ConsoleSection.personnel => 'console.nav.personnel',
   };

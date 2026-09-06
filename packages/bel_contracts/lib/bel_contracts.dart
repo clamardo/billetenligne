@@ -33,6 +33,7 @@ export 'src/common/headers.dart';
 export 'src/common/page.dart';
 export 'src/config/market_dto.dart';
 export 'src/compliance/compliance_dto.dart';
+export 'src/console/billing_dto.dart';
 export 'src/console/console_dto.dart';
 export 'src/console/layout_draft.dart';
 export 'src/console/refund_dto.dart';

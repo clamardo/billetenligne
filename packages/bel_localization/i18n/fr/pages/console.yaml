@@ -18,6 +18,7 @@ console:
     policies: "Conditions"
     vitrine: "Vitrine"
     finance: "Versements"
+    billing: "Abonnement"
     protection: "Accords"
     personnel: "Personnel"
   signIn:
@@ -116,6 +117,29 @@ console:
       approved: "Approuvé"
       paid: "Versé"
       void: "Annulé"
+  # L'abonnement plateforme (04-payments.md §6.2, note) — ce que la compagnie
+  # doit à la plateforme, séparé du versement ci-dessus : les deux montants ne
+  # se compensent jamais.
+  billing:
+    title: "Votre abonnement plateforme"
+    subtitle: "Ce que vous devez à la plateforme ce mois-ci — distinct de vos versements, qui ne s'y ajoutent ni ne s'en déduisent."
+    period: "Période du {from} au {to}"
+    status:
+      due: "À payer"
+      paid: "Payé"
+    paymentTypeLabel: "Mode de paiement"
+    paymentType:
+      bankTransfer: "Virement bancaire"
+      card: "Carte bancaire"
+    unavailable: "Ce mode de paiement n'est pas encore disponible sur ce déploiement. Choisissez l'autre en attendant."
+    copy: "Copier"
+    card:
+      instructions: "Ouvrez ce lien pour payer par carte. Le montant et la référence sont déjà remplis."
+    bank:
+      name: "Banque"
+      accountName: "Titulaire du compte"
+      accountNumber: "Numéro de compte"
+      reference: "Référence à indiquer"
   # Les accords de protection inter-opérateurs (08-disruption.md §5). Ce qui
   # se passe déjà sur le parvis, mis par écrit une fois : le régulateur qui
   # cherche un concurrent avec de la place à 5 h ne négocie pas un tarif sous
@@ -620,6 +644,7 @@ console:
     application.saved: "Enregistré."
     application.submitted: "Dossier envoyé pour examen."
     statement.downloaded: "Relevé téléchargé : {a1}"
+    billing.payment_type_saved: "Mode de paiement enregistré."
     vitrine.saved: "Vitrine enregistrée. « {a1} » est ce que verront les voyageurs."
     vitrine.assetSaved: "Image enregistrée. Elle apparaît déjà sur votre vitrine."
     vitrine.assetRemoved: "Image retirée. Vos initiales reprennent la place."

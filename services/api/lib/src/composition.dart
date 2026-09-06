@@ -8,11 +8,13 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
 
 import 'adapters/acs_notification_gateway.dart';
+import 'adapters/bank_transfer_billing_rail.dart';
 import 'adapters/demo_applicant_screening.dart';
 import 'adapters/fake_auth_gateway.dart';
 import 'adapters/firebase_auth_gateway.dart';
 import 'adapters/logging_notification_gateway.dart';
 import 'adapters/smtp_notification_gateway.dart';
+import 'adapters/stripe_billing_rail.dart';
 import 'adapters/styled_email_gateway.dart';
 import 'adapters/unavailable_operator_console.dart';
 import 'adapters/memory_idempotency_store.dart';
@@ -30,6 +32,7 @@ import 'adapters/mtn_momo_gateway.dart';
 import 'adapters/mtn_momo_disbursement_gateway.dart';
 import 'adapters/airtel_money_disbursement_gateway.dart';
 import 'adapters/fake_disbursement_gateway.dart';
+import 'application/ports/billing_desk.dart';
 import 'application/ports/booking_store.dart';
 import 'application/ports/ticket_issuer.dart';
 import 'application/ports/city_catalogue.dart';
@@ -45,6 +48,7 @@ import 'application/ports/operator_console.dart';
 import 'application/ports/disbursement_gateway.dart';
 import 'application/ports/payment_gateway.dart';
 import 'application/ports/payment_store.dart';
+import 'application/ports/platform_billing_rail.dart';
 import 'application/ports/operator_applications.dart';
 import 'application/ports/platform_console.dart';
 import 'application/ports/departure_catalogue.dart';
@@ -77,6 +81,7 @@ import 'infrastructure/memory/memory_seat_inventory.dart';
 import 'infrastructure/memory/memory_second_factors.dart';
 import 'infrastructure/memory/memory_operator_applications.dart';
 import 'infrastructure/memory/memory_storefronts.dart';
+import 'infrastructure/postgres/postgres_billing_desk.dart';
 import 'infrastructure/postgres/postgres_departure_catalogue.dart';
 import 'infrastructure/postgres/postgres_booking_store.dart';
 import 'infrastructure/postgres/postgres_identity.dart';
@@ -125,6 +130,8 @@ final class Services {
     required this.console,
     required this.disruptions,
     required this.payouts,
+    required this.billing,
+    required this.billingRails,
     required this.protection,
     required this.choices,
     required this.sharing,
@@ -199,6 +206,19 @@ final class Services {
   /// purpose: an operator reads their statements and cannot write one, which
   /// is what makes two-person control on money leaving mean anything.
   final PayoutDesk payouts;
+
+  /// The platform's own subscription fee (`04-payments.md` §6.2 note),
+  /// entirely separate from [payouts]: an operator reads both at once and the
+  /// two numbers never net against each other, because they are not the same
+  /// debt.
+  final BillingDesk billing;
+
+  /// The rails this deployment can bill the platform fee through, keyed by
+  /// payment type (`card` | `bank_transfer`). Two placeholders today — see
+  /// `StripeBillingRail` and `BankTransferBillingRail` — so a missing entry
+  /// here means "not configured on this deployment", answered by the console
+  /// as `available: false` rather than a broken button.
+  final Map<String, PlatformBillingRail> billingRails;
 
   /// Inter-operator protection agreements (`08-disruption.md` §5). On the
   /// tenant scope of whoever is asking, because 0019 is the one table in this
@@ -444,6 +464,12 @@ final class Services {
       console: PostgresOperatorConsole(db, timeZone: market.timeZone),
       disruptions: PostgresDisruptions(db, issuer: tickets),
       payouts: PostgresPayouts(db),
+      billing: PostgresBillingDesk(
+        db,
+        monthlyFee: _monthlyFee(env, market),
+        timeZone: market.timeZone,
+      ),
+      billingRails: _billingRailsFrom(env),
       protection: PostgresProtection(db, issuer: tickets),
       choices: PostgresPassengerChoices(db, issuer: tickets),
       sharing: PostgresTripSharing(
@@ -671,6 +697,22 @@ final class Services {
       console: const UnavailableOperatorConsole(),
       disruptions: const UnavailableDisruptionDesk(),
       payouts: const UnavailablePayouts(),
+      billing: const UnavailableBillingDesk(),
+      // Present rather than empty, like `payoutRails` above: a fresh clone's
+      // billing screen should show the same shape a real deployment does, a
+      // Stripe key it does not have simply configured with an empty one.
+      billingRails: {
+        'card': StripeBillingRail(
+          secretKey: '',
+          successUrl: Uri.parse('https://blt.cg/console/billing'),
+          cancelUrl: Uri.parse('https://blt.cg/console/billing'),
+        ),
+        'bank_transfer': const BankTransferBillingRail(
+          bankName: 'Banque Demo',
+          accountName: 'BilletEnLigne SARL',
+          accountNumber: 'CG00 0000 0000 0000 0000 0000 000',
+        ),
+      },
       protection: const UnavailableProtection(),
       choices: const NoChoices(),
       sharing: const NoTripSharing(),
@@ -991,6 +1033,58 @@ final class Services {
     // run. The fake rail keeps the funnel walkable rather than leaving a
     // payment screen with nothing on it.
     if (rails.isEmpty) rails['cg.fake_money'] = FakePaymentGateway();
+
+    return rails;
+  }
+
+  /// The platform's own flat monthly fee (`04-payments.md` §6.2 note).
+  ///
+  /// One tier at launch, so this is a single configured amount rather than a
+  /// table of plans. `BILLING__MONTHLYFEEMINOR` overrides it per deployment
+  /// without a release; the default is illustrative until a real price is
+  /// set.
+  static Money _monthlyFee(Map<String, String> env, Market market) {
+    final raw = env['BILLING__MONTHLYFEEMINOR'];
+    final parsed = raw == null ? null : int.tryParse(raw);
+    return Money(
+      parsed != null && parsed > 0 ? parsed : 25000,
+      market.currency,
+    );
+  }
+
+  /// The rails this deployment can bill the platform fee through.
+  ///
+  /// `card` is always present because `StripeBillingRail` is itself the
+  /// placeholder — it answers `available: false` on an empty key rather than
+  /// attempting a call, so there is nothing to gate here: the day a real
+  /// Stripe secret key is set, this is the one line that starts working.
+  /// `bank_transfer` is credentials-gated like the payment rails above,
+  /// because its "credentials" are this deployment's own settlement account —
+  /// with none configured, there is nowhere for a wire to land.
+  static Map<String, PlatformBillingRail> _billingRailsFrom(
+    Map<String, String> env,
+  ) {
+    final rails = <String, PlatformBillingRail>{
+      'card': StripeBillingRail(
+        secretKey: env['STRIPE__SECRETKEY'] ?? '',
+        successUrl: Uri.parse(
+          '${env['PUBLIC_BASE_URL'] ?? ''}/console/billing?paid=1',
+        ),
+        cancelUrl: Uri.parse('${env['PUBLIC_BASE_URL'] ?? ''}/console/billing'),
+        baseUrl: (env['STRIPE__BASEURL'] ?? '').isEmpty
+            ? null
+            : Uri.parse(env['STRIPE__BASEURL']!),
+      ),
+    };
+
+    final bankName = env['BANKTRANSFER__BANKNAME'] ?? '';
+    if (bankName.isNotEmpty) {
+      rails['bank_transfer'] = BankTransferBillingRail(
+        bankName: bankName,
+        accountName: env['BANKTRANSFER__ACCOUNTNAME'] ?? '',
+        accountNumber: env['BANKTRANSFER__ACCOUNTNUMBER'] ?? '',
+      );
+    }
 
     return rails;
   }

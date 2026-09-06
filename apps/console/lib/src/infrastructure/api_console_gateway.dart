@@ -203,6 +203,13 @@ final class ApiConsoleGateway implements ConsoleGateway {
   Future<List<PayoutRunDto>> statements() => _client.statements();
 
   @override
+  Future<PlatformBillingDto> billing() => _client.billing();
+
+  @override
+  Future<PlatformBillingDto> setBillingPaymentType(String paymentType) =>
+      _client.setBillingPaymentType(paymentType);
+
+  @override
   Future<({List<int> bytes, String filename, String mimeType})> statementPdf(
     String runId,
   ) async {

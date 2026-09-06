@@ -1,5 +1,6 @@
 import 'package:bel_domain/bel_domain.dart';
 
+import '../application/ports/billing_desk.dart';
 import '../application/ports/disruption_desk.dart';
 import '../application/ports/payout_desk.dart';
 import '../application/ports/operator_console.dart';
@@ -429,6 +430,26 @@ final class UnavailablePayouts implements PayoutDesk {
     required String runId,
     String? operatorId,
     String? actorUserId,
+  }) async => throw const ConsoleRequiresDatabase();
+}
+
+/// The platform subscription fee, with no database to accrue one against.
+final class UnavailableBillingDesk implements BillingDesk {
+  const UnavailableBillingDesk();
+
+  @override
+  Future<SubscriptionCharge> currentCharge(String operatorId) async =>
+      throw const ConsoleRequiresDatabase();
+
+  @override
+  Future<String> paymentType(String operatorId) async =>
+      throw const ConsoleRequiresDatabase();
+
+  @override
+  Future<Result<void, BillingRefusal>> setPaymentType({
+    required String operatorId,
+    required String paymentType,
+    required String actorUserId,
   }) async => throw const ConsoleRequiresDatabase();
 }
 

@@ -197,7 +197,36 @@ void main() {
     expect(LedgerAccount.pspClearing('airtel'), 'psp:airtel:clearing');
     expect(LedgerAccount.payableOperator('ODN'), 'payable:operator:ODN');
     expect(LedgerAccount.payableRefund('bk-1'), 'payable:refund:bk-1');
+    expect(LedgerAccount.receivableOperator('ODN'), 'receivable:operator:ODN');
     expect(LedgerAccount.suspenseUnreconciled, 'suspense:unreconciled');
+  });
+
+  group('a platform subscription fee', () {
+    test('accrues to receivable and revenue, never to payable', () {
+      final txn = Postings.subscriptionAccrued(
+        operatorId: 'ODN',
+        amount: xaf(25000),
+        memo: 'platform fee 2026-09',
+      ).valueOrNull!;
+
+      expect(balanceOf(txn), 0);
+      final byAccount = {for (final e in txn.entries) e.account: e};
+      expect(
+        byAccount['receivable:operator:ODN']!.direction,
+        LedgerDirection.debit,
+      );
+      expect(byAccount['receivable:operator:ODN']!.amount, xaf(25000));
+      expect(
+        byAccount['revenue:subscription']!.direction,
+        LedgerDirection.credit,
+      );
+      // Never touches what we owe the operator for tickets — the two billing
+      // relationships stay on separate accounts by construction.
+      expect(
+        txn.entries.map((e) => e.account),
+        isNot(contains('payable:operator:ODN')),
+      );
+    });
   });
 }
 

@@ -497,6 +497,47 @@ final class ScriptedConsole implements ConsoleGateway {
     );
   }
 
+  /// The platform's own bill, as the server would answer.
+  PlatformBillingDto billingDto = PlatformBillingDto(
+    operatorId: 'op-demo',
+    periodStart: DateTime.utc(2026, 9),
+    periodEnd: DateTime.utc(2026, 10),
+    amountDue: Money(25000, Currency.xaf),
+    status: 'due',
+    paymentType: 'bank_transfer',
+    available: true,
+    bankName: 'Banque Demo',
+    bankAccountName: 'BilletEnLigne SARL',
+    bankAccountNumber: 'CG00 0000 0000 0000 0000 0000 000',
+    reference: 'BEL-op-demo-202609',
+  );
+
+  @override
+  Future<PlatformBillingDto> billing() async {
+    saved.add('billing');
+    return billingDto;
+  }
+
+  @override
+  Future<PlatformBillingDto> setBillingPaymentType(String paymentType) async {
+    saved.add('setBillingPaymentType:$paymentType');
+    billingDto = PlatformBillingDto(
+      operatorId: billingDto.operatorId,
+      periodStart: billingDto.periodStart,
+      periodEnd: billingDto.periodEnd,
+      amountDue: billingDto.amountDue,
+      status: billingDto.status,
+      paymentType: paymentType,
+      available: billingDto.available,
+      checkoutUrl: billingDto.checkoutUrl,
+      bankName: billingDto.bankName,
+      bankAccountName: billingDto.bankAccountName,
+      bankAccountNumber: billingDto.bankAccountNumber,
+      reference: billingDto.reference,
+    );
+    return billingDto;
+  }
+
   /// The live requests, as the server would answer.
   List<ProtectionRequestDto> requestList = const [];
 

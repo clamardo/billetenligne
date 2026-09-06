@@ -37,9 +37,23 @@ abstract final class LedgerAccount {
 
   static String payableRefund(String bookingId) => 'payable:refund:$bookingId';
 
+  /// What an operator owes **us** — the mirror of [payableOperator], and
+  /// never netted against it. Ticket commission and the platform's own
+  /// subscription fee are two separate billing relationships
+  /// (`04-payments.md` §6.2), and a shared account would quietly offset a
+  /// month's platform fee against a week of good ticket sales.
+  static String receivableOperator(String operatorId) =>
+      'receivable:operator:$operatorId';
+
   static const revenueCommission = 'revenue:commission';
   static const revenueServiceFee = 'revenue:service_fee';
   static const revenueRescheduleFee = 'revenue:reschedule_fee';
+
+  /// The flat monthly platform fee (`04-payments.md` §6.2 note) — distinct
+  /// from [revenueCommission], which is netted out of a ticket sale.
+  /// Nothing here scales with ticket volume; it exists whether or not a
+  /// single seat sold this month.
+  static const revenueSubscription = 'revenue:subscription';
   static const expensePspFees = 'expense:psp_fees';
 
   /// Money we cannot yet attribute. Watched daily; an item older than 48 h is
@@ -393,6 +407,37 @@ abstract final class Postings {
         LedgerEntry.credit(LedgerAccount.revenueServiceFee, serviceFee),
     ]);
   }
+
+  /// A month's platform subscription fee, accrued the moment it becomes due
+  /// — never when it is actually paid (`04-payments.md` §6.2 note).
+  ///
+  /// ```
+  /// DR  receivable:operator:<id>       amount
+  ///     CR  revenue:subscription             amount
+  /// ```
+  ///
+  /// Deliberately independent of [railCapture] and the payout run: this fee
+  /// is owed whether the operator sold one ticket this month or none, and
+  /// settling it — the operator actually paying — is a second posting the
+  /// day the money is confirmed, not this one. Conflating the two billing
+  /// relationships is the mistake this posting exists not to make.
+  static Result<LedgerTransaction, DomainFailure> subscriptionAccrued({
+    required String operatorId,
+    required Money amount,
+    required String memo,
+  }) => LedgerTransaction.balanced([
+    LedgerEntry.debit(
+      LedgerAccount.receivableOperator(operatorId),
+      amount,
+      operatorId: operatorId,
+      memo: memo,
+    ),
+    LedgerEntry.credit(
+      LedgerAccount.revenueSubscription,
+      amount,
+      operatorId: operatorId,
+    ),
+  ]);
 }
 
 /// Splits an amount across weights so the parts sum **exactly** to the whole.

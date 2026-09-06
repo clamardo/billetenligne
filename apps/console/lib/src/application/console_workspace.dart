@@ -22,6 +22,7 @@ enum ConsoleSection {
   policies,
   vitrine,
   finance,
+  billing,
   protection,
   personnel,
 }
@@ -104,6 +105,11 @@ final class ConsoleWorkspace {
   /// being paid does not get to move the row that pays them, and the server
   /// enforces that with a grant rather than with a missing button.
   List<PayoutRunDto> statements = const [];
+
+  /// What this operator owes the platform this month, and how to pay it
+  /// (`04-payments.md` §6.2 note) — the platform's own bill, entirely
+  /// separate from [statements]. Null until the billing section is opened.
+  PlatformBillingDto? billing;
 
   /// Open calls for room on roads we run, ours and other people's, plus
   /// whether we are in the channel at all (`08-disruption.md` §5).
@@ -256,6 +262,8 @@ final class ConsoleWorkspace {
         vitrine = await _gateway.vitrine();
       case ConsoleSection.finance:
         statements = await _gateway.statements();
+      case ConsoleSection.billing:
+        billing = await _gateway.billing();
       case ConsoleSection.protection:
         agreements = await _gateway.protectionAgreements();
         requests = await _gateway.protectionRequests();
@@ -899,6 +907,15 @@ final class ConsoleWorkspace {
         mimeType: file.mimeType,
       );
       _notice = 'statement.downloaded|${file.filename}';
+    });
+  }
+
+  /// Changes which rail this operator intends to pay the platform fee with,
+  /// and reloads the instructions for whichever one that is now.
+  Future<void> saveBillingPaymentType(String paymentType) async {
+    await _run(() async {
+      billing = await _gateway.setBillingPaymentType(paymentType);
+      _notice = 'billing.payment_type_saved';
     });
   }
 

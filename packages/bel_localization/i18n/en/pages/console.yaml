@@ -18,6 +18,7 @@ console:
     policies: "Terms"
     vitrine: "Storefront"
     finance: "Payouts"
+    billing: "Billing"
     protection: "Agreements"
     personnel: "Personnel"
   signIn:
@@ -115,6 +116,29 @@ console:
       approved: "Approved"
       paid: "Paid"
       void: "Voided"
+  # The platform subscription fee (`04-payments.md` §6.2, note) — what the
+  # company owes the platform, separate from the payout above: the two
+  # amounts never net against each other.
+  billing:
+    title: "Your platform subscription"
+    subtitle: "What you owe the platform this month — separate from your payouts, which neither add to it nor subtract from it."
+    period: "Period {from} to {to}"
+    status:
+      due: "Due"
+      paid: "Paid"
+    paymentTypeLabel: "Payment method"
+    paymentType:
+      bankTransfer: "Bank transfer"
+      card: "Card"
+    unavailable: "This payment method is not available on this deployment yet. Choose the other one for now."
+    copy: "Copy"
+    card:
+      instructions: "Open this link to pay by card. The amount and reference are already filled in."
+    bank:
+      name: "Bank"
+      accountName: "Account holder"
+      accountNumber: "Account number"
+      reference: "Reference to quote"
   # Inter-operator protection agreements (08-disruption.md §5). What already
   # happens on the forecourt, written down once: the dispatcher looking for a
   # competitor with room at 05:00 is not negotiating a rate in the rain.
@@ -615,6 +639,7 @@ console:
     application.saved: "Saved."
     application.submitted: "Application sent for review."
     statement.downloaded: "Statement downloaded: {a1}"
+    billing.payment_type_saved: "Payment method saved."
     vitrine.saved: "Storefront saved. Travellers will see \"{a1}\"."
     vitrine.assetSaved: "Image saved. It is on your storefront already."
     vitrine.assetRemoved: "Image removed. Your initials take its place again."

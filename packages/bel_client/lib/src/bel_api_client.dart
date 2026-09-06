@@ -909,6 +909,24 @@ final class BelApiClient {
     field: 'items',
   );
 
+  /// What this operator owes the platform this month, and how to pay it
+  /// (`04-payments.md` §6.2 note) — entirely separate from [statements],
+  /// which is the platform paying the operator.
+  Future<PlatformBillingDto> billing() async =>
+      PlatformBillingDto.fromJson(await _get('/console/v1/billing'));
+
+  /// Changes which rail to pay the platform fee with. Answers with the same
+  /// shape [billing] does, so the screen can show what a card checkout or a
+  /// bank transfer now looks like without a second round trip.
+  Future<PlatformBillingDto> setBillingPaymentType(String paymentType) async =>
+      PlatformBillingDto.fromJson(
+        await _send(
+          'PUT',
+          '/console/v1/billing',
+          body: SetBillingPaymentTypeRequest(paymentType: paymentType).toJson(),
+        ).then((body) => body ?? const {}),
+      );
+
   /// One statement as the document an accountant files (`04-payments.md`
   /// §6.2).
   ///

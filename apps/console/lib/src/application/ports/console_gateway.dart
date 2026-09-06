@@ -89,6 +89,14 @@ abstract interface class ConsoleGateway {
     String runId,
   );
 
+  /// What this operator owes the platform this month, and how to pay it
+  /// (`04-payments.md` §6.2 note) — the platform's own bill, entirely
+  /// separate from [statements].
+  Future<PlatformBillingDto> billing();
+
+  /// Changes which rail to pay the platform fee with.
+  Future<PlatformBillingDto> setBillingPaymentType(String paymentType);
+
   /// Standing protection agreements, in either role (`08-disruption.md` §5).
   Future<List<ProtectionAgreementDto>> protectionAgreements();
 

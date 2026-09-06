@@ -43,6 +43,15 @@ final class Capability {
   static const payoutApprove = 'payout.approve';
   static const settlementAccountEdit = 'operator.settlement_account.edit';
 
+  /// Reading what the operator owes the platform this month, and choosing
+  /// which rail to pay it with (`04-payments.md` §6.2 note). Separate from
+  /// [financeRead] — that is the payout run, money coming in from us; this
+  /// is the platform's own bill, money going the other way — and separate
+  /// from [payoutApprove] and [settlementAccountEdit] for the same reason
+  /// those two are separate from each other: a different weight of
+  /// consequence than either.
+  static const billingManage = 'billing.manage';
+
   // Platform
   static const operatorReview = 'platform.operator.review';
   static const operatorSuspend = 'platform.operator.suspend';
@@ -70,6 +79,7 @@ final class Capability {
       // by fresh 2FA and a 24 h cooling-off, because settlement-account
       // takeover is the highest-value fraud against a platform like this.
       settlementAccountEdit,
+      billingManage,
     },
     'org_admin': {
       bookingRead,
@@ -90,8 +100,9 @@ final class Capability {
       staffManage,
       financeRead,
       protectionManage,
+      billingManage,
     },
-    'finance': {bookingRead, financeRead, bookingRefundAboveCap},
+    'finance': {bookingRead, financeRead, bookingRefundAboveCap, billingManage},
     'fleet_manager': {bookingRead, fleetManage},
     'dispatcher': {
       bookingRead,
