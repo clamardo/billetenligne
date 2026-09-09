@@ -238,6 +238,16 @@ class _FunnelState extends State<_Funnel> {
         account: widget.signIn.account,
       );
     }
+    // A change that owes money hands the screen to the payment funnel, and
+    // the tickets layer is still the one on top. Its own arm for this step
+    // draws a spinner and says the payment flow owns the screen from here —
+    // which the ordering below made untrue, so the handover ended on a
+    // "Loading payment methods…" that never resolved even once the options
+    // had arrived. Paying wins for this one step, which also makes that arm
+    // what its comment claims: what somebody sees after backing out.
+    if (_paying && widget.tickets.step is ChangeAwaitingPayment) {
+      return _paymentScreen(context);
+    }
     if (_viewingTickets) return _ticketsScreen(context);
     if (_paying) return _paymentScreen(context);
 

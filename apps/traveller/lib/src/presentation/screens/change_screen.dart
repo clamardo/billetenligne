@@ -241,23 +241,20 @@ final class _Pending extends StatelessWidget {
             ),
           ),
           SizedBox(height: kilo.space.s3),
-          Row(
-            children: [
-              Expanded(
-                child: KButton(
-                  label: context.t('travel.change.pendingPay'),
-                  onPressed: busy ? null : onPay,
-                ),
-              ),
-              SizedBox(width: kilo.space.s2),
-              Expanded(
-                child: KButton(
-                  label: context.t('travel.change.pendingCancel'),
-                  tone: KButtonTone.secondary,
-                  onPressed: busy ? null : onCancel,
-                ),
-              ),
-            ],
+          // Stacked, not side by side. Two `Expanded` buttons take half the
+          // card each whatever is written on them, and "Pay" is two letters
+          // against "Cancel this change" — which arrived on screen as
+          // "Cancel this c…", an action nobody should have to guess at. It
+          // is also how the ticket card already stacks its three.
+          KButton(
+            label: context.t('travel.change.pendingPay'),
+            onPressed: busy ? null : onPay,
+          ),
+          SizedBox(height: kilo.space.s2),
+          KButton(
+            label: context.t('travel.change.pendingCancel'),
+            tone: KButtonTone.secondary,
+            onPressed: busy ? null : onCancel,
           ),
         ],
       ),
