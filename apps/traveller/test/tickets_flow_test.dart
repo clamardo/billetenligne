@@ -77,6 +77,33 @@ BookingDto _booking({
   ],
 );
 
+/// A road with the first of two places behind the coach.
+TripJourneyDto _journey({
+  required DateTime departsAt,
+  required DateTime arrivesAt,
+  String tier = 'checkpoint',
+}) => TripJourneyDto(
+  departsAt: departsAt,
+  arrivesAt: arrivesAt,
+  status: 'departed',
+  tier: tier,
+  progress: 0.4,
+  reportedAt: tier == 'schedule'
+      ? null
+      : departsAt.add(const Duration(hours: 3)),
+  checkpointName: tier == 'schedule' ? null : 'Dolisie',
+  stops: [
+    JourneyStopDto(
+      name: 'Dolisie',
+      offsetMinutes: 180,
+      passedAt: tier == 'schedule'
+          ? null
+          : departsAt.add(const Duration(hours: 3)),
+    ),
+    const JourneyStopDto(name: 'Nkayi', offsetMinutes: 300),
+  ],
+);
+
 void main() {
   late ScriptedGatewayFactory gateway;
   late _FixedClock clock;
@@ -355,6 +382,96 @@ void main() {
       expect((flow.step as ViewingTicket).ticket!.seatLabel, '1A');
     });
 
+    // ── J6: where the coach is, read through the booking ──
+    //
+    // The claim under test is never "the request was made". It is that the
+    // ticket draws first and the road arrives behind it: a passenger at a
+    // coach door in a dead zone must get the QR they came for.
+    test('the road arrives behind a ticket that is already on screen', () async {
+      final booking = _booking(
+        id: 'moving',
+        departsAt: now.subtract(const Duration(hours: 2)),
+      );
+      gateway.bookingsResult = [booking];
+      gateway.journeyResult = _journey(
+        departsAt: booking.departsAt,
+        arrivesAt: booking.arrivesAt,
+      );
+      await flow.load();
+
+      flow.open(booking);
+
+      // Drawn before anything has been asked for. This is the assertion that
+      // keeps ADR-0003 true on the one screen it is about.
+      expect((flow.step as ViewingTicket).journey, isNull);
+
+      await pumpEventQueue();
+
+      expect((flow.step as ViewingTicket).journey?.tier, 'checkpoint');
+      expect(gateway.journeyCalls, ['BEL-moving']);
+    });
+
+    test('no signal costs the passenger nothing but the road', () async {
+      final booking = _booking(
+        id: 'tunnel',
+        departsAt: now.subtract(const Duration(hours: 2)),
+      );
+      gateway.bookingsResult = [booking];
+      gateway.journeyFailure = const NetworkUnreachable();
+      await flow.load();
+
+      flow.open(booking);
+      await pumpEventQueue();
+
+      // Still the ticket, still no failure step. The road is the thing that
+      // is allowed to be missing here; the QR is not.
+      final step = flow.step as ViewingTicket;
+      expect(step.journey, isNull);
+      expect(step.ticket, isNotNull);
+    });
+
+    test('a trip that already arrived is not asked about', () async {
+      final booking = _booking(
+        id: 'history',
+        departsAt: now.subtract(const Duration(days: 3)),
+      );
+      gateway.bookingsResult = [booking];
+      await flow.load();
+
+      flow.open(booking);
+      await pumpEventQueue();
+
+      // A request that costs a passenger data to be told their coach arrived
+      // last Tuesday, which they know.
+      expect(gateway.journeyCalls, isEmpty);
+    });
+
+    test('moving between passengers keeps the road on screen', () async {
+      final family = _booking(
+        id: 'together',
+        departsAt: now.subtract(const Duration(hours: 1)),
+        seats: 2,
+      );
+      gateway.bookingsResult = [family];
+      gateway.journeyResult = _journey(
+        departsAt: family.departsAt,
+        arrivesAt: family.arrivesAt,
+      );
+      await flow.load();
+
+      flow.open(family);
+      await pumpEventQueue();
+      expect((flow.step as ViewingTicket).journey, isNotNull);
+
+      flow.showSeat(1);
+
+      // Carried across. Two passengers on one booking are on one coach, and
+      // blanking the road on every swipe would be a flicker with no fact
+      // behind it.
+      expect((flow.step as ViewingTicket).journey, isNotNull);
+      expect(gateway.journeyCalls, hasLength(1));
+    });
+
     test('a receipt goes straight to the ticket it paid for', () async {
       gateway.bookingsResult = [
         _booking(id: 'other', departsAt: now.add(const Duration(days: 2))),
@@ -405,6 +522,131 @@ void main() {
         find.text('${code.substring(0, 3)} ${code.substring(3)}'),
         findsOneWidget,
       );
+    });
+
+    // ── J6: the tier label is not optional ──
+    //
+    // ADR-0014 closes with the instruction to resist drawing more confidence
+    // than the data has, and this screen is where that instruction is worth
+    // the most: a passenger who reads a position when nobody reported one
+    // rings an agency at Dolisie to ask why the coach is not where the app
+    // says.
+    testWidgets('says who reported the coach, and where it was', (
+      tester,
+    ) async {
+      final catalog = await loadTestCatalog();
+      final booking = _booking(
+        id: 'road',
+        departsAt: now.subtract(const Duration(hours: 3)),
+      );
+
+      await tester.pumpWidget(
+        Localized(
+          catalog: catalog,
+          child: MaterialApp(
+            theme: KiloTheme.materialTheme(),
+            home: TicketScreen(
+              booking: booking,
+              ticket: booking.tickets.single,
+              seatIndex: 0,
+              onClose: () {},
+              clock: clock,
+              journey: _journey(
+                departsAt: booking.departsAt,
+                arrivesAt: booking.arrivesAt,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Nkayi'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      // The road, in the order it runs.
+      expect(find.text('Dolisie'), findsWidgets);
+      expect(find.text('Nkayi'), findsOneWidget);
+      // And what is still ahead, said rather than left blank.
+      expect(find.text('Encore à venir'), findsOneWidget);
+    });
+
+    testWidgets('with nothing reported, it says so in as many words', (
+      tester,
+    ) async {
+      final catalog = await loadTestCatalog();
+      final booking = _booking(
+        id: 'quiet',
+        departsAt: now.subtract(const Duration(hours: 3)),
+      );
+
+      await tester.pumpWidget(
+        Localized(
+          catalog: catalog,
+          child: MaterialApp(
+            theme: KiloTheme.materialTheme(),
+            home: TicketScreen(
+              booking: booking,
+              ticket: booking.tickets.single,
+              seatIndex: 0,
+              onClose: () {},
+              clock: clock,
+              journey: _journey(
+                departsAt: booking.departsAt,
+                arrivesAt: booking.arrivesAt,
+                tier: 'schedule',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.textContaining("aucune position n'a été signalée"),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      // The same reviewed sentence the follower page shows, from the same
+      // catalog key, because it is the same claim.
+      expect(
+        find.textContaining("aucune position n'a été signalée"),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a ticket with no road draws exactly as it always has', (
+      tester,
+    ) async {
+      final catalog = await loadTestCatalog();
+      final booking = _booking(
+        id: 'offline',
+        departsAt: now.add(const Duration(hours: 2)),
+      );
+
+      await tester.pumpWidget(
+        Localized(
+          catalog: catalog,
+          child: MaterialApp(
+            theme: KiloTheme.materialTheme(),
+            home: TicketScreen(
+              booking: booking,
+              ticket: booking.tickets.single,
+              seatIndex: 0,
+              onClose: () {},
+              clock: clock,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Nothing here fetches (ADR-0003). A passenger in a dead zone gets the
+      // QR and no heading over an empty box.
+      expect(find.byType(QrImageView), findsOneWidget);
+      expect(find.text('Où est le car'), findsNothing);
     });
 
     testWidgets('a void ticket says so and still shows', (tester) async {

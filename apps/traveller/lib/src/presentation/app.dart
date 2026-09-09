@@ -562,26 +562,28 @@ class _FunnelState extends State<_Funnel> {
         cityNames: {for (final c in _flow.cities) c.code: c.name},
       ),
 
-      ViewingTicket(:final booking, :final seatIndex) => switch (step.ticket) {
-        // A booking with no ticket cannot reach this step — the flow refuses
-        // to open one — so this arm is the type system's, not a state.
-        null => const SizedBox.shrink(),
-        final ticket => TicketScreen(
-          booking: booking,
-          ticket: ticket,
-          seatIndex: seatIndex,
-          clock: widget.clock,
-          onSeat: widget.tickets.showSeat,
-          onClose: widget.tickets.closeTicket,
-          onShare: () => widget.tickets.openSharing(booking),
-          // Only where there is something to choose. A delay declared as the
-          // operator's fault opens the entitlement; anything else is a
-          // notice, and a button leading to one option is a dead end.
-          onChoices: booking.disruption?.marksInvoluntary == true
-              ? () => widget.tickets.openChoices(booking)
-              : null,
-        ),
-      },
+      ViewingTicket(:final booking, :final seatIndex, :final journey) =>
+        switch (step.ticket) {
+          // A booking with no ticket cannot reach this step — the flow refuses
+          // to open one — so this arm is the type system's, not a state.
+          null => const SizedBox.shrink(),
+          final ticket => TicketScreen(
+            booking: booking,
+            ticket: ticket,
+            seatIndex: seatIndex,
+            journey: journey,
+            clock: widget.clock,
+            onSeat: widget.tickets.showSeat,
+            onClose: widget.tickets.closeTicket,
+            onShare: () => widget.tickets.openSharing(booking),
+            // Only where there is something to choose. A delay declared as the
+            // operator's fault opens the entitlement; anything else is a
+            // notice, and a button leading to one option is a dead end.
+            onChoices: booking.disruption?.marksInvoluntary == true
+                ? () => widget.tickets.openChoices(booking)
+                : null,
+          ),
+        },
 
       ChoosingTravel(:final choices, :final busy, :final failure) =>
         TravelChoiceScreen(

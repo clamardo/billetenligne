@@ -999,6 +999,27 @@ final class PgFixture {
     return rows.first.toColumnMap()['s'] as String;
   }
 
+  /// Puts a booking into a state the fixture cannot reach by paying — a
+  /// traveller who cancelled last week.
+  ///
+  /// Through the seed connection because what is under test is the *read*,
+  /// and driving it through the cancellation use case would make this a test
+  /// of that instead.
+  Future<void> setBookingState(String bookingId, String state) async {
+    await _seed.execute(
+      Sql.named('''
+        UPDATE bookings SET state = @state::booking_state,
+               cancelled_at = CASE WHEN @state = 'cancelled' THEN now() END
+         WHERE id = @id
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, bookingId),
+        'state': TypedValue(Type.text, state),
+      },
+      ignoreRows: true,
+    );
+  }
+
   /// The market's own calendar day for a departure — the question the
   /// dispatcher's board is actually asked.
   ///

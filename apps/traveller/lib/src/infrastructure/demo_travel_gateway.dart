@@ -718,6 +718,50 @@ final class DemoTravelGateway implements TravelGateway {
   @override
   Future<void> revokeTripShare(String bookingRef) async => _share = null;
 
+  /// The demo road: three named places on the RN1, with the first two behind
+  /// the coach.
+  ///
+  /// Tier 2 on purpose, and with the third stop still ahead. The states
+  /// nobody sees in development are the ones that ship broken, and "half a
+  /// road confirmed" is the state this screen is actually for — a full one
+  /// and an empty one both hide the question of what the bar does between
+  /// the last tap and the timetable.
+  @override
+  Future<TripJourneyDto?> tripJourney(String bookingRef) async {
+    final booking = _byRef(bookingRef);
+    if (!booking.isPaid) return null;
+
+    final total = booking.arrivesAt.difference(booking.departsAt).inMinutes;
+    final stops = [
+      JourneyStopDto(
+        name: 'Kinkala',
+        offsetMinutes: (total * 0.2).round(),
+        passedAt: booking.departsAt.add(
+          Duration(minutes: (total * 0.21).round()),
+        ),
+      ),
+      JourneyStopDto(
+        name: 'Nkayi',
+        offsetMinutes: (total * 0.55).round(),
+        passedAt: booking.departsAt.add(
+          Duration(minutes: (total * 0.58).round()),
+        ),
+      ),
+      JourneyStopDto(name: 'Dolisie', offsetMinutes: (total * 0.8).round()),
+    ];
+
+    return TripJourneyDto(
+      departsAt: booking.departsAt,
+      arrivesAt: booking.arrivesAt,
+      status: 'departed',
+      tier: TrackingTier.checkpoint.name,
+      progress: 0.58,
+      reportedAt: stops[1].passedAt,
+      checkpointName: stops[1].name,
+      stops: stops,
+    );
+  }
+
   @override
   Future<ChangeOptionsDto> changeOptions(String bookingRef) async {
     final booking = _byRef(bookingRef);

@@ -52,6 +52,63 @@ final class FollowedTrip {
   final DateTime? revisedDepartsAt;
 }
 
+/// One place on the road, as the passenger's ticket lists it.
+final class JourneyStop {
+  const JourneyStop({
+    required this.name,
+    required this.offsetMinutes,
+    this.passedAt,
+  });
+
+  /// The station if the stop names one, the city otherwise — the name a
+  /// person on the coach would use for where they just were.
+  final String name;
+
+  /// Minutes into the run. What puts the list in road order without the
+  /// screen having to know anything about roads.
+  final int offsetMinutes;
+
+  /// When the conductor confirmed the coach past it, on the conductor's own
+  /// clock. Null for everywhere still ahead.
+  final DateTime? passedAt;
+
+  bool get isBehind => passedAt != null;
+}
+
+/// The journey a ticket holder is on (J6).
+///
+/// The same facts a follower gets from [FollowedTrip], read through the
+/// booking instead of through a token, plus the stop list — a passenger on
+/// the coach is looking at the road they are on, not at a bar.
+///
+/// Deliberately **not** the operator's name, the route code or the cities:
+/// they came with the booking and the screen already has them. Sending them
+/// again would be a second copy that can disagree with the first.
+final class TripJourney {
+  const TripJourney({
+    required this.departsAt,
+    required this.arrivesAt,
+    required this.status,
+    required this.progress,
+    required this.stops,
+    this.revisedDepartsAt,
+  });
+
+  final DateTime departsAt;
+  final DateTime arrivesAt;
+
+  /// The dispatcher's new time when a delay has been declared. Present
+  /// because the progress below is measured from it — an estimate drawn from
+  /// a departure that did not happen is worse than no estimate.
+  final DateTime? revisedDepartsAt;
+
+  final String status;
+  final TripProgress progress;
+
+  /// In the order the road runs, with what is behind marked.
+  final List<JourneyStop> stops;
+}
+
 /// Sharing a trip, and following one (ADR-0014 §2).
 ///
 /// Two callers with nothing in common: a traveller holding a session, and a
@@ -94,6 +151,24 @@ abstract interface class TripSharing {
   /// that somebody took it away from them, which is a conversation the
   /// traveller did not ask to start.
   Future<FollowedTrip?> follow({required String token, required DateTime now});
+
+  /// Where the passenger's own coach has got to (J6).
+  ///
+  /// On this port rather than on one of its own, because it and [follow] are
+  /// two doors into the same room. Keeping them side by side is what makes it
+  /// obvious that neither may ever be able to answer with something the other
+  /// would not — the follower's read has always been the careful one, and a
+  /// journey read that grew a passenger list somewhere else in the tree would
+  /// be much harder to notice.
+  ///
+  /// Null for a booking that is not this traveller's, is not paid for, or was
+  /// cancelled. Somebody who cancelled last week is not on that coach, and
+  /// where it has got to stopped being their business.
+  Future<TripJourney?> journey({
+    required String bookingRef,
+    required String userId,
+    required DateTime now,
+  });
 }
 
 /// The fakes composition, which has no database to share a trip out of.
@@ -126,6 +201,13 @@ final class NoTripSharing implements TripSharing {
   @override
   Future<FollowedTrip?> follow({
     required String token,
+    required DateTime now,
+  }) async => null;
+
+  @override
+  Future<TripJourney?> journey({
+    required String bookingRef,
+    required String userId,
     required DateTime now,
   }) async => null;
 }

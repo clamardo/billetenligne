@@ -399,6 +399,18 @@ final class _ScriptedGateway implements TravelGateway {
     shareResult = null;
   }
 
+  /// What the ticket screen will find above the QR, and what it asked for.
+  TripJourneyDto? journeyResult;
+  Object? journeyFailure;
+  final journeyCalls = <String>[];
+
+  @override
+  Future<TripJourneyDto?> tripJourney(String bookingRef) async {
+    journeyCalls.add(bookingRef);
+    if (journeyFailure != null) throw journeyFailure!;
+    return journeyResult;
+  }
+
   // ── The passenger's own choice ────────────────────────────────────────────
 
   /// What the choice screen will find, and what the tap returns. Both

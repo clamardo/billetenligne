@@ -9,6 +9,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../l10n.dart';
 import '../widgets/disruption_strip.dart';
+import '../widgets/journey_card.dart';
 import '../widgets/formatting.dart';
 
 /// The ticket. The thing the whole product exists to hand somebody.
@@ -36,6 +37,7 @@ final class TicketScreen extends StatefulWidget {
     this.onSeat,
     this.onChoices,
     this.onShare,
+    this.journey,
     this.clock = const SystemClock(),
     super.key,
   });
@@ -44,6 +46,15 @@ final class TicketScreen extends StatefulWidget {
   final TicketDto ticket;
   final int seatIndex;
   final VoidCallback onClose;
+
+  /// Where the coach has got to (J6), when the flow has managed to ask.
+  ///
+  /// Optional, and that is the whole of how this screen keeps its promise.
+  /// Nothing here fetches: the QR and the rotating code are computed on the
+  /// device from what came with the booking, so a ticket in a dead zone draws
+  /// exactly as it always has and the road is simply absent. A ticket that
+  /// waited on a request is not a ticket (ADR-0003).
+  final TripJourneyDto? journey;
 
   /// Moves between the tickets of one booking. A family of four is one
   /// booking and four QRs, scanned in turn.
@@ -321,6 +332,16 @@ class _TicketScreenState extends State<TicketScreen> {
                 ],
               ),
             ),
+
+            // Below the QR, because the ticket is what this screen is for,
+            // and above the share button, because a passenger who can see
+            // where the coach is is the one most likely to send that to
+            // somebody. Absent entirely when nobody could ask — see the
+            // field's own note.
+            if (widget.journey != null) ...[
+              SizedBox(height: kilo.space.s4),
+              JourneyCard(journey: widget.journey!),
+            ],
 
             if (booking.tickets.length > 1) ...[
               SizedBox(height: kilo.space.s3),

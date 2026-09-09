@@ -376,6 +376,23 @@ final class BelApiClient {
     }
   }
 
+  /// Where this booking's coach has got to (J6, ADR-0014 §1).
+  ///
+  /// Null when there is nothing to follow — a booking that is not this
+  /// traveller's, was never paid for, or was cancelled. Never an error the
+  /// ticket screen has to render: the ticket is the thing that must always
+  /// draw, and the road is what appears above it when it arrives.
+  Future<TripJourneyDto?> tripJourney(String bookingRef) async {
+    try {
+      return TripJourneyDto.fromJson(
+        await _get('/public/v1/bookings/$bookingRef/journey'),
+      );
+    } on ServerRefused catch (failure) {
+      if (failure.status == 404) return null;
+      rethrow;
+    }
+  }
+
   Future<void> revokeTripShare(String bookingRef) => _send(
     'DELETE',
     '/public/v1/bookings/$bookingRef/share',

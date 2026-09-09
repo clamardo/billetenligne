@@ -170,6 +170,15 @@ travel:
     disruptedNewTime: "Nouveau départ prévu à {time}"
     disruptedFree: "Aucun frais : échange ou remboursement intégral."
     disruptedCounter: "Présentez-vous au guichet {operator} ou appelez l'agence."
+    # J6. Le voyageur qui tient le billet voit la même route que la page du
+    # suiveur, lue à travers sa réservation et non à travers un lien. La ligne
+    # de confiance au-dessus est `follow.tier.*` — la même phrase relue sur
+    # les deux surfaces, parce que c'est la même affirmation.
+    journey:
+      title: "Où est le car"
+      passedAt: "Passé à {time}"
+      ahead: "Encore à venir"
+      arrival: "Arrivée prévue {time}"
   # L'écran de choix du passager (08-disruption.md §3.2). Trois règles y sont
   # tenues : une option est déjà attribuée — personne n'est laissé sans place
   # pendant qu'il réfléchit —, chaque ligne dit l'heure d'ARRIVÉE, et le

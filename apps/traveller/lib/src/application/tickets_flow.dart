@@ -41,13 +41,27 @@ final class TicketsReady extends TicketsStep {
 
 /// One booking, full screen, with its QR.
 final class ViewingTicket extends TicketsStep {
-  const ViewingTicket({required this.booking, required this.seatIndex});
+  const ViewingTicket({
+    required this.booking,
+    required this.seatIndex,
+    this.journey,
+  });
 
   final BookingDto booking;
 
   /// Which passenger's ticket is showing. A family of four is one booking and
   /// four tickets, and the conductor scans each of them in turn.
   final int seatIndex;
+
+  /// Where the coach has got to (J6), once it has arrived — and null until
+  /// then, or for good on a handset with no signal.
+  ///
+  /// **Never blocks the ticket.** The QR and the rotating code are computed
+  /// on the device from what came with the booking, and a ticket that waited
+  /// on a request before drawing would be a ticket that does not work at a
+  /// coach door (ADR-0003). This step is emitted without it and re-emitted
+  /// with it.
+  final TripJourneyDto? journey;
 
   List<TicketDto> get tickets => booking.tickets;
 
@@ -369,6 +383,42 @@ final class TicketsFlow {
   void open(BookingDto booking, {int seatIndex = 0}) {
     if (booking.tickets.isEmpty) return;
     _emit(ViewingTicket(booking: booking, seatIndex: seatIndex));
+    unawaited(_loadJourney(booking));
+  }
+
+  /// Where the coach is, fetched behind the ticket that is already on screen.
+  ///
+  /// Not awaited by [open] and deliberately silent when it fails: the ticket
+  /// is the thing that has to draw, and a passenger in a dead zone gets the
+  /// QR they came for rather than an apology about a road.
+  ///
+  /// Asked only for a coach that has not finished. A journey read on last
+  /// month's booking is a request that costs a passenger data to be told the
+  /// coach arrived, which they know.
+  Future<void> _loadJourney(BookingDto booking) async {
+    if (!booking.isPaid) return;
+    if (!booking.arrivesAt.isAfter(_clock.now())) return;
+
+    final TripJourneyDto? journey;
+    try {
+      journey = await _gateway.tripJourney(booking.ref);
+    } on Object {
+      return;
+    }
+    if (journey == null) return;
+
+    // The passenger may have moved to another seat, or closed the ticket
+    // entirely, while this was in flight. Re-emitted only onto the booking it
+    // was asked for.
+    final current = _step;
+    if (current is! ViewingTicket || current.booking.ref != booking.ref) return;
+    _emit(
+      ViewingTicket(
+        booking: current.booking,
+        seatIndex: current.seatIndex,
+        journey: journey,
+      ),
+    );
   }
 
   /// Loads the list and goes straight to one booking's ticket — the path from
@@ -394,6 +444,10 @@ final class TicketsFlow {
       ViewingTicket(
         booking: current.booking,
         seatIndex: (index % count + count) % count,
+        // Carried across. Moving between two passengers on one booking is not
+        // a new journey, and refetching it would blank the road for a second
+        // every time somebody swipes.
+        journey: current.journey,
       ),
     );
   }

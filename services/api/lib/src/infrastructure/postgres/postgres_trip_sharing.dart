@@ -170,6 +170,135 @@ final class PostgresTripSharing implements TripSharing {
     );
   });
 
+  @override
+  Future<TripJourney?> journey({
+    required String bookingRef,
+    required String userId,
+    required DateTime now,
+  }) => _db.transaction(DbScope.traveller(userId), (tx) async {
+    // No user clause. `bookings` is under `bookings_public_own`, so a
+    // reference belonging to somebody else resolves to nothing here — the
+    // isolation is the schema's, and a WHERE clause repeating it would be the
+    // second place to look when the two disagreed.
+    //
+    // `confirmed` is stated anyway, because that one is not a tenancy rule:
+    // an unpaid reservation has no trip to be on and a cancelled booking has
+    // stopped having one.
+    final header = await tx.execute(
+      Sql.named('''
+        SELECT d.id AS departure_id, d.departs_at, d.arrives_at,
+               d.status::text AS status, dis.revised_departs_at
+          FROM bookings b
+          JOIN departures d ON d.id = b.departure_id
+          LEFT JOIN disruptions dis
+                 ON dis.departure_id = d.id AND dis.resolved_at IS NULL
+         WHERE b.ref = @ref AND b.state = 'confirmed'
+      '''),
+      parameters: {'ref': TypedValue(Type.text, bookingRef)},
+    );
+    if (header.isEmpty) return null;
+
+    final h = header.first.toColumnMap();
+    final departureId = h['departure_id'].toString();
+
+    // The road, and the taps on it. `route_stops` and `departure_checkpoints`
+    // are both readable here — the first has been public since 0005, the
+    // second since 0051, and only for the coaches this traveller holds a
+    // confirmed booking on.
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT COALESCE(st.name, ci.name_fr) AS name,
+               rs.offset_minutes,
+               c.passed_at
+          FROM departures d
+          JOIN route_stops rs ON rs.route_id = d.route_id
+          JOIN cities ci ON ci.code = rs.city_code
+          LEFT JOIN stations st ON st.id = rs.station_id
+          LEFT JOIN departure_checkpoints c
+                 ON c.departure_id = d.id AND c.route_stop_id = rs.id
+         WHERE d.id = @departure
+         ORDER BY rs.sequence
+      '''),
+      parameters: {'departure': TypedValue(Type.uuid, departureId)},
+    );
+
+    final stops = [
+      for (final row in rows)
+        () {
+          final r = row.toColumnMap();
+          return JourneyStop(
+            name: r['name']! as String,
+            offsetMinutes: r['offset_minutes']! as int,
+            passedAt: r['passed_at'] as DateTime?,
+          );
+        }(),
+    ];
+
+    final departsAt = h['departs_at']! as DateTime;
+    final arrivesAt = h['arrives_at']! as DateTime;
+    final revised = h['revised_departs_at'] as DateTime?;
+
+    return TripJourney(
+      departsAt: departsAt,
+      arrivesAt: arrivesAt,
+      revisedDepartsAt: revised,
+      status: h['status']! as String,
+      progress: _journeyProgress(
+        stops,
+        now: now,
+        departsAt: revised ?? departsAt,
+        arrivesAt: arrivesAt,
+      ),
+      stops: stops,
+    );
+  });
+
+  /// The same honesty rule as [_progress], off the stop list rather than off a
+  /// row `followed_trip` assembled.
+  ///
+  /// **The furthest one down the road, not the last one tapped.** A conductor
+  /// who remembers Kinkala at Nkayi has confirmed two places, and how far
+  /// along the coach is is a fact about the road — a bar that walked backwards
+  /// after a tap would make the tap look like a mistake.
+  ///
+  /// The denominator is this departure's own length rather than the route's
+  /// nominal `duration_minutes`. The stop's offset is minutes into *this* run,
+  /// and the two can disagree on a run that was scheduled long.
+  static TripProgress _journeyProgress(
+    List<JourneyStop> stops, {
+    required DateTime now,
+    required DateTime departsAt,
+    required DateTime arrivesAt,
+  }) {
+    JourneyStop? last;
+    for (final stop in stops) {
+      if (stop.isBehind &&
+          (last == null || stop.offsetMinutes > last.offsetMinutes)) {
+        last = stop;
+      }
+    }
+
+    if (last == null) {
+      return scheduledProgress(
+        now: now,
+        departsAt: departsAt,
+        arrivesAt: arrivesAt,
+      );
+    }
+
+    return checkpointProgress(
+      now: now,
+      departsAt: departsAt,
+      arrivesAt: arrivesAt,
+      last: Checkpoint.onRoad(
+        name: last.name,
+        offsetMinutes: last.offsetMinutes,
+        durationMinutes: arrivesAt.difference(departsAt).inMinutes,
+        passedAt: last.passedAt!,
+      ),
+    );
+  }
+
   /// The best tier this row can honestly support.
   ///
   /// Never dressed up: a confirmed waypoint carries the conductor's clock and

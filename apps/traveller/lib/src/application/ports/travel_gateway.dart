@@ -117,6 +117,14 @@ abstract interface class TravelGateway {
 
   Future<void> revokeTripShare(String bookingRef);
 
+  /// Where this booking's coach has got to (J6, ADR-0014 §1).
+  ///
+  /// Read through the booking, never through a share token: a passenger
+  /// holding a ticket needs no link to see their own coach. Null when there
+  /// is nothing to follow — cancelled, unpaid, or not theirs — which is not
+  /// an error and must not reach the ticket screen as one.
+  Future<TripJourneyDto?> tripJourney(String bookingRef);
+
   // ── Changing their mind ───────────────────────────────────────────────────
 
   /// What cancelling this booking would do (§8.2).

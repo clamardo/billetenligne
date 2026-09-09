@@ -1474,6 +1474,132 @@ BEGIN
 END
 $$;
 
+-- ── The passenger reads the road their own coach is on ──────────────────────
+--
+-- J6. 0043 gave `departure_checkpoints` one reader — `followed_trip(TEXT)`,
+-- keyed on a share token — and refused a SELECT policy for `bel_public` on
+-- the grounds that a rule in that shape is enumerable across every operator's
+-- movements. That reasoning was about a *stranger holding a token*. 0051 adds
+-- the one for a caller who is identified, and this executes the three claims
+-- it rests on:
+--
+--   * a passenger holding a confirmed booking reads the checkpoints of that
+--     coach, without ever minting a share link;
+--   * a passenger whose booking was cancelled reads none of them — they are
+--     not on that coach and where it is stopped being their business;
+--   * nobody with a session reads a coach they have no booking on, and nobody
+--     writes to this table through the public surface at all. The append-only
+--     rule from 0043 is evidence in a delay dispute.
+DO $$
+DECLARE
+  ocean CONSTANT UUID := '11111111-1111-1111-1111-111111111111';
+  road  CONSTANT UUID := 'aaaaaaaa-0000-0000-0000-000000000001';
+  rider CONSTANT UUID := '55555555-5555-5555-5555-555555555553';
+  ghost CONSTANT UUID := '55555555-5555-5555-5555-555555555554';
+  nomad CONSTANT UUID := '55555555-5555-5555-5555-555555555555';
+  dep   CONSTANT UUID := 'cccccccc-0000-0000-0000-00000000000a';
+  stop  UUID;
+  seen  INT;
+BEGIN
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  INSERT INTO user_accounts (id, email, language) VALUES
+    (rider, 'rider-checkpoint@example.cg', 'fr'),
+    (ghost, 'ghost-checkpoint@example.cg', 'fr'),
+    (nomad, 'nomad-checkpoint@example.cg', 'fr')
+  ON CONFLICT DO NOTHING;
+
+  INSERT INTO departures
+    (id, operator_id, route_id, seat_layout_id, departs_at, arrives_at,
+     capacity, fare_minor, currency, status)
+  SELECT dep, ocean, road, l.id,
+         now() - INTERVAL '3 hours', now() + INTERVAL '4 hours',
+         49, 12000, 'XAF', 'departed'
+    FROM seat_layouts l WHERE l.operator_id = ocean LIMIT 1;
+
+  SELECT id INTO stop FROM route_stops WHERE route_id = road LIMIT 1;
+
+  INSERT INTO departure_checkpoints
+    (departure_id, route_stop_id, operator_id, passed_at)
+  VALUES (dep, stop, ocean, now() - INTERVAL '40 minutes');
+
+  INSERT INTO bookings
+    (id, ref, operator_id, departure_id, purchaser_user_id, state,
+     fare_minor, service_fee_minor, total_minor, currency, payment_method,
+     paid_at)
+  VALUES
+    ('dddddddd-0000-0000-0000-00000000000a', 'BELJ61', ocean, dep, rider,
+     'confirmed', 12000, 300, 12300, 'XAF', 'mobile_money', now()),
+    ('dddddddd-0000-0000-0000-00000000000b', 'BELJ62', ocean, dep, ghost,
+     'cancelled', 12000, 300, 12300, 'XAF', 'mobile_money', now());
+
+  RESET ROLE;
+  PERFORM set_config('app.platform', 'off', true);
+
+  -- ── The passenger on the coach ──
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.user_id', rider::text, true);
+
+  SELECT count(*) INTO seen
+    FROM departure_checkpoints WHERE departure_id = dep;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION
+      'FAIL: a ticket holder cannot see where their own coach has got to';
+  END IF;
+
+  -- Append-only survives the new grant. A traveller editing a claim about
+  -- where a coach was at a time would be editing evidence.
+  BEGIN
+    INSERT INTO departure_checkpoints
+      (departure_id, route_stop_id, operator_id, passed_at)
+    VALUES (dep, stop, ocean, now());
+    RAISE EXCEPTION 'FAIL: a traveller reported a passage';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  BEGIN
+    UPDATE departure_checkpoints SET passed_at = now() WHERE departure_id = dep;
+    RAISE EXCEPTION 'FAIL: a traveller revised a passage';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  BEGIN
+    DELETE FROM departure_checkpoints WHERE departure_id = dep;
+    RAISE EXCEPTION 'FAIL: a traveller erased a passage';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL; -- expected
+  END;
+
+  -- ── The passenger who cancelled ──
+  PERFORM set_config('app.user_id', ghost::text, true);
+
+  SELECT count(*) INTO seen
+    FROM departure_checkpoints WHERE departure_id = dep;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION
+      'FAIL: a cancelled booking still follows the coach it is not on';
+  END IF;
+
+  -- ── Somebody with a session and no ticket ──
+  PERFORM set_config('app.user_id', nomad::text, true);
+
+  SELECT count(*) INTO seen FROM departure_checkpoints;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: a signed-in stranger reads the movements table';
+  END IF;
+
+  RESET ROLE;
+  PERFORM set_config('app.public', 'off', true);
+  PERFORM set_config('app.user_id', '', true);
+  RAISE NOTICE 'OK  a passenger follows their own coach, and only theirs';
+END
+$$;
+
 -- ── 11. A block the blocked party cannot lift ───────────────────────────────
 --
 -- The compliance pass stops an operator selling when a licence lapses

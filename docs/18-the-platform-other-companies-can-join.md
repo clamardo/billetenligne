@@ -458,7 +458,7 @@ instruction, and a close that syncs three hours later has let a counter sell
 seats on a coach halfway down the RN1. Search and seat alerts now exclude
 `departed`/`arrived` as a fact rather than inferring it from the clock.
 
-#### J5 — confirming a stop is asked for, not hoped for
+#### J5 — confirming a stop is asked for, not hoped for — **built, 2026-09-09**
 **Depends on:** J3, J4
 The scanner prompts at the timetable's own expected time for the next
 waypoint — one gesture, dismissible, re-offered once. The dispatcher's day
@@ -469,7 +469,24 @@ door (§5.3).
 dismissed prompt is re-offered exactly once; coverage is computed from
 `departure_checkpoints` and not from a counter that can drift.
 
-#### J6 — the passenger sees their own coach move
+**As built.** `RoadProgress` gains `departsAt` and a `due` waypoint: the first
+unconfirmed stop whose `departsAt + offsetMinutes` has passed. That arithmetic
+is the test — a handset switched on three hours into the run is asked about
+Kinkala immediately, and one switched on in the yard is asked about nothing.
+`DuePrompt` is a strip above the footer, never a dialog, and *"Pas encore"* is
+the same one tap as *"Oui"*: a question whose refusal costs more than its
+answer is not a question. A waved prompt goes quiet for `RoadProgress.waveOff`
+(20 min), comes back once, and after the second wave never again. Eleven tests
+in `road_due_test.dart`.
+The board query gains two scalar subqueries — `route_stops` and
+`departure_checkpoints` — rather than two more joins, because it already fans
+`seats` out and aggregates over it. `DepartureBoardRow.stops`/`confirmedStops`
+reach the console as a `n/m` figure, amber only once the coach has actually
+left and absent entirely on a direct run. `road_coverage_pg_test.dart` (7
+tests) proves the count includes a checkpoint the console never wrote, which
+is exactly what a maintained counter would have missed.
+
+#### J6 — the passenger sees their own coach move — **built, 2026-09-09**
 **Depends on:** J5 (useful without it; worth little)
 The traveller's ticket screen gains the same progress the follower page draws:
 the stop list, what is behind, the tier label. Read through the booking, not
@@ -479,6 +496,24 @@ screen must never draw more confidence than the data has.
 *Tests:* a passenger sees progress with no share link minted; someone whose
 booking was cancelled does not; the label says *estimation* when no checkpoint
 has been confirmed.
+
+**As built.** `0051_the_passenger_sees_the_road.sql` grants `bel_public` SELECT
+on `departure_checkpoints` under a policy resolving to the departures the
+caller holds a **confirmed** booking on. 0043 refused a SELECT policy and was
+right to — it was refusing one to a *stranger holding a token*, where the rule
+is enumerable across every operator's movements. This caller is identified, so
+the rule resolves to one or two coaches, and written as a policy it is true of
+every future query rather than of the callers that remember a definer
+function. Append-only survives: `verify_public.sql` executes the read, the
+cancelled booking's refusal, and all three writes being denied.
+`TripSharing.journey` sits beside `follow` on purpose — two doors into one
+room, and the follower's read is the careful one. It carries no operator name,
+route code or cities: those came with the booking, and a second copy can
+disagree. `GET /public/v1/bookings/{ref}/journey`, and `TicketScreen.journey`
+is **optional** — nothing on that screen fetches (ADR-0003), so the flow asks
+behind a ticket that is already drawn and the road is simply absent in a dead
+zone. The tier line is `follow.tier.*`, the same reviewed sentence the
+follower page shows, because it is the same claim.
 
 #### J7 — the passenger who has not arrived is told
 **Depends on:** J3, J4 · **Gated commercially:** needs a provisioned ACS sender
@@ -654,7 +689,7 @@ sentence and the executed rule come from the same object.
 ## 10. Order, and what gates what
 
 ```
-J3 ─┬─ J4 ─┬─ J5 ── J6
+J3 ─┬─ J4 ─┬─ J5 ✅ ── J6 ✅
     │      └─ J7 (gated: ACS sender number)
     └─ (any future GPS tier)
 
@@ -669,8 +704,10 @@ J1 (gated: M1–M2) · J2 · J11 · J13 · J14 ✅ — independent, land any tim
 
 ~~**Build J3 and J4 first**~~ — **done, 2026-09-09.** They were the spine
 (§2): four of the seven gaps were downstream of a departure having no crew and
-no state, and both of those now exist. J5 is unblocked and J7's only remaining
-gate is commercial.
+no state, and both of those now exist. **J5 and J6 followed the same day**, so
+the whole of Part B is built except J7, whose only remaining gate is
+commercial: tier 2 is now asked for on the handset, counted in the office, and
+readable by the passenger sitting on the coach.
 
 **J2 and J13 are the two money-and-trust slices** and neither depends on
 anything. They are each a day's work and each closes a distance between what
