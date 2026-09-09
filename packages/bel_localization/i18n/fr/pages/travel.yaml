@@ -36,6 +36,9 @@ travel:
     emptyTitle: "Aucun départ ce jour-là"
     emptyBody: "Essayez le lendemain, ou une autre compagnie."
     tryTomorrow: "Voir demain"
+    # Le bas d'une liste complète. Dit clairement : sinon l'écran
+    # s'arrête sans rien dire et on continue à chercher un car absent.
+    endOfDay: "Ce sont tous les cars du {date}."
     priceFrom: "à partir de {amount}"
     soldOut: "Complet"
     scarce: "Presque complet"

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The brand's own green, and the one place in the Android project that has
+     to repeat a Kilo token by hand: the window is painted by the OS before
+     any Dart runs, so `context.kilo` does not exist yet. Kept equal to
+     `KiloColors.brandPrimary` (0xFF0A6B4F) — if that moves, this moves. -->
+<resources>
+    <color name="bel_brand_primary">#0A6B4F</color>
+</resources>

@@ -136,7 +136,11 @@ void main() {
       await searchBzvToPnr(tester);
 
       expect(find.textContaining('Ocean du Nord'), findsWidgets);
-      expect(find.byType(ListView), findsWidgets);
+      // `Scrollable`, not a particular list widget: what matters here is that
+      // the departures arrived in something a thumb can move, and the results
+      // screen builds slivers so its closing panel can take the space the
+      // coaches did not.
+      expect(find.byType(Scrollable), findsWidgets);
       // 08-disruption.md §6: the operator's on-time record, on the row where
       // the choice is actually made. Worded by the catalog, never by the
       // server, and drawn only where there is a figure to draw.
@@ -194,7 +198,10 @@ void main() {
       );
 
       for (var i = 0; i < 4; i++) {
-        await tester.drag(find.byType(ListView).last, const Offset(0, -1200));
+        await tester.drag(
+          find.byType(CustomScrollView),
+          const Offset(0, -1200),
+        );
         await tester.pumpAndSettle();
       }
 

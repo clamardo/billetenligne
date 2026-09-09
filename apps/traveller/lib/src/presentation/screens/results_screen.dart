@@ -95,126 +95,141 @@ final class ResultsScreen extends StatelessWidget {
               onAction: onTryTomorrow,
             ),
           )
-        : ListView.separated(
-            padding: EdgeInsets.all(kilo.space.s4),
-            // One extra row when there is more: the foot of the list, which
-            // is both the "still loading" line and the thing whose being
-            // built means the traveller has scrolled far enough to want it.
-            itemCount: departures.length + (hasMore ? 1 : 0),
-            separatorBuilder: (_, _) => SizedBox(height: kilo.space.s3),
-            itemBuilder: (context, index) {
-              if (index == departures.length) return _foot(context);
+        : CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.all(kilo.space.s4),
+                sliver: SliverList.separated(
+                  // The loading row is the last item of the list, never a
+                  // sliver of its own. A `SliverToBoxAdapter` takes an
+                  // already-built widget, so `_foot` — and the next-page
+                  // request inside it — would run on every build rather than
+                  // when somebody scrolls to it: the screen quietly pulled
+                  // every page the moment it opened, which on this market's
+                  // connections is the whole point of paging undone.
+                  itemCount: departures.length + (hasMore ? 1 : 0),
+                  separatorBuilder: (_, _) => SizedBox(height: kilo.space.s3),
+                  itemBuilder: (context, index) {
+                    if (index == departures.length) return _foot(context);
 
-              final d = departures[index];
-              final card = KTripCard(
-                departureTime: Format.time(d.departsAt),
-                arrivalTime: Format.time(d.arrivesAt),
-                operatorName: d.operatorName,
-                durationLabel: Format.duration(d.duration, locale: locale),
-                totalFormatted: Format.money(d.total, locale: locale),
-                seatsLabel: context.tPlural(
-                  'common.units.seatsLeft',
-                  d.seatsAvailable,
+                    final d = departures[index];
+                    final card = KTripCard(
+                      departureTime: Format.time(d.departsAt),
+                      arrivalTime: Format.time(d.arrivesAt),
+                      operatorName: d.operatorName,
+                      durationLabel: Format.duration(
+                        d.duration,
+                        locale: locale,
+                      ),
+                      totalFormatted: Format.money(d.total, locale: locale),
+                      seatsLabel: context.tPlural(
+                        'common.units.seatsLeft',
+                        d.seatsAvailable,
+                      ),
+                      soldOut: d.isSoldOut,
+                      soldOutLabel: context.t('common.units.soldOut'),
+                      // Under a fifth of the coach left. True scarcity, computed
+                      // from the same number that is shown.
+                      scarce:
+                          !d.isSoldOut && d.seatsAvailable <= d.capacity ~/ 5,
+                      accentColor: AccentHue.tryByName(
+                        d.operatorAccentHue,
+                      )?.color,
+                      amenities: _amenityIcons(d.amenities),
+                      // Only when the server has a figure. It sends none until the
+                      // operator has run enough coaches for one to mean something,
+                      // and inventing "no data" wording here would put a sentence
+                      // about our own gaps onto a search result.
+                      reliabilityLabel: d.onTimeRate == null
+                          ? null
+                          : context.t('travel.results.onTime', {
+                              'rate': '${d.onTimeRate}',
+                            }),
+                      // Only when it is a choice. A company with one yard per city
+                      // would otherwise print the same line on every row, and a
+                      // label that is always there is a label nobody reads.
+                      boardingLabel: _boardingLabel(departures, d),
+                      // The towns on the road, and worded as a road rather than as
+                      // an offer: this is still a Brazzaville–Pointe-Noire ticket,
+                      // and buying a seat to one of these towns is not built.
+                      viaLabel: d.via.isEmpty
+                          ? null
+                          : context.t('travel.results.via', {
+                              'cities': [
+                                for (final code in d.via)
+                                  cityNames[code] ?? code,
+                              ].join(' · '),
+                            }),
+                      onTap: () => onSelect(d),
+                    );
+
+                    // The alert affordance sits under the card rather than inside
+                    // it, and only on full coaches. Inside would put a second
+                    // tappable thing on a row whose whole job is one tap; on every
+                    // row it would be noise beside eight coaches that can be
+                    // booked right now.
+                    if (!d.isSoldOut || onWatch == null) return card;
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        card,
+                        SizedBox(height: kilo.space.s1),
+                        Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: TextButton.icon(
+                            onPressed: () => onWatch!(d),
+                            icon: Icon(
+                              watching.contains(d.id)
+                                  ? Icons.notifications_active_outlined
+                                  : Icons.notifications_none,
+                              size: 18,
+                            ),
+                            label: Text(
+                              watching.contains(d.id)
+                                  ? context.t('travel.alert.watching')
+                                  : context.t('travel.alert.confirm'),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
-                soldOut: d.isSoldOut,
-                soldOutLabel: context.t('common.units.soldOut'),
-                // Under a fifth of the coach left. True scarcity, computed
-                // from the same number that is shown.
-                scarce: !d.isSoldOut && d.seatsAvailable <= d.capacity ~/ 5,
-                accentColor: AccentHue.tryByName(d.operatorAccentHue)?.color,
-                amenities: _amenityIcons(d.amenities),
-                // Only when the server has a figure. It sends none until the
-                // operator has run enough coaches for one to mean something,
-                // and inventing "no data" wording here would put a sentence
-                // about our own gaps onto a search result.
-                reliabilityLabel: d.onTimeRate == null
-                    ? null
-                    : context.t('travel.results.onTime', {
-                        'rate': '${d.onTimeRate}',
-                      }),
-                // Only when it is a choice. A company with one yard per city
-                // would otherwise print the same line on every row, and a
-                // label that is always there is a label nobody reads.
-                boardingLabel: _boardingLabel(departures, d),
-                // The towns on the road, and worded as a road rather than as
-                // an offer: this is still a Brazzaville–Pointe-Noire ticket,
-                // and buying a seat to one of these towns is not built.
-                viaLabel: d.via.isEmpty
-                    ? null
-                    : context.t('travel.results.via', {
-                        'cities': [
-                          for (final code in d.via) cityNames[code] ?? code,
-                        ].join(' · '),
-                      }),
-                onTap: () => onSelect(d),
-              );
-
-              // The alert affordance sits under the card rather than inside
-              // it, and only on full coaches. Inside would put a second
-              // tappable thing on a row whose whole job is one tap; on every
-              // row it would be noise beside eight coaches that can be
-              // booked right now.
-              if (!d.isSoldOut || onWatch == null) return card;
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  card,
-                  SizedBox(height: kilo.space.s1),
-                  Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: TextButton.icon(
-                      onPressed: () => onWatch!(d),
-                      icon: Icon(
-                        watching.contains(d.id)
-                            ? Icons.notifications_active_outlined
-                            : Icons.notifications_none,
-                        size: 18,
-                      ),
-                      label: Text(
-                        watching.contains(d.id)
-                            ? context.t('travel.alert.watching')
-                            : context.t('travel.alert.confirm'),
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
+              ),
+              // The tail. Another page behind it makes it the loading line;
+              // nothing behind it makes it the end of the road, and
+              // `hasScrollBody: false` is what lets that panel take exactly
+              // the space the coaches did not — two departures on a tall
+              // handset used to leave two thirds of the screen blank, which
+              // reads as a list still arriving rather than as a quiet day.
+              //
+              // The cards keep their own size throughout. Stretching two rows
+              // to fill a screen would be inventing importance they do not
+              // have.
+              if (!hasMore)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _endOfRoad(context, locale),
+                ),
+            ],
           );
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: onBack),
-        titleSpacing: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              context.t('travel.results.title', {
-                'from': query.originCity,
-                'to': query.destinationCity,
-              }),
-              style: kilo.text.h3,
-            ),
-            Text(
-              // "and more" until the list is complete. A count that grows as
-              // somebody scrolls is a count that was wrong when they read it.
-              context.t(
-                hasMore
-                    ? 'travel.results.subtitleMore'
-                    : 'travel.results.subtitle',
-                {
-                  'date': Format.shortDate(query.date, locale: locale),
-                  'count': departures.length,
-                },
-              ),
-              style: kilo.text.caption.copyWith(
-                color: kilo.color.contentSecondary,
-              ),
-            ),
-          ],
+        title: context.t('travel.results.title', {
+          'from': query.originCity,
+          'to': query.destinationCity,
+        }),
+        // "and more" until the list is complete. A count that grows as
+        // somebody scrolls is a count that was wrong when they read it.
+        subtitle: context.t(
+          hasMore ? 'travel.results.subtitleMore' : 'travel.results.subtitle',
+          {
+            'date': Format.shortDate(query.date, locale: locale),
+            'count': departures.length,
+          },
         ),
       ),
       body: SafeArea(
@@ -254,6 +269,105 @@ final class ResultsScreen extends StatelessWidget {
           height: 24,
           width: 24,
           child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
+      ),
+    );
+  }
+
+  /// The foot of a complete list.
+  ///
+  /// Two coaches on a tall handset left two thirds of the screen empty, and
+  /// an empty two thirds reads as a list still loading rather than a day
+  /// with two departures on it. The road drawing closes the page and says
+  /// which day it was, and the one thing worth offering at the end of a
+  /// short day sits on it: the next day.
+  ///
+  /// Deliberately not a stretched card. Making the two results taller to
+  /// fill the space would be inventing importance the rows do not have.
+  Widget _endOfRoad(BuildContext context, String locale) {
+    final kilo = context.kilo;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        kilo.space.s4,
+        0,
+        kilo.space.s4,
+        kilo.space.s4,
+      ),
+      child: ClipRRect(
+        borderRadius: kilo.radius.cardBorder,
+        // The height here is a floor, not the answer. `SliverFillRemaining`
+        // hands this child tight constraints covering whatever the coaches
+        // left, and tight constraints win over a `SizedBox` — so the panel
+        // is exactly as tall as the gap it is closing, on every handset,
+        // without measuring anything.
+        //
+        // Not a `LayoutBuilder`: that cannot report an intrinsic height, and
+        // `hasScrollBody: false` asks for one. The list rendered as an empty
+        // page when it did.
+        child: KScene(
+          KSceneArt.roadtrip,
+          height: 200,
+          // The words sit on the drawing, so the drawing is dimmed under
+          // them. Sky is the lightest part of this scene and the ink is
+          // the brand's own light one — without the scrim the sentence
+          // lands on the one band of the picture it cannot be read on.
+          overlay: true,
+          // A scrim under the words, not a wash over the picture.
+          //
+          // `overlay` dims the drawing evenly, which is not the same
+          // thing as making one sentence readable: the coach's own body
+          // is the palest band in this scene, and light ink laid across
+          // it disappears exactly where the sentence sits. The gradient
+          // is transparent over the sky and opaque where the text is, so
+          // the artwork stays a picture and the words stay words —
+          // whatever drawing is behind them.
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: const [0.45, 1],
+                colors: [
+                  kilo.color.brandPrimaryStrong.withValues(alpha: 0),
+                  kilo.color.brandPrimaryStrong.withValues(alpha: 0.95),
+                ],
+              ),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(kilo.space.s4),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    context.t('travel.results.endOfDay', {
+                      'date': Format.shortDate(query.date, locale: locale),
+                    }),
+                    style: kilo.text.body.copyWith(
+                      color: kilo.color.onBrandPrimary,
+                    ),
+                  ),
+                  if (onTryTomorrow != null) ...[
+                    SizedBox(height: kilo.space.s3),
+                    // Left, and only as wide as its words. A full-width
+                    // button at the foot of a page reads as the thing the
+                    // page is for, and this page is for the coaches above
+                    // it.
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: KButton(
+                        label: context.t('travel.results.tryTomorrow'),
+                        onPressed: onTryTomorrow,
+                        tone: KButtonTone.secondary,
+                        fullWidth: false,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

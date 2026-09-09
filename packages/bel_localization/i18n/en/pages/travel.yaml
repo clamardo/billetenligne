@@ -34,6 +34,10 @@ travel:
     emptyTitle: "No departures that day"
     emptyBody: "Try the next day, or another operator."
     tryTomorrow: "See tomorrow"
+    # The foot of a complete list. Said plainly, because the alternative
+    # is a screen that simply stops and leaves somebody scrolling for a
+    # coach that is not there.
+    endOfDay: "That is every coach on {date}."
     priceFrom: "from {amount}"
     soldOut: "Sold out"
     scarce: "Almost full"

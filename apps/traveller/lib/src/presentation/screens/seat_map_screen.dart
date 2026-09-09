@@ -64,78 +64,81 @@ final class SeatMapScreen extends StatelessWidget {
     final locale = context.language;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: onBack),
-        titleSpacing: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(context.t('travel.seatmap.title'), style: kilo.text.h3),
-            Text(
-              '${departure.operatorName} · '
-              '${Format.time(departure.departsAt)}',
-              style: kilo.text.caption.copyWith(
-                color: kilo.color.contentSecondary,
-              ),
-            ),
-          ],
-        ),
+        title: context.t('travel.seatmap.title'),
+        subtitle:
+            '${departure.operatorName} · '
+            '${Format.time(departure.departsAt)}',
       ),
+      // The deck stands on a woven ground rather than on nothing. A coach
+      // drawn as white tiles on a white page reads as a spreadsheet of
+      // seats; the same tiles on a faint textile floor read as the inside of
+      // a vehicle, which is what the traveller is choosing a place in. Faint
+      // on purpose — this is the floor, and the seats are the subject.
       body: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: EdgeInsets.symmetric(horizontal: kilo.space.s4),
-          children: [
-            SizedBox(height: kilo.space.s3),
-            KSeatMap(
-              sections: [
-                for (final s in seatMap.sections)
-                  KSection(
-                    code: s.code,
-                    label: context.t(s.labelKey),
-                    abreast: s.abreast,
-                    pitchCm: s.pitchCm,
-                  ),
-              ],
-              seats: [
-                for (final s in seatMap.seats)
-                  KSeat(
-                    label: s.label,
-                    sectionCode: s.sectionCode,
-                    state: switch (s.status) {
-                      SeatStatusDto.available => KSeatState.available,
-                      SeatStatusDto.held => KSeatState.held,
-                      SeatStatusDto.sold => KSeatState.sold,
-                      SeatStatusDto.blocked => KSeatState.blocked,
-                    },
-                    // Only when this seat costs more than the departure's base
-                    // fare. A price on every seat of a flat-fare coach is
-                    // noise that hides the one row where it matters.
-                    priceHint:
-                        s.fare != null && s.fare!.minor != departure.fare.minor
-                        ? Format.money(s.fare!, locale: locale)
-                        : null,
-                  ),
-              ],
-              selected: selected,
-              onToggle: (seat) => onToggle(seat.label),
-              maxSelectable: maxSeats,
-              labels: KSeatMapLabels(
-                front: context.t('travel.seatmap.front'),
-                free: context.t('travel.seatmap.free'),
-                chosen: context.t('travel.seatmap.chosen'),
-                taken: context.t('travel.seatmap.taken'),
+        child: KPattern(
+          motif: KPatternMotif.diagonale,
+          background: kilo.color.surfaceBase,
+          color: kilo.color.brandPrimary,
+          opacity: 0.06,
+          child: ListView(
+            padding: EdgeInsets.symmetric(horizontal: kilo.space.s4),
+            children: [
+              SizedBox(height: kilo.space.s3),
+              KSeatMap(
+                sections: [
+                  for (final s in seatMap.sections)
+                    KSection(
+                      code: s.code,
+                      label: context.t(s.labelKey),
+                      abreast: s.abreast,
+                      pitchCm: s.pitchCm,
+                    ),
+                ],
+                seats: [
+                  for (final s in seatMap.seats)
+                    KSeat(
+                      label: s.label,
+                      sectionCode: s.sectionCode,
+                      state: switch (s.status) {
+                        SeatStatusDto.available => KSeatState.available,
+                        SeatStatusDto.held => KSeatState.held,
+                        SeatStatusDto.sold => KSeatState.sold,
+                        SeatStatusDto.blocked => KSeatState.blocked,
+                      },
+                      // Only when this seat costs more than the departure's base
+                      // fare. A price on every seat of a flat-fare coach is
+                      // noise that hides the one row where it matters.
+                      priceHint:
+                          s.fare != null &&
+                              s.fare!.minor != departure.fare.minor
+                          ? Format.money(s.fare!, locale: locale)
+                          : null,
+                    ),
+                ],
+                selected: selected,
+                onToggle: (seat) => onToggle(seat.label),
+                maxSelectable: maxSeats,
+                labels: KSeatMapLabels(
+                  front: context.t('travel.seatmap.front'),
+                  free: context.t('travel.seatmap.free'),
+                  chosen: context.t('travel.seatmap.chosen'),
+                  taken: context.t('travel.seatmap.taken'),
+                ),
               ),
-            ),
-            SizedBox(height: kilo.space.s4),
-            Text(
-              context.t('travel.seatmap.availabilityNote'),
-              textAlign: TextAlign.center,
-              style: kilo.text.caption.copyWith(color: kilo.color.contentMuted),
-            ),
-            SizedBox(height: kilo.space.s6),
-          ],
+              SizedBox(height: kilo.space.s4),
+              Text(
+                context.t('travel.seatmap.availabilityNote'),
+                textAlign: TextAlign.center,
+                style: kilo.text.caption.copyWith(
+                  color: kilo.color.contentMuted,
+                ),
+              ),
+              SizedBox(height: kilo.space.s6),
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: _Summary(
