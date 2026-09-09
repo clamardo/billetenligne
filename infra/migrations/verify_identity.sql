@@ -342,3 +342,78 @@ BEGIN
   RAISE NOTICE 'OK  an org owner signing in resolves to their operator, and to nothing else';
 END
 $$;
+
+-- ── The session a browser holds no credential for (J11) ─────────────────────
+--
+-- Migration 0053 puts `web_sessions` on the identity surface and nowhere
+-- else. A row there is a live credential in every sense that matters: it
+-- holds the refresh token that keeps somebody signed in, and anything that
+-- can read it can be that person until the session is revoked.
+--
+-- The console and the back office are the interesting half. They are the
+-- surfaces this feature *exists* for, and neither of them may read the table
+-- their own session lives in — the resolution happens before a request has a
+-- surface at all, exactly as sign-in does.
+DO $$
+DECLARE
+  person  UUID;
+  visible INT;
+BEGIN
+  RESET ROLE;
+
+  INSERT INTO user_accounts (email, full_name, language)
+  VALUES ('websession@verify.local', 'Session', 'fr')
+  RETURNING id INTO person;
+
+  INSERT INTO web_sessions
+    (user_id, selector_hash, refresh_cipher, expires_at)
+  VALUES (person, 'verify-selector-hash', 'v1.nonce.cipher',
+          now() + interval '30 days');
+
+  -- The identity surface reads it, because that is where a session is
+  -- resolved.
+  SET LOCAL ROLE bel_identity;
+  PERFORM set_config('app.identity', 'on', true);
+
+  SELECT count(*) INTO visible FROM web_sessions WHERE user_id = person;
+  IF visible <> 1 THEN
+    RAISE EXCEPTION 'FAIL: the identity surface cannot resolve a session';
+  END IF;
+
+  -- And nobody else does. Three roles, three separate assertions, because
+  -- "the grant was forgotten" and "the policy was wrong" fail differently.
+  RESET ROLE;
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+  BEGIN
+    SELECT count(*) INTO visible FROM web_sessions;
+    RAISE EXCEPTION 'FAIL: the public surface can read a session row';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  RESET ROLE;
+  SET LOCAL ROLE bel_app;
+  BEGIN
+    SELECT count(*) INTO visible FROM web_sessions;
+    RAISE EXCEPTION 'FAIL: the operator console can read a session row';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  RESET ROLE;
+  SET LOCAL ROLE bel_admin;
+  BEGIN
+    SELECT count(*) INTO visible FROM web_sessions;
+    RAISE EXCEPTION 'FAIL: the back office can read a session row';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  RESET ROLE;
+  DELETE FROM web_sessions WHERE user_id = person;
+  DELETE FROM user_accounts WHERE id = person;
+
+  RAISE NOTICE 'OK  a browser session is readable on the identity surface and on no other';
+END
+$$;

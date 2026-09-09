@@ -113,4 +113,31 @@ void main() {
 
     await expectLater(const SecureSessionStore().clear(), completes);
   });
+
+  group('on the web, nothing is stored at all', () {
+    // `flutter_secure_storage` has a web implementation and it is not secure
+    // storage: an AES key in `localStorage` beside the ciphertext it
+    // protects. The browser's answer is the server's `HttpOnly` cookie (J11),
+    // which this page cannot read — so the honest behaviour here is to keep
+    // nothing and say "not signed in".
+    const web = SecureSessionStore(onWeb: true);
+
+    test('a write reaches no storage', () async {
+      await web.write('refresh-token');
+
+      expect(calls, isEmpty);
+    });
+
+    test('a read is not signed in', () async {
+      // Not a lookup that happens to miss: the plugin is never called, so
+      // there is nothing on the page for anything to find.
+      expect(await web.read(), isNull);
+      expect(calls, isEmpty);
+    });
+
+    test('clearing is not a failure', () async {
+      await expectLater(web.clear(), completes);
+      expect(calls, isEmpty);
+    });
+  });
 }

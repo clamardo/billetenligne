@@ -58,6 +58,11 @@ import 'application/ports/seat_inventory.dart';
 import 'application/ports/object_store.dart';
 import 'application/auto_review_applications.dart';
 import 'application/ports/compliance_desk.dart';
+import 'application/ports/token_exchange.dart';
+import 'application/ports/web_sessions.dart';
+import 'adapters/firebase_token_exchange.dart';
+import 'infrastructure/postgres/postgres_web_sessions.dart';
+import 'middleware/session_cookie.dart';
 import 'application/ports/review_queue.dart';
 import 'application/ports/storefronts.dart';
 import 'application/ports/user_directory.dart';
@@ -165,6 +170,9 @@ final class Services {
     required this.appLinks,
     required this.stores,
     required this.webOrigins,
+    required this.webSessions,
+    required this.sessionCookie,
+    this.tokenExchange,
     this.logsAsJson = true,
     Database? database,
   }) : _database = database;
@@ -401,6 +409,59 @@ final class Services {
   /// means none — the handset apps and the scanner send no `Origin` at all.
   final WebOrigins webOrigins;
 
+  /// Sessions the browser holds no credential for (J11). [NoWebSessions] on a
+  /// deployment with no database, which cannot keep one.
+  final WebSessions webSessions;
+
+  /// How that session's selector is dressed on the wire.
+  final SessionCookie sessionCookie;
+
+  /// Trades a custom token for a session, server-side. Null on a deployment
+  /// with no Firebase API key and no emulator, which cannot open one.
+  final TokenExchange? tokenExchange;
+
+  /// Whether this deployment can open a browser session at all — a database
+  /// to hold it in, and a way to exchange a custom token for one.
+  bool get canOpenWebSession =>
+      webSessions is! NoWebSessions && tokenExchange != null;
+
+  /// How long a browser session lives before the server ends it regardless.
+  ///
+  /// Thirty days: a dispatcher opens the console every working morning and
+  /// signing them in weekly is how a shared password appears on a sticky
+  /// note. A browser cookie can outlive any intention — a shared machine, a
+  /// stolen laptop — so the server keeps its own clock on it rather than
+  /// trusting the cookie's.
+  static const webSessionTtl = Duration(days: 30);
+
+  /// Opens a browser session for somebody who has just proven who they are,
+  /// and hands back the **selector** for the cookie (J11).
+  ///
+  /// The exchange happens here rather than in the page: a browser has nowhere
+  /// safe to keep a refresh token, and this is the whole difference between
+  /// the web surfaces and the handset. Null when this deployment cannot keep
+  /// a session, which the route turns into the ordinary token answer.
+  Future<String?> openWebSession({
+    required String userId,
+    required String customToken,
+    String? userAgent,
+    String? ip,
+  }) async {
+    final exchange = tokenExchange;
+    if (exchange == null || webSessions is NoWebSessions) return null;
+
+    final exchanged = await exchange.exchangeCustomToken(customToken);
+    return webSessions.open(
+      userId: userId,
+      refreshToken: exchanged.refreshToken,
+      idToken: exchanged.idToken,
+      idTokenExpiresAt: clock.now().add(exchanged.expiresIn),
+      ttl: webSessionTtl,
+      userAgent: userAgent,
+      ip: ip,
+    );
+  }
+
   /// One JSON object per request, or one readable line.
   ///
   /// JSON is the deployed default because Cloud Logging parses it into a real
@@ -451,6 +512,12 @@ final class Services {
     // is every deployment on the day before the storage account is
     // provisioned — and `/health` reports it rather than the API dying.
     final storage = AzureBlobStore.fromEnvironment(env) ?? MemoryObjectStore();
+
+    // Null without an API key and without the emulator, which is a deployment
+    // that cannot open a browser session — the handset apps carry on exactly
+    // as before, because they exchange for themselves.
+    final firebase = FirebaseConfig.fromEnvironment(env);
+    final exchange = FirebaseTokenExchange.fromEnvironment(env, firebase);
 
     return Services._(
       holdSeats: HoldSeats(inventory: inventory, market: market),
@@ -551,7 +618,7 @@ final class Services {
       },
       market: market,
       authGateway: FirebaseAuthGateway(
-        config: FirebaseConfig.fromEnvironment(env),
+        config: firebase,
         directory: directory,
         clock: clock,
       ),
@@ -573,6 +640,19 @@ final class Services {
       appLinks: AppLinkIdentity.from(env),
       stores: StoreListings.from(env),
       webOrigins: WebOrigins.from(env),
+      webSessions: exchange == null
+          ? const NoWebSessions()
+          : PostgresWebSessions(
+              db,
+              exchange: exchange,
+              // The same key the second factor's seeds take. One secret to
+              // rotate rather than two, and both are values this server has
+              // to be able to read back rather than compare.
+              cipher: _seedCipher(env),
+              clock: clock,
+            ),
+      sessionCookie: SessionCookie.fromEnvironment(env),
+      tokenExchange: exchange,
       logsAsJson: env['BEL__LOGFORMAT'] != 'text',
       database: db,
     );
@@ -800,6 +880,11 @@ final class Services {
       appLinks: AppLinkIdentity.from(const {}),
       stores: StoreListings.from(environment ?? const {}),
       webOrigins: WebOrigins.from(environment ?? const {}),
+      // No database, so nowhere to keep a session. A fakes composition that
+      // answered "signed in" from a map would be a sign-in that survives
+      // exactly one process restart, which nobody could explain.
+      webSessions: const NoWebSessions(),
+      sessionCookie: SessionCookie.fromEnvironment(environment ?? const {}),
       logsAsJson: (environment ?? const {})['BEL__LOGFORMAT'] != 'text',
     );
   }

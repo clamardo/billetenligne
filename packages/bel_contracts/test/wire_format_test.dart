@@ -1350,6 +1350,80 @@ void main() {
     });
   });
 
+  group('a session the browser can keep', () {
+    // J11. Two flags, and each one exists because guessing it from a null
+    // would guess wrong.
+    test('a browser asks for a cookie, and a handset does not', () {
+      const web = VerifySignInRequest(
+        challengeId: 'c-1',
+        code: '123456',
+        webSession: true,
+      );
+      const handset = VerifySignInRequest(challengeId: 'c-1', code: '123456');
+
+      expect(web.toJson()['webSession'], true);
+      // Absent at the default: the handset exchanges for itself, and the
+      // shortest request is the ordinary one.
+      expect(handset.toJson().containsKey('webSession'), isFalse);
+      expect(
+        VerifySignInRequest.fromJson(web.toJson()).webSession,
+        isTrue,
+      );
+      expect(
+        VerifySignInRequest.fromJson(handset.toJson()).webSession,
+        isFalse,
+      );
+    });
+
+    test('the second half of a sign-in asks the same way', () {
+      const asked = VerifySecondFactorRequest(
+        mfaToken: 'half',
+        code: '000111',
+        webSession: true,
+      );
+
+      // Staff are the people who sign in on a browser, and this is the half
+      // they finish on.
+      expect(
+        VerifySecondFactorRequest.fromJson(asked.toJson()).webSession,
+        isTrue,
+      );
+    });
+
+    test('a cookie session says so rather than sending a token', () {
+      const answered = SessionDto(
+        cookieSession: true,
+        isNewAccount: false,
+        account: AccountDto(id: 'u-1', language: 'fr'),
+      );
+
+      final json = answered.toJson();
+
+      // Nothing the page may hold. A client that inferred "signed in" from a
+      // null `customToken` would confuse this with a second factor still
+      // owed, and put somebody on the authenticator screen after a
+      // successful sign-in.
+      expect(json.containsKey('customToken'), isFalse);
+      expect(json['cookieSession'], true);
+
+      final back = SessionDto.fromJson(json);
+      expect(back.cookieSession, isTrue);
+      expect(back.needsSecondFactor, isFalse);
+      expect(back.customToken, isNull);
+    });
+
+    test('the ordinary answer is unchanged', () {
+      const token = SessionDto(
+        customToken: 'custom',
+        isNewAccount: true,
+        account: AccountDto(id: 'u-1', language: 'fr'),
+      );
+
+      expect(token.toJson().containsKey('cookieSession'), isFalse);
+      expect(SessionDto.fromJson(token.toJson()).cookieSession, isFalse);
+    });
+  });
+
   group('sorting and narrowing the results', () {
     // §6.1–6.2. The sort is not a decoration on the request: it is half the
     // definition of what a cursor points at.

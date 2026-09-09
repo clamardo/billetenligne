@@ -22,12 +22,19 @@ import 'package:dart_frog/dart_frog.dart';
 /// which we then have to write. Answering with a bearer of our own invention
 /// here would quietly take all three on.
 Future<Response> onRequest(RequestContext context) async {
+  final trace = context.read<String>();
+  final services = context.read<Services>();
+
+  // Signing out, which for a browser session has to happen **on the server**:
+  // a page that only forgot its cookie would leave a live session behind that
+  // anybody holding the old value could still spend.
+  if (context.request.method == HttpMethod.delete) {
+    return _signOut(context, services, trace);
+  }
+
   if (context.request.method != HttpMethod.post) {
     return Response(statusCode: HttpStatus.methodNotAllowed);
   }
-
-  final trace = context.read<String>();
-  final services = context.read<Services>();
 
   final body = await context.request.json() as Map<String, Object?>;
   final request = VerifySignInRequest.fromJson(body);
@@ -41,22 +48,24 @@ Future<Response> onRequest(RequestContext context) async {
       trace,
     ),
     Ok(:final value) => await _issue(
-      context.read<AuthGateway>(),
-      services.secondFactor,
+      context,
+      services,
       value,
-      trace,
+      webSession: request.webSession,
+      trace: trace,
     ),
   };
 }
 
 Future<Response> _issue(
-  AuthGateway gateway,
-  SecondFactorSignIn secondFactor,
-  SignedIn signedIn,
-  String trace,
-) async {
+  RequestContext context,
+  Services services,
+  SignedIn signedIn, {
+  required bool webSession,
+  required String trace,
+}) async {
   final account = signedIn.account;
-  final step = await secondFactor.stepFor(account);
+  final step = await services.secondFactor.stepFor(account);
 
   // No session yet. The half-session is signed rather than stored — it is
   // single-purpose, five minutes long, and useless without a code the holder
@@ -76,9 +85,42 @@ Future<Response> _issue(
   // Firebase mint one, because the alternative is a round trip to Firebase in
   // the middle of the sign-in transaction — and a failure there would leave an
   // account nobody can ever sign in to.
-  final token = await gateway.mintCustomToken(
+  final token = await context.read<AuthGateway>().mintCustomToken(
     uid: account.authUid ?? account.id,
   );
+
+  // Asked for by a browser, which has nowhere safe to keep a credential
+  // (J11). The exchange happens on the server and the refresh token never
+  // crosses the network to the page; what the page gets is a cookie it
+  // cannot read.
+  if (webSession) {
+    final selector = await services.openWebSession(
+      userId: account.id,
+      customToken: token,
+      userAgent: context.request.headers[HttpHeaders.userAgentHeader],
+      ip: context.request.headers['x-forwarded-for']?.split(',').first.trim(),
+    );
+
+    if (selector != null) {
+      return _session(
+        SessionDto(
+          cookieSession: true,
+          mustEnrolSecondFactor: step is SecondFactorMustEnrol,
+          isNewAccount: signedIn.isNewAccount,
+          account: _profile(account),
+        ),
+        trace,
+        setCookie: services.sessionCookie.issue(
+          selector,
+          ttl: Services.webSessionTtl,
+        ),
+      );
+    }
+    // This deployment cannot keep one — no database, or no way to exchange.
+    // Answering with the token is the honest fallback rather than a refusal:
+    // the caller asked for the safer shape and gets the working one, and the
+    // difference is visible in `cookieSession`.
+  }
 
   return _session(
     SessionDto(
@@ -95,6 +137,33 @@ Future<Response> _issue(
   );
 }
 
+/// `DELETE /public/v1/auth/sessions` — end this browser's session.
+///
+/// Always 204, whether or not there was one to end. Signing out twice is
+/// signing out, and an answer that distinguished the two would tell somebody
+/// holding a guessed cookie that they had guessed a real one.
+///
+/// The cookie is cleared in the same response, with every attribute identical
+/// to the one that issued it — a browser matches a deletion by name, domain
+/// and path, and a clear that differs in any of them leaves the original in
+/// place.
+Future<Response> _signOut(
+  RequestContext context,
+  Services services,
+  String trace,
+) async {
+  final selector = services.sessionCookie.read(context.request.headers);
+  if (selector != null) await services.webSessions.revoke(selector);
+
+  return Response(
+    statusCode: HttpStatus.noContent,
+    headers: {
+      BelHeaders.traceId: trace,
+      HttpHeaders.setCookieHeader: services.sessionCookie.clear(),
+    },
+  );
+}
+
 AccountDto _profile(Account account) => AccountDto(
   id: account.id,
   language: account.language,
@@ -103,11 +172,15 @@ AccountDto _profile(Account account) => AccountDto(
   fullName: account.fullName,
 );
 
-Response _session(SessionDto session, String trace) => Response.json(
-  statusCode: HttpStatus.ok,
-  body: session.toJson(),
-  headers: {BelHeaders.traceId: trace},
-);
+Response _session(SessionDto session, String trace, {String? setCookie}) =>
+    Response.json(
+      statusCode: HttpStatus.ok,
+      body: session.toJson(),
+      headers: {
+        BelHeaders.traceId: trace,
+        if (setCookie != null) HttpHeaders.setCookieHeader: setCookie,
+      },
+    );
 
 Response _error(int status, ApiError error, String trace) => Response.json(
   statusCode: status,

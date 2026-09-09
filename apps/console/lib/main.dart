@@ -46,24 +46,36 @@ Future<void> main() async {
     defaultValue: 'http://localhost:8080',
   );
 
+  // Declared before the session so the session can call back into it: a
+  // browser session has no local state to read, so "am I signed in?" is a
+  // request, and "sign me out" is a request too (J11).
+  late final BelApiClient client;
+
   final session = BelSession(
     firebase: FirebaseIdentityClient(config: _firebaseConfig()),
-    // In memory, and deliberately still so now that the handset apps use the
-    // Keychain and the Keystore (`bel_secure_store`). **That package has a
-    // web implementation and it is not secure storage**: it puts an AES key
-    // in `localStorage` next to the value it encrypts, which is obfuscation
-    // wearing the word *secure*. On web the honest equivalent is a same-site
-    // cookie set by the server, which is a slice of its own — so today a
-    // console session ends when the tab closes, and that is stated rather
-    // than dressed up.
+    probe: () => client.me(),
+    endServerSession: () => client.endWebSession(),
+    // Still memory, and now it holds nothing at all. The session this app
+    // signs into lives in an `HttpOnly` cookie the server sets (J11), so
+    // there is no refresh token on this page to keep anywhere — which is the
+    // point: `bel_secure_store` on web puts an AES key in `localStorage`
+    // beside the value it encrypts, and that is obfuscation wearing the word
+    // *secure*. The store stays wired because the same `BelSession` serves
+    // the native surfaces, where it is the Keychain and the Keystore.
     store: MemorySessionStore(),
   );
 
-  final client = BelApiClient(
+  client = BelApiClient(
     baseUrl: Uri.parse(apiUrl),
     token: session.token,
     language: language,
   );
+
+  // The cookie set at the last sign-in, if there is one. `HttpOnly` means
+  // this code cannot look, so asking the server is the only way to find out —
+  // and a failure here is simply "not signed in", which is the sign-in screen
+  // this app already opens on.
+  await session.restore();
 
   runApp(
     ConsoleRoot(

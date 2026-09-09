@@ -6,6 +6,7 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_failure.dart';
+import 'http/credentialed_client.dart';
 import 'idempotency_key.dart';
 import 'retry_policy.dart';
 
@@ -46,7 +47,7 @@ final class BelApiClient {
     Clock clock = const SystemClock(),
     void Function(ClockOffset)? onServerTime,
   }) : _base = baseUrl,
-       _http = httpClient ?? http.Client(),
+       _http = httpClient ?? credentialedClient(),
        _token = token,
        _clock = clock,
        _onServerTime = onServerTime;
@@ -424,6 +425,15 @@ final class BelApiClient {
   /// upload route enforces, asserted again because what answers a URL is
   /// whatever answers it.
   static const maxAssetBytes = 40 * 1024;
+
+  /// Ends a browser session **on the server** (J11).
+  ///
+  /// A page that only forgot its cookie would leave a live session behind
+  /// that anybody holding the old value could still spend. The cookie is
+  /// cleared by the same response, which is the only way to clear an
+  /// `HttpOnly` one.
+  Future<void> endWebSession() =>
+      _send('DELETE', '/public/v1/auth/sessions', idempotent: true);
 
   Future<void> revokeTripShare(String bookingRef) => _send(
     'DELETE',

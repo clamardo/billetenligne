@@ -65,17 +65,50 @@ Future<Response> onRequest(RequestContext context) async {
         uid: account.authUid ?? account.id,
       );
 
+      final profile = AccountDto(
+        id: account.id,
+        language: account.language,
+        email: account.email,
+        phone: account.phone,
+        fullName: account.fullName,
+      );
+
+      // The half of a sign-in that staff actually finish on, and staff are
+      // the people who sign in on a browser (J11).
+      if (request.webSession) {
+        final selector = await services.openWebSession(
+          userId: account.id,
+          customToken: token,
+          userAgent: context.request.headers[HttpHeaders.userAgentHeader],
+          ip: context.request.headers['x-forwarded-for']
+              ?.split(',')
+              .first
+              .trim(),
+        );
+
+        if (selector != null) {
+          return Response.json(
+            body: SessionDto(
+              cookieSession: true,
+              isNewAccount: false,
+              account: profile,
+            ).toJson(),
+            headers: {
+              BelHeaders.traceId: trace,
+              HttpHeaders.setCookieHeader: services.sessionCookie.issue(
+                selector,
+                ttl: Services.webSessionTtl,
+              ),
+            },
+          );
+        }
+      }
+
       return Response.json(
         body: SessionDto(
           customToken: token,
           isNewAccount: false,
-          account: AccountDto(
-            id: account.id,
-            language: account.language,
-            email: account.email,
-            phone: account.phone,
-            fullName: account.fullName,
-          ),
+          account: profile,
         ).toJson(),
         headers: {BelHeaders.traceId: trace},
       );

@@ -317,6 +317,123 @@ void main() {
     });
   });
 
+  group('a session the page holds nothing for', () {
+    // J11. On the web the server keeps the refresh token and the browser gets
+    // an `HttpOnly` cookie, so this object holds a name and a fact and no
+    // credential at all.
+    const cookieResponse = SessionDto(
+      cookieSession: true,
+      isNewAccount: false,
+      account: AccountDto(id: 'u-aline', language: 'fr'),
+    );
+
+    BelSession web(
+      _ScriptedFirebase transport, {
+      Future<AccountDto?> Function()? probe,
+      Future<void> Function()? endServerSession,
+    }) => BelSession(
+      firebase: FirebaseIdentityClient(
+        config: FirebaseClientConfig.emulator(),
+        httpClient: transport,
+        clock: clock,
+      ),
+      clock: clock,
+      probe: probe,
+      endServerSession: endServerSession,
+    );
+
+    test('adopting one exchanges nothing and stores nothing', () async {
+      final firebase = _ScriptedFirebase([(200, _exchanged())]);
+      final store = MemorySessionStore();
+      final session = BelSession(
+        firebase: FirebaseIdentityClient(
+          config: FirebaseClientConfig.emulator(),
+          httpClient: firebase,
+          clock: clock,
+        ),
+        store: store,
+        clock: clock,
+      );
+
+      await session.adopt(cookieResponse);
+
+      expect(session.isSignedIn, isTrue);
+      expect(session.account?.id, 'u-aline');
+      // Nothing was exchanged, because the server already did it; and
+      // nothing was stored, because there is nothing this page may hold.
+      expect(firebase.bodies, isEmpty);
+      expect(await store.read(), isNull);
+    });
+
+    test('and carries no bearer, ever', () async {
+      final session = web(_ScriptedFirebase([(200, _exchanged())]));
+      await session.adopt(cookieResponse);
+
+      // The browser attaches the cookie itself. A bearer here would mean a
+      // credential this page could read, which is the whole thing being
+      // avoided.
+      expect(await session.token(), isNull);
+    });
+
+    test('a reload asks the server whether it is still signed in', () async {
+      var asked = 0;
+      final session = web(
+        _ScriptedFirebase([(200, _refreshed())]),
+        probe: () async {
+          asked++;
+          return const AccountDto(id: 'u-aline', language: 'fr');
+        },
+      );
+
+      // There is no local state to restore from: the cookie is `HttpOnly` by
+      // design, so asking is the only way to find out.
+      expect(await session.restore(), isTrue);
+      expect(session.isSignedIn, isTrue);
+      expect(asked, 1);
+    });
+
+    test('no session is not an error at launch', () async {
+      final session = web(
+        _ScriptedFirebase([(200, _refreshed())]),
+        probe: () async => throw const NetworkUnreachable(),
+      );
+
+      expect(await session.restore(), isFalse);
+      expect(session.isSignedIn, isFalse);
+    });
+
+    test('signing out ends it on the server first', () async {
+      var ended = 0;
+      final session = web(
+        _ScriptedFirebase([(200, _exchanged())]),
+        endServerSession: () async => ended++,
+      );
+      await session.adopt(cookieResponse);
+
+      await session.signOut();
+
+      // A page that only forgot its cookie would leave a live session behind
+      // that anybody holding the old value could still spend.
+      expect(ended, 1);
+      expect(session.isSignedIn, isFalse);
+    });
+
+    test('an unreachable server still signs the person out here', () async {
+      final session = web(
+        _ScriptedFirebase([(200, _exchanged())]),
+        endServerSession: () async => throw const NetworkUnreachable(),
+      );
+      await session.adopt(cookieResponse);
+
+      await session.signOut();
+
+      // Leaving somebody looking at a signed-in screen because the network
+      // was down is the larger harm; the server's own clock ends the session
+      // regardless.
+      expect(session.isSignedIn, isFalse);
+    });
+  });
+
   group('across launches', () {
     test('a stored refresh token restores the session', () async {
       final store = MemorySessionStore();

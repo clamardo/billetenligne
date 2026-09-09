@@ -108,17 +108,39 @@ final class SignInChallengeDto {
 }
 
 final class VerifySignInRequest {
-  const VerifySignInRequest({required this.challengeId, required this.code});
+  const VerifySignInRequest({
+    required this.challengeId,
+    required this.code,
+    this.webSession = false,
+  });
 
   final String challengeId;
   final String code;
 
-  Map<String, Object?> toJson() => {'challengeId': challengeId, 'code': code};
+  /// "Answer with a cookie, not a token" (J11).
+  ///
+  /// Asked for by the surfaces that run in a browser, because a browser has
+  /// nowhere safe to keep a credential: a refresh token in `localStorage`
+  /// turns one XSS into a ninety-day account takeover. A native app leaves
+  /// this false and exchanges for itself, where the Keychain and the Android
+  /// Keystore are as safe as anything on the device.
+  ///
+  /// A request rather than a guess from the `Origin` header: what the caller
+  /// can store is something only the caller knows, and inferring it would
+  /// make the answer depend on a header anybody can send.
+  final bool webSession;
+
+  Map<String, Object?> toJson() => {
+    'challengeId': challengeId,
+    'code': code,
+    if (webSession) 'webSession': true,
+  };
 
   factory VerifySignInRequest.fromJson(Map<String, Object?> json) =>
       VerifySignInRequest(
         challengeId: Wire.requireString(json['challengeId'], 'challengeId'),
         code: Wire.requireString(json['code'], 'code'),
+        webSession: json['webSession'] == true,
       );
 }
 
@@ -181,6 +203,7 @@ final class SessionDto {
     this.customToken,
     this.mfaToken,
     this.mustEnrolSecondFactor = false,
+    this.cookieSession = false,
   });
 
   /// Present unless a second factor is still owed. Never both this and
@@ -203,12 +226,23 @@ final class SessionDto {
   /// whether to ask for a name, and nothing security-relevant hangs on it.
   final bool isNewAccount;
 
+  /// The session is in an `HttpOnly` cookie the browser already has, and
+  /// there is no [customToken] because there is nothing the page is allowed
+  /// to hold (J11).
+  ///
+  /// Said out loud rather than inferred from a null `customToken`, which is
+  /// also what a second factor still owed looks like. A client that guessed
+  /// would put somebody on the authenticator screen after a successful
+  /// sign-in.
+  final bool cookieSession;
+
   bool get needsSecondFactor => mfaToken != null;
 
   Map<String, Object?> toJson() => Wire.compact({
     'customToken': customToken,
     'mfaToken': mfaToken,
     'mustEnrolSecondFactor': mustEnrolSecondFactor ? true : null,
+    'cookieSession': cookieSession ? true : null,
     'account': account.toJson(),
     'isNewAccount': isNewAccount,
   });
@@ -217,6 +251,7 @@ final class SessionDto {
     customToken: json['customToken'] as String?,
     mfaToken: json['mfaToken'] as String?,
     mustEnrolSecondFactor: json['mustEnrolSecondFactor'] == true,
+    cookieSession: json['cookieSession'] == true,
     account: AccountDto.fromJson(Wire.requireMap(json['account'], 'account')),
     isNewAccount: json['isNewAccount'] == true,
   );
@@ -231,16 +266,24 @@ final class VerifySecondFactorRequest {
     required this.mfaToken,
     this.code,
     this.recoveryCode,
+    this.webSession = false,
   });
 
   final String mfaToken;
   final String? code;
   final String? recoveryCode;
 
+  /// "Answer with a cookie, not a token" (J11). The same request the first
+  /// half of a sign-in makes, asked again because the second half is where a
+  /// staff session is actually issued — and staff are the people who sign in
+  /// on a browser.
+  final bool webSession;
+
   Map<String, Object?> toJson() => Wire.compact({
     'mfaToken': mfaToken,
     'code': code,
     'recoveryCode': recoveryCode,
+    'webSession': webSession ? true : null,
   });
 
   factory VerifySecondFactorRequest.fromJson(Map<String, Object?> json) {
@@ -256,6 +299,7 @@ final class VerifySecondFactorRequest {
       mfaToken: Wire.requireString(json['mfaToken'], 'mfaToken'),
       code: code,
       recoveryCode: recovery,
+      webSession: json['webSession'] == true,
     );
   }
 }

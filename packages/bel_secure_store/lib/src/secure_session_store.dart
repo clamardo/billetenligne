@@ -23,10 +23,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// the honest recovery is to forget the token and show the sign-in screen,
 /// which is a nuisance rather than a brick.
 final class SecureSessionStore implements SessionStore {
-  const SecureSessionStore({FlutterSecureStorage? storage, this.key = _key})
-    : _storage =
-          storage ??
-          const FlutterSecureStorage(aOptions: android, iOptions: ios);
+  const SecureSessionStore({
+    FlutterSecureStorage? storage,
+    this.key = _key,
+    this.onWeb = kIsWeb,
+  }) : _storage =
+           storage ??
+           const FlutterSecureStorage(aOptions: android, iOptions: ios);
 
   static const _key = 'bel.session.refresh';
 
@@ -44,8 +47,27 @@ final class SecureSessionStore implements SessionStore {
   final FlutterSecureStorage _storage;
   final String key;
 
+  /// **Nothing is stored on the web** (J11, known gap #4).
+  ///
+  /// `flutter_secure_storage` has a web implementation, and it is not secure
+  /// storage: it puts an AES key in `localStorage` beside the ciphertext it
+  /// protects, which is a locked door with the key hanging on it. Anything
+  /// that can read one can read the other, so what it actually provides is
+  /// obfuscation wearing the word *secure* — and the thing being obfuscated
+  /// is a ninety-day credential.
+  ///
+  /// The browser's answer is the `HttpOnly` cookie the server sets, which
+  /// this page cannot read at all. So on web every method here is a no-op and
+  /// [read] answers "not signed in", which sends the app down the cookie path
+  /// rather than a false one.
+  ///
+  /// A parameter rather than a bare `kIsWeb` so the refusal is testable off
+  /// the web, where every test in this repository runs.
+  final bool onWeb;
+
   @override
   Future<String?> read() async {
+    if (onWeb) return null;
     try {
       return await _storage.read(key: key);
     } on Object catch (e) {
@@ -60,6 +82,13 @@ final class SecureSessionStore implements SessionStore {
 
   @override
   Future<void> write(String refreshToken) async {
+    if (onWeb) {
+      // Deliberately silent about the token itself, and said once: a build
+      // that reaches here is a web build, and the session it is being handed
+      // belongs in a cookie.
+      debugPrint('web build: the refresh token is not stored on this page');
+      return;
+    }
     try {
       await _storage.write(key: key, value: refreshToken);
     } on Object catch (e) {
@@ -72,6 +101,7 @@ final class SecureSessionStore implements SessionStore {
 
   @override
   Future<void> clear() async {
+    if (onWeb) return;
     try {
       await _storage.delete(key: key);
     } on Object catch (e) {

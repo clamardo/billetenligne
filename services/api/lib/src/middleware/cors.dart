@@ -42,10 +42,18 @@ Middleware cors(WebOrigins origins) =>
         // serve one origin's response to another and, more often, serve a
         // header-less response to an allowed origin.
         'Vary': 'Origin',
-        // Deliberately absent: `Access-Control-Allow-Credentials`. This API
-        // authenticates with a bearer token in a header, never with a cookie,
-        // and allowing credentials would opt every one of these origins into
-        // sending them.
+        // Present since J11, and only because there is now a credential a
+        // browser can send: the session cookie. Without it a browser drops
+        // the cookie on every cross-origin call and the console signs itself
+        // out on the first request after a page load.
+        //
+        // What makes this safe is not this header. It is that the cookie is
+        // `SameSite=Lax`, so a page on somebody else's *site* never carries
+        // it whatever this says; that the origin list is exact and never a
+        // wildcard (a wildcard is not even legal beside credentials); and
+        // that `Authorization` still wins where both are present, so a bearer
+        // never resolves through a cookie.
+        'Access-Control-Allow-Credentials': 'true',
       };
 
       // The preflight. Answered here rather than routed, because no route in

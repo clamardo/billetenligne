@@ -112,10 +112,17 @@ Middleware _authentication() =>
       final header = context.request.headers[HttpHeaders.authorizationHeader];
       var principal = Principal.anonymous;
 
-      if (header != null && header.startsWith('Bearer ')) {
-        final resolved = await context.read<AuthGateway>().verify(
-          header.substring(7),
-        );
+      // A browser session, when there is no bearer (J11). The header wins
+      // where both are present: a native app that also happens to carry a
+      // cookie is presenting the credential it means to present, and
+      // resolving the cookie instead would silently sign somebody in as
+      // whoever last used that browser.
+      final bearer = header != null && header.startsWith('Bearer ')
+          ? header.substring(7)
+          : await _fromCookie(context);
+
+      if (bearer != null) {
+        final resolved = await context.read<AuthGateway>().verify(bearer);
         if (resolved == null) {
           return _json(
             HttpStatus.unauthorized,
@@ -127,6 +134,24 @@ Middleware _authentication() =>
 
       return handler(context.provide<Principal>(() => principal));
     };
+
+/// The bearer behind a session cookie, refreshing it if it has expired.
+///
+/// Null for no cookie, an unknown one, a revoked one and an expired one — one
+/// answer for all four, because distinguishing them tells somebody holding a
+/// guessed cookie which guess was closer. A null here is not a 401: browsing
+/// needs no account (ADR-0013), and the request carries on anonymous exactly
+/// as it would with no cookie at all.
+Future<String?> _fromCookie(RequestContext context) async {
+  final services = context.read<Services>();
+  if (!services.canOpenWebSession) return null;
+
+  final selector = services.sessionCookie.read(context.request.headers);
+  if (selector == null) return null;
+
+  final session = await services.webSessions.resolve(selector);
+  return session?.idToken;
+}
 
 Response _json(int status, ApiError error) =>
     Response.json(statusCode: status, body: error.toJson());

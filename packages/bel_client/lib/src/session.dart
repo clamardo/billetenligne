@@ -48,13 +48,40 @@ final class BelSession {
     required FirebaseIdentityClient firebase,
     SessionStore? store,
     Clock clock = const SystemClock(),
+    Future<AccountDto?> Function()? probe,
+    Future<void> Function()? endServerSession,
   }) : _firebase = firebase,
        _store = store ?? MemorySessionStore(),
-       _clock = clock;
+       _clock = clock,
+       _probe = probe,
+       _endServerSession = endServerSession;
 
   final FirebaseIdentityClient _firebase;
   final SessionStore _store;
   final Clock _clock;
+
+  /// Asks the server "am I signed in?" — the only way a browser can find out
+  /// (J11).
+  ///
+  /// A cookie session leaves nothing on the page to inspect: the cookie is
+  /// `HttpOnly` by design, so there is no local state to restore from and the
+  /// answer has to be a request. Null on a surface that has no such session,
+  /// which is every native build.
+  final Future<AccountDto?> Function()? _probe;
+
+  /// Ends the session on the **server**. A page that only forgot its cookie
+  /// would leave a live session behind that anybody holding the old value
+  /// could still spend.
+  final Future<void> Function()? _endServerSession;
+
+  /// True while this session lives in a cookie the page cannot read.
+  ///
+  /// Everything that would otherwise be a credential — the refresh token, the
+  /// ID token — is on the server. What this object holds is a name and the
+  /// fact that somebody is signed in.
+  bool _cookie = false;
+
+  bool get isCookieSession => _cookie;
 
   final _changes = StreamController<AccountDto?>.broadcast();
 
@@ -70,7 +97,7 @@ final class BelSession {
   Stream<AccountDto?> get changes => _changes.stream;
 
   AccountDto? get account => _account;
-  bool get isSignedIn => _session != null;
+  bool get isSignedIn => _session != null || _cookie;
 
   /// Adopts the answer to a correct code.
   ///
@@ -85,6 +112,18 @@ final class BelSession {
   /// the bug surfaces in the first test that makes it, rather than as a
   /// session nobody was granted.
   Future<void> adopt(SessionDto signIn) async {
+    // The browser's shape: the server already exchanged, and what came back
+    // with this response was a cookie this page cannot read. There is nothing
+    // to exchange and nothing to store — which is the entire point.
+    if (signIn.cookieSession) {
+      _cookie = true;
+      _session = null;
+      _account = signIn.account;
+      await _store.clear();
+      _changes.add(_account);
+      return;
+    }
+
     final token = signIn.customToken;
     if (token == null) {
       throw StateError(
@@ -127,7 +166,25 @@ final class BelSession {
   /// a normal end to a session and must not be an error screen at startup.
   Future<bool> restore() async {
     final stored = await _store.read();
-    if (stored == null || stored.isEmpty) return false;
+
+    // Nothing stored, but the browser may still be carrying a cookie. Asking
+    // is the only way to find out: an `HttpOnly` cookie is invisible to this
+    // code, which is what makes it worth having.
+    if (stored == null || stored.isEmpty) {
+      final probe = _probe;
+      if (probe == null) return false;
+      try {
+        final account = await probe();
+        if (account == null) return false;
+        _cookie = true;
+        _account = account;
+        _changes.add(_account);
+        return true;
+      } on ApiFailure {
+        // No session, or no network. Neither is an error at launch.
+        return false;
+      }
+    }
 
     try {
       _session = await _firebase.refresh(stored);
@@ -149,6 +206,10 @@ final class BelSession {
   /// (ADR-0013), so most calls that pass through here legitimately have no
   /// token at all.
   Future<String?> token() async {
+    // A cookie session carries no bearer, on purpose. The browser attaches
+    // the cookie itself and this code never sees a credential.
+    if (_cookie) return null;
+
     final current = _session;
     if (current == null) return null;
     if (current.isFreshAt(_clock.now())) return current.idToken;
@@ -181,6 +242,19 @@ final class BelSession {
   Future<void> invalidate() => signOut();
 
   Future<void> signOut() async {
+    // The server first, and only for a session it actually holds. Failing to
+    // reach it must not leave somebody looking at a signed-in screen, so the
+    // local half happens either way — and the server's own clock ends the
+    // session regardless.
+    if (_cookie && _endServerSession != null) {
+      try {
+        await _endServerSession();
+      } on Object {
+        // Offline, or already gone. Signing out twice is signing out.
+      }
+    }
+
+    _cookie = false;
     _session = null;
     _account = null;
     await _store.clear();

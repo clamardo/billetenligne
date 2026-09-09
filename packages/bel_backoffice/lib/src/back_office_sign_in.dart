@@ -1,6 +1,7 @@
 import 'package:bel_client/bel_client.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_design/bel_design.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'second_factor_enrolment.dart';
@@ -51,6 +52,7 @@ final class BackOfficeSignIn extends StatefulWidget {
     required this.title,
     required this.t,
     this.icon = Icons.shield_outlined,
+    this.webSession = kIsWeb,
     super.key,
   });
 
@@ -64,6 +66,14 @@ final class BackOfficeSignIn extends StatefulWidget {
   final String title;
 
   final IconData icon;
+
+  /// Ask the server for a cookie session rather than a token (J11).
+  ///
+  /// Defaults to "this is a browser", which is the honest predicate: a
+  /// browser has nowhere safe to keep a credential, and both back offices
+  /// ship as web apps. A native build of either — there is none today — would
+  /// pass false and exchange for itself, the way the handset does.
+  final bool webSession;
 
   @override
   State<BackOfficeSignIn> createState() => _BackOfficeSignInState();
@@ -274,6 +284,7 @@ class _BackOfficeSignInState extends State<BackOfficeSignIn> {
       VerifySignInRequest(
         challengeId: _challenge!.challengeId,
         code: _code.text.trim(),
+        webSession: widget.webSession,
       ),
     );
     await _adopt(session);
@@ -285,6 +296,7 @@ class _BackOfficeSignInState extends State<BackOfficeSignIn> {
         mfaToken: _pending!.mfaToken!,
         code: _usingRecovery ? null : _factorCode.text.trim(),
         recoveryCode: _usingRecovery ? _recovery.text.trim() : null,
+        webSession: widget.webSession,
       ),
     );
     await _adopt(session);

@@ -39,21 +39,35 @@ Future<void> main() async {
     defaultValue: 'http://localhost:8080',
   );
 
+  // Declared before the session so the session can call back into it: a
+  // browser session has no local state to read, so "am I signed in?" is a
+  // request, and "sign me out" is a request too (J11).
+  late final BelApiClient client;
+
   final session = BelSession(
     firebase: FirebaseIdentityClient(config: _firebaseConfig()),
-    // In memory, like the console and for the same reason: on web the honest
-    // equivalent is a same-site cookie set by the server, and a `localStorage`
-    // key beside a `localStorage` value is not the Keystore whatever the
-    // package is called. So a back-office session ends when the tab closes.
-    // For this surface that is closer to a feature than a gap.
+    probe: () => client.me(),
+    endServerSession: () => client.endWebSession(),
+    // Still memory, and now it holds nothing at all: the session lives in an
+    // `HttpOnly` cookie the server sets (J11), so there is no refresh token
+    // on this page to keep anywhere. A back-office session now survives a
+    // page reload — which it had to, because a reviewer who refreshes
+    // mid-application was being asked for a code and an authenticator every
+    // time — and it still ends on the server the moment they sign out.
     store: MemorySessionStore(),
   );
 
-  final client = BelApiClient(
+  client = BelApiClient(
     baseUrl: Uri.parse(apiUrl),
     token: session.token,
     language: language,
   );
+
+  // The cookie set at the last sign-in, if there is one. `HttpOnly` means
+  // this code cannot look, so asking the server is the only way to find out —
+  // and a failure here is simply "not signed in", which is the sign-in screen
+  // this app already opens on.
+  await session.restore();
 
   runApp(
     AdminRoot(
