@@ -313,6 +313,67 @@ void main() {
       // Resending is right there. Bouncing to the address field is not.
       expect(flow.step, isA<AwaitingCode>());
     });
+
+    // The code was right. Our API said so, and consumed it. What failed after
+    // that is the Firebase exchange, which the traveller cannot influence —
+    // and which used to report itself as `errors.auth.unauthorized`, telling
+    // somebody who had just signed in to sign in, on a screen where the only
+    // offered action could no longer work.
+    group('when the code was accepted and sign-in still did not finish', () {
+      setUp(() {
+        gateway.submitFailure = const SignInNotCompleted(
+          FirebaseRefused(400, 'INVALID_CUSTOM_TOKEN'),
+        );
+      });
+
+      test('says so, rather than asking them to sign in', () async {
+        await flow.requestCode('aline@example.cg');
+        await flow.submitCode('424242');
+
+        final step = flow.step as AwaitingCode;
+        expect(step.failure?.messageKey, 'errors.auth.not_completed');
+        expect(step.codeSpent, isTrue);
+      });
+
+      test(
+        'drops the resend cooldown, because this is not their fault',
+        () async {
+          await flow.requestCode('aline@example.cg');
+          expect(
+            flow.resendWaitAt(clock.now()),
+            const Duration(seconds: 60),
+            reason: 'the ordinary cooldown, before anything went wrong',
+          );
+
+          await flow.submitCode('424242');
+
+          // A new code is the only way forward, so making them watch a minute
+          // of timer for a failure of ours is punishment for our own bug.
+          expect(flow.resendWaitAt(clock.now()), Duration.zero);
+        },
+      );
+
+      test('still refuses to answer with the spent digits again', () async {
+        await flow.requestCode('aline@example.cg');
+        await flow.submitCode('424242');
+        await flow.submitCode('424242');
+
+        expect(gateway.submitted, ['424242']);
+      });
+
+      test('every other refusal keeps its cooldown', () async {
+        gateway.submitFailure = const ServerRefused(
+          401,
+          ApiError(code: ErrorCode.otpIncorrect, params: {'remaining': 4}),
+        );
+        await flow.requestCode('aline@example.cg');
+        await flow.submitCode('000000');
+
+        final step = flow.step as AwaitingCode;
+        expect(step.codeSpent, isFalse);
+        expect(flow.resendWaitAt(clock.now()), const Duration(seconds: 60));
+      });
+    });
   });
 
   group('changing address', () {

@@ -26,6 +26,11 @@ travel:
     sameCity: "Departure and arrival must be different."
     chooseOrigin: "Choose a departure city"
     chooseDestination: "Choose an arrival city"
+    # Under the form, in the space a phone leaves below it. Three facts, not
+    # three slogans: what this app does that the ticket window does not.
+    assuranceSeat: "Pick your seat from the coach layout."
+    assurancePay: "Pay with Mobile Money. No cash at the door."
+    assuranceBoard: "Board with the code on your phone, signal or not."
   results:
     title: "{from} → {to}"
     subtitle: "{date} · {count} departures"

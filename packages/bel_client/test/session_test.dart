@@ -146,6 +146,65 @@ void main() {
     });
   });
 
+  group('adopting a grant a one-time code was spent on', () {
+    test('succeeds exactly as adopt does', () async {
+      final firebase = _ScriptedFirebase([(200, _exchanged())]);
+      final session = build(firebase);
+
+      await session.adoptGranted(signInResponse());
+
+      expect(session.isSignedIn, isTrue);
+      expect(await session.token(), 'id-token-1');
+    });
+
+    test(
+      'reports a refusal as sign-in not completed, not as unauthorized',
+      () async {
+        final firebase = _ScriptedFirebase([
+          (
+            400,
+            jsonEncode({
+              'error': {'message': 'INVALID_CUSTOM_TOKEN'},
+            }),
+          ),
+        ]);
+
+        // The distinction the traveller reads. `FirebaseRefused` carries
+        // `errors.auth.unauthorized` — "Sign in to continue" — which on this
+        // path is false: they did, our server accepted the code and consumed
+        // it. Only the caller that spent the code knows that, so the wrapping
+        // happens here rather than in a catch clause on the screen.
+        await expectLater(
+          build(firebase).adoptGranted(signInResponse()),
+          throwsA(
+            isA<SignInNotCompleted>()
+                .having(
+                  (e) => e.messageKey,
+                  'messageKey',
+                  'errors.auth.not_completed',
+                )
+                .having((e) => e.retryable, 'retryable', isFalse)
+                .having((e) => e.cause, 'cause', isA<FirebaseRefused>()),
+          ),
+        );
+      },
+    );
+
+    test('leaves the second-factor programming error alone', () async {
+      // A caller bug, not something to dress up as a sentence.
+      await expectLater(
+        build(_ScriptedFirebase([(200, _exchanged())])).adoptGranted(
+          const SessionDto(
+            isNewAccount: false,
+            account: AccountDto(id: 'u-aline', language: 'fr'),
+            mfaToken: 'owes-a-second-factor',
+          ),
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+  });
+
   group('keeping the token fresh', () {
     test('refreshes when the token is about to expire', () async {
       final firebase = _ScriptedFirebase([

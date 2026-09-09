@@ -15,6 +15,12 @@ errors:
     too_many_attempts: "Too many attempts. Ask for a new code."
     resend_too_soon: "Wait another {seconds}s before asking for a new code."
     source_rate_limited: "Too many code requests from this connection. Try again in {seconds} s."
+  auth:
+    # The code was right and the server said so. What failed afterwards is the
+    # credential exchange, which the traveller cannot influence and must not be
+    # blamed for — so this says what happened, and that the six digits on
+    # screen are now spent.
+    not_completed: "Your code was correct, but signing in did not finish. That code is used now, so ask for a new one."
   mfa:
     incorrect: "Incorrect code. You have {remaining} attempt(s) left."
     expired: "That sign-in expired. Start again."

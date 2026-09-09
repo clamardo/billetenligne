@@ -47,6 +47,14 @@ final class AwaitingCode extends SignInStep {
   /// What the server said is left. A wrong code carries this in its params,
   /// and it is the difference between "incorrect" and "incorrect, and one more
   /// wrong answer ends this".
+  /// The code on screen is dead and no amount of typing revives it.
+  ///
+  /// True only after [SignInNotCompleted]: the server took these digits,
+  /// consumed them, and then the credential exchange failed. Every other
+  /// failure on this step — wrong digits, expired, too many attempts — leaves
+  /// typing as a sensible thing to do.
+  bool get codeSpent => failure is SignInNotCompleted;
+
   int? get attemptsRemaining => switch (failure) {
     ServerRefused(:final params) when params['remaining'] is int =>
       params['remaining']! as int,
@@ -239,6 +247,15 @@ final class SignInFlow {
       // `isNewAccount` decides whether to greet or welcome back, and nothing
       // security-relevant hangs on it.
       _emit(SignedIn(account, isNew: account.fullName == null));
+    } on SignInNotCompleted catch (failure) {
+      // The server accepted these digits and spent them; only the credential
+      // exchange afterwards failed. Nothing the traveller can type will
+      // recover this challenge, so the cooldown on "send it again" is dropped:
+      // making them watch a timer for a failure that is ours is punishment for
+      // our own bug. `_submitted` stays set, so the spent digits still cannot
+      // be resubmitted.
+      _resendAvailableAt = null;
+      _emit(AwaitingCode(current.challenge, failure: failure));
     } on ApiFailure catch (failure) {
       _emit(AwaitingCode(current.challenge, failure: failure));
     }

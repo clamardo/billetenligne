@@ -73,8 +73,12 @@ class _SignInScreenState extends State<SignInScreen> {
         return;
       }
       // A fresh challenge means a fresh code. Clearing the field stops the
-      // previous, now-dead code sitting there looking submittable.
-      if (step is AwaitingCode && step.failure == null) _code.clear();
+      // previous, now-dead code sitting there looking submittable. The same
+      // goes for a code the server accepted and spent before the sign-in
+      // failed: those six digits are gone whether or not they were correct.
+      if (step is AwaitingCode && (step.failure == null || step.codeSpent)) {
+        _code.clear();
+      }
       setState(() {});
     });
 
@@ -251,6 +255,12 @@ class _SignInScreenState extends State<SignInScreen> {
     final wait = widget.flow.resendWaitAt(_now());
     final canResend = wait == Duration.zero && !verifying;
 
+    // The digits were accepted and spent, and sign-in failed after that. There
+    // is exactly one way forward — a new code — so the screen stops offering
+    // the other one: no submit button to press at a field that can no longer
+    // be answered, and "send it again" carries the weight instead.
+    final spent = awaiting?.codeSpent ?? false;
+
     return [
       Text(context.t('auth.code.title'), style: kilo.text.h2),
       SizedBox(height: kilo.space.s2),
@@ -264,7 +274,10 @@ class _SignInScreenState extends State<SignInScreen> {
         controller: _code,
         keyboardType: TextInputType.number,
         autofocus: true,
-        enabled: !verifying,
+        // Disabled once spent: the server consumed this challenge answering
+        // the code, so anything typed into it now would cost an attempt on a
+        // challenge that can only refuse.
+        enabled: !verifying && !spent,
         maxLength: 6,
         error: awaiting?.failure == null
             ? null
@@ -277,20 +290,22 @@ class _SignInScreenState extends State<SignInScreen> {
         },
       ),
       SizedBox(height: kilo.space.s5),
-      KButton(
-        label: context.t('auth.code.submit'),
-        loading: verifying,
-        onPressed: _code.text.trim().length == 6
-            ? () => widget.flow.submitCode(_code.text)
-            : null,
-        disabledHint: context.t('auth.code.label'),
-      ),
-      SizedBox(height: kilo.space.s3),
+      if (!spent) ...[
+        KButton(
+          label: context.t('auth.code.submit'),
+          loading: verifying,
+          onPressed: _code.text.trim().length == 6
+              ? () => widget.flow.submitCode(_code.text)
+              : null,
+          disabledHint: context.t('auth.code.label'),
+        ),
+        SizedBox(height: kilo.space.s3),
+      ],
       KButton(
         label: canResend
             ? context.t('auth.code.resend')
             : context.t('auth.code.resendIn', {'seconds': wait.inSeconds}),
-        tone: KButtonTone.ghost,
+        tone: spent ? KButtonTone.primary : KButtonTone.ghost,
         loading: awaiting?.resending ?? false,
         // `flow.resend()`, not the address on screen: `challenge.sentTo` is
         // masked, and sending a code to a string of asterisks is a bug that

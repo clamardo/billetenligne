@@ -26,6 +26,12 @@ travel:
     sameCity: "Le départ et l'arrivée doivent être différents."
     chooseOrigin: "Choisissez une ville de départ"
     chooseDestination: "Choisissez une ville d'arrivée"
+    # Sous le formulaire, dans l'espace qu'un téléphone laisse en dessous.
+    # Trois faits, pas trois slogans : ce que cette application fait et que le
+    # guichet ne fait pas.
+    assuranceSeat: "Choisissez votre place sur le plan du car."
+    assurancePay: "Payez par Mobile Money. Pas d'espèces à la porte."
+    assuranceBoard: "Embarquez avec le code sur votre téléphone, avec ou sans réseau."
   results:
     title: "{from} → {to}"
     subtitle: "{date} · {count} départs"

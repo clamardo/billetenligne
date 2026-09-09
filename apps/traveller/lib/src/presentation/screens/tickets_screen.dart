@@ -82,78 +82,88 @@ final class TicketsScreen extends StatelessWidget {
         leading: BackButton(onPressed: onBack),
         title: context.t('travel.tickets.title'),
       ),
-      body: SafeArea(
-        child: _isEmpty
-            ? KStateView(
-                KEmpty(
-                  art: KArt.noTickets,
-                  title: context.t('travel.tickets.emptyTitle'),
-                  body: context.t('travel.tickets.emptyBody'),
-                  actionLabel: onSearch == null
-                      ? null
-                      : context.t('travel.tickets.emptyAction'),
-                  onAction: onSearch,
-                ),
-              )
-            : RefreshIndicator(
-                onRefresh: onRefresh,
-                child: ListView(
-                  padding: EdgeInsets.all(kilo.space.s4),
-                  children: [
-                    if (stale) ...[
-                      KCard(
-                        tone: kilo.color.warningSoft,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              context.t('travel.tickets.staleTitle'),
-                              style: kilo.text.body.copyWith(
-                                fontWeight: FontWeight.w600,
+      // The same ground as the search screen. One or two tickets leave most of
+      // this page empty, and empty was flat cream — a list floating on
+      // nothing. `KStateView` paints its own, so this wraps only the list.
+      body: KPattern(
+        motif: KPatternMotif.diagonale,
+        background: kilo.color.surfaceBase,
+        color: kilo.color.brandPrimary,
+        scale: 2,
+        opacity: 0.04,
+        child: SafeArea(
+          child: _isEmpty
+              ? KStateView(
+                  KEmpty(
+                    art: KArt.noTickets,
+                    title: context.t('travel.tickets.emptyTitle'),
+                    body: context.t('travel.tickets.emptyBody'),
+                    actionLabel: onSearch == null
+                        ? null
+                        : context.t('travel.tickets.emptyAction'),
+                    onAction: onSearch,
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: onRefresh,
+                  child: ListView(
+                    padding: EdgeInsets.all(kilo.space.s4),
+                    children: [
+                      if (stale) ...[
+                        KCard(
+                          tone: kilo.color.warningSoft,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                context.t('travel.tickets.staleTitle'),
+                                style: kilo.text.body.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                            SizedBox(height: kilo.space.s1),
-                            Text(
-                              context.t('travel.tickets.staleBody'),
-                              style: kilo.text.bodySm,
-                            ),
-                          ],
+                              SizedBox(height: kilo.space.s1),
+                              Text(
+                                context.t('travel.tickets.staleBody'),
+                                style: kilo.text.bodySm,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      SizedBox(height: kilo.space.s4),
-                    ],
+                        SizedBox(height: kilo.space.s4),
+                      ],
 
-                    if (upcoming.isNotEmpty) ...[
-                      _SectionHeading(context.t('travel.tickets.upcoming')),
-                      for (final booking in upcoming)
-                        _BookingCard(
-                          booking: booking,
-                          onOpen: onOpen,
-                          onChoices: onChoices,
-                          onCancel: onCancel,
-                          onChange: onChange,
-                          cityNames: cityNames,
-                        ),
-                    ],
+                      if (upcoming.isNotEmpty) ...[
+                        _SectionHeading(context.t('travel.tickets.upcoming')),
+                        for (final booking in upcoming)
+                          _BookingCard(
+                            booking: booking,
+                            onOpen: onOpen,
+                            onChoices: onChoices,
+                            onCancel: onCancel,
+                            onChange: onChange,
+                            cityNames: cityNames,
+                          ),
+                      ],
 
-                    if (past.isNotEmpty) ...[
-                      SizedBox(height: kilo.space.s4),
-                      _SectionHeading(context.t('travel.tickets.past')),
-                      for (final booking in past)
-                        _BookingCard(
-                          booking: booking,
-                          onOpen: onOpen,
-                          onChoices: onChoices,
-                          onCancel: onCancel,
-                          onChange: onChange,
-                          onBookAgain: onBookAgain,
-                          cityNames: cityNames,
-                          past: true,
-                        ),
+                      if (past.isNotEmpty) ...[
+                        SizedBox(height: kilo.space.s4),
+                        _SectionHeading(context.t('travel.tickets.past')),
+                        for (final booking in past)
+                          _BookingCard(
+                            booking: booking,
+                            onOpen: onOpen,
+                            onChoices: onChoices,
+                            onCancel: onCancel,
+                            onChange: onChange,
+                            onBookAgain: onBookAgain,
+                            cityNames: cityNames,
+                            past: true,
+                          ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
+        ),
       ),
     );
   }

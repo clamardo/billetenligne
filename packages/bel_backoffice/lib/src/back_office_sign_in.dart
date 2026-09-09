@@ -305,7 +305,11 @@ class _BackOfficeSignInState extends State<BackOfficeSignIn> {
     // Exchanges the custom token for a Firebase session before anything
     // opens. Until that returns nobody is signed in, which is why the
     // callback is below it and not on the response.
-    await widget.session.adopt(session);
+    //
+    // adoptGranted rather than adopt: both routes here arrive with a code the
+    // server has already accepted and consumed, so a failure at this point
+    // must not read as "wrong code".
+    await widget.session.adoptGranted(session);
     if (!mounted) return;
 
     if (session.mustEnrolSecondFactor) {

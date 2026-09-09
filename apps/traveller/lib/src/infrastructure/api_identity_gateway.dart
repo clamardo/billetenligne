@@ -82,7 +82,10 @@ final class ApiIdentityGateway implements IdentityGateway {
     // Exchanges the custom token for a Firebase session and stores the refresh
     // token. Until this returns the traveller is not signed in, which is why
     // the account comes back from here rather than from the response above.
-    await _session.adopt(session);
+    //
+    // adoptGranted rather than adopt: the code above has just been spent, so
+    // a failure here is not one the traveller can answer by typing again.
+    await _session.adoptGranted(session);
     return session.account;
   }
 

@@ -103,6 +103,42 @@ final class UnreadableResponse extends ApiFailure {
   String toString() => 'UnreadableResponse($detail)';
 }
 
+/// Our API accepted the one-time code and granted a session; turning that
+/// grant into a signed-in traveller did not happen.
+///
+/// A distinct failure because it is the only one in the whole of sign-in where
+/// **the code was right**. Everything else on that screen — wrong digits,
+/// expired challenge, too many attempts — is answered by typing again, and
+/// was answered with "Sign in to continue", which here is both untrue and
+/// useless: they did sign in, our server said so, and the six digits they are
+/// looking at have just been spent proving it. Retrying the button re-sends a
+/// code the server has already consumed, so the only way forward is a new
+/// one.
+///
+/// [cause] is what actually went wrong underneath — Firebase refusing the
+/// custom token, or the handset not reaching it at all. It is carried rather
+/// than rendered: the traveller's problem is the same either way, and the
+/// distinction belongs in a trace id, not in a sentence.
+final class SignInNotCompleted extends ApiFailure {
+  const SignInNotCompleted(this.cause);
+
+  final ApiFailure cause;
+
+  @override
+  String get messageKey => 'errors.auth.not_completed';
+
+  /// Never. The code is spent; a retry of the identical request is a request
+  /// the server can only refuse.
+  @override
+  bool get retryable => false;
+
+  @override
+  String? get traceId => cause.traceId;
+
+  @override
+  String toString() => 'SignInNotCompleted($cause)';
+}
+
 /// Firebase refused the exchange or the refresh.
 ///
 /// Its own failure taxonomy, kept separate from [ServerRefused] because the

@@ -99,6 +99,27 @@ final class BelSession {
     _changes.add(_account);
   }
 
+  /// [adopt], for the callers who have just spent a one-time code on it.
+  ///
+  /// Same work, different failure. By the time this is called our API has
+  /// already accepted the six digits and consumed them, so nothing that goes
+  /// wrong here can be answered by typing them again — which is exactly what
+  /// the underlying [FirebaseRefused] ("Sign in to continue") tells the
+  /// traveller to do. Wrapping it in [SignInNotCompleted] keeps that fact
+  /// where it is known: here, not in a catch clause on a screen that cannot
+  /// tell a refused code from a refused credential.
+  ///
+  /// The [StateError] for a session that still owes a second factor is left
+  /// alone. It is a caller bug, not something to dress up as a failure the
+  /// traveller can read.
+  Future<void> adoptGranted(SessionDto signIn) async {
+    try {
+      await adopt(signIn);
+    } on ApiFailure catch (failure) {
+      throw SignInNotCompleted(failure);
+    }
+  }
+
   /// Restores a session at launch. True when there was one to restore.
   ///
   /// A failure here signs out rather than throwing: a refresh token that

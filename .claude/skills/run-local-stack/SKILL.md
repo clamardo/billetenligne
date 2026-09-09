@@ -153,6 +153,7 @@ is a different, non-login-path role — `bel_api` is a `NOINHERIT` member of it)
 | API serves the *other* database | `DATABASE_URL` exported instead of `BEL_ENV_FILE` |
 | tool script says "the dev stack is not running" | `BEL_DEV_PROJECT` not exported for that call |
 | App shows invented coaches the API never heard of | `BEL_API_URL` unset — it fell back to demo gateways |
+| A **correct** one-time code is refused, and the screen says *"Your code was correct, but signing in did not finish"* | `BEL_FIREBASE_EMULATOR` unset. Our API accepted and **spent** the code; the Firebase token exchange that follows it then went to production from an emulator and failed. Relaunch with the define and ask for a new code — the old one is gone. Before that message existed this presented as *"Sign in to continue."*, which reads like a rejected code and is the wrong thing to chase |
 | App spins forever instead of erroring | it is calling the *emulator's* own loopback; nothing listens there, so the socket hangs rather than refusing |
 | `flutter devices` shows no Android | emulator not launched, or not booted yet |
 

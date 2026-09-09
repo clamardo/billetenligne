@@ -15,6 +15,12 @@ errors:
     too_many_attempts: "Trop d'essais. Demandez un nouveau code."
     resend_too_soon: "Patientez encore {seconds} s avant de demander un nouveau code."
     source_rate_limited: "Trop de demandes de code depuis cette connexion. Réessayez dans {seconds} s."
+  auth:
+    # Le code était bon et le serveur l'a confirmé. Ce qui a échoué ensuite est
+    # l'échange du jeton, dont le voyageur n'est pas responsable : la phrase dit
+    # ce qui s'est passé, et que les six chiffres affichés sont désormais
+    # consommés.
+    not_completed: "Votre code était correct, mais la connexion n'a pas abouti. Ce code est maintenant utilisé, demandez-en un nouveau."
   mfa:
     incorrect: "Code incorrect. Il vous reste {remaining} essai(s)."
     expired: "Cette connexion a expiré. Recommencez."
