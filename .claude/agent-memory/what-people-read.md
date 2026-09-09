@@ -8,15 +8,22 @@ without a key of its own has to borrow somebody else's sentence, and borrowed se
 
 ## A raw dotted key on screen means the catalog is missing a leaf
 
-**Tally: 1 — 2026-09-09 (`enum.PaymentRail.cg.fake_money` rendered on the payment screen).**
+**Tally: 2 — 2026-09-09 (`enum.PaymentRail.cg.fake_money` on the payment screen; `enum.TripSort.*`
+on the results screen, J8).**
 
 Nothing fails. `context.t` returns the key, and the key is displayed to the traveller as if it were
 words. Enum labels live under `enum.{TypeName}.{value}`, and a new enum value needs its EN **and**
 FR line or it ships as a dotted string.
 
-**Do instead:** any time a new enum value, rail, status or failure is introduced, add both languages
-in the same change and run `./tool/sync_i18n.sh`. When a key appears on screen, it is a missing
-catalog entry, never a rendering bug.
+The second occurrence was **not** a missing entry: `TripSort` was written in both languages, and
+appended to the *end* of `enums/domain.yaml` — which is four top-level blocks below `enum:`, under
+`disruption:`. The real key was `disruption.TripSort.earliest`. Every guard passed, because the
+catalog tests check EN/FR **parity** and placeholders, and both files were wrong in the same way.
+
+**Do instead:** append into the block, never onto the end of the file — `grep -n '^[a-z]' <file>`
+first and check which top-level key you are actually under. And when a new label is added, assert it
+from the widget test that renders it (`find.text('Le moins cher')`), which is the only check that
+reads the key the way the traveller does.
 
 ---
 
