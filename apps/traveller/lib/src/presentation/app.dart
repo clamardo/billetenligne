@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_design/bel_design.dart';
 import 'package:bel_localization/bel_localization.dart';
+import 'package:bel_platform/bel_platform.dart';
 import 'package:flutter/material.dart';
 
 import '../application/booking_flow.dart';
@@ -52,8 +53,18 @@ final class TravellerApp extends StatelessWidget {
     this.language = 'fr',
     this.onLanguage,
     this.mode,
+    this.clock = const SystemClock(),
     super.key,
   });
+
+  /// What time it is, as far as anybody knows.
+  ///
+  /// Injected rather than read from the handset because the rotating code
+  /// under a ticket is computed from it, and a phone that has been out of
+  /// coverage keeps no honest clock — no NTP, no cellular time signal. The
+  /// composition hands in a [CorrectedClock] built from the difference the
+  /// API client measured the last time this device spoke to us.
+  final Clock clock;
 
   final TranslationCatalog catalog;
   final BookingFlow flow;
@@ -114,6 +125,7 @@ final class TravellerApp extends StatelessWidget {
             openUrl: openUrl,
             mode: mode,
             openTicketsOnLaunch: openTicketsOnLaunch,
+            clock: clock,
           ),
         ),
       ),
@@ -136,12 +148,14 @@ class _Funnel extends StatefulWidget {
     this.openUrl,
     this.mode,
     this.openTicketsOnLaunch = false,
+    this.clock = const SystemClock(),
   });
 
   final BookingFlow flow;
   final SignInFlow signIn;
   final PaymentFlow payment;
   final TicketsFlow tickets;
+  final Clock clock;
   final String? Function()? currentUserId;
   final void Function(String url)? openUrl;
   final KiloModeController? mode;
@@ -556,6 +570,7 @@ class _FunnelState extends State<_Funnel> {
           booking: booking,
           ticket: ticket,
           seatIndex: seatIndex,
+          clock: widget.clock,
           onSeat: widget.tickets.showSeat,
           onClose: widget.tickets.closeTicket,
           onShare: () => widget.tickets.openSharing(booking),

@@ -95,6 +95,25 @@ Future<void> main() async {
     language: 'fr',
   );
 
+  // The conductor's own clock, corrected by what the last response said the
+  // real one was.
+  //
+  // It matters on both sides of the door. This handset **checks** the rotating
+  // code, so its clock decides whether a passenger's digits are fresh — and it
+  // spends its mornings in yards and its afternoons in dead zones, where NTP
+  // never runs. It also **stamps** every boarding and every waypoint, and
+  // those timestamps are evidence in a delay dispute.
+  //
+  // No preference store behind it, unlike the traveller app, and the reason is
+  // in the workflow rather than in the code: pinning a departure downloads its
+  // manifest, which needs a network, so this device measures the difference at
+  // the start of every boarding by definition. A launch that has not pinned
+  // anything has nothing to check yet.
+  final clock = CorrectedClock(
+    device: const SystemClock(),
+    offset: () => client.serverClockOffset,
+  );
+
   runApp(
     ScannerApp(
       catalog: catalog,
@@ -112,7 +131,8 @@ Future<void> main() async {
           // Nothing to tell them. The screen already changed.
         }
       },
-      gateway: ApiBoardingGateway(client, clock: const SystemClock()),
+      gateway: ApiBoardingGateway(client, clock: clock),
+      clock: clock,
       deviceId: _deviceId(),
       log: log,
       session: session,
@@ -186,8 +206,15 @@ class ScannerApp extends StatelessWidget {
     this.client,
     this.language = 'fr',
     this.onLanguage,
+    this.clock = const SystemClock(),
     super.key,
   });
+
+  /// What time this handset thinks it is, corrected by what the server last
+  /// said. It decides whether a passenger's rotating code reads as fresh, so
+  /// a drifting clock here refuses valid tickets at the door.
+
+  final Clock clock;
 
   final TranslationCatalog catalog;
   final BoardingGateway gateway;
@@ -236,6 +263,7 @@ class ScannerApp extends StatelessWidget {
         log: log,
         session: session,
         client: client,
+        clock: clock,
       ),
     ),
   );
@@ -248,6 +276,7 @@ class _Root extends StatefulWidget {
     this.log,
     this.session,
     this.client,
+    this.clock = const SystemClock(),
   });
 
   final BoardingGateway gateway;
@@ -255,6 +284,7 @@ class _Root extends StatefulWidget {
   final SqliteRedemptionStore? log;
   final BelSession? session;
   final BelApiClient? client;
+  final Clock clock;
 
   @override
   State<_Root> createState() => _RootState();
@@ -283,6 +313,7 @@ class _RootState extends State<_Root> {
       gateway: widget.gateway,
       deviceId: widget.deviceId,
       log: widget.log,
+      clock: widget.clock,
     );
   }
 }
@@ -293,11 +324,17 @@ class _RootState extends State<_Root> {
 /// and a conductor must never be able to swipe back from the door into a list
 /// while somebody is standing in front of them.
 class _CoachFlow extends StatefulWidget {
-  const _CoachFlow({required this.gateway, required this.deviceId, this.log});
+  const _CoachFlow({
+    required this.gateway,
+    required this.deviceId,
+    this.log,
+    this.clock = const SystemClock(),
+  });
 
   final BoardingGateway gateway;
   final String deviceId;
   final SqliteRedemptionStore? log;
+  final Clock clock;
 
   @override
   State<_CoachFlow> createState() => _CoachFlowState();
@@ -424,7 +461,10 @@ class _CoachFlowState extends State<_CoachFlow> {
           log: log,
           preparer: pinned.preparer,
           deviceId: widget.deviceId,
-          clock: const SystemClock(),
+          // Corrected: this is the clock the freshness check is measured
+          // against, so a handset drifting in a dead zone would refuse
+          // perfectly good codes.
+          clock: widget.clock,
           // A handset killed mid-boarding comes back knowing who is on.
           resumed: outbox.recorded(),
         );
@@ -437,7 +477,11 @@ class _CoachFlowState extends State<_CoachFlow> {
         _road = RoadProgress(
           road: pinned.waypoints,
           outbox: road,
-          clock: const SystemClock(),
+          // Still the device's own reading of when it happened at the
+          // roadside, rather than when the server heard about it — that is the
+          // whole point of stamping here. Corrected only for how wrong this
+          // handset's clock is known to be.
+          clock: widget.clock,
           deviceId: widget.deviceId,
         );
       });

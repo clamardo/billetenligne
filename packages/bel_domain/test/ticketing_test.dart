@@ -536,6 +536,82 @@ void main() {
       );
     });
 
+    // The case this whole mechanism has to survive in the market it was built
+    // for: a handset that has been out of coverage for a week, so nothing has
+    // corrected its clock — no NTP, no cellular time signal — meeting a
+    // conductor whose own handset pinned a manifest this morning.
+    group('a handset whose clock nobody has corrected', () {
+      // Twenty minutes slow. Well inside what a cheap phone does after a flat
+      // battery, and thirteen times the ±90 s the door tolerates.
+      const wrong = Duration(minutes: 20);
+      final deviceNow = atGate.subtract(wrong);
+
+      test('is refused on its own clock, which is the bug', () {
+        final shown = codeNow(deviceNow);
+        expect(
+          RotatingCode.isFresh(
+            presented: shown,
+            secret: secret,
+            now: atGate,
+            mac: mac,
+          ),
+          isFalse,
+          reason: 'a valid passenger, refused because their phone is slow',
+        );
+      });
+
+      test('boards once the offset measured at purchase is applied', () {
+        // Measured a week earlier, when they bought and had signal: the only
+        // moment both clocks could be seen at once.
+        final atPurchase = deviceNow.subtract(const Duration(days: 7));
+        final offset = ClockOffset.between(
+          serverTime: atPurchase.add(wrong),
+          deviceTime: atPurchase,
+        );
+
+        final shown = codeNow(offset.correct(deviceNow));
+        expect(
+          RotatingCode.isFresh(
+            presented: shown,
+            secret: secret,
+            now: atGate,
+            mac: mac,
+          ),
+          isTrue,
+        );
+      });
+
+      // The property that made it safe to adopt on every surface at once.
+      test(
+        'an offset we cannot trust leaves the outcome exactly as it was',
+        () {
+          final stale = ClockOffset(
+            offset: wrong,
+            // Captured "after" now, so the clock has moved backwards under us.
+            capturedAtDevice: deviceNow.add(const Duration(minutes: 1)),
+          );
+          expect(stale.correct(deviceNow), deviceNow);
+        },
+      );
+
+      test('a screenshot is still refused, corrected or not', () {
+        // The whole point of the freshness check survives the fix: correcting
+        // a clock does not un-freeze a photograph.
+        final photographed = codeNow(
+          atGate.subtract(const Duration(minutes: 5)),
+        );
+        expect(
+          RotatingCode.isFresh(
+            presented: photographed,
+            secret: secret,
+            now: atGate,
+            mac: mac,
+          ),
+          isFalse,
+        );
+      });
+    });
+
     test('reports seconds left, for the live ring on the ticket', () {
       expect(
         RotatingCode.secondsRemaining(DateTime.utc(2026, 8, 15, 5, 40, 0)),

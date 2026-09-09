@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:bel_client/bel_client.dart';
 import 'package:bel_localization/bel_localization.dart';
+import 'package:bel_platform/bel_platform.dart';
 import 'package:bel_secure_store/bel_secure_store.dart';
 import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
@@ -18,6 +19,7 @@ import 'src/application/sign_in_flow.dart';
 import 'src/application/tickets_flow.dart';
 import 'src/infrastructure/api_identity_gateway.dart';
 import 'src/infrastructure/api_travel_gateway.dart';
+import 'src/infrastructure/clock_offset_store.dart';
 import 'src/infrastructure/demo_identity_gateway.dart';
 import 'src/infrastructure/demo_travel_gateway.dart';
 import 'src/infrastructure/sqlite_ticket_vault.dart';
@@ -75,6 +77,11 @@ Future<void> main() async {
     return;
   }
 
+  // Opened before the client, because the client writes into it. Never
+  // throws: a handset with no preference store still shows a ticket, on its
+  // own clock, exactly as it did before this existed.
+  final clockOffsets = await ClockOffsetStore.open();
+
   final TravelGateway gateway;
   final IdentityGateway identity;
 
@@ -103,6 +110,13 @@ Future<void> main() async {
       // BelSession refreshes them behind this call.
       token: session.token,
       language: language,
+      // Every response carries a `Date`, and reading it is how this handset
+      // finds out its own clock is wrong. It matters because the rotating
+      // code under a ticket is computed locally from that clock and nothing
+      // on the road keeps it honest — no NTP, no cellular time signal, four
+      // hours with no coverage. Measured while there is signal, spent at a
+      // coach door where there is none.
+      onServerTime: clockOffsets.write,
     );
 
     gateway = ApiTravelGateway(client);
@@ -170,6 +184,14 @@ Future<void> main() async {
         launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
       ),
       language: language,
+      // The device's clock, corrected by whatever the last response told us
+      // about the real one. Falls back to the device clock untouched when
+      // there has been no measurement or the clock has moved under us, so it
+      // can only ever improve the answer.
+      clock: CorrectedClock(
+        device: const SystemClock(),
+        offset: () => clockOffsets.value,
+      ),
       // Three places, and all three matter. The widget tree repaints (done by
       // the screen itself, before this is awaited); the preference store
       // survives a relaunch; and the account row is what the server writes

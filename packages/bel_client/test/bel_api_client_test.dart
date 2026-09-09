@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:bel_client/bel_client.dart';
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_platform/bel_platform.dart';
 import 'package:http/http.dart' as http;
 import 'package:test/test.dart';
 
@@ -68,11 +69,13 @@ void main() {
     RetryPolicy retry = RetryPolicy.none,
     String? token,
     Duration timeout = const Duration(seconds: 20),
+    Clock clock = const SystemClock(),
   }) => BelApiClient(
     baseUrl: base,
     httpClient: transport,
     retry: retry,
     timeout: timeout,
+    clock: clock,
     token: token == null ? null : () => token,
   );
 
@@ -83,6 +86,102 @@ void main() {
    "fare":{"minor":12000,"currency":"XAF"},
    "serviceFee":{"minor":300,"currency":"XAF"},
    "state":"active"}''';
+
+  // The rotating code under a ticket is computed from the handset's clock, and
+  // nothing on the RN1 keeps that clock honest — no NTP, no cellular time
+  // signal, four hours with no coverage. Every response already carries the
+  // one thing that fixes it.
+  group('learning what time it is', () {
+    const noon = 'Wed, 09 Sep 2026 12:00:00 GMT';
+
+    test('reads Date off a response and records the difference', () async {
+      // A handset twenty minutes slow.
+      final device = DateTime.utc(2026, 9, 9, 11, 40);
+      final client = clientFor(
+        _ScriptedClient([
+          (200, holdJson, {'date': noon}),
+        ]),
+        clock: FixedClock(device),
+      );
+
+      await client.createHold(
+        const CreateHoldRequest(departureId: 'd1', seatLabels: ['1A']),
+      );
+
+      expect(client.serverClockOffset!.offset, const Duration(minutes: 20));
+      expect(client.serverClockOffset!.capturedAtDevice, device);
+    });
+
+    // The handset whose clock is worth correcting is disproportionately the
+    // one whose requests are failing, so a refusal has to teach us too.
+    test('learns from a refusal as readily as from an answer', () async {
+      final device = DateTime.utc(2026, 9, 9, 11, 40);
+      final client = clientFor(
+        _ScriptedClient([
+          (401, '{"code":"auth.unauthorized"}', {'date': noon}),
+        ]),
+        clock: FixedClock(device),
+      );
+
+      await expectLater(
+        client.createHold(
+          const CreateHoldRequest(departureId: 'd1', seatLabels: ['1A']),
+        ),
+        throwsA(isA<ApiFailure>()),
+      );
+      expect(client.serverClockOffset!.offset, const Duration(minutes: 20));
+    });
+
+    test(
+      'a header we cannot read leaves the last good measurement alone',
+      () async {
+        final client = clientFor(
+          _ScriptedClient([
+            (200, holdJson, {'date': noon}),
+            (200, holdJson, {'date': 'sometime on Tuesday'}),
+          ]),
+          clock: FixedClock(DateTime.utc(2026, 9, 9, 11, 40)),
+        );
+
+        const request = CreateHoldRequest(
+          departureId: 'd1',
+          seatLabels: ['1A'],
+        );
+        await client.createHold(request);
+        await client.createHold(request);
+
+        // Not null, and not a guess. There is no safe default for what time it
+        // is, so the previous reading stands.
+        expect(client.serverClockOffset!.offset, const Duration(minutes: 20));
+      },
+    );
+
+    test('no Date at all leaves it null rather than zero', () async {
+      final client = clientFor(_ScriptedClient([(200, holdJson)]));
+      await client.createHold(
+        const CreateHoldRequest(departureId: 'd1', seatLabels: ['1A']),
+      );
+      // Zero would claim the clock is correct, which is the claim we cannot
+      // make. Null sends the caller back to the device clock.
+      expect(client.serverClockOffset, isNull);
+    });
+
+    test('the newest reading wins', () async {
+      final client = clientFor(
+        _ScriptedClient([
+          (200, holdJson, {'date': noon}),
+          (200, holdJson, {'date': 'Wed, 09 Sep 2026 12:05:00 GMT'}),
+        ]),
+        clock: FixedClock(DateTime.utc(2026, 9, 9, 11, 40)),
+      );
+
+      const request = CreateHoldRequest(departureId: 'd1', seatLabels: ['1A']);
+      await client.createHold(request);
+      await client.createHold(request);
+
+      expect(client.serverClockOffset!.offset, const Duration(minutes: 25));
+    });
+  });
 
   group('what the client sends', () {
     // A query string belongs in the query, never spliced onto the path. `Uri`

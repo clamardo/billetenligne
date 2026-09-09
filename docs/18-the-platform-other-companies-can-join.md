@@ -6,7 +6,7 @@
 
 ## 0. What this document is
 
-Thirteen slices, **J1–J13**, that close the distance between the funnel that
+Fifteen slices, **J1–J15**, that close the distance between the funnel that
 exists and the marketplace the business is describing: a company decides to
 use us, picks its country, is approved, activates, puts its fleet on the road
 with a named crew, and a traveller anywhere in that country compares every
@@ -69,6 +69,8 @@ And the seven things this document exists for:
 | Sort and filter the results | ⬜ **not built** | No control in `results_screen.dart`. Interacts with the keyset cursor — §6.2 |
 | The company's logo on the ticket | ⬜ **not built** | `BookingDto` carries `operatorName` and `operatorAccentHue` and no logo. The logo exists only on `VitrineDto` |
 | The whole journey in a browser | ⬜ **not built** | `infrastructure/web/` renders the landing page, the storefront, the follower page and **the boarding pass** — the hardest screen — and nothing of the funnel. ~1,900 lines of the layer this extends already exist ([ADR-0033](adr/0033-the-web-traveller-surface.md)) |
+| A rotating code that survives a handset with no NTP | ✅ **built — J14** | Was: `windowAt(now)` on the raw device clock, with no offset correction anywhere. A phone a week out of coverage was refused at the door holding a valid ticket |
+| An ID type and number against the ticket | ⬜ **not built** | The signed payload carries the passenger's *name* (ADR-0007) and no document. The type list is market data and does not exist yet |
 | Telling a passenger who has not arrived | 🔨 **plumbed, switched off** | Templates, drain and channel all exist; no provisioned ACS sender number, so the API answers 503 for the phone channel |
 
 ---
@@ -503,6 +505,93 @@ already issued for them still validates. Both halves in one assertion (§8).
 *Tests:* the guarantee itself; a suspended operator's departure is absent from
 search; a boarding scan for it succeeds.
 
+### Part G — the door
+
+#### J14 — the handset stops trusting its own clock · **✅ built**
+**Depends on:** nothing
+The rotating code under a ticket is `HMAC(secret, window)`, computed on the
+handset with **no network** — that is why it works four hours down the RN1.
+What it does need is a roughly correct clock, and a phone's clock is kept
+honest by NTP or the cellular time signal: **exactly what this market's users
+do not have.** A handset a week out of coverage, or back from a flat battery,
+can be minutes out against a ±90 s tolerance, and its owner is refused at a
+door holding a ticket they paid for.
+
+Widening the tolerance is the tempting fix and the wrong one — the tolerance
+*is* how long a screenshot stays valid, so widening trades the defence away in
+exact proportion. Instead the difference is **measured** at any moment both
+clocks can be seen: every HTTP response carries a `Date`.
+
+- `ClockOffset` in `bel_platform` — `serverTime − deviceTime`, plus the device
+  time it was captured at, which is the only scale on which "has this clock
+  moved since?" can be asked. Distrusted if the clock has gone backwards, or
+  if the measurement is older than the sales horizon.
+- `CorrectedClock` reads it per call, because the client refreshes it on
+  **every** response, refusals included — the handset whose clock is worth
+  correcting is disproportionately the one whose requests are failing.
+- `BelApiClient` observes the header (with its own RFC 7231 parser, since
+  `dart:io`'s `HttpDate` does not exist on the web that ADR-0033 needs).
+- The traveller app persists it beside the theme — measured while there is
+  signal, spent at a door where there is none, very possibly after the app was
+  killed for memory. The scanner does not persist it and does not need to:
+  pinning a departure downloads a manifest, so it measures at the start of
+  every boarding by definition.
+
+**The property that made it safe to adopt everywhere at once:** an offset that
+cannot be trusted is discarded and the raw device clock used, which is exactly
+the behaviour that existed before. Nothing here can refuse somebody who would
+otherwise have boarded.
+
+**The residual, stated rather than hidden.** A clock corrected *forwards* while
+online, with no request made afterwards, leaves a measurement that is wrong in
+a way nothing local can detect — a clock that jumped and a week that passed are
+identical from inside. In practice the correction happens *because* the device
+found a network, so the next request is seconds away; and the outcome at the
+door is an amber `staleCode` with manual boarding behind it.
+
+*Tests:* 14 on `ClockOffset`, 5 on the client's capture, and 4 in
+`ticketing_test.dart` that demonstrate the bug and the fix on the same
+handset — refused on its own clock, boarding on the corrected one, unchanged
+when the offset is distrusted, **and a screenshot still refused either way**.
+
+#### J15 — who is travelling, and on what document
+**Depends on:** J3 (the manifest is where it is read)
+Companies here check an ID against the ticket, and the signed payload already
+carries the passenger's name for exactly that. What it does not carry is
+**which document** — and that is the ask: at purchase, per passenger, an ID
+**type** and **number**.
+
+Four decisions, because this is identity data and the defaults are all wrong:
+
+- **The types are market data, not an enum in code.** `carte nationale
+  d'identité`, `passeport`, `permis de conduire`, `carte d'étudiant`, `livret
+  de famille` — the list differs by country, and the next market's list is not
+  ours. It belongs in `config/markets.yaml` beside the dialling table and the
+  rails, so a country that recognises another document is a config push rather
+  than a release.
+- **The number never enters the QR.** The payload budget is under 300 bytes
+  (ADR-0007), and a QR is scannable by anyone holding the phone. Type and
+  number live on the manifest, which is tenant-scoped.
+- **The manifest shows the type and a masked number.** The conductor's actual
+  check is *the name on the ticket against the name on the document*; the
+  number is for a dispute afterwards. Showing four digits is enough to settle
+  "is this the same card" and does not put a boarding handset full of
+  identity numbers at a coach door. Follows the `kyb_documents` precedent —
+  a table of identity documents is the last one to open to the internet.
+- **Whether it is required is the operator's, with a floor.** This is where
+  the configurability instinct belongs (§4.2 is where it does not). ADR-0015
+  shape: the operator answers a question, the wizard renders the sentence, and
+  the traveller reads it **before paying** rather than discovering it at the
+  door. The floor: a passenger with no document of their own — a child on a
+  `livret de famille` — is never refused a seat by this setting alone.
+
+Refusals: `errors.travel.identityDocumentRequired`,
+`errors.travel.identityDocumentTypeUnknown`.
+*Tests:* a market with no document list refuses to require one; the number is
+absent from the signed payload; the manifest carries a mask and not the
+number; a change of departure carries the documents across; the operator's
+sentence and the executed rule come from the same object.
+
 ---
 
 ## 10. Order, and what gates what
@@ -516,7 +605,9 @@ J8 ─┬─ J9
     └─┐
 J11 ──┴─ J12
 
-J1 (gated: M1–M2)   ·   J2   ·   J11   ·   J13   — independent, land any time
+J3 ── J15
+
+J1 (gated: M1–M2) · J2 · J11 · J13 · J14 ✅ — independent, land any time
 ```
 
 **Build J3 and J4 first** even though they are the least visible slices here.

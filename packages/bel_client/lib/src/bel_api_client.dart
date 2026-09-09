@@ -43,13 +43,55 @@ final class BelApiClient {
     this.deviceId,
     this.retry = RetryPolicy.standard,
     this.timeout = const Duration(seconds: 20),
+    Clock clock = const SystemClock(),
+    void Function(ClockOffset)? onServerTime,
   }) : _base = baseUrl,
        _http = httpClient ?? http.Client(),
-       _token = token;
+       _token = token,
+       _clock = clock,
+       _onServerTime = onServerTime;
 
   final Uri _base;
   final http.Client _http;
   final TokenProvider? _token;
+  final Clock _clock;
+  final void Function(ClockOffset)? _onServerTime;
+
+  /// How far this handset's clock sits from the server's, as of the last
+  /// response of any kind.
+  ///
+  /// Kept because the rotating code under a ticket is computed from the
+  /// device's clock and nothing on the RN1 keeps that clock honest — no NTP,
+  /// no cellular time signal, four hours of no coverage. Measuring it costs a
+  /// header we are already being sent.
+  ///
+  /// Null until the first response. Callers fall back to the device clock,
+  /// which is where they were before this existed.
+  ClockOffset? get serverClockOffset => _serverClockOffset;
+  ClockOffset? _serverClockOffset;
+
+  /// Reads `Date` off any response and records the difference.
+  ///
+  /// **Any** response: a 401 carries a `Date` exactly as a 200 does, and the
+  /// handset whose clock is worth correcting is disproportionately the one
+  /// whose requests are failing. Refusing to learn from a refusal would skip
+  /// them.
+  ///
+  /// A malformed or absent header is ignored rather than defaulted. There is
+  /// no safe guess about what time it is.
+  void _observeServerTime(Map<String, String> headers) {
+    final raw = headers['date'];
+    if (raw == null) return;
+    final serverTime = _parseHttpDate(raw);
+    if (serverTime == null) return;
+
+    final measured = ClockOffset.between(
+      serverTime: serverTime,
+      deviceTime: _clock.now(),
+    );
+    _serverClockOffset = measured;
+    _onServerTime?.call(measured);
+  }
 
   /// The language every request announces, and the one the server renders its
   /// prose in.
@@ -1696,6 +1738,8 @@ final class BelApiClient {
             .then(http.Response.fromStream)
             .timeout(timeout);
 
+        _observeServerTime(response.headers);
+
         if (response.statusCode == 204 || response.body.isEmpty) {
           if (response.statusCode >= 400) {
             throw ServerRefused(
@@ -1800,4 +1844,46 @@ final class DownloadedFile {
   /// the period — a name composed on the client is a different name on every
   /// surface.
   final String? filename;
+}
+
+/// `Sun, 06 Nov 1994 08:49:37 GMT` — the one format RFC 7231 requires a server
+/// to send on `Date`, parsed here rather than with `HttpDate` from `dart:io`.
+///
+/// `dart:io` does not exist on the web, and the web is a surface this client
+/// serves (ADR-0033). The two obsolete formats RFC 7231 says a *recipient*
+/// must accept are deliberately not handled: nothing in this system emits
+/// them, and the failure mode of not parsing one is falling back to the
+/// device's clock — which is where we were anyway.
+DateTime? _parseHttpDate(String raw) {
+  const months = {
+    'Jan': 1,
+    'Feb': 2,
+    'Mar': 3,
+    'Apr': 4,
+    'May': 5,
+    'Jun': 6,
+    'Jul': 7,
+    'Aug': 8,
+    'Sep': 9,
+    'Oct': 10,
+    'Nov': 11,
+    'Dec': 12,
+  };
+  final match = RegExp(
+    r'^[A-Za-z]{3}, (\d{2}) ([A-Za-z]{3}) (\d{4}) '
+    r'(\d{2}):(\d{2}):(\d{2}) GMT$',
+  ).firstMatch(raw.trim());
+  if (match == null) return null;
+
+  final month = months[match.group(2)];
+  if (month == null) return null;
+
+  return DateTime.utc(
+    int.parse(match.group(3)!),
+    month,
+    int.parse(match.group(1)!),
+    int.parse(match.group(4)!),
+    int.parse(match.group(5)!),
+    int.parse(match.group(6)!),
+  );
 }

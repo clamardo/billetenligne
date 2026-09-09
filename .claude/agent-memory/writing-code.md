@@ -53,6 +53,22 @@ would have regressed "opened a ticket while a hold was counting down".
 
 ---
 
+## `dart:io` in a package the web has to compile
+
+**Tally: 1 — 2026-09-09, caught by review rather than by a build.**
+
+`HttpDate.tryParse` was the obvious way to read a `Date` header in
+`bel_client`. It lives in `dart:io`, which **does not exist on the web** —
+and ADR-0033 makes a browser a first-class surface for this client. The
+analyzer says nothing until something actually targets web.
+
+**Do instead:** in `bel_client`, `bel_contracts`, `bel_domain`,
+`bel_platform` and anything the API *and* an app both import, treat
+`dart:io` as unavailable. It is a twenty-line RFC 7231 parser; it is not a
+twenty-line rewrite of the web surface later.
+
+---
+
 ## Two `Expanded` buttons in a `Row` truncate whichever label is longer
 
 **Tally: 1 — 2026-09-09 ("Cancel this c…").**
