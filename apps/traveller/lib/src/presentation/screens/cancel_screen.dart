@@ -54,9 +54,9 @@ final class CancelScreen extends StatelessWidget {
     final quote = offer;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: onClose),
-        title: Text(context.t('travel.cancel.title'), style: kilo.text.h3),
+        title: context.t('travel.cancel.title'),
       ),
       body: SafeArea(
         child: quote == null
@@ -296,9 +296,9 @@ final class CancelledScreen extends StatelessWidget {
     final code = done.claimCode;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         automaticallyImplyLeading: false,
-        title: Text(context.t('travel.cancel.doneTitle'), style: kilo.text.h3),
+        title: context.t('travel.cancel.doneTitle'),
       ),
       body: SafeArea(
         child: ListView(

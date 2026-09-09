@@ -15,9 +15,15 @@
 -- `operator_payment_accounts` — so the grants below are explicit rather than
 -- inherited from 0004's one-time blanket GRANT.
 
+-- Every statement below is re-appliable, which is the rule the migration
+-- runner's own suite enforces: the newest file has to survive being applied
+-- to a database that already has it. Written without the guards, this one
+-- failed on `relation "operator_custom_roles" already exists` — a red suite
+-- that says nothing about custom roles and everything about the file's shape.
+
 BEGIN;
 
-CREATE TABLE operator_custom_roles (
+CREATE TABLE IF NOT EXISTS operator_custom_roles (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   operator_id      UUID NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
   name             TEXT NOT NULL,
@@ -33,7 +39,7 @@ CREATE TABLE operator_custom_roles (
 -- and `ticket_seller` would be genuinely ambiguous the moment either lands in
 -- `operator_staff.roles`, which has no way to tell two spellings apart from
 -- the string alone.
-CREATE UNIQUE INDEX operator_custom_roles_operator_id_lower_idx
+CREATE UNIQUE INDEX IF NOT EXISTS operator_custom_roles_operator_id_lower_idx
   ON operator_custom_roles (operator_id, lower(name));
 
 ALTER TABLE operator_custom_roles ENABLE ROW LEVEL SECURITY;
@@ -42,6 +48,7 @@ ALTER TABLE operator_custom_roles ENABLE ROW LEVEL SECURITY;
 -- would silently see every operator's roles.
 ALTER TABLE operator_custom_roles FORCE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS operator_custom_roles_tenant_isolation ON operator_custom_roles;
 CREATE POLICY operator_custom_roles_tenant_isolation ON operator_custom_roles
   USING (operator_id = app_tenant_id() OR app_is_platform())
   WITH CHECK (operator_id = app_tenant_id() OR app_is_platform());
@@ -56,6 +63,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON operator_custom_roles
 -- the same low-risk grant 0009 made for those two, extended to a third.
 GRANT SELECT ON operator_custom_roles TO bel_identity;
 
+DROP POLICY IF EXISTS operator_custom_roles_identity_read ON operator_custom_roles;
 CREATE POLICY operator_custom_roles_identity_read ON operator_custom_roles
   FOR SELECT USING (app_is_identity());
 

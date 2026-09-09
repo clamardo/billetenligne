@@ -85,6 +85,31 @@ void main() {
    "state":"active"}''';
 
   group('what the client sends', () {
+    // A query string belongs in the query, never spliced onto the path. `Uri`
+    // escapes a path, so a `?` written into one went out as `%3F` — the whole
+    // thing became a single segment, matched no route, and paying for a
+    // change answered 404 with nothing on screen to explain it.
+    test('a change id as a query parameter, not inside the path', () async {
+      final transport = _ScriptedClient([
+        (200, '{"items":[],"amount":{"minor":0,"currency":"XAF"}}'),
+      ]);
+      await clientFor(transport).paymentOptions('b-1', changeId: 'ch-9');
+
+      final sent = transport.requests.single.url;
+      expect(sent.path, endsWith('/bookings/b-1/payment-options'));
+      expect(sent.queryParameters['change'], 'ch-9');
+      expect(sent.toString(), isNot(contains('%3F')));
+    });
+
+    test('no query at all when there is no change to pay for', () async {
+      final transport = _ScriptedClient([
+        (200, '{"items":[],"amount":{"minor":0,"currency":"XAF"}}'),
+      ]);
+      await clientFor(transport).paymentOptions('b-1');
+
+      expect(transport.requests.single.url.hasQuery, isFalse);
+    });
+
     test('a language header on every request', () async {
       final transport = _ScriptedClient([(200, '{"items":[]}')]);
       await clientFor(transport).searchTrips(

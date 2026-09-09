@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../art/kilo_art.dart';
+import '../art/kilo_pattern.dart';
 import '../kilo_theme.dart';
 import 'k_button.dart';
 
@@ -189,18 +190,31 @@ class _Centered extends StatelessWidget {
         final size = math.min(220.0, constraints.maxWidth * 0.62);
         final showArt = art != null && room >= _artNeeds && size >= 120;
 
-        return Center(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.all(kilo.space.s6),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (showArt) ...[
-                  KIllustration(art!, size: size),
-                  SizedBox(height: kilo.space.s5),
+        // These four states are, between them, most of what a traveller sees
+        // on a slow morning — the spinner, the empty wallet, the refusal, the
+        // tunnel. Drawn on bare surface they were four white pages with a
+        // small picture floating in the middle, which reads as a screen that
+        // failed to finish loading rather than one that is telling you
+        // something. The ground carries them, at the same weight the seat map
+        // already stands on.
+        return KPattern(
+          motif: KPatternMotif.diagonale,
+          background: kilo.color.surfaceBase,
+          color: kilo.color.brandPrimary,
+          opacity: 0.06,
+          child: Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(kilo.space.s6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showArt) ...[
+                    KIllustration(art!, size: size),
+                    SizedBox(height: kilo.space.s5),
+                  ],
+                  ...children,
                 ],
-                ...children,
-              ],
+              ),
             ),
           ),
         );

@@ -275,6 +275,11 @@ travel:
       one: "{count} seat left"
       other: "{count} seats left"
     arrives: "Arrives {time}"
+    # The day, on every option. A daily 06:00 service offered as four rows
+    # reading "06:00 · Arrives 13:30" is four identical rows: the only thing
+    # that differs between them is the date, and it was the one thing the
+    # screen did not say.
+    onDay: "{date} · Arrives {time}"
     # Said before selection, never after: a cheaper departure gives nothing back.
     cheaperKeepsFare: "A cheaper departure does not change the fare you paid."
     involuntary: "The operator changed your departure, so any change is free."

@@ -46,9 +46,9 @@ final class ReservedScreen extends StatelessWidget {
     final code = booking.paymentCode;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         automaticallyImplyLeading: false,
-        title: Text(context.t('travel.reserved.title'), style: kilo.text.h3),
+        title: context.t('travel.reserved.title'),
       ),
       body: SafeArea(
         child: ListView(

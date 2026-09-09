@@ -69,9 +69,9 @@ final class ChangeScreen extends StatelessWidget {
     final screen = options;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: onClose),
-        title: Text(context.t('travel.change.title'), style: kilo.text.h3),
+        title: context.t('travel.change.title'),
       ),
       body: SafeArea(
         child: screen == null
@@ -298,7 +298,16 @@ final class _Row extends StatelessWidget {
                 SizedBox(width: kilo.space.s3),
                 Flexible(
                   child: Text(
-                    context.t('travel.change.arrives', {
+                    // The date, not only the hour. Every option on a daily
+                    // service departs at the same time, so a list that gave
+                    // the hour alone offered four rows nobody could tell
+                    // apart — and the traveller picking one of them was
+                    // choosing a day blind.
+                    context.t('travel.change.onDay', {
+                      'date': Format.shortDate(
+                        option.departsAt,
+                        locale: locale,
+                      ),
                       'time': Format.time(option.arrivesAt),
                     }),
                     style: kilo.text.bodySm.copyWith(
@@ -406,9 +415,9 @@ final class DepartureChangedScreen extends StatelessWidget {
     final locale = context.language;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         automaticallyImplyLeading: false,
-        title: Text(context.t('travel.change.doneTitle'), style: kilo.text.h3),
+        title: context.t('travel.change.doneTitle'),
       ),
       body: SafeArea(
         child: ListView(

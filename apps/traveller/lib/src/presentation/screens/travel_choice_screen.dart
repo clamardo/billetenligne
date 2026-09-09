@@ -63,9 +63,9 @@ final class TravelChoiceScreen extends StatelessWidget {
     final fallback = choices.fallback;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: onClose),
-        title: Text(context.t('travel.choice.title'), style: kilo.text.h3),
+        title: context.t('travel.choice.title'),
       ),
       body: SafeArea(
         child: ListView(
@@ -316,7 +316,17 @@ final class TravelChosenScreen extends StatelessWidget {
     final code = applied.claimCode;
 
     return Scaffold(
-      appBar: AppBar(automaticallyImplyLeading: false),
+      // The outcome names the band. It was an empty white bar, which on the
+      // one screen that tells somebody what happened to their journey read as
+      // an unfinished page rather than an answer.
+      appBar: KJourneyBar(
+        title: context.t(switch (applied.kind) {
+          'refund' => 'travel.choice.refundedTitle',
+          'keep' => 'travel.choice.keptTitle',
+          _ => 'travel.choice.movedTitle',
+        }),
+        automaticallyImplyLeading: false,
+      ),
       body: SafeArea(
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s4),
@@ -326,16 +336,6 @@ final class TravelChosenScreen extends StatelessWidget {
                 applied.kind == 'refund' ? KArt.payment : KArt.success,
                 size: 140,
               ),
-            ),
-            SizedBox(height: kilo.space.s2),
-            Text(
-              context.t(switch (applied.kind) {
-                'refund' => 'travel.choice.refundedTitle',
-                'keep' => 'travel.choice.keptTitle',
-                _ => 'travel.choice.movedTitle',
-              }),
-              style: kilo.text.h2,
-              textAlign: TextAlign.center,
             ),
             SizedBox(height: kilo.space.s2),
 

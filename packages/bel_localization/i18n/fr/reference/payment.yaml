@@ -6,6 +6,13 @@ enum:
     card: "Carte bancaire"
     cash: "Espèces"
     bankTransfer: "Virement bancaire"
+  # Le rail utilisé par défaut lorsqu'aucun portefeuille réel de ce
+  # déploiement n'a d'identifiants. Il n'apparaît qu'en développement et en
+  # démonstration, mais il y apparaît sur un vrai écran, et un écran qui
+  # affiche `enum.PaymentRail.cg.fake_money` apprend à tout le monde à ignorer
+  # les clés non traduites.
+  PaymentRail:
+    cg.fake_money: "Portefeuille de test — aucun argent réel"
 payment:
   rail:
     comingSoon: "Bientôt disponible"

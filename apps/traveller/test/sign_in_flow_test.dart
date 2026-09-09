@@ -250,6 +250,57 @@ void main() {
       expect(step.attemptsRemaining, 3);
     });
 
+    // The screen submits twice: once on the sixth digit typed, once when the
+    // button is pressed. Both fired with the same six digits, the first
+    // answer created the session, the second was refused because the code had
+    // just been spent — and the refusal replaced `SignedIn`. A traveller was
+    // signed out by their own second tap, and it looked like a rejected code.
+    test('the same code is never answered twice', () async {
+      await flow.requestCode('aline@example.cg');
+
+      await flow.submitCode('424242');
+      expect(flow.step, isA<SignedIn>());
+
+      await flow.submitCode('424242');
+
+      expect(gateway.submitted, ['424242'], reason: 'one code, one answer');
+      expect(flow.step, isA<SignedIn>(), reason: 'the session survives');
+      expect(gateway.isSignedIn, isTrue);
+    });
+
+    // Every answer is counted, and five end the challenge. Re-sending digits
+    // already known to be wrong cannot become right, and spends the budget a
+    // traveller needs for the code they are about to read correctly.
+    test('a wrong code is not spent twice either', () async {
+      await flow.requestCode('aline@example.cg');
+      gateway.submitFailure = const ServerRefused(
+        401,
+        ApiError(code: ErrorCode.otpIncorrect, params: {'remaining': 4}),
+      );
+
+      await flow.submitCode('000000');
+      await flow.submitCode('000000');
+
+      expect(gateway.submitted, ['000000']);
+    });
+
+    test('a fresh code is answered even when the digits repeat', () async {
+      await flow.requestCode('aline@example.cg');
+      gateway.submitFailure = const ServerRefused(
+        401,
+        ApiError(code: ErrorCode.otpExpired),
+      );
+      await flow.submitCode('424242');
+
+      // A new challenge. The old refusal says nothing about these digits.
+      gateway.submitFailure = null;
+      await flow.resend();
+      await flow.submitCode('424242');
+
+      expect(gateway.submitted, ['424242', '424242']);
+      expect(flow.step, isA<SignedIn>());
+    });
+
     test('an expired challenge is still answered on the same screen', () async {
       await flow.requestCode('aline@example.cg');
       gateway.submitFailure = const ServerRefused(

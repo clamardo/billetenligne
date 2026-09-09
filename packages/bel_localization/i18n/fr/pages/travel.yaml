@@ -280,6 +280,7 @@ travel:
       one: "{count} place libre"
       other: "{count} places libres"
     arrives: "Arrivée {time}"
+    onDay: "{date} · arrivée {time}"
     # Dit avant la sélection, jamais après : un départ moins cher ne rend rien.
     cheaperKeepsFare: "Un départ moins cher ne modifie pas le prix payé."
     involuntary: "La compagnie a modifié votre départ : tout changement est gratuit."

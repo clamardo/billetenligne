@@ -52,10 +52,7 @@ final class PaymentCheckoutScreen extends StatelessWidget {
     final rail = context.t(step.option.labelKey);
 
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Text(rail, style: kilo.text.h3),
-      ),
+      appBar: KJourneyBar(automaticallyImplyLeading: false, title: rail),
       body: SafeArea(
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s5),

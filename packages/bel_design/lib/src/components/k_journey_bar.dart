@@ -26,6 +26,7 @@ final class KJourneyBar extends StatelessWidget implements PreferredSizeWidget {
     required this.title,
     this.subtitle,
     this.leading,
+    this.automaticallyImplyLeading = true,
     this.actions,
     this.motif = KPatternMotif.kuba,
     super.key,
@@ -40,6 +41,11 @@ final class KJourneyBar extends StatelessWidget implements PreferredSizeWidget {
   final String? subtitle;
 
   final Widget? leading;
+
+  /// False on the screens a traveller must not reverse out of by the bar —
+  /// a seat is held on a countdown, and a booking is already paid for.
+  final bool automaticallyImplyLeading;
+
   final List<Widget>? actions;
   final KPatternMotif motif;
 
@@ -51,10 +57,20 @@ final class KJourneyBar extends StatelessWidget implements PreferredSizeWidget {
     final kilo = context.kilo;
     final ink = kilo.color.onBrandPrimary;
 
+    // A back button already supplies the gutter, so the title follows it with
+    // no gap. With nothing to its left — "Your seat is reserved", which a
+    // traveller must not reverse out of — a zero here puts the heading hard
+    // against the screen edge, and the band reads as a mistake rather than a
+    // header.
+    final hasLeading =
+        leading != null ||
+        (automaticallyImplyLeading && Navigator.canPop(context));
+
     return AppBar(
       leading: leading,
+      automaticallyImplyLeading: automaticallyImplyLeading,
       actions: actions,
-      titleSpacing: 0,
+      titleSpacing: hasLeading ? 0 : kilo.space.s4,
       toolbarHeight: preferredSize.height,
       backgroundColor: kilo.color.brandPrimary,
       foregroundColor: ink,

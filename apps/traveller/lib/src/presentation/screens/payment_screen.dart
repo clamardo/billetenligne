@@ -49,9 +49,9 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
     final step = widget.step;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: widget.onBack),
-        title: Text(context.t('payment.method.title'), style: kilo.text.h3),
+        title: context.t('payment.method.title'),
       ),
       body: SafeArea(
         child: ListView(

@@ -111,6 +111,21 @@ final class SignInFlow {
   DateTime? _resendAvailableAt;
   DateTime? get resendAvailableAt => _resendAvailableAt;
 
+  /// The code this challenge has already been sent to the server.
+  ///
+  /// A one-time code may be answered **once**. The screen submits on the sixth
+  /// digit — which saves a tap on a cracked screen and is worth keeping — and
+  /// again when the button is pressed, so the same six digits went twice: the
+  /// first answer created the session, the second was refused because the code
+  /// had just been spent, and the refusal replaced the session with an error.
+  /// A traveller who watched a green screen turn red was signed out by their
+  /// own second tap.
+  ///
+  /// It also protects the attempt budget the client is explicit about: every
+  /// answer is counted, five exhaust the challenge, and two of them on one
+  /// typed code is a quarter of somebody's allowance spent on a duplicate.
+  String? _submitted;
+
   /// The address a code was actually sent to.
   ///
   /// Kept here because the challenge only carries the **masked** form —
@@ -174,6 +189,9 @@ final class SignInFlow {
     try {
       final challenge = await _gateway.requestCode(trimmed, channel: _channel);
       _address = trimmed;
+      // A new challenge answers to a new code, even when the six digits
+      // happen to repeat.
+      _submitted = null;
       _resendAvailableAt = _clock.now().add(challenge.resendAfter);
       _emit(AwaitingCode(challenge));
     } on ApiFailure catch (failure) {
@@ -205,6 +223,12 @@ final class SignInFlow {
     final trimmed = code.trim();
     if (trimmed.length != 6) return;
 
+    // Already answered with exactly these digits. Sending them again cannot
+    // produce a different outcome — the code is spent either way — and it
+    // costs an attempt and, when the first answer succeeded, the session.
+    if (trimmed == _submitted) return;
+    _submitted = trimmed;
+
     _emit(VerifyingCode(current.challenge));
 
     try {
@@ -224,12 +248,14 @@ final class SignInFlow {
   /// kept so the field is prefilled rather than empty.
   void changeAddress() {
     _resendAvailableAt = null;
+    _submitted = null;
     _emit(NeedsAddress(address: _address));
   }
 
   void reset() {
     _address = null;
     _resendAvailableAt = null;
+    _submitted = null;
     _emit(const NeedsAddress());
   }
 

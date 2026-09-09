@@ -56,9 +56,9 @@ final class SettingsScreen extends StatelessWidget {
       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: onBack),
-        title: Text(context.t('travel.settings.title'), style: kilo.text.h3),
+        title: context.t('travel.settings.title'),
       ),
       body: SafeArea(
         child: ListView(

@@ -5,7 +5,6 @@ import 'package:bel_api/src/application/hold_seats.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_seat_inventory.dart';
 import 'package:bel_domain/bel_domain.dart';
-import 'package:postgres/postgres.dart';
 import 'package:test/test.dart';
 
 import 'pg_fixture.dart';
@@ -330,24 +329,10 @@ void main() {
       final userId = await fixture.traveller('sold1');
 
       // Sold by the system after payment — occupancy under a booking, which
-      // is a row the traveller's own role has no way of writing.
-      await db.transaction(DbScope.tenant(PgFixture.operatorId), (tx) async {
-        await tx.execute(
-          Sql.named('''
-            INSERT INTO seat_occupancy (departure_id, seat_label, operator_id,
-                                        span, booking_id)
-            SELECT @departure, '10A', @operator, d.road_span, b.id
-              FROM departures d, bookings b
-             WHERE d.id = @departure
-             LIMIT 1
-          '''),
-          parameters: {
-            'departure': TypedValue(Type.uuid, departureId),
-            'operator': TypedValue(Type.uuid, PgFixture.operatorId),
-          },
-          ignoreRows: true,
-        );
-      });
+      // is a row the traveller's own role has no way of writing. This
+      // departure's own booking, not whichever one an earlier suite happened
+      // to leave behind.
+      await fixture.sellSeat(departureId: departureId, seatLabel: '10A');
 
       final result = await holdSeats(
         departureId: departureId,
@@ -396,5 +381,46 @@ void main() {
 
       expect(result.failureOrNull, isA<SeatsNotOnDeparture>());
     });
+
+    // The app sends back the pair it searched with on every hold, because it
+    // cannot know whether the operator happens to sell that road in pieces.
+    // On a road with no priced legs — which is most roads — that pair is the
+    // road's own two ends, and refusing it refused the entire funnel.
+    test('the road\'s own two ends buy the whole road', () async {
+      final departureId = await fixture.departure(seatLabels: ['3A']);
+      final userId = await fixture.traveller('whole-road');
+
+      final result = await holdSeats(
+        departureId: departureId,
+        seatLabels: const ['3A'],
+        userId: userId,
+        idempotencyKey: 'whole-road-key',
+        fromCity: 'BZV',
+        toCity: 'PNR',
+      );
+
+      expect(result.isOk, isTrue, reason: result.failureOrNull?.code);
+      // The seat's own fare, not a leg price invented for a leg nobody priced.
+      expect(result.valueOrNull!.fare.minor, 12000);
+    });
+
+    test(
+      'a pair that is not the road refuses rather than sells the road',
+      () async {
+        final departureId = await fixture.departure(seatLabels: ['4A']);
+        final userId = await fixture.traveller('unpriced-leg');
+
+        final result = await holdSeats(
+          departureId: departureId,
+          seatLabels: const ['4A'],
+          userId: userId,
+          idempotencyKey: 'unpriced-leg-key',
+          fromCity: 'BZV',
+          toCity: 'OYO',
+        );
+
+        expect(result.failureOrNull, isA<SegmentNotSold>());
+      },
+    );
   });
 }

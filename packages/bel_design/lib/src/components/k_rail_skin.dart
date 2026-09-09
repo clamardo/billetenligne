@@ -67,9 +67,7 @@ final class KRailSkin extends StatelessWidget {
               selectedIconTheme: IconThemeData(color: ink),
               unselectedIconTheme: IconThemeData(color: dimmed),
               selectedLabelTextStyle: kilo.text.label.copyWith(color: ink),
-              unselectedLabelTextStyle: kilo.text.label.copyWith(
-                color: dimmed,
-              ),
+              unselectedLabelTextStyle: kilo.text.label.copyWith(color: dimmed),
             ),
             child: child,
           ),

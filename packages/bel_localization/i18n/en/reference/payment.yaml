@@ -6,6 +6,13 @@ enum:
     card: "Card"
     cash: "Cash"
     bankTransfer: "Bank transfer"
+  # The rail composition falls back to when no real wallet in this deployment
+  # has credentials. It only ever appears in development and demo builds, but
+  # it appears on a real screen there, and a screen that reads
+  # `enum.PaymentRail.cg.fake_money` teaches everyone testing the funnel to
+  # ignore untranslated keys.
+  PaymentRail:
+    cg.fake_money: "Test wallet — no real money moves"
 payment:
   rail:
     comingSoon: "Coming soon"

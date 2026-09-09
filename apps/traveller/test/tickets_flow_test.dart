@@ -5,6 +5,7 @@ import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_crypto/bel_crypto.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_traveller/src/presentation/l10n.dart';
+import 'package:bel_traveller/src/presentation/widgets/formatting.dart';
 import 'package:bel_traveller/src/application/ports/ticket_vault.dart';
 import 'package:bel_traveller/src/application/tickets_flow.dart';
 import 'package:bel_traveller/src/presentation/screens/ticket_screen.dart';
@@ -2009,8 +2010,17 @@ void main() {
         options: screen(rows: [row(fee: 0, difference: 0, owed: 0)]),
       );
 
-      // The question actually being asked is when they get there.
-      expect(find.textContaining('Arrivée'), findsOneWidget);
+      // The question actually being asked is when they get there — and, on a
+      // daily service where every option leaves at the same hour, on which
+      // day. A row that gives the hour alone is one of several a traveller
+      // cannot tell apart.
+      expect(find.textContaining('arrivée'), findsOneWidget);
+      expect(
+        find.textContaining(
+          Format.shortDate(now.add(const Duration(hours: 38)), locale: 'fr'),
+        ),
+        findsWidgets,
+      );
     });
 
     testWidgets('a full coach is shown with its reason, not hidden', (

@@ -1808,6 +1808,62 @@ final class PgFixture {
     };
   }
 
+  /// Sells [seatLabel] outright: a confirmed booking, and the occupancy row
+  /// the system writes for it.
+  ///
+  /// Exists because the test that needed this state used to write the
+  /// occupancy row with `FROM departures d, bookings b ... LIMIT 1` — any
+  /// booking in the database would do. On a database where some earlier suite
+  /// had made one that worked; on a fresh one the cross join matched nothing,
+  /// the INSERT wrote no row, the seat was never sold, and the assertion that
+  /// followed passed or failed for reasons that had nothing to do with the
+  /// code under test. A test whose set-up can silently do nothing is a test
+  /// that reports on the suite that ran before it.
+  Future<String> sellSeat({
+    required String departureId,
+    required String seatLabel,
+  }) async {
+    final booking = await _seed.execute(
+      Sql.named('''
+        INSERT INTO bookings (ref, operator_id, departure_id, state,
+                              fare_minor, service_fee_minor, total_minor,
+                              currency, channel, confirmed_at,
+                              payment_method, paid_at)
+        VALUES (@ref, @operator, @departure, 'confirmed',
+                12000, 0, 12000, 'XAF', 'app', now(), 'mobile_money', now())
+        RETURNING id
+      '''),
+      parameters: {
+        'ref': TypedValue(
+          Type.text,
+          'SOLD${DateTime.now().microsecondsSinceEpoch.toRadixString(32)}'
+              .toUpperCase(),
+        ),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'departure': TypedValue(Type.uuid, departureId),
+      },
+    );
+    final bookingId = booking.first.toColumnMap()['id'].toString();
+
+    await _seed.execute(
+      Sql.named('''
+        INSERT INTO seat_occupancy (departure_id, seat_label, operator_id,
+                                    span, booking_id)
+        SELECT @departure, @seat, @operator, d.road_span, @booking
+          FROM departures d
+         WHERE d.id = @departure
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, departureId),
+        'seat': TypedValue(Type.text, seatLabel),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'booking': TypedValue(Type.uuid, bookingId),
+      },
+    );
+
+    return bookingId;
+  }
+
   Future<int> countHolds(String departureId) async {
     final rows = await _seed.execute(
       Sql.named('''

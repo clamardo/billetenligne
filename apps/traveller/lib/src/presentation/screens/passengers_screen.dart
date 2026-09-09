@@ -71,9 +71,9 @@ class _PassengersScreenState extends State<PassengersScreen> {
     final locale = context.language;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: widget.onBack),
-        title: Text(context.t('travel.passengers.title'), style: kilo.text.h3),
+        title: context.t('travel.passengers.title'),
       ),
       body: SafeArea(
         child: ListView(

@@ -516,7 +516,10 @@ class _FunnelState extends State<_Funnel> {
 
     return switch (step) {
       TicketsLoading() => Scaffold(
-        appBar: AppBar(leading: BackButton(onPressed: _closeTickets)),
+        appBar: KJourneyBar(
+          leading: BackButton(onPressed: _closeTickets),
+          title: context.t('travel.tickets.title'),
+        ),
         body: KStateView(KLoading(context.t('travel.tickets.loading'))),
       ),
 
@@ -623,8 +626,30 @@ class _FunnelState extends State<_Funnel> {
         onClose: widget.tickets.closeChoices,
       ),
 
+      // "Sign in to continue" is not something a retry button can do
+      // anything about, and a correlation id under it is a dead end wearing
+      // the clothes of an answer. The one recovery is the sign-in screen, so
+      // this hands over to it and reopens the trips on the way back — the
+      // list was what they asked for, and it is still what they want.
+      TicketsFailed(:final failure)
+          when failure.messageKey == 'errors.auth.unauthorized' =>
+        SignInScreen(
+          flow: widget.signIn,
+          onSignedIn: (_) {
+            widget.signIn.reset();
+            _openTickets();
+          },
+          onCancel: () {
+            widget.signIn.reset();
+            _closeTickets();
+          },
+        ),
+
       TicketsFailed(:final failure) => Scaffold(
-        appBar: AppBar(leading: BackButton(onPressed: _closeTickets)),
+        appBar: KJourneyBar(
+          leading: BackButton(onPressed: _closeTickets),
+          title: context.t('travel.tickets.title'),
+        ),
         body: FailureView(failure, onRetry: widget.tickets.load),
       ),
     };

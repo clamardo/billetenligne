@@ -34,9 +34,9 @@ final class PaymentConfirmScreen extends StatelessWidget {
     final locale = context.language;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: step.busy ? null : onBack),
-        title: Text(context.t('payment.confirm.title'), style: kilo.text.h3),
+        title: context.t('payment.confirm.title'),
       ),
       body: SafeArea(
         child: ListView(

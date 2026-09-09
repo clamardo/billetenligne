@@ -64,10 +64,23 @@ final class PostgresSeatInventory implements SeatInventory {
         // Null on a whole-road claim, which is every claim on a road with no
         // priced legs. Otherwise the span and the price come from the
         // operator's own list, resolved here rather than sent by the client.
-        final leg = claim.fromCity == null ? null : await _leg(tx, claim);
-        if (claim.fromCity != null && leg == null) {
+        final resolved = claim.fromCity == null ? null : await _leg(tx, claim);
+        // Priced nothing between the two towns. If they are the road's own
+        // ends that is the ordinary whole-journey claim — the client sends
+        // back the pair it searched with and does not have to know whether
+        // the operator happens to sell that road in pieces. This is the same
+        // reading the seat map gives the pair, and the two must agree: a
+        // coach that can be drawn can be bought.
+        if (resolved != null && resolved.span == null && !resolved.wholeRoad) {
           return SegmentNotOnSale(claim.fromCity!, claim.toCity!);
         }
+        final leg = resolved == null || resolved.span == null
+            ? null
+            : (
+                span: resolved.span!,
+                fareMinor: resolved.fareMinor!,
+                currency: resolved.currency!,
+              );
 
         // ── Read the seats once, and classify ───────────────────────────
         // One plain read, and no lock. The seats race is settled by the
@@ -235,13 +248,17 @@ final class PostgresSeatInventory implements SeatInventory {
   /// here. A road that visits a town twice has two answers and the earlier
   /// boarding is the one a traveller meant.
   ///
-  /// Null when nothing is priced between them. The caller turns that into a
-  /// refusal rather than quietly selling the whole road, which would charge a
-  /// traveller for a journey they did not ask for.
-  Future<({String span, int fareMinor, String currency})?> _leg(
-    TxSession tx,
-    SeatClaim claim,
-  ) async {
+  /// A null `span` means nothing is priced between them, and `wholeRoad` is
+  /// what tells the caller whether that is a refusal or the ordinary
+  /// whole-journey claim. Selling the whole road on an unpriced *leg* would
+  /// charge a traveller for a journey they did not ask for; refusing the
+  /// road's own two ends would refuse every claim on every road the operator
+  /// has not broken into pieces, which is most of them.
+  ///
+  /// Null overall only when the departure has gone, which [_checkDeparture]
+  /// has already ruled out by the time this is called.
+  Future<({String? span, int? fareMinor, String? currency, bool wholeRoad})?>
+  _leg(TxSession tx, SeatClaim claim) async {
     final rows = await tx.execute(
       Sql.named('''
         WITH road AS (
@@ -259,21 +276,30 @@ final class PostgresSeatInventory implements SeatInventory {
                  r.destination_city, FALSE, TRUE
             FROM routes r
         )
-        SELECT int4range(sf.from_position, sf.to_position)::text AS span,
-               sf.fare_minor,
-               sf.currency
+        SELECT leg.span::text AS span,
+               leg.fare_minor,
+               leg.currency,
+               rt.origin_city = @from
+                 AND rt.destination_city = @to AS whole_road
           FROM departures d
-          JOIN segment_fares sf ON sf.route_id = d.route_id AND sf.active
-          JOIN road fs ON fs.route_id = sf.route_id
-                      AND fs.position = sf.from_position
-          JOIN road ts ON ts.route_id = sf.route_id
-                      AND ts.position = sf.to_position
+          JOIN routes rt ON rt.id = d.route_id
+          LEFT JOIN LATERAL (
+            SELECT int4range(sf.from_position, sf.to_position) AS span,
+                   sf.fare_minor,
+                   sf.currency
+              FROM segment_fares sf
+              JOIN road fs ON fs.route_id = sf.route_id
+                          AND fs.position = sf.from_position
+              JOIN road ts ON ts.route_id = sf.route_id
+                          AND ts.position = sf.to_position
+             WHERE sf.route_id = d.route_id AND sf.active
+               AND fs.city = @from AND ts.city = @to
+               -- A set-down-only stop can end a leg and never start one.
+               AND fs.boards AND ts.alights
+             ORDER BY sf.from_position
+             LIMIT 1
+          ) leg ON TRUE
          WHERE d.id = @departure
-           AND fs.city = @from AND ts.city = @to
-           -- A set-down-only stop can end a leg and never start one.
-           AND fs.boards AND ts.alights
-         ORDER BY sf.from_position
-         LIMIT 1
       '''),
       parameters: {
         'departure': TypedValue(Type.uuid, claim.departureId),
@@ -284,10 +310,12 @@ final class PostgresSeatInventory implements SeatInventory {
 
     if (rows.isEmpty) return null;
     final r = rows.first.toColumnMap();
+    final span = r['span'] as String?;
     return (
-      span: r['span'] as String,
-      fareMinor: r['fare_minor'] as int,
-      currency: (r['currency'] as String).trim(),
+      span: span,
+      fareMinor: r['fare_minor'] as int?,
+      currency: (r['currency'] as String?)?.trim(),
+      wholeRoad: r['whole_road'] as bool? ?? false,
     );
   }
 

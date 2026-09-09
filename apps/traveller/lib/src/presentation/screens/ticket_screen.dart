@@ -102,9 +102,9 @@ class _TicketScreenState extends State<TicketScreen> {
     final remaining = RotatingCode.secondsRemaining(now);
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: widget.onClose),
-        title: Text(context.t('travel.ticket.title'), style: kilo.text.h3),
+        title: context.t('travel.ticket.title'),
       ),
       body: SafeArea(
         child: ListView(

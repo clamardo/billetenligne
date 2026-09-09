@@ -415,9 +415,13 @@ final class BelApiClient {
     ({List<PaymentOptionDto> options, String? accountMsisdn, Money amount})
   >
   paymentOptions(String bookingId, {String? changeId}) async {
+    // The change id goes in `query`, not appended to the path. `Uri` escapes
+    // whatever it is handed as a path, so a `?` written here left on the wire
+    // as `payment-options%3Fchange=...` — one path segment, matching no
+    // route, and every attempt to pay for a change answered 404.
     final body = await _get(
-      '/public/v1/bookings/$bookingId/payment-options'
-      '${changeId == null ? '' : '?change=$changeId'}',
+      '/public/v1/bookings/$bookingId/payment-options',
+      query: changeId == null ? null : {'change': changeId},
     );
     return (
       options: Wire.readList(

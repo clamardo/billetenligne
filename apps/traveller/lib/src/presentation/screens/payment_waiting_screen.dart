@@ -31,9 +31,9 @@ final class PaymentWaitingScreen extends StatelessWidget {
     final kilo = context.kilo;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         automaticallyImplyLeading: false,
-        title: Text(context.t('payment.waiting.title'), style: kilo.text.h3),
+        title: context.t('payment.waiting.title'),
       ),
       body: SafeArea(
         child: ListView(

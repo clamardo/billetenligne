@@ -33,18 +33,20 @@ final class PaymentReceiptScreen extends StatelessWidget {
     final booking = step.booking;
 
     return Scaffold(
-      appBar: AppBar(automaticallyImplyLeading: false),
+      // A bare `AppBar` here was an empty white band above a green funnel —
+      // the one screen a traveller screenshots, and the one that stopped
+      // looking like the product. The band carries the words, so the body
+      // does not repeat them: the illustration and the amount are the
+      // celebration, and a heading said twice is a heading nobody reads.
+      appBar: KJourneyBar(
+        title: context.t('payment.success.title'),
+        automaticallyImplyLeading: false,
+      ),
       body: SafeArea(
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s5),
           children: [
             Center(child: KIllustration(KArt.success, size: 140)),
-            SizedBox(height: kilo.space.s2),
-            Text(
-              context.t('payment.success.title'),
-              style: kilo.text.h2,
-              textAlign: TextAlign.center,
-            ),
             SizedBox(height: kilo.space.s2),
             Center(
               child: KMoney(
@@ -135,7 +137,10 @@ final class PaymentRefusedScreen extends StatelessWidget {
     final code = step.intent.failureCode ?? 'payment.psp_unavailable';
 
     return Scaffold(
-      appBar: AppBar(leading: BackButton(onPressed: onBack)),
+      appBar: KJourneyBar(
+        title: context.t('payment.refused.title'),
+        leading: BackButton(onPressed: onBack),
+      ),
       body: SafeArea(
         child: KStateView(
           KFailed(
@@ -177,18 +182,15 @@ final class PaymentUnresolvedScreen extends StatelessWidget {
     final kilo = context.kilo;
 
     return Scaffold(
-      appBar: AppBar(automaticallyImplyLeading: false),
+      appBar: KJourneyBar(
+        title: context.t('payment.pending.title'),
+        automaticallyImplyLeading: false,
+      ),
       body: SafeArea(
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s5),
           children: [
             Icon(Icons.hourglass_top, size: 48, color: kilo.color.warning),
-            SizedBox(height: kilo.space.s3),
-            Text(
-              context.t('payment.pending.title'),
-              style: kilo.text.h2,
-              textAlign: TextAlign.center,
-            ),
             SizedBox(height: kilo.space.s3),
             Text(
               context.t('payment.pending.body'),

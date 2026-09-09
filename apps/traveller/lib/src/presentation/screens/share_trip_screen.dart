@@ -55,9 +55,9 @@ final class ShareTripScreen extends StatelessWidget {
     final live = share;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: onClose),
-        title: Text(context.t('travel.share.title'), style: kilo.text.h3),
+        title: context.t('travel.share.title'),
       ),
       body: SafeArea(
         child: ListView(

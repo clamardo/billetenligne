@@ -68,9 +68,9 @@ final class SeatAlertScreen extends StatelessWidget {
     final locale = context.language;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: onBack),
-        title: Text(context.t('travel.alert.title'), style: kilo.text.h3),
+        title: context.t('travel.alert.title'),
       ),
       body: SafeArea(
         child: ListView(

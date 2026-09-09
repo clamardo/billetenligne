@@ -105,32 +105,48 @@ class _SignInScreenState extends State<SignInScreen> {
     final step = widget.flow.step;
 
     return Scaffold(
-      appBar: AppBar(
+      // The same band as the rest of the funnel. This screen sits between
+      // choosing a seat and paying for it, and a white bar here was the one
+      // place the product stopped looking like itself mid-purchase.
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: widget.onCancel),
-        title: Text(context.t('auth.gate.title'), style: kilo.text.h3),
+        title: context.t('auth.gate.title'),
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Only on the way in. By the code step the keyboard is up and the
-            // six digits are the whole of what matters — the picture would be
-            // fighting the numeric pad for a small handset's one screenful.
-            if (step is NeedsAddress || step is SendingCode)
-              const KScene(KSceneArt.roadtrip, height: 120),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.all(kilo.space.s4),
-                children: switch (step) {
-                  NeedsAddress() ||
-                  SendingCode() => _addressStep(context, step),
-                  AwaitingCode() || VerifyingCode() => _codeStep(context, step),
-                  // Handled by the listener above; the funnel has already
-                  // moved on.
-                  SignedIn() => const [SizedBox.shrink()],
-                },
+      // Six fields' worth of content on a tall handset left two thirds of the
+      // screen flat white, in the middle of a funnel that is woven green
+      // above and below it. The same textile ground the seat map stands on
+      // carries the empty part, at an opacity the contrast gate is happy
+      // with over body text.
+      body: KPattern(
+        motif: KPatternMotif.diagonale,
+        background: kilo.color.surfaceBase,
+        color: kilo.color.brandPrimary,
+        opacity: 0.06,
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Only on the way in. By the code step the keyboard is up and
+              // the six digits are the whole of what matters — the picture
+              // would be fighting the numeric pad for a small handset's one
+              // screenful.
+              if (step is NeedsAddress || step is SendingCode)
+                const KScene(KSceneArt.roadtrip, height: 120),
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.all(kilo.space.s4),
+                  children: switch (step) {
+                    NeedsAddress() ||
+                    SendingCode() => _addressStep(context, step),
+                    AwaitingCode() ||
+                    VerifyingCode() => _codeStep(context, step),
+                    // Handled by the listener above; the funnel has already
+                    // moved on.
+                    SignedIn() => const [SizedBox.shrink()],
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

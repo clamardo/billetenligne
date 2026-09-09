@@ -78,9 +78,9 @@ final class TicketsScreen extends StatelessWidget {
     final kilo = context.kilo;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: KJourneyBar(
         leading: BackButton(onPressed: onBack),
-        title: Text(context.t('travel.tickets.title'), style: kilo.text.h3),
+        title: context.t('travel.tickets.title'),
       ),
       body: SafeArea(
         child: _isEmpty

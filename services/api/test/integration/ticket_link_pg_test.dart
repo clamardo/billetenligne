@@ -258,8 +258,23 @@ void main() {
       expect(await links.open(token: 'not-a-token', now: now), isNull);
 
       // Expired: the link outlives the coach by a day and no longer.
+      //
+      // Asked one hour past the link's own expiry, read back from the row.
+      // It used to be `now.add(9 days)` against a `now` fixed at 15 August
+      // 2026, while the fixture's departure is eight hours from the
+      // *database's* clock — so the probe was nine days after a literal that
+      // the calendar eventually walked past, and the "expired" link was
+      // still days from leaving. The test went red on a morning nobody had
+      // touched it, for a reason that was never about ticket links.
+      final expiry = await fixture.rows(
+        "SELECT expires_at FROM ticket_links WHERE booking_id = '${booking.id}'",
+      );
+      final expiresAt = (expiry.single['expires_at']! as DateTime).toUtc();
       expect(
-        await links.open(token: token, now: now.add(const Duration(days: 9))),
+        await links.open(
+          token: token,
+          now: expiresAt.add(const Duration(hours: 1)),
+        ),
         isNull,
       );
 
