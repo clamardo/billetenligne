@@ -1980,6 +1980,35 @@ void main() {
 
       expect(json.containsKey('via'), isFalse);
     });
+
+    test('the company travels as a mark a client can fetch', () {
+      final sent = DepartureSummaryDto(
+        id: 'd-3',
+        operatorId: 'op-1',
+        operatorName: 'Ocean du Nord',
+        mode: 'bus',
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        departsAt: DateTime.utc(2026, 8, 15, 6),
+        arrivesAt: DateTime.utc(2026, 8, 15, 13, 30),
+        fare: const Money.xaf(12000),
+        serviceFee: const Money.xaf(300),
+        seatsAvailable: 12,
+        capacity: 52,
+        seatSelectionEnabled: true,
+        operatorAccentHue: 'laterite',
+        operatorLogoUrl: 'https://cdn.example/operators/op-1/logo.png',
+      );
+
+      final json = sent.toJson();
+      final back = DepartureSummaryDto.fromJson(json);
+
+      expect(back.operatorLogoUrl, sent.operatorLogoUrl);
+      expect(back.operatorAccentHue, 'laterite');
+      // The storage key never leaves the server: a client that built the URL
+      // from it would be a client that breaks on a storage migration.
+      expect(json.containsKey('operatorLogoAsset'), isFalse);
+    });
   });
 
   group('compliance standing', () {

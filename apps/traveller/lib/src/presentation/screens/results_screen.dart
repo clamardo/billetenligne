@@ -170,6 +170,19 @@ final class ResultsScreen extends StatelessWidget {
                       accentColor: AccentHue.tryByName(
                         d.operatorAccentHue,
                       )?.color,
+                      // The company, recognisable. A row is a choice between
+                      // companies, and the mark is what somebody who heard
+                      // the name at a station is looking for. Never left
+                      // blank: a company with no logo gets its monogram in
+                      // its own accent, which is what the storefront and the
+                      // console header already draw.
+                      mark: KOperatorMark(
+                        name: d.operatorName,
+                        accent:
+                            AccentHue.tryByName(d.operatorAccentHue) ??
+                            AccentHue.foret,
+                        logoUrl: d.operatorLogoUrl,
+                      ),
                       amenities: _amenityIcons(d.amenities),
                       // Only when the server has a figure. It sends none until the
                       // operator has run enough coaches for one to mean something,

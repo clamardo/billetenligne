@@ -136,6 +136,27 @@ void main() {
         );
       });
 
+      // The results row's mark, which is the same ink over the same ground
+      // (`18-…-can-join.md` J9). It is called out separately because it is
+      // held to the small-copy threshold for a different reason: the header's
+      // 56 dp tile writes large initials on white, and this one writes 12 pt
+      // initials at 32 dp — where `laterite` on white is 3.17:1 and the
+      // company nobody can read is the one they were looking for.
+      test('${hue.name} carries a readable mark on a results row', () {
+        expect(
+          contrastRatio(hue.ink, hue.color),
+          greaterThanOrEqualTo(4.5),
+          reason: '${hue.name} monogram at row size',
+        );
+        // And the tile itself is separable from the card it sits on, or the
+        // mark is a smudge at arm's length in the sun.
+        expect(
+          contrastRatio(hue.color, KiloColors.pleinSoleil.surfaceRaised),
+          greaterThanOrEqualTo(3.0),
+          reason: '${hue.name} tile against the card',
+        );
+      });
+
       // And the drawing behind it does not eat that, because it is not
       // behind it: the header lays the accent back over the left of the band
       // and the landscape fills what is left. Turning the drawing's opacity

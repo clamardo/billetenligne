@@ -306,6 +306,16 @@ final class Services {
         : storage.publicUrl(vitrine.coverAsset!).toString(),
   );
 
+  /// The same resolution [withAssetUrls] does, as a function a use case can
+  /// hold. Public rather than signed for the same reason: a logo is on a
+  /// poster and in a cached results page, and a signature that expired would
+  /// break an image nobody was protecting.
+  ///
+  /// Null on a deployment that cannot store a file at all, so a row falls
+  /// back to its monogram instead of pointing at a URL that answers nothing.
+  static String? Function(String)? _logoUrlFrom(ObjectStore storage) =>
+      storage.isConfigured ? (key) => storage.publicUrl(key).toString() : null;
+
   final PaymentStore payments;
   final PayForBooking payForBooking;
 
@@ -431,9 +441,19 @@ final class Services {
     final reschedules = PostgresReschedules(db, issuer: tickets);
     final rails = _railsFrom(env, market);
 
+    // Falls back to the in-memory store rather than refusing to start. A
+    // deployment with a database and no storage account is a real state — it
+    // is every deployment on the day before the storage account is
+    // provisioned — and `/health` reports it rather than the API dying.
+    final storage = AzureBlobStore.fromEnvironment(env) ?? MemoryObjectStore();
+
     return Services._(
       holdSeats: HoldSeats(inventory: inventory, market: market),
-      searchDepartures: SearchDepartures(catalogue: catalogue, market: market),
+      searchDepartures: SearchDepartures(
+        catalogue: catalogue,
+        market: market,
+        logoUrl: _logoUrlFrom(storage),
+      ),
       signIn: SignIn(
         challenges: PostgresAuthChallenges(db),
         // Tunable without a deploy, like `max_attempts` is a column rather
@@ -487,11 +507,7 @@ final class Services {
       applications: PostgresOperatorApplications(db),
       seatAlerts: PostgresSeatAlerts(db),
       compliance: PostgresComplianceDesk(db),
-      // Falls back to the in-memory store rather than refusing to start. A
-      // deployment with a database and no storage account is a real state —
-      // it is every deployment on the day before the storage account is
-      // provisioned — and `/health` reports it rather than the API dying.
-      storage: AzureBlobStore.fromEnvironment(env) ?? MemoryObjectStore(),
+      storage: storage,
       payments: paymentStore,
       autoReview: AutoReviewApplications(
         queue: PostgresReviewQueue(db),
@@ -666,9 +682,15 @@ final class Services {
       );
     }
 
+    final storage = MemoryObjectStore();
+
     return Services._(
       holdSeats: HoldSeats(inventory: inventory, market: market),
-      searchDepartures: SearchDepartures(catalogue: catalogue, market: market),
+      searchDepartures: SearchDepartures(
+        catalogue: catalogue,
+        market: market,
+        logoUrl: _logoUrlFrom(storage),
+      ),
       signIn: SignIn(
         challenges: MemoryAuthChallenges(clock: clock),
         directory: directory,
@@ -724,7 +746,7 @@ final class Services {
       applications: MemoryOperatorApplications(clock: clock),
       seatAlerts: const NoSeatAlerts(),
       compliance: const NoComplianceDesk(),
-      storage: MemoryObjectStore(),
+      storage: storage,
       payments: memoryPayments,
       autoReview: const AutoReviewApplications(
         queue: NoReviewQueue(),

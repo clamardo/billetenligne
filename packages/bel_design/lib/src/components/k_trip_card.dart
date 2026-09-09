@@ -28,6 +28,7 @@ final class KTripCard extends StatelessWidget {
     this.soldOutLabel,
     this.scarce = false,
     this.accentColor,
+    this.mark,
     this.amenities = const [],
     this.reliabilityLabel,
     this.boardingLabel,
@@ -55,6 +56,16 @@ final class KTripCard extends StatelessWidget {
   final bool scarce;
 
   final Color? accentColor;
+
+  /// The company's mark — [KOperatorMark], usually. Null draws the row
+  /// exactly as it was drawn before marks existed: the accent rail on the
+  /// left is what tells two companies apart, and it is still there.
+  ///
+  /// Beside the company's name rather than at the head of the card, because
+  /// the largest thing on this row is the departure time and a logo that
+  /// competed with it would be a logo an operator paid us for.
+  final Widget? mark;
+
   final List<IconData> amenities;
 
   /// The operator's on-time record, already worded by the caller — *« 92 % à
@@ -140,12 +151,22 @@ final class KTripCard extends StatelessWidget {
                     ),
                   ),
                   SizedBox(height: kilo.space.s1),
-                  Text(
-                    '$operatorName · $durationLabel',
-                    style: kilo.text.bodySm.copyWith(
-                      color: kilo.color.contentSecondary,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      if (mark != null) ...[
+                        mark!,
+                        SizedBox(width: kilo.space.s2),
+                      ],
+                      Expanded(
+                        child: Text(
+                          '$operatorName · $durationLabel',
+                          style: kilo.text.bodySm.copyWith(
+                            color: kilo.color.contentSecondary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                   // On its own line, with a pin, rather than as a third
                   // clause of the operator row: somebody comparing two

@@ -457,6 +457,69 @@ void main() {
     });
   });
 
+  group('KTripCard and the company on it', () {
+    testWidgets('a row with no mark is the row we always drew', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 360,
+            child: KTripCard(
+              departureTime: '06:00',
+              arrivalTime: '13:30',
+              operatorName: 'Ocean du Nord',
+              durationLabel: '7 h',
+              totalFormatted: '9 000 FCFA',
+              seatsLabel: '12 places',
+              onTap: () {},
+            ),
+          ),
+        ),
+      );
+
+      // The accent rail on the left has told two companies apart since this
+      // card existed, and it still does. A mark is an addition to that row,
+      // never a replacement for it.
+      expect(find.byType(KOperatorMark), findsNothing);
+      expect(find.text('Ocean du Nord · 7 h'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the mark sits beside the name, not over the time', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 360,
+            child: KTripCard(
+              departureTime: '06:00',
+              arrivalTime: '13:30',
+              operatorName: 'Ocean du Nord',
+              durationLabel: '7 h',
+              totalFormatted: '9 000 FCFA',
+              seatsLabel: '12 places',
+              mark: const KOperatorMark(
+                name: 'Ocean du Nord',
+                accent: AccentHue.foret,
+              ),
+              onTap: () {},
+            ),
+          ),
+        ),
+      );
+
+      // The departure time is the largest thing on this card. A logo that
+      // competed with it would be a logo an operator paid us for.
+      expect(
+        tester.getTopLeft(find.byType(KOperatorMark)).dy,
+        greaterThan(tester.getTopLeft(find.text('06:00')).dy),
+      );
+      expect(find.text('Ocean du Nord · 7 h'), findsOneWidget);
+    });
+  });
+
   group('KChip', () {
     testWidgets('a long label narrows the chip, it does not break the card', (
       tester,
@@ -483,6 +546,64 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('KOperatorMark', () {
+    testWidgets('a company with no logo is still recognisable', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          const KOperatorMark(
+            name: 'Océan du Nord SARL',
+            accent: AccentHue.laterite,
+          ),
+        ),
+      );
+
+      // A monogram rather than an empty square: a company that never
+      // uploaded a mark should look maintained, not absent — and the row is
+      // where somebody chooses between them.
+      expect(find.text('ON'), findsOneWidget);
+    });
+
+    testWidgets('a logo that never arrives leaves the monogram', (
+      tester,
+    ) async {
+      // `Image.network` in a widget test resolves to nothing, which is the
+      // case this component exists for: on this market's connections a mark
+      // that does not load is an ordinary afternoon, not an error (§7.1).
+      await tester.pumpWidget(
+        host(
+          const KOperatorMark(
+            name: 'Trans Bony Voyages',
+            accent: AccentHue.indigo,
+            logoUrl: 'https://example.invalid/logo.png',
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('TB'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the mark cannot decide how tall a row is', (tester) async {
+      await tester.pumpWidget(
+        host(
+          const KOperatorMark(
+            name: 'Mavita Transport',
+            accent: AccentHue.foret,
+            logoUrl: 'https://example.invalid/banner.png',
+            size: 32,
+          ),
+        ),
+      );
+
+      // What arrives is a file an operator uploaded. A 4:1 banner must not
+      // change the row it sits on.
+      expect(tester.getSize(find.byType(KOperatorMark)), const Size(32, 32));
     });
   });
 

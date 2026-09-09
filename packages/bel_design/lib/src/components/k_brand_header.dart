@@ -220,12 +220,24 @@ final class KMonogram extends StatelessWidget {
     required this.name,
     required this.accent,
     this.size = 56,
+    this.filled = false,
     super.key,
   });
 
   final String name;
   final AccentHue accent;
   final double size;
+
+  /// The accent as the ground, with the hue's own ink on it, instead of the
+  /// hue on white.
+  ///
+  /// Not a preference — a size. The header's tile is 56 dp, so its initials
+  /// are large copy and 3:1 is the threshold they answer to. A results row
+  /// can spare 32 dp, its initials are 12 pt, and at that size the rule is
+  /// 4.5:1: `laterite` on white is 3.17 and would be a company's name nobody
+  /// can read on the row where they choose it. Filled, every hue clears 4.5
+  /// against its own ink, which the contrast gate holds it to.
+  final bool filled;
 
   @override
   Widget build(BuildContext context) {
@@ -235,14 +247,14 @@ final class KMonogram extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFFFF),
+        color: filled ? accent.color : const Color(0xFFFFFFFF),
         borderRadius: kilo.radius.controlBorder,
       ),
       alignment: Alignment.center,
       child: Text(
         initialsOf(name),
         style: kilo.text.h3.copyWith(
-          color: accent.color,
+          color: filled ? accent.ink : accent.color,
           fontSize: size * 0.38,
           height: 1,
         ),

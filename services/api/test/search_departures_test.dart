@@ -390,6 +390,70 @@ void main() {
     });
   });
 
+  group('the company on the row', () {
+    SearchDepartures withStore({String? Function(String)? logoUrl}) {
+      final inventory = MemorySeatInventory(
+        clock: clock,
+        departures: [
+          MemoryDeparture(
+            id: 'dep-marked',
+            operatorId: 'op-odn',
+            departsAt: now.add(const Duration(hours: 3)),
+            seatLabels: const ['1A'],
+            logoAsset: 'operators/op-odn/logo.png',
+          ),
+          MemoryDeparture(
+            id: 'dep-plain',
+            operatorId: 'op-tbv',
+            departsAt: now.add(const Duration(hours: 4)),
+            seatLabels: const ['1A'],
+          ),
+        ],
+      );
+      return SearchDepartures(
+        catalogue: MemoryDepartureCatalogue(inventory, clock: clock),
+        logoUrl: logoUrl,
+      );
+    }
+
+    test('a stored key leaves as a URL, never as a key', () async {
+      final search = withStore(logoUrl: (key) => 'https://cdn.example/$key');
+
+      final rows = (await search(query(), now: now)).valueOrNull!.departures;
+
+      // A client that built this URL itself would be a client that breaks on
+      // a storage migration, so the key never reaches one.
+      expect(
+        rows.firstWhere((d) => d.id == 'dep-marked').operatorLogoUrl,
+        'https://cdn.example/operators/op-odn/logo.png',
+      );
+      expect(rows.first.toJson().containsKey('operatorLogoAsset'), isFalse);
+    });
+
+    test('a company with no mark carries none', () async {
+      final search = withStore(logoUrl: (key) => 'https://cdn.example/$key');
+
+      final rows = (await search(query(), now: now)).valueOrNull!.departures;
+
+      // Null is what makes the row draw its monogram. An empty string would
+      // make it draw a broken image.
+      expect(
+        rows.firstWhere((d) => d.id == 'dep-plain').operatorLogoUrl,
+        isNull,
+      );
+    });
+
+    test('a deployment with nowhere to store a file sends no URL', () async {
+      final search = withStore();
+
+      final rows = (await search(query(), now: now)).valueOrNull!.departures;
+
+      // Every row falls back to its monogram, which is better than eleven
+      // rows pointing at a URL that answers nothing.
+      expect(rows.map((d) => d.operatorLogoUrl), everyElement(isNull));
+    });
+  });
+
   group('the order the traveller asked for', () {
     // Midnight, so a 05:00 coach on the searched day is still ahead of the
     // clock and the four below can be ordered against each other.

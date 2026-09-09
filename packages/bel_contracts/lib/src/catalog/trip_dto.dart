@@ -25,7 +25,7 @@ final class DepartureSummaryDto {
     required this.capacity,
     required this.seatSelectionEnabled,
     this.operatorAccentHue,
-    this.operatorLogoAsset,
+    this.operatorLogoUrl,
     this.onTimeRate,
     this.amenities = const [],
     this.via = const [],
@@ -61,7 +61,16 @@ final class DepartureSummaryDto {
   final bool seatSelectionEnabled;
 
   final String? operatorAccentHue;
-  final String? operatorLogoAsset;
+
+  /// Where the operator's mark can be fetched, already resolved.
+  ///
+  /// A URL and not the storage key: *where a file lives* is a fact about the
+  /// deployment — the account, the container, whatever CDN sits in front of
+  /// them — and a client that built this URL itself would be a client that
+  /// breaks on a storage migration. Null when the company never uploaded one,
+  /// and also when this deployment has no storage configured, which is why
+  /// the monogram fallback is keyed off the URL rather than off a key.
+  final String? operatorLogoUrl;
 
   /// 0–100. Surfaced honestly, so reliability becomes a competitive
   /// advantage rather than a hidden cost.
@@ -109,7 +118,7 @@ final class DepartureSummaryDto {
     'capacity': capacity,
     'seatSelectionEnabled': seatSelectionEnabled,
     'operatorAccentHue': operatorAccentHue,
-    'operatorLogoAsset': operatorLogoAsset,
+    'operatorLogoUrl': operatorLogoUrl,
     'onTimeRate': onTimeRate,
     'amenities': amenities.isEmpty ? null : amenities,
     'via': via.isEmpty ? null : via,
@@ -140,7 +149,7 @@ final class DepartureSummaryDto {
         capacity: Wire.requireInt(json['capacity'], 'capacity'),
         seatSelectionEnabled: json['seatSelectionEnabled'] as bool? ?? true,
         operatorAccentHue: json['operatorAccentHue'] as String?,
-        operatorLogoAsset: json['operatorLogoAsset'] as String?,
+        operatorLogoUrl: json['operatorLogoUrl'] as String?,
         onTimeRate: json['onTimeRate'] as int?,
         amenities: (json['amenities'] as List?)?.cast<String>() ?? const [],
         via: (json['via'] as List?)?.cast<String>() ?? const [],

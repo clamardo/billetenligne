@@ -684,6 +684,21 @@ void main() {
     });
   });
 
+  group('the company on the row', () {
+    testWidgets('every row carries a mark, logo or not', (tester) async {
+      await pumpApp(tester);
+      await searchBzvToPnr(tester);
+
+      // A row is a choice between companies. None of the demo companies has
+      // uploaded a logo, so every mark here is the generated monogram — which
+      // is the point: a company that never opened the vitrine editor is still
+      // recognisable on the row where somebody chooses them.
+      expect(find.byType(KOperatorMark), findsWidgets);
+      expect(find.text('ON'), findsWidgets);
+      expect(find.text('TB'), findsWidgets);
+    });
+  });
+
   group('ordering and narrowing the day', () {
     /// The sheet, opened from the chip that carries the count.
     Future<void> openFilters(WidgetTester tester) async {

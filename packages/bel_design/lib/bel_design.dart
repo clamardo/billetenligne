@@ -23,6 +23,7 @@ export 'src/components/k_countdown.dart';
 export 'src/components/k_field.dart';
 export 'src/components/k_language_menu.dart';
 export 'src/components/k_money.dart';
+export 'src/components/k_operator_mark.dart';
 export 'src/components/k_section.dart';
 export 'src/components/k_seat_map.dart';
 export 'src/components/k_state_view.dart';

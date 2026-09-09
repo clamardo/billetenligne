@@ -16,6 +16,7 @@ final class MemoryDeparture {
     this.destinationCity = 'PNR',
     this.mode = 'bus',
     this.accentHue = 'foret',
+    this.logoAsset,
     this.amenities = const ['wifi', 'usb', 'ac'],
     this.duration = const Duration(hours: 8),
     this.fare = const Money.xaf(12000),
@@ -30,6 +31,12 @@ final class MemoryDeparture {
   final String destinationCity;
   final String mode;
   final String accentHue;
+
+  /// The company's stored logo key, when it has one. A key and not a URL:
+  /// where a file can be fetched from is a fact about the deployment, and
+  /// resolving it is composition's job.
+  final String? logoAsset;
+
   final List<String> amenities;
   final Duration duration;
   final DateTime departsAt;
@@ -389,6 +396,7 @@ final class MemoryDepartureCatalogue implements DepartureCatalogue {
           capacity: d.capacity,
           seatSelectionEnabled: true,
           operatorAccentHue: d.accentHue,
+          operatorLogoAsset: d.logoAsset,
           amenities: d.amenities,
         ),
     ];

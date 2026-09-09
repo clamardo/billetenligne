@@ -109,9 +109,21 @@ final class SearchDepartures {
     this.horizon = const Duration(days: 365),
     this.pageSize = 20,
     this.maxPageSize = 100,
-  }) : _catalogue = catalogue;
+    String? Function(String assetKey)? logoUrl,
+  }) : _catalogue = catalogue,
+       _logoUrl = logoUrl;
 
   final DepartureCatalogue _catalogue;
+
+  /// Turns an operator's stored logo key into a URL a handset can fetch.
+  ///
+  /// A function supplied by composition rather than a rule written here:
+  /// *where a file can be fetched from* is a fact about the deployment — the
+  /// account, the container, whatever CDN sits in front of them — and neither
+  /// this use case nor the database row knows any of it. Null on a
+  /// deployment with no object store, which is exactly when a row should fall
+  /// back to a monogram.
+  final String? Function(String assetKey)? _logoUrl;
   final Market market;
   final int maxPassengers;
   final Duration horizon;
@@ -225,7 +237,10 @@ final class SearchDepartures {
     capacity: row.capacity,
     seatSelectionEnabled: row.seatSelectionEnabled,
     operatorAccentHue: row.operatorAccentHue,
-    operatorLogoAsset: row.operatorLogoAsset,
+    operatorLogoUrl: switch (row.operatorLogoAsset) {
+      final key? => _logoUrl?.call(key),
+      null => null,
+    },
     onTimeRate: row.onTimeRate,
     amenities: row.amenities,
     via: row.via,
