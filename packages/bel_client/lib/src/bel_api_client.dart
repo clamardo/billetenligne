@@ -841,15 +841,22 @@ final class BelApiClient {
   );
 
   /// Changes an existing member's roles or stations without the phone.
+  /// The edit form saved whole, [staffRef] included — a null clears the
+  /// number rather than leaving it alone.
   Future<StaffDto> updateStaffAssignment({
     required String staffId,
     required List<String> roles,
     required List<String> stationIds,
+    String? staffRef,
   }) async => StaffDto.fromJson(
     (await _send(
           'PATCH',
           '/console/v1/staff/${Uri.encodeComponent(staffId)}',
-          body: {'roles': roles, 'stationIds': stationIds},
+          body: {
+            'roles': roles,
+            'stationIds': stationIds,
+            'staffRef': staffRef,
+          },
           idempotent: true,
         )) ??
         const {},
@@ -1218,6 +1225,45 @@ final class BelApiClient {
       ManifestDto.fromJson(
         await _get('/console/v1/departures/$departureId/manifest'),
       );
+
+  /// Who is rostered on this coach (J3).
+  Future<List<CrewMemberDto>> crew(String departureId) async {
+    final body = await _get('/console/v1/departures/$departureId/crew');
+    return Wire.readList(
+      body['crew'],
+      CrewMemberDto.fromJson,
+      field: 'crew',
+    );
+  }
+
+  /// Put somebody on it. Refused with an `ErrorCode` — not staff, not
+  /// qualified, revoked, or a coach that has already gone — rather than with
+  /// a constraint violation.
+  Future<CrewMemberDto> assignCrew({
+    required String departureId,
+    required String userId,
+    required String role,
+  }) async => CrewMemberDto.fromJson(
+    await _postJson('/console/v1/departures/$departureId/crew', {
+      'userId': userId,
+      'role': role,
+    }),
+  );
+
+  /// Take somebody off it.
+  ///
+  /// A body on a DELETE, which is unusual and is the least bad option: what
+  /// identifies a roster row is *(departure, person, job)*, and one person may
+  /// legitimately both drive and conduct the same run.
+  Future<void> unassignCrew({
+    required String departureId,
+    required String userId,
+    required String role,
+  }) => _send(
+    'DELETE',
+    '/console/v1/departures/$departureId/crew',
+    body: {'userId': userId, 'role': role},
+  );
 
   /// The coaches a conductor could be boarding today (ADR-0022).
   ///

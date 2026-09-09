@@ -109,8 +109,8 @@ void main() {
       stationIds: const [],
     );
 
-    expect(updated, isNotNull);
-    expect(updated!.roles, ['conductor']);
+    expect(updated.staff, isNotNull);
+    expect(updated.staff!.roles, ['conductor']);
   });
 
   test('updateStaffAssignment on an unknown id returns null', () async {
@@ -120,7 +120,7 @@ void main() {
       roles: ['vendor'],
       stationIds: const [],
     );
-    expect(updated, isNull);
+    expect(updated.staff, isNull);
   });
 
   test('revoking sets revoked_at and the member is still listed', () async {

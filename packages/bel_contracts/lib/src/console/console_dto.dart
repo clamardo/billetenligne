@@ -481,6 +481,28 @@ final class ManifestPassengerDto {
   );
 }
 
+/// Who is in the cab, as the manifest names them.
+///
+/// No phone number, deliberately: the manifest is read under `booking.read`,
+/// which a counter clerk holds. What is here is what somebody reads aloud in
+/// a yard — the job, the name, and the operator's own number for the person.
+final class ManifestCrewDto {
+  const ManifestCrewDto({required this.role, this.fullName, this.staffRef});
+
+  /// `driver` or `conductor`, named by the catalog rather than by the server
+  /// (ADR-0008).
+  final String role;
+  final String? fullName;
+  final String? staffRef;
+
+  factory ManifestCrewDto.fromJson(Map<String, Object?> json) =>
+      ManifestCrewDto(
+        role: Wire.requireString(json['role'], 'role'),
+        fullName: json['fullName'] as String?,
+        staffRef: json['staffRef'] as String?,
+      );
+}
+
 /// The document a conductor carries and a station manager signs.
 final class ManifestDto {
   const ManifestDto({
@@ -491,6 +513,7 @@ final class ManifestDto {
     required this.sold,
     required this.boarded,
     required this.passengers,
+    this.crew = const [],
   });
 
   final String departureId;
@@ -505,6 +528,10 @@ final class ManifestDto {
 
   final List<ManifestPassengerDto> passengers;
 
+  /// Empty until a dispatcher has rostered the day, which is most departures
+  /// most of the time. An empty crew is a fact about the plan, not a gap.
+  final List<ManifestCrewDto> crew;
+
   factory ManifestDto.fromJson(Map<String, Object?> json) => ManifestDto(
     departureId: Wire.requireString(json['departureId'], 'departureId'),
     routeCode: Wire.requireString(json['routeCode'], 'routeCode'),
@@ -517,6 +544,9 @@ final class ManifestDto {
       ManifestPassengerDto.fromJson,
       field: 'passengers',
     ),
+    crew: json['crew'] == null
+        ? const []
+        : Wire.readList(json['crew'], ManifestCrewDto.fromJson, field: 'crew'),
   );
 }
 

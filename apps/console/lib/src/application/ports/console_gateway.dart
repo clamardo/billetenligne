@@ -228,6 +228,26 @@ abstract interface class ConsoleGateway {
 
   Future<ManifestDto> manifest(String departureId);
 
+  /// Who is rostered on this coach, and the two writes that change it (J3).
+  ///
+  /// Behind `departure.manage`, the dispatcher's capability, and deliberately
+  /// not `staff.manage`: granting somebody the `driver` role is a statement
+  /// about what they are qualified to do, and putting them on tomorrow's 06:00
+  /// is a statement about a coach.
+  Future<List<CrewMemberDto>> crew(String departureId);
+
+  Future<CrewMemberDto> assignCrew({
+    required String departureId,
+    required String userId,
+    required String role,
+  });
+
+  Future<void> unassignCrew({
+    required String departureId,
+    required String userId,
+    required String role,
+  });
+
   /// Declares a disruption on a departure (`08-disruption.md` §2.1).
   Future<DeclaredDisruptionDto> declareDisruption({
     required String departureId,
@@ -305,6 +325,7 @@ abstract interface class ConsoleGateway {
     required String staffId,
     required List<String> roles,
     required List<String> stationIds,
+    String? staffRef,
   });
 
   /// Instantly: the very next request from this person is a member of the

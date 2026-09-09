@@ -38,6 +38,9 @@ enum:
     staleCode: "STALE CODE"
     voided: "TICKET VOIDED"
     notOnManifest: "NOT ON MANIFEST"
+  CrewRole:
+    driver: "Driver"
+    conductor: "Conductor"
   OperatorRole:
     orgOwner: "Director"
     orgAdmin: "Administrator"
@@ -47,6 +50,7 @@ enum:
     stationManager: "Station manager"
     vendor: "Ticket agent"
     conductor: "Conductor"
+    driver: "Driver"
     viewer: "Viewer"
   # What compliance watches (03-operator-lifecycle.md §3.3). `doc_type` is free
   # text in the database, so an unknown key falls back to its own value rather

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../application/console_workspace.dart';
 import '../l10n.dart';
+import '../widgets/crew_sheet.dart';
 import '../widgets/disruption_sheet.dart';
 import '../widgets/manifest_sheet.dart';
 import '../widgets/protection_sheet.dart';
@@ -294,6 +295,18 @@ class _DepartureRow extends StatelessWidget {
                   fullWidth: false,
                   onPressed: () => _showManifest(context),
                 ),
+                // The dispatcher's capability, not the station manager's.
+                // Granting somebody the driver role is a statement about what
+                // they may do; putting them on tomorrow's 06:00 is a
+                // statement about a coach, and the two are different jobs
+                // done by different people.
+                if (workspace.can('departure.manage'))
+                  KButton(
+                    label: context.t('console.today.crew'),
+                    tone: KButtonTone.secondary,
+                    fullWidth: false,
+                    onPressed: () => _showCrew(context),
+                  ),
                 // Only for somebody who holds the capability. Cancelling a
                 // coach and telling everybody on it is not a counter agent's
                 // authority.
@@ -355,6 +368,37 @@ class _DepartureRow extends StatelessWidget {
     await showDialog<void>(
       context: context,
       builder: (_) => ManifestSheet(manifest: manifest),
+    );
+  }
+
+  Future<void> _showCrew(BuildContext context) async {
+    final loaded = await workspace.roster(row.id);
+    if (loaded == null || !context.mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (_) => CrewSheet(
+        routeCode: row.routeCode,
+        crew: loaded.crew,
+        staff: loaded.staff,
+        // A coach on the road, or one that has arrived. The server refuses
+        // the write either way; saying so here means the dispatcher is not
+        // offered a button that only produces a refusal.
+        departed: row.status == 'departed' || row.status == 'arrived',
+        onAssign: (userId, role) => workspace.assignCrew(
+          departureId: row.id,
+          userId: userId,
+          role: role,
+        ),
+        onUnassign: (userId, role) => workspace.unassignCrew(
+          departureId: row.id,
+          userId: userId,
+          role: role,
+        ),
+        // The shell's failure banner is behind this dialog, so the sheet
+        // needs to be able to say why a write did not happen.
+        failureKey: () => workspace.failure?.messageKey,
+      ),
     );
   }
 

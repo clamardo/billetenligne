@@ -194,6 +194,32 @@ final class ApiConsoleGateway implements ConsoleGateway {
       _client.manifest(departureId);
 
   @override
+  Future<List<CrewMemberDto>> crew(String departureId) =>
+      _client.crew(departureId);
+
+  @override
+  Future<CrewMemberDto> assignCrew({
+    required String departureId,
+    required String userId,
+    required String role,
+  }) => _client.assignCrew(
+    departureId: departureId,
+    userId: userId,
+    role: role,
+  );
+
+  @override
+  Future<void> unassignCrew({
+    required String departureId,
+    required String userId,
+    required String role,
+  }) => _client.unassignCrew(
+    departureId: departureId,
+    userId: userId,
+    role: role,
+  );
+
+  @override
   Future<DeclaredDisruptionDto> declareDisruption({
     required String departureId,
     required DeclareDisruptionRequest request,
@@ -392,10 +418,12 @@ final class ApiConsoleGateway implements ConsoleGateway {
     required String staffId,
     required List<String> roles,
     required List<String> stationIds,
+    String? staffRef,
   }) => _client.updateStaffAssignment(
     staffId: staffId,
     roles: roles,
     stationIds: stationIds,
+    staffRef: staffRef,
   );
 
   @override

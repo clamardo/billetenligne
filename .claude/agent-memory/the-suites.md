@@ -20,6 +20,22 @@ these were phantom, after a long time spent "fixing" them.
 
 ---
 
+## `services/api`'s suite is run from `services/api`, and a bare relative path is not
+
+**Tally: 1 — 2026-09-09.**
+
+`styled_email_test.dart` opened the catalog as `CatalogLoader.fromDirectory('packages/…/i18n')`,
+which only resolves when the process happens to sit at the repo root. `dart test` in this package
+does not, so the file failed to **load** — reported as `Failing tests: … loading …`, which looks
+like a compile error and is a missing directory. Four other suites in the same directory already
+walk up (`['..', '../..', '../../..', '.']`) to find it.
+
+**Do instead:** in `services/api/test`, never write a repo-root-relative path. Copy the `_i18nDirectory()`
+walk from `storefront_page_test.dart`. And read `loading <file> [E]` as *the file threw at import
+time*, not as *the file does not compile*.
+
+---
+
 ## Migrations are replayed, so a new one must be re-appliable
 
 **Tally: 1 — 2026-09-09 (`0048_operator_custom_roles.sql`, `42P07 relation … already exists`).**
@@ -29,6 +45,22 @@ have it. A migration written once-only turns the worker suite red days after it 
 
 **Do instead:** `CREATE TABLE IF NOT EXISTS`, `CREATE UNIQUE INDEX IF NOT EXISTS`, and
 `DROP POLICY IF EXISTS` before every `CREATE POLICY`. Every statement, not just the first one.
+
+---
+
+## One database per file, so a fixture constant in one test collides in the next
+
+**Tally: 1 — 2026-09-09.**
+
+`crew_pg_test.dart` uses one `PgFixture` for the whole file (`setUpAll`), which is the house
+pattern and right — but it means every test writes into the same rows the others can see. A test
+that set the staff number `CH-014` failed on `refTaken: true` because a **different** test forty
+lines above had given that number to somebody else at the same operator. The failure reads as "the
+uniqueness check is wrong" and is "the fixture is shared".
+
+**Do instead:** treat any value under a unique index — a staff number, a phone suffix, a role name —
+as belonging to the *file*, not to the test. Give each test its own, the way the existing suites
+already do with `freshName()` and per-test phone suffixes.
 
 ---
 

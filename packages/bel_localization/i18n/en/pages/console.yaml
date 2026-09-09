@@ -33,6 +33,7 @@ console:
     departures: "Departures"
     disrupted: "Disruptions"
     manifest: "Manifest"
+    crew: "Crew"
     # The departure's own state, shown only when it is not
     # `scheduled`: a label on every row is a label nobody reads.
     status:
@@ -240,6 +241,24 @@ console:
   manifest:
     summary: "{sold} sold · {boarded} boarded · {capacity} seats"
     empty: "No passengers yet."
+    crew: "Crew"
+    # A coach with nobody rostered. Said plainly rather than left blank: a
+    # missing line reads as a page that forgot to load.
+    noCrew: "Nobody rostered."
+  # Who is driving and who is taking the tickets. The dispatcher's job, not
+  # the station manager's: granting somebody the driver role says what they
+  # are qualified to do, and this says which coach on which morning.
+  crew:
+    title: "Who is on this coach"
+    add: "Add"
+    remove: "Remove"
+    done: "Done"
+    empty: "Nobody rostered yet."
+    # Shown per job when nobody at the company holds it. Names the cause and
+    # where to fix it, because an empty picker on its own reads as a bug.
+    noneQualified: "Nobody here holds this job yet. Grant it under Personnel."
+    # A roster is a plan. Once the coach has gone, it is a record.
+    gone: "This departure has left. Its crew is now a record."
   fleet:
     layouts: "Seat layouts"
     addLayout: "New layout"
@@ -401,6 +420,11 @@ console:
     phoneHint: "The number that receives the sign-in code."
     fullName: "Full name (optional)"
     fullNameHint: "So this person is recognisable in the list."
+    # The company's own number for somebody — a driver number on a roster.
+    # An identifier and never a credential (ADR-0024): it is stuck to the
+    # dashboard of the coach.
+    staffRef: "Staff number"
+    staffRefHint: "The company's own number, printed on the roster. Optional."
     roles: "Roles"
     stations: "Stations"
     stationsHelpWholeOrg: "Leave empty for every station."
@@ -430,6 +454,7 @@ console:
       station_manager: "Station manager"
       vendor: "Counter"
       conductor: "Conductor"
+      driver: "Driver"
       viewer: "Read only"
   timetable:
     title: "Timetables"

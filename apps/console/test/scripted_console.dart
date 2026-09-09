@@ -371,6 +371,50 @@ final class ScriptedConsole implements ConsoleGateway {
   @override
   Future<List<DepartureBoardDto>> board(DateTime localDate) async => boardList;
 
+  /// The roster, kept in memory so a test can assign, unassign and read back
+  /// the same list the dialog reads.
+  final crewList = <CrewMemberDto>[];
+
+  /// What the server says no with, when a test is about a refusal rather than
+  /// about a roster.
+  ApiFailure? crewFailure;
+
+  @override
+  Future<List<CrewMemberDto>> crew(String departureId) async =>
+      List.unmodifiable(crewList);
+
+  @override
+  Future<CrewMemberDto> assignCrew({
+    required String departureId,
+    required String userId,
+    required String role,
+  }) async {
+    if (crewFailure case final failure?) throw failure;
+    saved.add('assignCrew:$departureId:$userId:$role');
+    final person = staffList.where((s) => s.userId == userId).firstOrNull;
+    final member = CrewMemberDto(
+      userId: userId,
+      role: role,
+      assignedAt: DateTime.utc(2026, 8, 10, 4),
+      fullName: person?.fullName,
+      staffRef: person?.staffRef,
+    );
+    crewList
+      ..removeWhere((c) => c.userId == userId && c.role == role)
+      ..add(member);
+    return member;
+  }
+
+  @override
+  Future<void> unassignCrew({
+    required String departureId,
+    required String userId,
+    required String role,
+  }) async {
+    saved.add('unassignCrew:$departureId:$userId:$role');
+    crewList.removeWhere((c) => c.userId == userId && c.role == role);
+  }
+
   @override
   Future<ManifestDto> manifest(String departureId) async => ManifestDto(
     departureId: departureId,
@@ -379,6 +423,14 @@ final class ScriptedConsole implements ConsoleGateway {
     capacity: 49,
     sold: 1,
     boarded: 0,
+    crew: [
+      for (final c in crewList)
+        ManifestCrewDto(
+          role: c.role,
+          fullName: c.fullName,
+          staffRef: c.staffRef,
+        ),
+    ],
     passengers: const [
       ManifestPassengerDto(
         seatLabel: '1A',
@@ -816,6 +868,7 @@ final class ScriptedConsole implements ConsoleGateway {
     saved.add('invite:$phone:${roles.join(",")}:${stationIds.join(",")}');
     final member = StaffDto(
       id: 'staff-new',
+      userId: 'user-new',
       phone: phone,
       fullName: fullName,
       roles: roles,
@@ -831,15 +884,19 @@ final class ScriptedConsole implements ConsoleGateway {
     required String staffId,
     required List<String> roles,
     required List<String> stationIds,
+    String? staffRef,
   }) async {
     saved.add(
-      'updateStaff:$staffId:${roles.join(",")}:${stationIds.join(",")}',
+      'updateStaff:$staffId:${roles.join(",")}:${stationIds.join(",")}'
+      ':${staffRef ?? ""}',
     );
     final existing = staffList.firstWhere((s) => s.id == staffId);
     final updated = StaffDto(
       id: existing.id,
+      userId: existing.userId,
       phone: existing.phone,
       fullName: existing.fullName,
+      staffRef: staffRef,
       roles: roles,
       stationIds: stationIds,
       invitedAt: existing.invitedAt,
@@ -860,6 +917,7 @@ final class ScriptedConsole implements ConsoleGateway {
         if (s.id == staffId)
           StaffDto(
             id: s.id,
+            userId: s.userId,
             phone: s.phone,
             fullName: s.fullName,
             roles: s.roles,

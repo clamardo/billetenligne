@@ -52,14 +52,38 @@ Future<Response> onRequest(RequestContext context, String id) async {
       );
       if (refusal != null) return refusedAssignment(refusal, trace);
 
+      // Blank is no number, not the empty string: a unique index would
+      // happily accept `''` twice at one company and then read as a driver
+      // number on a manifest.
+      final rawRef = body['staffRef'];
+      if (rawRef != null && rawRef is! String) {
+        return badRequest(trace, 'staffRef');
+      }
+      final staffRef = (rawRef as String?)?.trim();
+
       final updated = await services.console.updateStaffAssignment(
         operatorId: scope.operatorId,
         staffId: id,
         roles: roles.toList(),
         stationIds: stationIds,
+        staffRef: staffRef == null || staffRef.isEmpty ? null : staffRef,
       );
 
-      if (updated == null) {
+      // 409, not 400: the request is well formed and the world will not
+      // accept it — somebody else at this company already answers to that
+      // number.
+      if (updated.refTaken) {
+        return Response.json(
+          statusCode: HttpStatus.conflict,
+          body: ApiError(
+            code: ErrorCode.staffRefTaken,
+            traceId: trace,
+          ).toJson(),
+          headers: {BelHeaders.traceId: trace},
+        );
+      }
+
+      if (updated.staff == null) {
         return Response.json(
           statusCode: HttpStatus.notFound,
           body: ApiError(code: ErrorCode.notFound, traceId: trace).toJson(),
@@ -68,7 +92,7 @@ Future<Response> onRequest(RequestContext context, String id) async {
       }
 
       return Response.json(
-        body: staffDto(updated).toJson(),
+        body: staffDto(updated.staff!).toJson(),
         headers: {BelHeaders.traceId: trace},
       );
 

@@ -230,17 +230,41 @@ final class UnavailableOperatorConsole implements OperatorConsole {
   }) async => _refuse();
 
   @override
-  Future<StaffSummary?> updateStaffAssignment({
+  Future<({StaffSummary? staff, bool refTaken})> updateStaffAssignment({
     required String operatorId,
     required String staffId,
     required List<String> roles,
     required List<String> stationIds,
+    String? staffRef,
   }) async => _refuse();
 
   @override
   Future<bool> revokeStaff({
     required String operatorId,
     required String staffId,
+  }) async => _refuse();
+
+  @override
+  Future<List<CrewMember>> crew({
+    required String operatorId,
+    required String departureId,
+  }) async => _refuse();
+
+  @override
+  Future<Result<CrewMember, CrewAssignmentRefusal>> assignCrew({
+    required String operatorId,
+    required String departureId,
+    required String staffUserId,
+    required CrewRole role,
+    required String actorUserId,
+  }) async => _refuse();
+
+  @override
+  Future<Result<bool, CrewAssignmentRefusal>> unassignCrew({
+    required String operatorId,
+    required String departureId,
+    required String staffUserId,
+    required CrewRole role,
   }) async => _refuse();
 
   @override

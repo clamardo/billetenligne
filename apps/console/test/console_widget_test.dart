@@ -438,6 +438,254 @@ languages:
     });
   });
 
+  // J3. Four of the seven gaps in `18-…md` are downstream of a departure
+  // having nobody on it: a driver dashboard has nothing to be a dashboard of,
+  // position has nothing to attach to, closing a departure has nothing to
+  // close, and "ring the passenger who has not arrived" has nobody to ring.
+  group('who is on the coach', () {
+    StaffDto person(
+      String id, {
+      required List<String> roles,
+      String? name,
+      String? ref,
+      DateTime? revokedAt,
+    }) => StaffDto(
+      id: 'staff-$id',
+      userId: 'user-$id',
+      fullName: name ?? 'Aline Mbemba',
+      staffRef: ref,
+      roles: roles,
+      stationIds: const [],
+      invitedAt: DateTime.utc(2026, 1, 1),
+      revokedAt: revokedAt,
+    );
+
+    ScriptedConsole dispatcher({
+      String status = 'scheduled',
+      List<String> capabilities = const ['booking.read', 'departure.manage'],
+      List<StaffDto> staff = const [],
+    }) => ScriptedConsole(capabilities: capabilities)
+      ..boardList = [
+        DepartureBoardDto(
+          id: 'dep-1',
+          routeCode: 'BZV-PNR',
+          departsAt: DateTime.utc(2026, 8, 10, 5),
+          status: status,
+          capacity: 49,
+          sold: 3,
+          held: 0,
+          available: 46,
+          vehicle: 'ODN-001',
+        ),
+      ]
+      ..staffList = staff;
+
+    Future<void> openCrew(WidgetTester tester) async {
+      await tester.tap(find.text('Équipage'));
+      await tester.pumpAndSettle();
+    }
+
+    // A dispatcher puts somebody on tomorrow's 06:00; a station manager
+    // decides who is allowed to drive at all. Different jobs, different
+    // people, and collapsing them hands every rota in the company to whoever
+    // can hire.
+    testWidgets('a counter clerk is not offered the roster', (tester) async {
+      await pump(tester, dispatcher(capabilities: const ['booking.read']));
+      expect(find.text('Équipage'), findsNothing);
+    });
+
+    testWidgets('rostering a driver puts them on the coach', (tester) async {
+      final gateway = dispatcher(
+        staff: [
+          person(
+            '1',
+            roles: const ['driver'],
+            name: 'Aline Mbemba',
+            ref: 'CH-014',
+          ),
+        ],
+      );
+      await pump(tester, gateway);
+      await openCrew(tester);
+
+      // Offered by name and by the operator's own number — what a dispatcher
+      // says out loud on the radio when two drivers share a first name.
+      await tester.tap(find.text('Aline Mbemba · CH-014'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('assignCrew:dep-1:user-1:driver'));
+      // And they are no longer offered, because putting somebody on twice is
+      // a button whose only outcome is nothing happening.
+      expect(find.text('Aline Mbemba · CH-014'), findsNothing);
+      expect(find.text('Aline Mbemba'), findsOneWidget);
+    });
+
+    testWidgets('and taking them off leaves the other job alone', (
+      tester,
+    ) async {
+      final gateway = dispatcher(
+        staff: [
+          person('1', roles: const ['driver', 'conductor']),
+        ],
+      );
+      await pump(tester, gateway);
+      await openCrew(tester);
+
+      // Both jobs, one person. A three-coach company runs this way and a
+      // screen that forbade it would be a screen they cannot use.
+      // The driver's picker first, then the conductor's: once somebody is
+      // rostered in a job they leave that job's picker, so `.first` is a
+      // different button each time.
+      for (var i = 0; i < 2; i++) {
+        await tester.tap(find.widgetWithText(KButton, 'Aline Mbemba').first);
+        await tester.pumpAndSettle();
+      }
+      expect(gateway.saved, contains('assignCrew:dep-1:user-1:driver'));
+      expect(gateway.saved, contains('assignCrew:dep-1:user-1:conductor'));
+
+      await tester.tap(find.byTooltip('Retirer').first);
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('unassignCrew:dep-1:user-1:driver'));
+      expect(
+        gateway.saved,
+        isNot(contains('unassignCrew:dep-1:user-1:conductor')),
+      );
+    });
+
+    // Selling tickets at a counter does not license somebody to drive a
+    // coach, and the roster is the wrong place to find that out. The server
+    // refuses it too; refusing it here means the dispatcher never asks.
+    testWidgets('somebody who cannot drive is not offered as a driver', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        dispatcher(
+          staff: [
+            person('1', roles: const ['vendor']),
+          ],
+        ),
+      );
+      await openCrew(tester);
+
+      expect(find.text('Aline Mbemba'), findsNothing);
+      expect(
+        find.textContaining('Personne ici ne détient encore ce métier'),
+        findsNWidgets(2),
+      );
+    });
+
+    testWidgets('a revoked member is not offered either', (tester) async {
+      await pump(
+        tester,
+        dispatcher(
+          staff: [
+            person(
+              '1',
+              roles: const ['driver'],
+              revokedAt: DateTime.utc(2026, 6, 1),
+            ),
+          ],
+        ),
+      );
+      await openCrew(tester);
+      expect(find.text('Aline Mbemba'), findsNothing);
+    });
+
+    // A roster is a plan. Once the coach is on the road it is a record, and a
+    // record that can be edited is not a record.
+    testWidgets('a coach that has left is shown, not edited', (tester) async {
+      final gateway = dispatcher(
+        status: 'departed',
+        staff: [
+          person('1', roles: const ['driver']),
+        ],
+      );
+      gateway.crewList.add(
+        CrewMemberDto(
+          userId: 'user-1',
+          role: 'driver',
+          assignedAt: DateTime.utc(2026, 8, 10, 4),
+          fullName: 'Aline Mbemba',
+        ),
+      );
+      await pump(tester, gateway);
+      await openCrew(tester);
+
+      expect(find.text('Aline Mbemba'), findsOneWidget);
+      expect(find.byTooltip('Retirer'), findsNothing);
+      expect(find.textContaining('Ce départ est parti'), findsOneWidget);
+    });
+
+    // The console's failure banner lives in the shell, which is *behind* this
+    // dialog. Without a line in the sheet, a dispatcher rostering somebody
+    // the server refuses taps a button and watches nothing happen.
+    testWidgets('a refusal is said inside the dialog, not behind it', (
+      tester,
+    ) async {
+      final gateway =
+          dispatcher(
+              staff: [
+                person('1', roles: const ['driver']),
+              ],
+            )
+            ..crewFailure = const ServerRefused(
+              409,
+              ApiError(code: 'crew.not_qualified'),
+            );
+      await pump(tester, gateway);
+      await openCrew(tester);
+
+      await tester.tap(find.widgetWithText(KButton, 'Aline Mbemba').first);
+      await tester.pumpAndSettle();
+
+      // Inside the dialog, specifically. The shell's own banner says it too,
+      // which is exactly the copy the dispatcher cannot see from here.
+      expect(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.text(
+            "Cette personne n'est pas enregistrée pour ce poste.",
+          ),
+        ),
+        findsOneWidget,
+      );
+      // And the person is still offered, because nothing was written.
+      expect(find.widgetWithText(KButton, 'Aline Mbemba'), findsWidgets);
+    });
+
+    // The document a conductor carries. One that names forty-two passengers
+    // and nobody in the cab cannot answer the first question asked when a
+    // coach is late.
+    testWidgets('the manifest names the crew', (tester) async {
+      final gateway = dispatcher();
+      gateway.crewList.add(
+        CrewMemberDto(
+          userId: 'user-1',
+          role: 'driver',
+          assignedAt: DateTime.utc(2026, 8, 10, 4),
+          fullName: 'Aline Mbemba',
+          staffRef: 'CH-014',
+        ),
+      );
+      await pump(tester, gateway);
+      await tester.tap(find.text('Liste'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Chauffeur · Aline Mbemba · CH-014'), findsOneWidget);
+    });
+
+    testWidgets('and says so plainly when there is none', (tester) async {
+      await pump(tester, dispatcher());
+      await tester.tap(find.text('Liste'));
+      await tester.pumpAndSettle();
+
+      // Left blank, this line reads as a page that did not finish loading.
+      expect(find.text("Personne d'affecté."), findsOneWidget);
+    });
+  });
+
   group('declaring a disruption', () {
     /// The sheet scrolls: on an agency laptop the confirm button is below the
     /// fold once the causes are showing, which is exactly where it is on a
@@ -1247,6 +1495,7 @@ languages:
         ),
         '+242069000002',
       );
+      await tester.ensureVisible(find.text('Guichet'));
       await tester.tap(find.text('Guichet'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Gare Elf'));
@@ -1298,6 +1547,7 @@ languages:
           ),
           '+242069000003',
         );
+        await tester.ensureVisible(find.text('Guichet'));
         await tester.tap(find.text('Guichet'));
         await tester.pumpAndSettle();
 
@@ -1317,6 +1567,7 @@ languages:
         staff: [
           StaffDto(
             id: 'staff-1',
+            userId: 'user-1',
             phone: '+242069000004',
             roles: const ['vendor'],
             stationIds: const ['st-bzv'],
@@ -1349,6 +1600,7 @@ languages:
           staff: [
             StaffDto(
               id: 'staff-2',
+              userId: 'user-2',
               phone: '+242069000005',
               roles: const ['ticket_seller'],
               stationIds: const [],
@@ -1463,6 +1715,97 @@ languages:
         gateway.saved,
         contains('updateRole:role-1:ticket_seller:booking.sell,booking.read'),
       );
+    });
+
+    // A staff number that nothing can write is a blank column on every
+    // roster and manifest that prints it (J3, §4.2).
+    testWidgets('a staff number is set on the edit form, and sent', (
+      tester,
+    ) async {
+      final gateway = personnel(
+        staff: [
+          StaffDto(
+            id: 'staff-1',
+            userId: 'user-1',
+            fullName: 'Aline Mbemba',
+            roles: const ['driver'],
+            stationIds: const [],
+            invitedAt: DateTime.utc(2026, 1, 1),
+          ),
+        ],
+      );
+      await pump(tester, gateway);
+      await tester.tap(find.text('Personnel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Modifier').first);
+      await tester.pumpAndSettle();
+
+      final field = find.descendant(
+        of: find.ancestor(
+          of: find.text('Matricule'),
+          matching: find.byType(KField),
+        ),
+        matching: find.byType(TextField),
+      );
+      await tester.ensureVisible(field);
+      await tester.enterText(field, 'CH-014');
+      await tester.pumpAndSettle();
+
+      final save = find.widgetWithText(FilledButton, 'Enregistrer');
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('updateStaff:staff-1:driver::CH-014'));
+    });
+
+    // Blank is no number, not an empty one: a partial unique index would
+    // accept `''` twice and it would then read as a driver number on a
+    // manifest.
+    testWidgets('and clearing it sends nothing rather than an empty one', (
+      tester,
+    ) async {
+      final gateway = personnel(
+        staff: [
+          StaffDto(
+            id: 'staff-1',
+            userId: 'user-1',
+            fullName: 'Aline Mbemba',
+            staffRef: 'CH-014',
+            roles: const ['driver'],
+            stationIds: const [],
+            invitedAt: DateTime.utc(2026, 1, 1),
+          ),
+        ],
+      );
+      await pump(tester, gateway);
+      await tester.tap(find.text('Personnel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Modifier').first);
+      await tester.pumpAndSettle();
+
+      final field = find.descendant(
+        of: find.ancestor(
+          of: find.text('Matricule'),
+          matching: find.byType(KField),
+        ),
+        matching: find.byType(TextField),
+      );
+      await tester.ensureVisible(field);
+      // It arrives filled in, because the form is the assignment as it
+      // stands rather than a blank one.
+      expect(find.text('CH-014'), findsWidgets);
+      await tester.enterText(field, '   ');
+      await tester.pumpAndSettle();
+
+      final save = find.widgetWithText(FilledButton, 'Enregistrer');
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, contains('updateStaff:staff-1:driver::'));
     });
 
     testWidgets('deleting a custom role asks first', (tester) async {
@@ -2292,6 +2635,7 @@ languages:
       );
       await pump(tester, gateway);
 
+      await tester.ensureVisible(find.text('Guichet'));
       await tester.tap(find.text('Guichet'));
       await tester.pumpAndSettle();
 
@@ -2315,6 +2659,7 @@ languages:
         capabilities: const ['booking.read', 'booking.sell'],
       );
       await pump(tester, gateway);
+      await tester.ensureVisible(find.text('Guichet'));
       await tester.tap(find.text('Guichet'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).first, 'K4M2Q');
@@ -2342,6 +2687,7 @@ languages:
         capabilities: const ['booking.read', 'booking.sell'],
       );
       await pump(tester, gateway);
+      await tester.ensureVisible(find.text('Guichet'));
       await tester.tap(find.text('Guichet'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).first, 'K4M2Q');
@@ -2368,6 +2714,7 @@ languages:
         capabilities: const ['booking.read', 'booking.sell'],
       );
       await pump(tester, gateway);
+      await tester.ensureVisible(find.text('Guichet'));
       await tester.tap(find.text('Guichet'));
       await tester.pumpAndSettle();
 

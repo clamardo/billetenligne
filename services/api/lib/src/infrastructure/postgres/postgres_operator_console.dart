@@ -8,7 +8,7 @@ import 'package:bel_domain/bel_domain.dart';
 // the booking first. The prefix keeps the two apart in the one place where
 // the shadowing would silently pick the wrong one.
 import 'package:bel_domain/bel_domain.dart' as domain;
-import 'package:postgres/postgres.dart';
+import 'package:postgres/postgres.dart' hide Result;
 
 import '../../application/ports/operator_console.dart';
 import '../db/database.dart';
@@ -1068,12 +1068,41 @@ final class PostgresOperatorConsole implements OperatorConsole {
       },
     );
 
+    // Who is driving it, on the same document as who is on it. A manifest
+    // that names forty-two passengers and nobody in the cab is a manifest
+    // that cannot answer the first question asked when a coach is late.
+    final crew = await tx.execute(
+      Sql.named('''
+        SELECT c.role::text AS role, u.full_name, s.staff_ref
+          FROM departure_crew c
+          JOIN user_accounts u ON u.id = c.user_id
+          LEFT JOIN operator_staff s
+                 ON s.operator_id = c.operator_id AND s.user_id = c.user_id
+         WHERE c.operator_id = @operator AND c.departure_id = @id
+         ORDER BY c.role, u.full_name NULLS LAST
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'operator': TypedValue(Type.uuid, operatorId),
+      },
+    );
+
     final head = header.first.toColumnMap();
     return Manifest(
       departureId: departureId,
       routeCode: head['route_code'] as String,
       departsAt: head['departs_at'] as DateTime,
       capacity: head['capacity'] as int,
+      crew: [
+        for (final row in crew)
+          if (CrewRole.byName(row.toColumnMap()['role'] as String)
+              case final role?)
+            ManifestCrew(
+              role: role,
+              fullName: row.toColumnMap()['full_name'] as String?,
+              staffRef: row.toColumnMap()['staff_ref'] as String?,
+            ),
+      ],
       rows: [
         for (final row in rows)
           ManifestRow(
@@ -2133,12 +2162,14 @@ final class PostgresOperatorConsole implements OperatorConsole {
   // uses in reverse, under `bel_identity`, to go from account to staff row.
 
   static const _staffColumns = '''
-    s.id, s.roles, s.station_ids, s.invited_at, s.revoked_at,
-    u.phone_e164, u.full_name
+    s.id, s.user_id, s.staff_ref, s.roles, s.station_ids,
+    s.invited_at, s.revoked_at, u.phone_e164, u.full_name
   ''';
 
   static StaffSummary _staffFrom(Map<String, dynamic> row) => StaffSummary(
     id: row['id'].toString(),
+    userId: row['user_id'].toString(),
+    staffRef: row['staff_ref'] as String?,
     phone: row['phone_e164'] as String?,
     fullName: row['full_name'] as String?,
     roles: [for (final r in (row['roles'] as List?) ?? const []) '$r'],
@@ -2186,7 +2217,8 @@ final class PostgresOperatorConsole implements OperatorConsole {
              SET roles = EXCLUDED.roles,
                  station_ids = EXCLUDED.station_ids,
                  revoked_at = NULL
-          RETURNING id, user_id, roles, station_ids, invited_at, revoked_at,
+          RETURNING id, user_id, staff_ref, roles, station_ids,
+                    invited_at, revoked_at,
                     (xmax = 0) AS just_inserted
         )
         SELECT $_staffColumns, s.just_inserted
@@ -2211,20 +2243,47 @@ final class PostgresOperatorConsole implements OperatorConsole {
   });
 
   @override
-  Future<StaffSummary?> updateStaffAssignment({
+  Future<({StaffSummary? staff, bool refTaken})> updateStaffAssignment({
     required String operatorId,
     required String staffId,
     required List<String> roles,
     required List<String> stationIds,
+    String? staffRef,
   }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // Asked before the write rather than caught after it. `operator_staff_ref_unique`
+    // is still what decides — this cannot be relaxed without the index also
+    // being dropped — but a raised conflict aborts the whole transaction, so
+    // catching it leaves nothing that can still be committed and the caller
+    // gets a 500 where a sentence belongs. Read in the same transaction as
+    // the update, so the pair sees one snapshot; a genuinely simultaneous
+    // clash on a form a station manager fills in once still ends at the
+    // index, which is the right place for it to end.
+    if (staffRef != null) {
+      final clash = await tx.execute(
+        Sql.named('''
+          SELECT 1 FROM operator_staff
+           WHERE operator_id = @operator AND staff_ref = @ref AND id <> @staff
+           LIMIT 1
+        '''),
+        parameters: {
+          'operator': TypedValue(Type.uuid, operatorId),
+          'staff': TypedValue(Type.uuid, staffId),
+          'ref': TypedValue(Type.text, staffRef),
+        },
+      );
+      if (clash.isNotEmpty) return (staff: null, refTaken: true);
+    }
+
     final rows = await tx.execute(
       Sql.named('''
         WITH updated AS (
           UPDATE operator_staff
-             SET roles = @roles, station_ids = @stations
+             SET roles = @roles, station_ids = @stations,
+                 staff_ref = @ref
            WHERE operator_id = @operator AND id = @staff
              AND revoked_at IS NULL
-          RETURNING id, user_id, roles, station_ids, invited_at, revoked_at
+          RETURNING id, user_id, staff_ref, roles, station_ids,
+                    invited_at, revoked_at
         )
         SELECT $_staffColumns
           FROM updated s
@@ -2235,10 +2294,13 @@ final class PostgresOperatorConsole implements OperatorConsole {
         'staff': TypedValue(Type.uuid, staffId),
         'roles': TypedValue(Type.textArray, roles),
         'stations': TypedValue(Type.uuidArray, stationIds),
+        'ref': TypedValue(Type.text, staffRef),
       },
     );
 
-    return rows.isEmpty ? null : _staffFrom(rows.first.toColumnMap());
+    return rows.isEmpty
+        ? (staff: null, refTaken: false)
+        : (staff: _staffFrom(rows.first.toColumnMap()), refTaken: false);
   });
 
   @override
@@ -2251,7 +2313,7 @@ final class PostgresOperatorConsole implements OperatorConsole {
         UPDATE operator_staff
            SET revoked_at = now()
          WHERE operator_id = @operator AND id = @staff AND revoked_at IS NULL
-        RETURNING id
+        RETURNING id, user_id
       '''),
       parameters: {
         'operator': TypedValue(Type.uuid, operatorId),
@@ -2259,7 +2321,219 @@ final class PostgresOperatorConsole implements OperatorConsole {
       },
     );
 
-    return rows.isNotEmpty;
+    if (rows.isEmpty) return false;
+
+    // Revoking somebody's access takes them off every run still to come —
+    // that is what revocation *means*, and a rota that still named them would
+    // send a station manager into a yard looking for a person who can no
+    // longer sign in. It touches nothing that has already run, because the
+    // manifest for last Tuesday is a record of who was on the coach, and a
+    // record that edits itself when somebody resigns is not a record.
+    // `CrewAssignment.revocationClears` states the same asymmetry as a pure
+    // rule; the comparison is made in Postgres because Postgres's clock is
+    // the only one both sides of it share.
+    //
+    // In the same transaction as the revocation, so there is no window in
+    // which somebody is revoked and still rostered.
+    await tx.execute(
+      Sql.named('''
+        DELETE FROM departure_crew c
+         USING departures d
+         WHERE c.departure_id = d.id
+           AND c.operator_id = @operator
+           AND c.user_id = @person
+           AND d.departs_at > now()
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'person': TypedValue(
+          Type.uuid,
+          rows.first.toColumnMap()['user_id'].toString(),
+        ),
+      },
+    );
+
+    return true;
+  });
+
+  // ── The crew on a departure (J3) ──────────────────────────────────────────
+
+  @override
+  Future<List<CrewMember>> crew({
+    required String operatorId,
+    required String departureId,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT c.user_id, c.role::text AS role, c.assigned_at,
+               u.full_name, u.phone_e164, s.staff_ref
+          FROM departure_crew c
+          JOIN user_accounts u ON u.id = c.user_id
+          LEFT JOIN operator_staff s
+                 ON s.operator_id = c.operator_id AND s.user_id = c.user_id
+         WHERE c.operator_id = @operator AND c.departure_id = @departure
+         ORDER BY c.role, u.full_name NULLS LAST
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'departure': TypedValue(Type.uuid, departureId),
+      },
+    );
+
+    return [
+      for (final row in rows)
+        if (CrewRole.byName(row.toColumnMap()['role'] as String)
+            case final role?)
+          CrewMember(
+            userId: row.toColumnMap()['user_id'].toString(),
+            role: role,
+            assignedAt: row.toColumnMap()['assigned_at'] as DateTime,
+            fullName: row.toColumnMap()['full_name'] as String?,
+            phone: row.toColumnMap()['phone_e164'] as String?,
+            staffRef: row.toColumnMap()['staff_ref'] as String?,
+          ),
+    ];
+  });
+
+  @override
+  Future<Result<CrewMember, CrewAssignmentRefusal>> assignCrew({
+    required String operatorId,
+    required String departureId,
+    required String staffUserId,
+    required CrewRole role,
+    required String actorUserId,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // Both facts in one statement, and both inside the write transaction. A
+    // member revoked between a check at the route and the insert here would
+    // be rostered onto tomorrow's run by a check that had already passed.
+    final facts = await tx.execute(
+      Sql.named('''
+        SELECT d.departs_at, s.roles, s.revoked_at,
+               s.user_id IS NOT NULL AS is_staff,
+               -- The database's clock, not this process's. Two API pods
+               -- disagreeing by a minute must not disagree about whether a
+               -- coach has left, and Postgres's is the only clock all of
+               -- them share (`seat_inventory.dart` makes the same call).
+               now() AS db_now
+          FROM departures d
+          LEFT JOIN operator_staff s
+                 ON s.operator_id = @operator AND s.user_id = @person
+         WHERE d.id = @departure AND d.operator_id = @operator
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'departure': TypedValue(Type.uuid, departureId),
+        'person': TypedValue(Type.uuid, staffUserId),
+      },
+    );
+
+    // No such departure, or not this operator's. Answered as `departed`
+    // rather than with a fourth outcome: a dispatcher cannot see a departure
+    // that is not theirs, so the only way to reach this is a stale screen.
+    if (facts.isEmpty) return const Err(CrewAssignmentRefusal.departed);
+
+    final row = facts.first.toColumnMap();
+    final refusal = CrewAssignment.validate(
+      role: role,
+      isStaff: row['is_staff'] as bool? ?? false,
+      staffRoles: {for (final r in (row['roles'] as List?) ?? const []) '$r'},
+      revokedAt: row['revoked_at'] as DateTime?,
+      departsAt: row['departs_at'] as DateTime,
+      now: row['db_now'] as DateTime,
+    );
+    if (refusal != null) return Err(refusal);
+
+    // A dispatcher tapping twice means it once. `DO NOTHING` rather than an
+    // upsert because there is nothing on the row to update — the key is the
+    // whole content — and because a conflict raised here would poison the
+    // transaction for the read below it.
+    await tx.execute(
+      Sql.named('''
+        INSERT INTO departure_crew
+               (departure_id, operator_id, user_id, role, assigned_by)
+        VALUES (@departure, @operator, @person, @role::crew_role, @actor)
+        ON CONFLICT DO NOTHING
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, departureId),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'person': TypedValue(Type.uuid, staffUserId),
+        'role': TypedValue(Type.text, role.name),
+        'actor': TypedValue(Type.uuid, actorUserId),
+      },
+    );
+
+    final written = await tx.execute(
+      Sql.named('''
+        SELECT c.assigned_at, u.full_name, u.phone_e164, s.staff_ref
+          FROM departure_crew c
+          JOIN user_accounts u ON u.id = c.user_id
+          LEFT JOIN operator_staff s
+                 ON s.operator_id = c.operator_id AND s.user_id = c.user_id
+         WHERE c.departure_id = @departure AND c.user_id = @person
+           AND c.role = @role::crew_role
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, departureId),
+        'person': TypedValue(Type.uuid, staffUserId),
+        'role': TypedValue(Type.text, role.name),
+      },
+    );
+
+    final made = written.first.toColumnMap();
+    return Ok(
+      CrewMember(
+        userId: staffUserId,
+        role: role,
+        assignedAt: made['assigned_at'] as DateTime,
+        fullName: made['full_name'] as String?,
+        phone: made['phone_e164'] as String?,
+        staffRef: made['staff_ref'] as String?,
+      ),
+    );
+  });
+
+  @override
+  Future<Result<bool, CrewAssignmentRefusal>> unassignCrew({
+    required String operatorId,
+    required String departureId,
+    required String staffUserId,
+    required CrewRole role,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final when = await tx.execute(
+      Sql.named(
+        'SELECT departs_at, now() AS db_now FROM departures '
+        'WHERE id = @departure AND operator_id = @operator',
+      ),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'departure': TypedValue(Type.uuid, departureId),
+      },
+    );
+    if (when.isEmpty) return const Err(CrewAssignmentRefusal.departed);
+
+    final row = when.first.toColumnMap();
+    final departsAt = row['departs_at'] as DateTime;
+    if (!departsAt.isAfter(row['db_now'] as DateTime)) {
+      return const Err(CrewAssignmentRefusal.departed);
+    }
+
+    final removed = await tx.execute(
+      Sql.named('''
+        DELETE FROM departure_crew
+         WHERE operator_id = @operator AND departure_id = @departure
+           AND user_id = @person AND role = @role::crew_role
+        RETURNING user_id
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'departure': TypedValue(Type.uuid, departureId),
+        'person': TypedValue(Type.uuid, staffUserId),
+        'role': TypedValue(Type.text, role.name),
+      },
+    );
+
+    return Ok(removed.isNotEmpty);
   });
 
   static CustomRoleSummary _customRoleFrom(Map<String, dynamic> row) =>

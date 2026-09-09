@@ -33,6 +33,7 @@ console:
     departures: "Départs"
     disrupted: "Incidents"
     manifest: "Liste"
+    crew: "Équipage"
     # L'état du départ lui-même, affiché seulement quand il n'est pas
     # « scheduled » : une étiquette présente sur chaque ligne est une
     # étiquette que personne ne lit.
@@ -242,6 +243,26 @@ console:
   manifest:
     summary: "{sold} vendus · {boarded} embarqués · {capacity} places"
     empty: "Aucun passager pour l'instant."
+    crew: "Équipage"
+    # Un car sans personne d'affecté. Dit clairement plutôt que laissé vide :
+    # une ligne absente se lit comme une page qui n'a pas fini de charger.
+    noCrew: "Personne d'affecté."
+  # Qui conduit et qui contrôle. Le travail du régulateur, pas celui du chef
+  # d'agence : accorder le rôle de chauffeur dit ce que quelqu'un a le droit
+  # de faire, ceci dit sur quel car et quel matin.
+  crew:
+    title: "Qui est sur ce car"
+    add: "Ajouter"
+    remove: "Retirer"
+    done: "Terminé"
+    empty: "Personne n'est encore affecté."
+    # Affiché par métier quand personne dans la compagnie ne le détient. On
+    # nomme la cause et où la corriger : une liste vide seule se lit comme un
+    # défaut.
+    noneQualified: "Personne ici ne détient encore ce métier. Accordez-le dans Personnel."
+    # Une feuille de route est un plan. Une fois le car parti, c'est un
+    # enregistrement.
+    gone: "Ce départ est parti. Son équipage est désormais un enregistrement."
   fleet:
     layouts: "Plans de salle"
     addLayout: "Nouveau plan"
@@ -404,6 +425,11 @@ console:
     phoneHint: "Le numéro qui reçoit le code de connexion."
     fullName: "Nom complet (facultatif)"
     fullNameHint: "Pour reconnaître cette personne dans la liste."
+    # Le numéro propre à la compagnie — un numéro de chauffeur sur la feuille
+    # de route. Un identifiant, jamais un identifiant de connexion (ADR-0024) :
+    # il est collé au tableau de bord du car.
+    staffRef: "Matricule"
+    staffRefHint: "Le numéro propre à la compagnie, imprimé sur la feuille de route. Facultatif."
     roles: "Rôles"
     stations: "Gares"
     stationsHelpWholeOrg: "Laissez vide pour toutes les gares."
@@ -433,6 +459,7 @@ console:
       station_manager: "Chef de gare"
       vendor: "Guichet"
       conductor: "Conducteur"
+      driver: "Chauffeur"
       viewer: "Lecture seule"
   timetable:
     title: "Horaires"

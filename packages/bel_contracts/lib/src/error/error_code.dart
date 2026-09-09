@@ -170,6 +170,19 @@ final class ErrorCode {
   static const staffStationRequired = 'staff.station_required';
   static const staffStationNotCovered = 'staff.station_not_covered';
 
+  /// Two people cannot share one driver number. Not a [StaffAssignmentRefusal]
+  /// — the pure rule cannot know what the other two hundred people are called
+  /// — so the reason comes from the partial unique index that enforces it.
+  static const staffRefTaken = 'staff.ref_taken';
+
+  // One per [CrewAssignmentRefusal] value (`bel_platform`), same division of
+  // labour: the pure rule names the reason, the route names it on the wire.
+  static const crewUnknownRole = 'crew.unknown_role';
+  static const crewNotStaff = 'crew.not_staff';
+  static const crewNotQualified = 'crew.not_qualified';
+  static const crewRevoked = 'crew.revoked';
+  static const crewDeparted = 'crew.departed';
+
   // One per [CustomRoleRefusal] value (`bel_platform`), plus the two facts
   // only the database itself can guarantee: whether the name is already
   // taken, and whether a role is still in use.

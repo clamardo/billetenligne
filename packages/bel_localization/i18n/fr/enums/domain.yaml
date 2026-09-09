@@ -38,6 +38,9 @@ enum:
     staleCode: "CODE PÉRIMÉ"
     voided: "BILLET ANNULÉ"
     notOnManifest: "ABSENT DE LA LISTE"
+  CrewRole:
+    driver: "Chauffeur"
+    conductor: "Contrôleur"
   OperatorRole:
     orgOwner: "Directeur"
     orgAdmin: "Administrateur"
@@ -47,6 +50,7 @@ enum:
     stationManager: "Chef d'agence"
     vendor: "Agent guichet"
     conductor: "Contrôleur"
+    driver: "Chauffeur"
     viewer: "Consultation"
   # Les pieces que la conformite surveille (03-operator-lifecycle.md §3.3).
   # `doc_type` est du texte libre en base — le ministere renomme un formulaire

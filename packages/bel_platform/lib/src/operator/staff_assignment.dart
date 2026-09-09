@@ -32,12 +32,24 @@ final class StaffAssignment {
     'station_manager',
     'vendor',
     'conductor',
+    // Separate from `conductor`, because on an intercity coach here they are
+    // usually two people and only one of them holds the handset that marks a
+    // passenger boarded. It grants **no** console capability at all: it is a
+    // qualification, not an office. What it makes possible is being rostered
+    // onto a departure (`CrewAssignment`), and being the person who says the
+    // coach has left.
+    'driver',
     'viewer',
   };
 
-  /// The only roles a station-scoped caller may grant — the two that work a
-  /// till. Everything else is a whole-org decision.
-  static const stationScopedRoles = {'vendor', 'conductor'};
+  /// The only roles a station-scoped caller may grant — the ones that work a
+  /// till or a coach. Everything else is a whole-org decision.
+  ///
+  /// `driver` belongs here for the reason the other two do: a station manager
+  /// covering tomorrow's shift at six in the morning must be able to do it
+  /// without waking the owner, and the blast radius of the mistake is one
+  /// station rather than the company.
+  static const stationScopedRoles = {'vendor', 'conductor', 'driver'};
 
   /// Null on success; a reason otherwise. Pure and total: every input either
   /// passes or names exactly why it does not, so a route never has to guess

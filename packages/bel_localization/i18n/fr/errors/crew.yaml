@@ -1,0 +1,14 @@
+# Refus du tableau de service (`18-the-platform-other-companies-can-join.md`
+# J3). Chaque phrase dit ce qui ne va pas dans le plan, jamais ce que la base
+# a refusé : à six heures du matin, un régulateur regarde un planning, pas une
+# contrainte.
+errors:
+  crew:
+    unknown_role: "Choisissez chauffeur ou contrôleur."
+    not_staff: "Cette personne ne travaille pas ici."
+    # Pas de {name} : la route envoie un code et rien d'autre, et le
+    # régulateur vient d'appuyer sur le bouton de la personne — un nom
+    # interpolé ici serait un paramètre que le serveur n'envoie jamais.
+    not_qualified: "Cette personne n'est pas enregistrée pour ce poste."
+    revoked: "Cette personne n'a plus accès."
+    departed: "Ce car est déjà parti. On ne change plus son équipage."

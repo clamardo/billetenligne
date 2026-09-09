@@ -66,6 +66,51 @@ final class ManifestSheet extends StatelessWidget {
             ),
             const Divider(height: 1),
 
+            // Who is driving it, above who is on it. A manifest that names
+            // forty-two passengers and nobody in the cab cannot answer the
+            // first question asked when a coach is late.
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: kilo.space.s4,
+                vertical: kilo.space.s3,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 96,
+                    child: Text(
+                      context.t('console.manifest.crew'),
+                      style: kilo.text.label,
+                    ),
+                  ),
+                  Expanded(
+                    child: manifest.crew.isEmpty
+                        // Said plainly rather than left blank: a missing line
+                        // reads as a page that did not finish loading.
+                        ? Text(
+                            context.t('console.manifest.noCrew'),
+                            style: kilo.text.bodySm.copyWith(
+                              color: kilo.color.contentSecondary,
+                            ),
+                          )
+                        : Wrap(
+                            spacing: kilo.space.s3,
+                            runSpacing: kilo.space.s2,
+                            children: [
+                              for (final member in manifest.crew)
+                                Text(
+                                  _crewLine(context, member),
+                                  style: kilo.text.bodySm,
+                                ),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+
             Flexible(
               child: manifest.passengers.isEmpty
                   ? Padding(
@@ -115,5 +160,16 @@ final class ManifestSheet extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// The job, the name, and the operator's own number when they have one —
+  /// which is what somebody reads aloud in a yard. No phone: this document is
+  /// behind `booking.read`, which a counter clerk holds.
+  String _crewLine(BuildContext context, ManifestCrewDto member) {
+    final job = context.t('enum.CrewRole.${member.role}');
+    final name = member.fullName ?? '—';
+    return member.staffRef == null
+        ? '$job · $name'
+        : '$job · $name · ${member.staffRef}';
   }
 }

@@ -110,6 +110,8 @@ Future<Response> onRequest(RequestContext context) async {
 
 StaffDto staffDto(StaffSummary s) => StaffDto(
   id: s.id,
+  userId: s.userId,
+  staffRef: s.staffRef,
   phone: s.phone,
   fullName: s.fullName,
   roles: s.roles,

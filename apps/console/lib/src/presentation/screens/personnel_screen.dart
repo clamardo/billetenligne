@@ -266,6 +266,7 @@ final class PersonnelScreen extends StatelessWidget {
   }) async {
     final phone = TextEditingController(text: existing?.phone ?? '');
     final fullName = TextEditingController(text: existing?.fullName ?? '');
+    final staffRef = TextEditingController(text: existing?.staffRef ?? '');
     final roles = _grantableRoles(wholeOrg);
     final stations = _grantableStations(wholeOrg);
     final selectedRoles = {
@@ -321,6 +322,24 @@ final class PersonnelScreen extends StatelessWidget {
                         label: dialogContext.t('console.personnel.fullName'),
                         controller: fullName,
                         hint: dialogContext.t('console.personnel.fullNameHint'),
+                      ),
+                      SizedBox(height: dialogContext.kilo.space.s4),
+                    ],
+                    // The operator's own short number for this person, and
+                    // never a credential (ADR-0024): it is printed on the
+                    // roster, on the manifest and stuck to the dashboard of
+                    // the coach, so accepting it at a sign-in prompt would
+                    // add a secret to phish rather than a factor to hold. It
+                    // exists so a dispatcher can find the right person in a
+                    // list of two hundred.
+                    if (existing != null) ...[
+                      KField(
+                        label: dialogContext.t('console.personnel.staffRef'),
+                        controller: staffRef,
+                        hint: dialogContext.t(
+                          'console.personnel.staffRefHint',
+                        ),
+                        maxLength: 24,
                       ),
                       SizedBox(height: dialogContext.kilo.space.s4),
                     ],
@@ -425,6 +444,8 @@ final class PersonnelScreen extends StatelessWidget {
         staffId: existing.id,
         roles: selectedRoles.toList(),
         stationIds: stationIds,
+        // Blank is no number, not an empty one.
+        staffRef: staffRef.text.trim().isEmpty ? null : staffRef.text.trim(),
       );
     }
   }

@@ -39,6 +39,7 @@ export 'src/branding/brand_asset.dart';
 export 'src/operator/operator_application.dart';
 export 'src/operator/document_expiry.dart';
 export 'src/operator/onboarding_risk.dart';
+export 'src/operator/crew_assignment.dart';
 export 'src/operator/staff_assignment.dart';
 export 'src/operator/custom_role.dart';
 // Filed under `ticketing/` until this split, because ticketing was its first

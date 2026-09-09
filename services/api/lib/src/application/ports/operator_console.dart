@@ -199,6 +199,21 @@ final class ManifestRow {
   final String? alightsAt;
 }
 
+/// A crew member as the manifest names them.
+///
+/// Deliberately not [CrewMember]: the manifest is read under `booking.read`,
+/// which a counter clerk holds, and a driver's mobile number is not a counter
+/// clerk's business. What belongs on the document is what somebody would read
+/// aloud in a yard — the job, the name, and the operator's own number for
+/// them.
+final class ManifestCrew {
+  const ManifestCrew({required this.role, this.fullName, this.staffRef});
+
+  final CrewRole role;
+  final String? fullName;
+  final String? staffRef;
+}
+
 final class Manifest {
   const Manifest({
     required this.departureId,
@@ -206,6 +221,7 @@ final class Manifest {
     required this.departsAt,
     required this.capacity,
     required this.rows,
+    this.crew = const [],
   });
 
   final String departureId;
@@ -213,6 +229,12 @@ final class Manifest {
   final DateTime departsAt;
   final int capacity;
   final List<ManifestRow> rows;
+
+  /// Who is driving and who is taking the tickets (J3). Empty on a departure
+  /// nobody has rostered yet, which is most of them until a dispatcher has
+  /// been through the day — an empty crew is a fact about the plan, not a
+  /// missing field.
+  final List<ManifestCrew> crew;
 
   int get sold => rows.length;
   int get boarded => rows.where((r) => r.boarded).length;
@@ -753,14 +775,23 @@ abstract interface class OperatorConsole {
     required List<String> stationIds,
   });
 
-  /// Changes an existing member's roles or stations without going through
-  /// the phone lookup again — the edit screen, as opposed to the invite one.
-  /// Null when [staffId] is not an active member of this operator.
-  Future<StaffSummary?> updateStaffAssignment({
+  /// Changes an existing member's roles, stations or staff number without
+  /// going through the phone lookup again — the edit screen, as opposed to
+  /// the invite one.
+  ///
+  /// Replaces all three: this is the edit form saved whole, so a [staffRef]
+  /// of null clears the number rather than leaving it alone.
+  ///
+  /// `staff` is null when [staffId] is not an active member of this operator.
+  /// `refTaken` is true when somebody else at this company already has that
+  /// number — a partial unique index, so it is the database that decides and
+  /// not a read-then-write that a second dispatcher could slip between.
+  Future<({StaffSummary? staff, bool refTaken})> updateStaffAssignment({
     required String operatorId,
     required String staffId,
     required List<String> roles,
     required List<String> stationIds,
+    String? staffRef,
   });
 
   /// Instantly, per the spec: this sets `revoked_at`, and the identity
@@ -770,6 +801,47 @@ abstract interface class OperatorConsole {
   Future<bool> revokeStaff({
     required String operatorId,
     required String staffId,
+  });
+
+  // ── The crew on a departure ───────────────────────────────────────────────
+
+  /// Who is rostered onto this departure. Empty when nobody is, which is the
+  /// state every departure created before this existed is in.
+  Future<List<CrewMember>> crew({
+    required String operatorId,
+    required String departureId,
+  });
+
+  /// Puts somebody on a coach.
+  ///
+  /// **[CrewAssignment.validate] runs inside this call, not at the route**,
+  /// which is the opposite of [inviteStaff] and deliberately so. The facts it
+  /// needs — this person's roles, their `revoked_at`, and the departure's
+  /// `departs_at` — all live in the same tenant-scoped database as the write,
+  /// so reading them at the route would open a window: a member revoked
+  /// between the check and the insert would be rostered onto tomorrow's run by
+  /// a check that had already passed. One transaction closes it.
+  ///
+  /// Rostering the same person in the same job twice is a no-op rather than a
+  /// refusal — a dispatcher tapping twice means it once.
+  Future<Result<CrewMember, CrewAssignmentRefusal>> assignCrew({
+    required String operatorId,
+    required String departureId,
+    required String staffUserId,
+    required CrewRole role,
+    required String actorUserId,
+  });
+
+  /// Takes somebody off a coach. True when a row was actually removed.
+  ///
+  /// Refuses a departure that has already gone for the same reason
+  /// [assignCrew] does: a roster is a plan, and the plan for a coach on the
+  /// road is history.
+  Future<Result<bool, CrewAssignmentRefusal>> unassignCrew({
+    required String operatorId,
+    required String departureId,
+    required String staffUserId,
+    required CrewRole role,
   });
 
   // ── Custom roles ──────────────────────────────────────────────────────────
@@ -830,18 +902,37 @@ abstract interface class OperatorConsole {
 final class StaffSummary {
   const StaffSummary({
     required this.id,
+    required this.userId,
     required this.roles,
     required this.stationIds,
     required this.invitedAt,
     this.phone,
     this.fullName,
     this.revokedAt,
+    this.staffRef,
   });
 
+  /// The `operator_staff` row. What the console addresses to change roles or
+  /// revoke a key.
   final String id;
+
+  /// The account behind it. A different identifier from [id] and needed for a
+  /// different question: a rota names a **person**, and the same person is
+  /// one `user_accounts` row whether they are staff at one company or three
+  /// — which is what lets a driver buy a ticket with the account they drive
+  /// with (ADR-0024).
+  final String userId;
+
   final String? phone;
   final String? fullName;
   final List<String> roles;
+
+  /// The operator's own short identifier for this person, unique within the
+  /// company and null for most of them. An identifier, never a credential:
+  /// it is printed on the roster and on the manifest and stuck to the
+  /// dashboard of a coach, so accepting it at a sign-in prompt would add a
+  /// secret to phish rather than a factor to hold (ADR-0024).
+  final String? staffRef;
 
   /// Empty means every station — only ever true of a whole-org role.
   final List<String> stationIds;
@@ -850,6 +941,34 @@ final class StaffSummary {
   final DateTime? revokedAt;
 
   bool get isRevoked => revokedAt != null;
+}
+
+/// One person's place on one departure.
+///
+/// Carries the name and the operator's own [staffRef] rather than only an id,
+/// because every reader of this is a human looking for a person: a dispatcher
+/// filling tomorrow, a station manager finding who to call, a manifest a
+/// conductor holds at a door.
+final class CrewMember {
+  const CrewMember({
+    required this.userId,
+    required this.role,
+    required this.assignedAt,
+    this.fullName,
+    this.staffRef,
+    this.phone,
+  });
+
+  final String userId;
+  final CrewRole role;
+  final DateTime assignedAt;
+  final String? fullName;
+
+  /// The operator's own identifier for this person — a driver number on a
+  /// roster. Never a credential (ADR-0024); it is here to be read aloud.
+  final String? staffRef;
+
+  final String? phone;
 }
 
 /// One of an operator's own roles, as the application layer sees it —

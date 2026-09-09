@@ -377,7 +377,7 @@ blocked by this (they were already trading).
 
 ### Part B — the crew and the departure
 
-#### J3 — a departure has a crew
+#### J3 — a departure has a crew — **built, 2026-09-09**
 **Depends on:** nothing. **Blocking for J4, J5, J7 and any future GPS.**
 New `departure_crew (departure_id, user_id, role, assigned_at, assigned_by)`,
 tenant-isolated, where `role ∈ {driver, conductor}`. `operator_staff` gains
@@ -387,6 +387,23 @@ dispatcher day gains an assignment control; the manifest prints the crew.
 may hold both roles on one departure (small operators do); a revoked staff
 member is dropped from future departures and kept on past ones, because the
 past is a record.
+
+**As built.** `0049_departure_crew.sql`; `CrewAssignment` in `bel_platform`
+(16 unit tests) states who may be rostered and what a revocation clears;
+`crew_pg_test.dart` (13 tests) proves the adapter and, separately, that
+`departure_crew_is_staff` refuses a stranger *without being asked* — the
+rule holds for callers nobody has written yet. `driver` had to be added to
+`StaffAssignment.knownRoles` first: it was not a grantable role, so nobody
+could ever have been rostered. `GET/POST/DELETE /console/v1/departures/{id}/crew`
+sits behind `departure.manage`, and the console's dispatcher day opens a roster
+sheet per departure. `StaffSummary`/`StaffDto` gained `userId` alongside `id`,
+because a rota names a **person** and the console had only ever held the
+membership row. The manifest prints the crew with no phone number: it is read
+under `booking.read`, which a counter clerk holds. Revoking somebody now
+clears them off every run still to come and nothing that has already gone, in
+the revocation's own transaction. `staff_ref` is set on the personnel edit
+form and is unique per operator by a partial index, so a clash comes back as
+`staff.ref_taken` rather than as a 500.
 
 #### J4 — the departure lifecycle is written, not just declared
 **Depends on:** J3

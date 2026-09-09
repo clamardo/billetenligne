@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:bel_api/src/adapters/styled_email_gateway.dart';
 import 'package:bel_api/src/application/ports/notification_gateway.dart';
 import 'package:bel_contracts/bel_contracts.dart';
@@ -15,7 +17,7 @@ final class _Capture implements NotificationGateway {
 }
 
 void main() {
-  final catalog = CatalogLoader.fromDirectory('packages/bel_localization/i18n');
+  final catalog = CatalogLoader.fromDirectory(_i18nDirectory());
   late _Capture inner;
   late StyledEmailGateway gateway;
 
@@ -164,4 +166,15 @@ void main() {
       expect(inner.last!.html, contains('&lt;script&gt;'));
     });
   });
+}
+
+/// The same walk the other catalog-reading suites do. A bare relative path
+/// only resolves when the runner happens to sit at the repo root, which is
+/// not where `dart test` is run from in this package.
+String _i18nDirectory() {
+  for (final up in ['..', '../..', '../../..', '.']) {
+    final candidate = '$up/packages/bel_localization/i18n';
+    if (Directory(candidate).existsSync()) return candidate;
+  }
+  throw StateError('i18n directory not found from ${Directory.current.path}');
 }

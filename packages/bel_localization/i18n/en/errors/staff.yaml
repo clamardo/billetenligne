@@ -5,6 +5,9 @@ errors:
   staff:
     no_roles: "Choose at least one role."
     unknown_role: "That role does not exist."
-    role_not_permitted: "You may only assign the counter and conductor roles."
+    role_not_permitted: "You may only assign the counter, conductor and driver roles."
     station_required: "Choose at least one station for this role."
     station_not_covered: "You may only assign stations you manage yourself."
+    # Not a StaffAssignmentRefusal: the pure rule cannot know what the other
+    # two hundred people are called. It comes from the unique index.
+    ref_taken: "Somebody at this company already has that staff number."

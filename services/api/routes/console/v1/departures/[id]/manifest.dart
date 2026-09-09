@@ -53,6 +53,17 @@ Future<Response> onRequest(RequestContext context, String id) async {
       'capacity': manifest.capacity,
       'sold': manifest.sold,
       'boarded': manifest.boarded,
+      // Who is driving it. No phone number: this document is behind
+      // `booking.read`, which a counter clerk holds, and the crew's mobiles
+      // are not a counter clerk's business.
+      'crew': [
+        for (final member in manifest.crew)
+          {
+            'role': member.role.name,
+            if (member.fullName != null) 'fullName': member.fullName,
+            if (member.staffRef != null) 'staffRef': member.staffRef,
+          },
+      ],
       'passengers': [
         for (final row in manifest.rows)
           {

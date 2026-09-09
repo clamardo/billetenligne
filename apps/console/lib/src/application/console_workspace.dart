@@ -805,11 +805,13 @@ final class ConsoleWorkspace {
     required String staffId,
     required List<String> roles,
     required List<String> stationIds,
+    String? staffRef,
   }) => _run(() async {
     await _gateway.updateStaffAssignment(
       staffId: staffId,
       roles: roles,
       stationIds: stationIds,
+      staffRef: staffRef,
     );
     _notice = 'staff.updated';
     await _loadSection();
@@ -1004,6 +1006,60 @@ final class ConsoleWorkspace {
     ManifestDto? manifest;
     await _run(() async => manifest = await _gateway.manifest(departureId));
     return manifest;
+  }
+
+  /// Who is on this coach, and everybody who could be (J3).
+  ///
+  /// Both fetched at the moment of asking rather than held warm. A roster is
+  /// opened once for a departure, and a staff list ten minutes stale offers a
+  /// driver who has since been rostered onto something else.
+  Future<({List<CrewMemberDto> crew, List<StaffDto> staff})?> roster(
+    String departureId,
+  ) async {
+    ({List<CrewMemberDto> crew, List<StaffDto> staff})? loaded;
+    await _run(() async {
+      final rostered = await _gateway.crew(departureId);
+      staff = await _gateway.staff();
+      loaded = (crew: rostered, staff: staff);
+    });
+    return loaded;
+  }
+
+  /// Returns the roster as it now stands, so the dialog it was opened from
+  /// redraws from the server's answer rather than from its own guess. Null
+  /// when the write was refused — the failure banner already says why.
+  Future<List<CrewMemberDto>?> assignCrew({
+    required String departureId,
+    required String userId,
+    required String role,
+  }) async {
+    List<CrewMemberDto>? crew;
+    await _run(() async {
+      await _gateway.assignCrew(
+        departureId: departureId,
+        userId: userId,
+        role: role,
+      );
+      crew = await _gateway.crew(departureId);
+    });
+    return crew;
+  }
+
+  Future<List<CrewMemberDto>?> unassignCrew({
+    required String departureId,
+    required String userId,
+    required String role,
+  }) async {
+    List<CrewMemberDto>? crew;
+    await _run(() async {
+      await _gateway.unassignCrew(
+        departureId: departureId,
+        userId: userId,
+        role: role,
+      );
+      crew = await _gateway.crew(departureId);
+    });
+    return crew;
   }
 
   Future<SeatMapDto?> seatMap(String departureId) async {

@@ -5,6 +5,9 @@ errors:
   staff:
     no_roles: "Choisissez au moins un rôle."
     unknown_role: "Ce rôle n'existe pas."
-    role_not_permitted: "Vous ne pouvez attribuer que les rôles guichet et conducteur."
+    role_not_permitted: "Vous ne pouvez attribuer que les rôles guichet, contrôleur et chauffeur."
     station_required: "Choisissez au moins une gare pour ce rôle."
     station_not_covered: "Vous ne pouvez attribuer que les gares que vous gérez vous-même."
+    # Pas un StaffAssignmentRefusal : la règle pure ne peut pas savoir comment
+    # s'appellent les deux cents autres. Cela vient de l'index unique.
+    ref_taken: "Quelqu'un dans cette compagnie porte déjà ce matricule."

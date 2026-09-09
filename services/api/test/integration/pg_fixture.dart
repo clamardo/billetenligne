@@ -121,6 +121,93 @@ final class PgFixture {
     return rows.first.toColumnMap()['id'] as String;
   }
 
+  /// Somebody on this operator's payroll. Returns their user id.
+  ///
+  /// Two rows, because that is what "staff" is here: a person
+  /// (`user_accounts`) and a membership (`operator_staff`) pointing at them.
+  /// The same separation is why a driver can buy a ticket like anybody else —
+  /// one human, one account, a fact about them at one company.
+  Future<String> staffMember({
+    String? operatorId,
+    List<String> roles = const ['driver'],
+    String suffix = '9001',
+    String? name,
+    String? staffRef,
+    DateTime? revokedAt,
+  }) async {
+    final person = await _seed.execute(
+      Sql.named('''
+        INSERT INTO user_accounts (phone_e164, full_name)
+        VALUES (@phone, @name)
+        ON CONFLICT (phone_e164) DO UPDATE SET full_name = EXCLUDED.full_name
+        RETURNING id
+      '''),
+      parameters: {'phone': '+2420601$suffix', 'name': name ?? 'Staff $suffix'},
+    );
+    final userId = person.first.toColumnMap()['id'] as String;
+
+    await _seed.execute(
+      Sql.named('''
+        INSERT INTO operator_staff
+               (operator_id, user_id, roles, accepted_at, revoked_at, staff_ref)
+        VALUES (@operator, @user, @roles, now(), @revoked, @ref)
+        ON CONFLICT (operator_id, user_id) DO UPDATE
+           SET roles = EXCLUDED.roles,
+               revoked_at = EXCLUDED.revoked_at,
+               staff_ref = EXCLUDED.staff_ref
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId ?? PgFixture.operatorId),
+        'user': TypedValue(Type.uuid, userId),
+        'roles': TypedValue(Type.textArray, roles),
+        'revoked': TypedValue(Type.timestampWithTimezone, revokedAt),
+        'ref': TypedValue(Type.text, staffRef),
+      },
+    );
+    return userId;
+  }
+
+  /// The `operator_staff` row for somebody, which is what the console
+  /// addresses to revoke a key — a different identifier from the account id a
+  /// rota names, and the reason both are on `StaffSummary`.
+  Future<String> staffRowId(String userId, {String? operatorId}) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT id FROM operator_staff
+         WHERE operator_id = @operator AND user_id = @user
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId ?? PgFixture.operatorId),
+        'user': TypedValue(Type.uuid, userId),
+      },
+    );
+    return rows.first.toColumnMap()['id'].toString();
+  }
+
+  /// A roster row written straight at the table, bypassing the port.
+  ///
+  /// Written through the seed connection — the most privileged caller there
+  /// is — because the claim is about the schema, not about the adapter. If
+  /// `departure_crew_is_staff` were an application check this insert would
+  /// succeed, and the rule would hold only for the callers that remembered it.
+  Future<void> rosterRaw({
+    required String departureId,
+    required String userId,
+    String? operatorId,
+    String role = 'driver',
+  }) => _seed.execute(
+    Sql.named('''
+      INSERT INTO departure_crew (departure_id, operator_id, user_id, role)
+      VALUES (@departure, @operator, @person, @role::crew_role)
+    '''),
+    parameters: {
+      'departure': TypedValue(Type.uuid, departureId),
+      'operator': TypedValue(Type.uuid, operatorId ?? PgFixture.operatorId),
+      'person': TypedValue(Type.uuid, userId),
+      'role': TypedValue(Type.text, role),
+    },
+  );
+
   /// One of our own people, with a platform role.
   ///
   /// Seeded as `postgres` because nothing in the application may write

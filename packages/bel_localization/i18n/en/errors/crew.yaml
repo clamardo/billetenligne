@@ -1,0 +1,13 @@
+# Refusals from the roster (`18-the-platform-other-companies-can-join.md` J3).
+# Each one says what is wrong with the plan, never what the database refused —
+# a dispatcher at six in the morning is looking at a rota, not a constraint.
+errors:
+  crew:
+    unknown_role: "Choose driver or conductor."
+    not_staff: "That person does not work here."
+    # No {name}: the route sends a code and nothing else, and the dispatcher
+    # has just tapped the person's own button — a name interpolated here would
+    # be a parameter the server never sends, rendering as literal braces.
+    not_qualified: "That person is not registered for that job."
+    revoked: "That person no longer has access."
+    departed: "That coach has already left. Its crew cannot be changed."

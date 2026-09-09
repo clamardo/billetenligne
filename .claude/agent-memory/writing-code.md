@@ -20,6 +20,13 @@ than with it.
 Use `ON CONFLICT DO NOTHING` where a duplicate is expected: a raised conflict poisons the whole
 transaction, and the next statement then fails for a reason that has nothing to do with itself.
 
+**Tally: 2 — 2026-09-09.** The second time was a `try { UPDATE } on ServerException catch (e) { if
+23505 → return refusal }` around a unique index, which looks like the right shape and is not: the
+`catch` runs, but the transaction it sits inside is already aborted, so the value it returns has
+nothing left to commit and the caller gets a 500 where a sentence belongs. Where the write is a
+plain `UPDATE` — no `ON CONFLICT` arm to hang the recovery on — **ask before writing**, in the same
+transaction, and leave the index as the backstop for the genuinely simultaneous case.
+
 ---
 
 ## A query that consults only one table answers only for rows that table has
@@ -37,6 +44,25 @@ no priced segment **and** it is not the road's own pair of ends.
 **Do instead:** when a lookup returns nothing, ask what *other* shape of the same data would also
 return nothing. An empty result is not a negative answer unless every source of a positive one was
 consulted.
+
+---
+
+## A shared column list is a promise every CTE in the file has to keep
+
+**Tally: 1 — 2026-09-09, and it broke eight integration tests in four suites the change never
+looked at.**
+
+`PostgresOperatorConsole` keeps `_staffColumns` — one `static const` string, interpolated into four
+queries. Adding `s.staff_ref` to it fixed the read that needed it and broke every query where `s`
+is a **CTE** rather than the table: `WITH upsert AS (… RETURNING id, user_id, roles, …) SELECT
+$_staffColumns FROM upsert s`. The CTE's `RETURNING` list is its own column list, and it did not
+have the new column. Postgres said `42703: column s.staff_ref does not exist`, which reads exactly
+like a missing migration and is not one — the migration had run, and a different query against the
+same real table was reading the column happily two tests earlier.
+
+**Do instead:** after adding a column to a shared `SELECT` fragment, `grep` the fragment's name and
+open every use. Where the alias resolves to a CTE, its `RETURNING` list needs the column too. The
+compiler cannot see inside a SQL string, so nothing else will tell you.
 
 ---
 

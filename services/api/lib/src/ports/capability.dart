@@ -129,6 +129,20 @@ final class Capability {
       tillOpen,
     },
     'conductor': {boardingScan},
+    // **Deliberately empty**, and the only role here that is.
+    //
+    // A driver drives. They do not scan tickets — that is the conductor, and
+    // on an intercity coach here they are usually two people — they do not
+    // sell, and they have no reason to read a booking. What the role buys is
+    // eligibility: only somebody holding it can be rostered onto a departure
+    // (`CrewAssignment`), which is a fact about the roster rather than a key
+    // to anything.
+    //
+    // An empty set is safer than a plausible one. The alternative on offer
+    // was `bookingRead`, "so they can see who is on their coach", which is
+    // read access to every booking in the company for the person whose phone
+    // spends the day on a dashboard.
+    'driver': <String>{},
     'viewer': {bookingRead, financeRead},
   };
 
