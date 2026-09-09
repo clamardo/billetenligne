@@ -131,6 +131,77 @@ void main() {
     });
   });
 
+  // J2. Approval says a reviewer believes this is a real company; activation
+  // says we are selling their seats and taking their passengers' money. The
+  // screen runs the server's own rule so the green button and the 409 cannot
+  // disagree.
+  group('activation waits for the money to have somewhere to land', () {
+    Future<AdminWorkspace> openFile(
+      WidgetTester tester, {
+      required List<PaymentAccountDto> accounts,
+      bool agreementAccepted = true,
+    }) async {
+      final gateway = ScriptedAdmin(
+        capabilities: const ['platform.operator.review'],
+      )..roster = [adminOperator(status: 'approved')];
+      gateway.file = AdminOperatorDetailDto(
+        operator: adminOperator(status: 'approved'),
+        paymentAccounts: accounts,
+        application: ApplicationFacts(
+          legalName: 'Océan du Nord SARL',
+          agreementAccepted: agreementAccepted,
+        ),
+      );
+
+      final workspace = await pump(tester, gateway);
+      workspace.setReason('Dossier complet');
+      await workspace.open('op-1');
+      await tester.pumpAndSettle();
+      return workspace;
+    }
+
+    testWidgets('with no verified account the button says why', (tester) async {
+      await openFile(tester, accounts: [paymentAccount()]);
+
+      // Not a bare grey button, and not a green one that 409s. A number
+      // somebody typed is not a number anybody proved.
+      expect(
+        find.textContaining('aucun compte d\'encaissement vérifié'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('with an account verified, activation is offered', (
+      tester,
+    ) async {
+      await openFile(tester, accounts: [paymentAccount(verified: true)]);
+
+      expect(
+        find.textContaining('aucun compte d\'encaissement vérifié'),
+        findsNothing,
+      );
+      final button = tester.widget<KButton>(
+        find.widgetWithText(KButton, 'Mettre en service'),
+      );
+      expect(button.onPressed, isNotNull);
+    });
+
+    testWidgets('with no recorded acceptance it names that instead', (
+      tester,
+    ) async {
+      await openFile(
+        tester,
+        accounts: [paymentAccount(verified: true)],
+        agreementAccepted: false,
+      );
+
+      expect(
+        find.textContaining("n'a pas accepté l'accord de la plateforme"),
+        findsOneWidget,
+      );
+    });
+  });
+
   group("the applicant's own answers", () {
     testWidgets('the checklist is the applicant\'s, not a second one', (
       tester,

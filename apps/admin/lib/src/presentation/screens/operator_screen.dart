@@ -74,7 +74,7 @@ final class OperatorScreen extends StatelessWidget {
         ),
         SizedBox(height: kilo.space.s4),
 
-        _Decisions(workspace: workspace, operator: operator),
+        _Decisions(workspace: workspace, operator: operator, detail: detail),
         SizedBox(height: kilo.space.s4),
 
         _Identity(operator: operator),
@@ -108,10 +108,31 @@ final class OperatorScreen extends StatelessWidget {
 }
 
 class _Decisions extends StatelessWidget {
-  const _Decisions({required this.workspace, required this.operator});
+  const _Decisions({
+    required this.workspace,
+    required this.operator,
+    required this.detail,
+  });
 
   final AdminWorkspace workspace;
   final AdminOperatorDto operator;
+
+  /// Read for the two preconditions on activation (J2), and for nothing else.
+  final AdminOperatorDetailDto detail;
+
+  /// What stops this company being switched on, or null.
+  ///
+  /// The **same** function the server runs, on facts the screen already has.
+  /// `OperatorLifecycle` says it best about the transitions: the server is the
+  /// authority and the screen is the courtesy, and sharing the rule is what
+  /// stops the courtesy from becoming a lie. A greyed Activate that names the
+  /// missing account beats a green one that 409s.
+  ActivationBlock? get _block => activationBlock(
+    hasVerifiedCollectionAccount: detail.paymentAccounts.any(
+      (a) => a.active && a.verified,
+    ),
+    agreementAccepted: detail.application?.agreementAccepted ?? false,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -148,14 +169,23 @@ class _Decisions extends StatelessWidget {
                       tone: _tone(decision),
                       onPressed:
                           workspace.can(_capabilityFor(decision)) &&
-                              workspace.hasReason
+                              workspace.hasReason &&
+                              !(decision == 'activate' && _block != null)
                           ? () => _confirm(context, decision)
                           : null,
-                      // Never a bare grey button. There are exactly two
-                      // reasons this is unavailable and both are fixable by
-                      // the person looking at it.
+                      // Never a bare grey button. Every reason this is
+                      // unavailable is fixable by the person looking at it,
+                      // and two of the three are fixable further down this
+                      // same page.
                       disabledHint: !workspace.can(_capabilityFor(decision))
                           ? context.t('admin.operator.notAllowed')
+                          : decision == 'activate' && _block != null
+                          ? context.t(switch (_block!) {
+                              ActivationBlock.needsVerifiedAccount =>
+                                'errors.admin.activation_needs_verified_account',
+                              ActivationBlock.needsAgreement =>
+                                'errors.admin.activation_needs_agreement',
+                            })
                           : context.t('admin.reason.required'),
                     ),
                   ),

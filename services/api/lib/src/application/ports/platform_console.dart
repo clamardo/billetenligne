@@ -244,6 +244,16 @@ enum DecisionRefusal {
   /// `active` → `approve` and similar. The lifecycle is a state machine and
   /// this is the same guard the payment intent has, for the same reason.
   illegalTransition,
+
+  /// Activation only (J2): approved, but with nowhere for the money to land.
+  /// Named separately from [illegalTransition] because the reviewer's next
+  /// move is completely different — one is "you are looking at the wrong
+  /// row", the other is "verify the account on this one".
+  needsVerifiedAccount,
+
+  /// Activation only (J2): approved, with no recorded acceptance of the
+  /// platform agreement.
+  needsAgreement,
 }
 
 /// A payment nobody can resolve automatically.

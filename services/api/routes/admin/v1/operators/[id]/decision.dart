@@ -90,6 +90,21 @@ Future<Response> onRequest(RequestContext context, String id) async {
           traceId: trace,
         ),
       ),
+      // J2. 409 like the transition above — the request is well formed and
+      // the world will not accept it — but with the *specific* precondition
+      // named. A bare "refusé" on a review screen is a support call, and the
+      // reviewer is the one person who can fix either of these.
+      DecisionRefusal.needsVerifiedAccount => _error(
+        HttpStatus.conflict,
+        ApiError(
+          code: ErrorCode.activationNeedsVerifiedAccount,
+          traceId: trace,
+        ),
+      ),
+      DecisionRefusal.needsAgreement => _error(
+        HttpStatus.conflict,
+        ApiError(code: ErrorCode.activationNeedsAgreement, traceId: trace),
+      ),
     },
   };
 }

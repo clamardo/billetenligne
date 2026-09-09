@@ -84,7 +84,13 @@ Future<Response> onRequest(
         HttpStatus.notFound,
         Problem.notFound(traceId: trace),
       ),
-      DecisionRefusal.illegalTransition => _error(
+      // The two activation preconditions (J2) share the enum and cannot reach
+      // here: verifying an account is not a lifecycle transition. Folded into
+      // the same conflict rather than left as a wildcard, so the next value
+      // added to `DecisionRefusal` still breaks this switch and gets read.
+      DecisionRefusal.illegalTransition ||
+      DecisionRefusal.needsVerifiedAccount ||
+      DecisionRefusal.needsAgreement => _error(
         HttpStatus.conflict,
         ApiError(
           code: ErrorCode.conflict,

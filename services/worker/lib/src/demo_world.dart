@@ -273,6 +273,7 @@ final class DemoWorld {
       ownerName: 'Angèle Mbemba',
       reviewer: reviewer,
       fleet: 14,
+      line: '00010',
     );
     final kouilou = await _company(
       code: 'KLV',
@@ -282,6 +283,7 @@ final class DemoWorld {
       ownerName: 'Prosper Loubaki',
       reviewer: reviewer,
       fleet: 9,
+      line: '00020',
     );
 
     await _network(alizes, code: 'ALZ', hour: '06:00', fare: 12000);
@@ -324,13 +326,6 @@ final class DemoWorld {
     await _documents(alizes, licence: 900, insurance: 700);
     await _documents(kouilou, licence: 400, insurance: 20);
 
-    // Somewhere for the money to land. Without these the payment screen is
-    // empty for every departure in this world: `collectionAccounts` requires
-    // `verified_at`, so an operator with no verified wallet is offered no
-    // rail at all and the funnel dead-ends one tap before the money.
-    await _wallets(alizes, name: 'Alizés Transport', line: '00010');
-    await _wallets(kouilou, name: 'Kouilou Voyages', line: '00020');
-
     // Somebody behind the counter. Without this the guichet — the screen a
     // cash-first market spends most of its day on — says "aucune agence
     // rattachée" to every person in this world, including the two owners who
@@ -346,6 +341,7 @@ final class DemoWorld {
       ownerName: 'Mireille Nzaba',
       reviewer: reviewer,
       fleet: 4,
+      line: '00030',
     );
     await _documents(lapsed, licence: 300, insurance: -3);
 
@@ -542,6 +538,7 @@ final class DemoWorld {
     required String ownerName,
     required String reviewer,
     required int fleet,
+    required String line,
   }) async {
     final operatorId = await _applicant(
       legalName: legalName,
@@ -561,6 +558,15 @@ final class DemoWorld {
       actorUserId: reviewer,
       reason: 'dossier complet, RCCM verifie',
     );
+
+    // Between the two decisions, and that ordering is J2 rather than
+    // tidiness: activation is refused until the money has somewhere to land,
+    // so a demo that seeded wallets afterwards would be seeding a world that
+    // could not have happened. It is also the order a real reviewer works in
+    // — approve the paperwork, verify the merchant number, then switch them
+    // on.
+    await _wallets(operatorId, name: tradingName, line: line);
+
     await _platform.decide(
       operatorId: operatorId,
       decision: OperatorDecision.activate,

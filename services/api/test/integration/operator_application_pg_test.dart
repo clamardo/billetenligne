@@ -336,6 +336,14 @@ void main() {
         // Nobody is staff of an operator that is still an application.
         expect(await fixture.staffRoles(operatorId, user), isEmpty);
 
+        // J2: activation now waits for the money to have somewhere to land.
+        await fixture.collectionAccount(
+          railId: 'cg.airtel_money',
+          msisdn: '242060192286',
+          forOperator: operatorId,
+          displayName: 'Sotrapo',
+        );
+
         for (final decision in [
           OperatorDecision.approve,
           OperatorDecision.activate,
@@ -354,6 +362,146 @@ void main() {
         expect(await fixture.staffRoles(operatorId, user), ['org_owner']);
       },
     );
+
+    // ── J2: activation waits for the money to have somewhere to land ──
+    //
+    // Both facts have existed since 0011 and 0015 and nothing consulted
+    // either at the moment they matter, so "selling, with nowhere for the
+    // money to land" was one green button away.
+    group('the two things activation waits for', () {
+      Future<String> approved({bool agreement = true}) async {
+        final user = await applicantAccount();
+        final started = await applications.start(
+          userId: user,
+          legalName: 'Sotrapo SARL',
+          marketCode: 'CG',
+        );
+        final operatorId = started.valueOrNull!.operatorId;
+        await applications.save(
+          userId: user,
+          facts: agreement
+              ? filled()
+              : filled().copyWith(agreementAccepted: false),
+        );
+        // Submitting needs the acceptance, so the un-agreed case is written
+        // through the wizard and then cleared: what is under test is a row
+        // in the state a hand-onboarded company arrives in.
+        await applications.save(userId: user, facts: filled());
+        await applications.submit(userId: user, asOf: DateTime.utc(2031));
+        if (!agreement) await fixture.clearAgreement(operatorId);
+
+        final ok = await platform.decide(
+          operatorId: operatorId,
+          decision: OperatorDecision.approve,
+          actorUserId: reviewer,
+          reason: 'Documents check out',
+        );
+        expect(ok.isOk, isTrue);
+        return operatorId;
+      }
+
+      Future<Result<OperatorSummary, DecisionRefusal>> activate(String id) =>
+          platform.decide(
+            operatorId: id,
+            decision: OperatorDecision.activate,
+            actorUserId: reviewer,
+            reason: 'Ready to sell',
+          );
+
+      test('refused with no collection account at all', () async {
+        final operatorId = await approved();
+
+        expect(
+          (await activate(operatorId)).failureOrNull,
+          DecisionRefusal.needsVerifiedAccount,
+        );
+        // And the transition did not happen behind the refusal.
+        expect(await fixture.operatorStatus(operatorId), 'approved');
+      });
+
+      test('refused with an account nobody has verified', () async {
+        final operatorId = await approved();
+        await fixture.collectionAccount(
+          railId: 'cg.airtel_money',
+          msisdn: '242060192287',
+          verified: false,
+          forOperator: operatorId,
+          displayName: 'Sotrapo',
+        );
+
+        // A number somebody typed is not a number anybody proved. The whole
+        // point of `verified_at` is that money does not go to the first.
+        expect(
+          (await activate(operatorId)).failureOrNull,
+          DecisionRefusal.needsVerifiedAccount,
+        );
+      });
+
+      test('refused with no recorded acceptance of the agreement', () async {
+        final operatorId = await approved(agreement: false);
+        await fixture.collectionAccount(
+          railId: 'cg.airtel_money',
+          msisdn: '242060192288',
+          forOperator: operatorId,
+          displayName: 'Sotrapo',
+        );
+
+        expect(
+          (await activate(operatorId)).failureOrNull,
+          DecisionRefusal.needsAgreement,
+        );
+      });
+
+      test('allowed once an account is verified', () async {
+        final operatorId = await approved();
+        await fixture.collectionAccount(
+          railId: 'cg.airtel_money',
+          msisdn: '242060192289',
+          forOperator: operatorId,
+          displayName: 'Sotrapo',
+        );
+
+        expect((await activate(operatorId)).isOk, isTrue);
+        expect(await fixture.operatorStatus(operatorId), 'active');
+      });
+
+      test('reinstating a suspended company is not blocked by this', () async {
+        final operatorId = await approved();
+        final accountId = await fixture.collectionAccount(
+          railId: 'cg.airtel_money',
+          msisdn: '242060192290',
+          forOperator: operatorId,
+          displayName: 'Sotrapo',
+        );
+        expect((await activate(operatorId)).isOk, isTrue);
+
+        await platform.decide(
+          operatorId: operatorId,
+          decision: OperatorDecision.suspend,
+          actorUserId: reviewer,
+          reason: 'Insurance lapsed',
+        );
+
+        // The account goes away while they are off the road — a rail closed
+        // the merchant number, which is exactly the kind of thing that
+        // happens to a suspended company.
+        await fixture.deactivateCollectionAccount(accountId);
+
+        final back = await platform.decide(
+          operatorId: operatorId,
+          decision: OperatorDecision.reinstate,
+          actorUserId: reviewer,
+          reason: 'New certificate received',
+        );
+
+        // They were already trading. Blocking their return over a
+        // precondition they satisfied months ago would be a new refusal
+        // wearing an old rule's clothes — and `reinstate` is a different
+        // decision from `activate` precisely so this is not a judgement call.
+        expect(back.isOk, isTrue, reason: back.failureOrNull?.name);
+        expect(await fixture.operatorStatus(operatorId), 'active');
+      });
+    });
 
     test('a rejected applicant may start again', () async {
       final user = await applicantAccount();

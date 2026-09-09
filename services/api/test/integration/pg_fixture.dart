@@ -565,12 +565,14 @@ final class PgFixture {
     required String railId,
     required String msisdn,
     bool verified = true,
+    String? forOperator,
+    String displayName = 'Ocean du Nord',
   }) async {
     final rows = await _seed.execute(
       Sql.named('''
         INSERT INTO operator_payment_accounts
           (operator_id, rail_id, msisdn, display_name, verified_at)
-        VALUES (@operator, @rail, @msisdn, 'Ocean du Nord',
+        VALUES (@operator, @rail, @msisdn, @name,
                 CASE WHEN @verified THEN now() ELSE NULL END)
         ON CONFLICT (operator_id, rail_id) WHERE active
         DO UPDATE SET msisdn = EXCLUDED.msisdn,
@@ -578,13 +580,43 @@ final class PgFixture {
         RETURNING id
       '''),
       parameters: {
-        'operator': TypedValue(Type.uuid, operatorId),
+        'operator': TypedValue(Type.uuid, forOperator ?? operatorId),
+        'name': TypedValue(Type.text, displayName),
         'rail': TypedValue(Type.text, railId),
         'msisdn': TypedValue(Type.text, msisdn),
         'verified': TypedValue(Type.boolean, verified),
       },
     );
     return rows.first.toColumnMap()['id'] as String;
+  }
+
+  /// Erases the recorded acceptance of the platform agreement.
+  ///
+  /// The state a company onboarded by hand arrives in — no wizard, no
+  /// acceptance row — reached from one that went through the wizard because
+  /// submission requires the acceptance in the first place.
+  Future<void> clearAgreement(String operatorId) async {
+    await _seed.execute(
+      Sql.named('''
+        UPDATE operator_applications SET agreement_accepted_at = NULL
+         WHERE operator_id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, operatorId)},
+      ignoreRows: true,
+    );
+  }
+
+  /// The rail closed the merchant number. Deactivated rather than deleted,
+  /// which is what 0011 does and why: an intent that already paid into it has
+  /// to keep resolving six weeks later.
+  Future<void> deactivateCollectionAccount(String accountId) async {
+    await _seed.execute(
+      Sql.named(
+        'UPDATE operator_payment_accounts SET active = FALSE WHERE id = @id',
+      ),
+      parameters: {'id': TypedValue(Type.uuid, accountId)},
+      ignoreRows: true,
+    );
   }
 
   /// The refund policy a booking was stamped with at sale time.

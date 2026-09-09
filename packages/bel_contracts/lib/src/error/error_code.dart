@@ -199,6 +199,14 @@ final class ErrorCode {
   static const departureCancelIsADisruption =
       'departure.cancel_is_a_disruption';
 
+  // One per [ActivationBlock] value (`bel_platform`). Activation is refused
+  // with the *specific* precondition named, because a bare "refusé" on a
+  // reviewer's screen is a support call — and the reviewer is the only person
+  // who can act on either of them.
+  static const activationNeedsVerifiedAccount =
+      'admin.activation_needs_verified_account';
+  static const activationNeedsAgreement = 'admin.activation_needs_agreement';
+
   // One per [CustomRoleRefusal] value (`bel_platform`), plus the two facts
   // only the database itself can guarantee: whether the name is already
   // taken, and whether a role is still in use.

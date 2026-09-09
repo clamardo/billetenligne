@@ -363,7 +363,7 @@ Refusal: `errors.onboarding.marketNotConfigured`.
 deployment renders no picker and still writes `CG`; the admin operator page
 shows the chosen market.
 
-#### J2 — activation waits for the money to have somewhere to land
+#### J2 — activation waits for the money to have somewhere to land — **built, 2026-09-09**
 **Depends on:** nothing
 `decide(activate)` gains two preconditions: at least one **verified**
 collection account, and a recorded agreement acceptance. Both already exist as
@@ -374,6 +374,22 @@ reviewer's screen is a support call.
 *Tests:* activation refused with no account, refused with an unverified one,
 allowed with a verified one; **reinstating** a suspended operator is not
 blocked by this (they were already trading).
+
+**As built.** `activationBlock()` in `bel_platform` — three lines and a page
+of why. The adapter asks the two `EXISTS` questions inside the decision's own
+transaction, so a reviewer and an account rejection landing together cannot
+produce an activation on a number that was rejected a moment earlier. It runs
+only for `activate`: `reinstate` is a different decision in
+`OperatorLifecycle`, which is what makes "a suspended company was already
+trading" a fact about the table rather than a judgement call.
+An operator onboarded by hand has no application row and therefore no recorded
+acceptance, and is refused for the same reason as one that skipped the step —
+there is no "signed on paper, trust me" route, because if consent was given it
+is recordable. The demo world now seeds its wallets **between** approve and
+activate, which is also the order a real reviewer works in.
+The admin file runs the same function on facts it already holds and greys
+`Mettre en service` with the missing precondition named under it, so the green
+button and the 409 cannot disagree.
 
 ### Part B — the crew and the departure
 
@@ -699,7 +715,7 @@ J11 ──┴─ J12
 
 J3 ── J15
 
-J1 (gated: M1–M2) · J2 · J11 · J13 · J14 ✅ — independent, land any time
+J1 (gated: M1–M2) · J2 ✅ · J11 · J13 · J14 ✅ — independent, land any time
 ```
 
 ~~**Build J3 and J4 first**~~ — **done, 2026-09-09.** They were the spine
@@ -709,9 +725,10 @@ the whole of Part B is built except J7, whose only remaining gate is
 commercial: tier 2 is now asked for on the handset, counted in the office, and
 readable by the passenger sitting on the coach.
 
-**J2 and J13 are the two money-and-trust slices** and neither depends on
-anything. They are each a day's work and each closes a distance between what
-`03-operator-lifecycle.md` promises and what the code enforces.
+~~**J2 and J13 are the two money-and-trust slices**~~ — **J2 done,
+2026-09-09.** J13 is the remaining one, and still depends on nothing: it
+closes the distance between what `03-operator-lifecycle.md` promises about a
+suspended operator's issued tickets and what the schema actually guarantees.
 
 ---
 

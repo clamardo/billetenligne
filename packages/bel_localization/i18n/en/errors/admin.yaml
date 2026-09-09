@@ -1,0 +1,10 @@
+# Refusals a reviewer reads in the platform back office
+# (`18-the-platform-other-companies-can-join.md` J2).
+#
+# Each names the missing precondition rather than the transition. "Refusé" on
+# a review screen is a support call; "no verified collection account" is the
+# reviewer's next click.
+errors:
+  admin:
+    activation_needs_verified_account: "This company has no verified collection account. Verify one before activating — until then their passengers' money would have nowhere to land."
+    activation_needs_agreement: "This company has not accepted the platform agreement. Record their acceptance before activating."

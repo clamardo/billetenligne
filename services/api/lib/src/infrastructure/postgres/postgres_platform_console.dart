@@ -219,6 +219,55 @@ final class PostgresPlatformConsole implements PlatformConsole {
     final before = await _statusOf(tx, operatorId);
     if (before == null) return const Err(DecisionRefusal.unknownOperator);
 
+    // J2. Approval says a reviewer believes this is a real company;
+    // activation says we are selling their seats and taking their passengers'
+    // money. Both facts below have existed since 0011 and 0015 and nothing
+    // consulted either at the moment they matter, so "selling, with nowhere
+    // for the money to land" was reachable by pressing a green button.
+    //
+    // Asked before the UPDATE and inside the same transaction, so a reviewer
+    // and a verification landing together cannot produce an activation on an
+    // account that was rejected a moment earlier.
+    //
+    // **Activation only, never reinstatement.** They are different decisions
+    // in `OperatorLifecycle` and this reads the one whose name is on it: a
+    // suspended company was already trading, so blocking them from coming
+    // back over paperwork they satisfied months ago would be a new refusal
+    // wearing an old rule's clothes.
+    if (decision == OperatorDecision.activate) {
+      final ready = await tx.execute(
+        Sql.named('''
+          SELECT
+            EXISTS (
+              SELECT 1 FROM operator_payment_accounts
+               WHERE operator_id = @id AND active AND verified_at IS NOT NULL
+            ) AS has_account,
+            EXISTS (
+              SELECT 1 FROM operator_applications
+               WHERE operator_id = @id AND agreement_accepted_at IS NOT NULL
+            ) AS agreed
+        '''),
+        parameters: {'id': TypedValue(Type.uuid, operatorId)},
+      );
+
+      final r = ready.first.toColumnMap();
+      final block = activationBlock(
+        hasVerifiedCollectionAccount: r['has_account']! as bool,
+        // A company onboarded by hand has no application row and therefore no
+        // recorded acceptance, and is refused for the same reason as one that
+        // skipped the step: if consent was given, it is recordable.
+        agreementAccepted: r['agreed']! as bool,
+      );
+
+      if (block != null) {
+        return Err(switch (block) {
+          ActivationBlock.needsVerifiedAccount =>
+            DecisionRefusal.needsVerifiedAccount,
+          ActivationBlock.needsAgreement => DecisionRefusal.needsAgreement,
+        });
+      }
+    }
+
     // The transition and the audit row are one transaction. A decision
     // recorded without a trail, or a trail without the decision, are both
     // worse than neither.

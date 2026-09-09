@@ -1,0 +1,10 @@
+# Refus que lit un examinateur dans le back-office de la plateforme
+# (`18-the-platform-other-companies-can-join.md` J2).
+#
+# Chacun nomme la condition manquante, jamais la transition. « Refusé » sur un
+# écran d'examen, c'est un appel au support ; « aucun compte d'encaissement
+# vérifié », c'est le clic suivant de l'examinateur.
+errors:
+  admin:
+    activation_needs_verified_account: "Cette compagnie n'a aucun compte d'encaissement vérifié. Vérifiez-en un avant l'activation : sans cela, l'argent de ses voyageurs n'aurait nulle part où aller."
+    activation_needs_agreement: "Cette compagnie n'a pas accepté l'accord de la plateforme. Enregistrez son acceptation avant l'activation."
