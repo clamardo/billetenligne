@@ -398,7 +398,18 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                    END AS state
               FROM seats s
              WHERE s.departure_id = @id
-             ORDER BY s.seat_label
+             -- A coach is read in the order its rows sit in it, and
+             -- `seat_label` is text: a text sort puts 10A before 1A. The
+             -- client trusts this order rather than re-deriving it —
+             -- `KSeatMap` chunks the list into rows of `seatsPerRow` — so
+             -- any coach with more than nine rows was drawn with row 10 at
+             -- the front and one row reading `12E 1A 1B 1C`.
+             --
+             -- The leading number first, then the whole label, so `12E`
+             -- follows `12A` and a label that starts with no digit at all
+             -- still has a total order instead of an arbitrary one.
+             ORDER BY substring(s.seat_label from '^[0-9]+')::int NULLS LAST,
+                      s.seat_label
           '''),
       parameters: {
         'id': TypedValue(Type.uuid, departureId),

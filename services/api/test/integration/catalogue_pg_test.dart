@@ -374,6 +374,38 @@ void main() {
       expect(map.availableCount, 1);
     });
 
+    test('rows arrive in the order they sit in the coach', () async {
+      // `ORDER BY seat_label` is a text sort, and a text sort puts 10A before
+      // 1A. The client trusts this order — `KSeatMap` chunks the list into
+      // rows of `seatsPerRow` — so a coach with more than nine rows was drawn
+      // with row 10 at the front and one row reading `12E 1A 1B 1C`.
+      //
+      // Twelve rows, because the bug cannot appear with fewer: it needs a
+      // label whose first digit sorts before a shorter label's.
+      //
+      // On another company's road, and that is not incidental: this suite
+      // shares one database across files, and a spare coach on the main road
+      // joins the alternatives the reschedule screen offers — which pushed
+      // the departure that test was looking for off its own list.
+      final departureId = await fixture.foreignDeparture(
+        seatLabels: const ['1A', '1B', '2A', '9A', '10A', '11A', '12A', '12E'],
+        fromNow: const Duration(hours: 18),
+      );
+
+      final map = await catalogue.seatMap(departureId);
+
+      expect(map!.seats.map((s) => s.label), [
+        '1A',
+        '1B',
+        '2A',
+        '9A',
+        '10A',
+        '11A',
+        '12A',
+        '12E',
+      ]);
+    });
+
     test('a cancelled departure still has a seat map', () async {
       final departureId = await fixture.departure(
         seatLabels: ['1A'],

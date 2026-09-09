@@ -45,6 +45,48 @@ final class SeatDto {
   );
 
   bool get isSelectable => status == SeatStatusDto.available;
+
+  /// Two seat labels in the order a coach is actually read.
+  ///
+  /// A seat label is text, and a text sort puts `10A` before `1A`. The seat
+  /// map draws whatever order it is handed — `KSeatMap` chunks the list into
+  /// rows of `seatsPerRow` rather than re-deriving the deck from the labels —
+  /// so any coach with more than nine rows came out with row 10 at the front
+  /// and one row reading `12E 1A 1B 1C`.
+  ///
+  /// Postgres orders by this same rule in `postgres_departure_catalogue`,
+  /// where it is the database's job. This is the version every other adapter
+  /// uses, so the two cannot quietly disagree about what a coach looks like.
+  ///
+  /// The leading number first, then the label itself: `12E` follows `12A`,
+  /// and a label with no leading digit at all — an operator who names a jump
+  /// seat `CREW` — still lands in one fixed place rather than an arbitrary
+  /// one. A total order, because two coaches with the same seats must never
+  /// draw differently.
+  static int compareLabels(String a, String b) {
+    final rowA = _leadingNumber(a);
+    final rowB = _leadingNumber(b);
+    if (rowA != rowB) {
+      // Numbered rows first, in numeric order; anything unnumbered after
+      // them. This is `NULLS LAST` on the SQL side.
+      if (rowA == null) return 1;
+      if (rowB == null) return -1;
+      return rowA.compareTo(rowB);
+    }
+    return a.compareTo(b);
+  }
+
+  static int? _leadingNumber(String label) {
+    var end = 0;
+    while (end < label.length && _isDigit(label.codeUnitAt(end))) {
+      end++;
+    }
+    // `tryParse` rather than `parse`: a label of forty digits is somebody
+    // else's bug, and a comparator is not the place to throw over it.
+    return end == 0 ? null : int.tryParse(label.substring(0, end));
+  }
+
+  static bool _isDigit(int unit) => unit >= 0x30 && unit <= 0x39;
 }
 
 final class CabinSectionDto {

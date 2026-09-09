@@ -405,7 +405,10 @@ final class MemoryDepartureCatalogue implements DepartureCatalogue {
     }
 
     final now = _clock.now();
-    final labels = departure.seats.keys.toList()..sort();
+    // The order a coach is read, not the order text sorts in — Postgres
+    // orders by the same rule, and an adapter that disagreed would draw a
+    // different coach for the same departure.
+    final labels = departure.seats.keys.toList()..sort(SeatDto.compareLabels);
 
     return SeatMapDto(
       departureId: departureId,
