@@ -75,61 +75,74 @@ class _AdminShellState extends State<AdminShell> {
     return Scaffold(
       body: Row(
         children: [
-          NavigationRail(
-            selectedIndex: index < 0 ? 0 : index,
-            onDestinationSelected: (i) => workspace.openSection(sections[i]),
-            labelType: NavigationRailLabelType.all,
-            leading: Padding(
-              padding: EdgeInsets.symmetric(vertical: kilo.space.s4),
-              child: Column(
-                children: [
-                  Icon(Icons.shield_outlined, color: kilo.color.brandPrimary),
-                  SizedBox(height: kilo.space.s2),
-                  Text('BEL', style: kilo.text.label),
-                ],
-              ),
-            ),
-            destinations: [
-              for (final section in sections)
-                NavigationRailDestination(
-                  icon: Icon(_icon(section)),
-                  label: Text(context.t(_labelKey(section))),
+          // One green column carries the brand for every screen behind
+          // it; the working area stays pale, which is what a day of
+          // reading numbers needs.
+          KRailSkin(
+            child: NavigationRail(
+              selectedIndex: index < 0 ? 0 : index,
+              onDestinationSelected: (i) => workspace.openSection(sections[i]),
+              labelType: NavigationRailLabelType.all,
+              leading: Padding(
+                padding: EdgeInsets.symmetric(vertical: kilo.space.s4),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.shield_outlined,
+                      color: kilo.color.onBrandPrimary,
+                    ),
+                    SizedBox(height: kilo.space.s2),
+                    Text(
+                      'BEL',
+                      style: kilo.text.label.copyWith(
+                        color: kilo.color.onBrandPrimary,
+                      ),
+                    ),
+                  ],
                 ),
-            ],
-            trailing: Expanded(
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: EdgeInsets.only(bottom: kilo.space.s4),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      KModeToggle(
-                        lightLabel: context.t('common.theme.light'),
-                        darkLabel: context.t('common.theme.dark'),
-                      ),
-                      // Beside the theme toggle. This app has no settings
-                      // screen either, and every language is written in its
-                      // own name from the catalog's manifest.
-                      KLanguageMenu(
-                        tooltip: context.t('common.language'),
-                        current: context.language,
-                        languages: [
-                          for (final language in context.languages)
-                            (
-                              code: language.code,
-                              nativeName: language.nativeName,
-                            ),
-                        ],
-                        onChanged: context.setLanguage,
-                      ),
-                      if (widget.onManageSecondFactor != null)
-                        IconButton(
-                          icon: const Icon(Icons.lock_outline),
-                          tooltip: context.t('auth.enrol.manage'),
-                          onPressed: widget.onManageSecondFactor,
+              ),
+              destinations: [
+                for (final section in sections)
+                  NavigationRailDestination(
+                    icon: Icon(_icon(section)),
+                    label: Text(context.t(_labelKey(section))),
+                  ),
+              ],
+              trailing: Expanded(
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: kilo.space.s4),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        KModeToggle(
+                          lightLabel: context.t('common.theme.light'),
+                          darkLabel: context.t('common.theme.dark'),
                         ),
-                    ],
+                        // Beside the theme toggle. This app has no settings
+                        // screen either, and every language is written in its
+                        // own name from the catalog's manifest.
+                        KLanguageMenu(
+                          tooltip: context.t('common.language'),
+                          current: context.language,
+                          languages: [
+                            for (final language in context.languages)
+                              (
+                                code: language.code,
+                                nativeName: language.nativeName,
+                              ),
+                          ],
+                          onChanged: context.setLanguage,
+                        ),
+                        if (widget.onManageSecondFactor != null)
+                          IconButton(
+                            icon: const Icon(Icons.lock_outline),
+                            tooltip: context.t('auth.enrol.manage'),
+                            onPressed: widget.onManageSecondFactor,
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),

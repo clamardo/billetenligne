@@ -16,6 +16,7 @@ export 'src/components/k_brand_header.dart';
 export 'src/components/k_button.dart';
 export 'src/components/k_card.dart';
 export 'src/components/k_journey_bar.dart';
+export 'src/components/k_rail_skin.dart';
 export 'src/components/k_chip.dart';
 export 'src/components/k_countdown.dart';
 export 'src/components/k_field.dart';
