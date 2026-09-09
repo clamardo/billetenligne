@@ -605,13 +605,24 @@ of the layer it extends already exist.
 
 ### Part F — the operator that stops
 
-#### J13 — suspension honours issued tickets, provably
+#### J13 — suspension honours issued tickets, provably — **built, 2026-09-09**
 **Depends on:** nothing
 A schema guarantee in `verify_public.sql`: with an operator suspended, their
 future departures are invisible to the public surface **and** every ticket
 already issued for them still validates. Both halves in one assertion (§8).
 *Tests:* the guarantee itself; a suspended operator's departure is absent from
 search; a boarding scan for it succeeds.
+
+**As built.** Half of it was true by accident: the catalogue joins `operators`
+and `operators_public_read` is scoped to `active`, so a suspended company fell
+out of search on its own. That is one query's implementation detail, and
+`departures_public_read` said `app_is_public()` and nothing else — a deep link,
+a seat map and a hold all went straight past it. `0052` puts both halves in one
+policy: not `active` means invisible, **unless** the caller holds a booking on
+that departure, which is the same arm 0005 already had for a cancelled coach.
+The door is untouched, because boarding reads under the operator's own tenant
+scope; `verify_public.sql` executes that too, since the tempting fix for the
+first half is a rule on `tickets` that would break it.
 
 ### Part G — the door
 
@@ -715,7 +726,7 @@ J11 ──┴─ J12
 
 J3 ── J15
 
-J1 (gated: M1–M2) · J2 ✅ · J11 · J13 · J14 ✅ — independent, land any time
+J1 (gated: M1–M2) · J2 ✅ · J11 · J13 ✅ · J14 ✅ — independent, land any time
 ```
 
 ~~**Build J3 and J4 first**~~ — **done, 2026-09-09.** They were the spine
@@ -725,10 +736,9 @@ the whole of Part B is built except J7, whose only remaining gate is
 commercial: tier 2 is now asked for on the handset, counted in the office, and
 readable by the passenger sitting on the coach.
 
-~~**J2 and J13 are the two money-and-trust slices**~~ — **J2 done,
-2026-09-09.** J13 is the remaining one, and still depends on nothing: it
-closes the distance between what `03-operator-lifecycle.md` promises about a
-suspended operator's issued tickets and what the schema actually guarantees.
+~~**J2 and J13 are the two money-and-trust slices**~~ — **both done,
+2026-09-09.** Each closed a distance between what `03-operator-lifecycle.md`
+promises and what the code enforced.
 
 ---
 
