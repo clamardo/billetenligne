@@ -1344,6 +1344,41 @@ final class PostgresOperatorConsole implements OperatorConsole {
       (existing.isEmpty ? unknown : recorded).add(b.key);
     }
 
+    // The first ticket through the door puts the coach in `boarding` (J4).
+    // Nothing else in the system was ever going to notice that moment: it is
+    // the scanner, at the door, and it is the reason the state existed in the
+    // schema and was written by nobody.
+    //
+    // **One-way, in the `WHERE`.** A handset that boarded forty people in a
+    // dead zone empties its outbox hours later, possibly after the coach has
+    // arrived, and a naive write would put an arrived coach back in the yard.
+    // Only a departure still waiting to leave can enter boarding.
+    //
+    // Stamped with the earliest scan on the device, not with now(): that is
+    // the clock that was at the door, the same rule `redemptions` follows one
+    // statement above.
+    if (recorded.isNotEmpty) {
+      final firstScan = boardings
+          .map((b) => b.scannedAt.toUtc())
+          .reduce((a, b) => a.isBefore(b) ? a : b);
+
+      await tx.execute(
+        Sql.named('''
+          UPDATE departures
+             SET status = 'boarding',
+                 boarding_at = LEAST(COALESCE(boarding_at, @at), @at)
+           WHERE id = @departure AND operator_id = @operator
+             AND status IN ('scheduled', 'delayed')
+        '''),
+        parameters: {
+          'departure': TypedValue(Type.uuid, departureId),
+          'operator': TypedValue(Type.uuid, operatorId),
+          'at': TypedValue(Type.timestampTz, firstScan),
+        },
+        ignoreRows: true,
+      );
+    }
+
     return (recorded: recorded, unknown: unknown);
   });
 
@@ -2535,6 +2570,142 @@ final class PostgresOperatorConsole implements OperatorConsole {
 
     return Ok(removed.isNotEmpty);
   });
+
+  // ── The state of a departure (J4) ─────────────────────────────────────────
+
+  @override
+  Future<Result<DepartureStateChange, DepartureTransitionRefusal>>
+  setDepartureState({
+    required String operatorId,
+    required String departureId,
+    required DepartureState? state,
+    required String actorUserId,
+    required bool actorMayManage,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // The departure, and whether the person asking is on it, in one
+    // statement inside the write transaction — so the answer cannot be read
+    // from before a roster change and acted on after it.
+    final facts = await tx.execute(
+      Sql.named('''
+        SELECT d.status::text AS status,
+               EXISTS (
+                 SELECT 1 FROM departure_crew c
+                  WHERE c.departure_id = d.id AND c.user_id = @actor
+               ) AS is_crew
+          FROM departures d
+         WHERE d.id = @departure AND d.operator_id = @operator
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, departureId),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'actor': TypedValue(Type.uuid, actorUserId),
+      },
+    );
+
+    // Not this operator's departure, or not a departure at all. Answered as
+    // "not your coach" rather than as "no such coach": a driver holding the
+    // wrong handset reads the same sentence either way, and probing ids does
+    // not tell a stranger which of the two it was.
+    if (facts.isEmpty) return const Err(DepartureTransitionRefusal.notCrew);
+
+    final row = facts.first.toColumnMap();
+    final from = DepartureState.byName(row['status'] as String)!;
+
+    final refusal = DepartureLifecycle.transition(
+      from: from,
+      to: state,
+      isCrew: (row['is_crew'] as bool?) ?? false,
+      mayManage: actorMayManage,
+    );
+    if (refusal != null) return Err(refusal);
+
+    final to = state!;
+    if (from == to) {
+      return Ok(DepartureStateChange(state: to, at: null, changed: false));
+    }
+
+    // `WHERE status = @from` is what makes this safe under two taps at once:
+    // the second finds nothing to update and is told the truth by the read
+    // that follows, rather than overwriting the first one's timestamp.
+    // `COALESCE` on each column keeps them write-once even so.
+    final moved = await tx.execute(
+      Sql.named('''
+        UPDATE departures
+           SET status = @to::departure_status,
+               boarding_at = CASE WHEN @to = 'boarding'
+                                  THEN COALESCE(boarding_at, now())
+                                  ELSE boarding_at END,
+               departed_at = CASE WHEN @to = 'departed'
+                                  THEN COALESCE(departed_at, now())
+                                  ELSE departed_at END,
+               arrived_at  = CASE WHEN @to = 'arrived'
+                                  THEN COALESCE(arrived_at, now())
+                                  ELSE arrived_at END,
+               closed_by   = CASE WHEN @to IN ('departed', 'arrived')
+                                  THEN COALESCE(closed_by, @actor)
+                                  ELSE closed_by END
+         WHERE id = @departure AND operator_id = @operator
+           AND status = @from::departure_status
+        RETURNING now() AS at
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, departureId),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'actor': TypedValue(Type.uuid, actorUserId),
+        'from': TypedValue(Type.text, from.name),
+        'to': TypedValue(Type.text, to.name),
+      },
+    );
+
+    // Somebody else moved it between the read and the write. Their move won,
+    // and this one is refused for what the departure is *now* rather than for
+    // what it was a millisecond ago.
+    if (moved.isEmpty) return const Err(DepartureTransitionRefusal.outOfOrder);
+
+    var released = 0;
+    if (DepartureLifecycle.closesSales(to)) {
+      released = await _releaseCheckouts(tx, departureId);
+    }
+
+    return Ok(
+      DepartureStateChange(
+        state: to,
+        at: (moved.first.toColumnMap()['at'] as DateTime).toUtc(),
+        holdsReleased: released,
+      ),
+    );
+  });
+
+  /// Lets go of every checkout still in flight on a coach that has gone.
+  ///
+  /// Released rather than left to lapse, and released rather than sold: a
+  /// hold whose seats are on a coach already on the road cannot become a
+  /// booking anybody can travel on, and leaving it `active` would let the
+  /// reserve path turn it into one for the fifteen minutes until it expired.
+  ///
+  /// Only holds with nothing behind them. A hold a booking already points at
+  /// is somebody who paid; releasing that would take a seat away from a
+  /// passenger who is sitting in it.
+  Future<int> _releaseCheckouts(TxSession tx, String departureId) async {
+    final released = await tx.execute(
+      Sql.named('''
+        UPDATE holds
+           SET state = 'released'
+         WHERE departure_id = @departure AND state = 'active'
+           AND NOT EXISTS (
+             SELECT 1 FROM bookings b WHERE b.hold_id = holds.id
+           )
+        RETURNING id
+      '''),
+      parameters: {'departure': TypedValue(Type.uuid, departureId)},
+      queryMode: QueryMode.extended,
+    );
+
+    for (final row in released) {
+      await SeatOccupancy.releaseHold(tx, row.toColumnMap()['id'].toString());
+    }
+    return released.length;
+  }
 
   static CustomRoleSummary _customRoleFrom(Map<String, dynamic> row) =>
       CustomRoleSummary(

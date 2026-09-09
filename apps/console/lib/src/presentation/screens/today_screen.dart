@@ -307,6 +307,23 @@ class _DepartureRow extends StatelessWidget {
                     fullWidth: false,
                     onPressed: () => _showCrew(context),
                   ),
+                // The crew's own statement, made from the office. It belongs
+                // on the handset on the coach and it is here as well, because
+                // the handset is the device most likely to have no signal in
+                // the one yard where it matters — and a coach nobody can
+                // close is a coach that stays on sale after it has gone.
+                //
+                // Offered only while there is something left to say. A row
+                // that has arrived draws no button rather than a button whose
+                // only outcome is a refusal.
+                if (workspace.can('departure.close') && _closable != null)
+                  KButton(
+                    label: context.t('console.today.$_closable'),
+                    tone: KButtonTone.secondary,
+                    fullWidth: false,
+                    icon: Icons.flag_outlined,
+                    onPressed: () => _close(context),
+                  ),
                 // Only for somebody who holds the capability. Cancelling a
                 // coach and telling everybody on it is not a counter agent's
                 // authority.
@@ -369,6 +386,50 @@ class _DepartureRow extends StatelessWidget {
       context: context,
       builder: (_) => ManifestSheet(manifest: manifest),
     );
+  }
+
+  /// What this row can still be told, or null when there is nothing left.
+  ///
+  /// A cancelled coach is not closed — it is not going — and one that has
+  /// arrived has finished. Everything else is either on its way out or on
+  /// the road.
+  String? get _closable => switch (row.status) {
+    'scheduled' || 'delayed' || 'boarding' => 'close',
+    'departed' => 'arrive',
+    _ => null,
+  };
+
+  /// Asked first, and it is the release that makes the question worth asking:
+  /// closing takes seats away from people who are mid-checkout right now.
+  Future<void> _close(BuildContext context) async {
+    final state = row.status == 'departed' ? 'arrived' : 'departed';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(dialogContext.t('console.today.$_closable')),
+        content: Text(
+          dialogContext.t(
+            state == 'arrived'
+                ? 'console.today.arriveConfirm'
+                : 'console.today.closeConfirm',
+            {'a1': row.routeCode, 'a2': row.held},
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(dialogContext.t('common.actions.cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(dialogContext.t('console.today.$_closable')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await workspace.setDepartureState(departureId: row.id, state: state);
   }
 
   Future<void> _showCrew(BuildContext context) async {

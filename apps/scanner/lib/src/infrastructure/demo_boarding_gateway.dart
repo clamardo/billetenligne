@@ -77,4 +77,13 @@ final class DemoBoardingGateway implements BoardingGateway {
     required String departureId,
     required List<PassageUploadDto> passages,
   }) async => {for (final p in passages) p.stopId};
+
+  /// Accepted, because the demo coach is the one departure this gateway has
+  /// and refusing would leave the walkthrough with a door and no way to shut
+  /// it. Nothing is remembered: relaunching the demo starts the morning over.
+  @override
+  Future<DepartureStateDto> setDepartureState({
+    required String departureId,
+    required String state,
+  }) async => DepartureStateDto(state: state, at: DateTime.now().toUtc());
 }

@@ -248,6 +248,17 @@ abstract interface class ConsoleGateway {
     required String role,
   });
 
+  /// Says what has happened to this coach (J4).
+  ///
+  /// Behind `departure.close`, and refused unless the caller is rostered on
+  /// this departure or holds `departure.manage`. Reaching `departed` stops
+  /// new sales and lets go of the checkouts in flight; it touches no ticket
+  /// already sold.
+  Future<DepartureStateDto> setDepartureState({
+    required String departureId,
+    required String state,
+  });
+
   /// Declares a disruption on a departure (`08-disruption.md` §2.1).
   Future<DeclaredDisruptionDto> declareDisruption({
     required String departureId,

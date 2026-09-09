@@ -86,6 +86,22 @@ scanner:
     confirmed: "{place} confirmé."
     report: "Passé {place} · signaler"
 
+  # J4. La seule chose que fait cette application qui ne peut pas attendre le
+  # réseau : clôturer un départ arrête la vente sur le serveur, et une clôture
+  # qui se synchronise trois heures plus tard a laissé un guichet vendre des
+  # places sur un car déjà à mi-chemin de la RN1.
+  close:
+    departed: "Nous sommes partis"
+    departedBody: "Ceci clôture le départ. Il sort de la vente immédiatement, et toute personne en train de payer une place à un guichet devra choisir à nouveau. Tous ceux qui sont déjà à bord gardent leur billet — les embarquements encore sur ce téléphone partiront plus tard et compteront quand même."
+    departedDone: "Départ clôturé."
+    arrived: "Nous sommes arrivés"
+    arrivedBody: "Ceci enregistre l'arrivée. Le trajet devient un enregistrement."
+    arrivedDone: "Arrivée enregistrée."
+    back: "Pas encore"
+    # Pas de réseau, ou un car sur lequel ce terminal n'est pas affecté. La
+    # suite est la même dans les deux cas.
+    failed: "Serveur injoignable. Réessayez là où il y a du réseau, ou appelez l'agence."
+
   pending:
     title:
       one: "{count} embarquement non envoyé"

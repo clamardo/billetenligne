@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../application/boarding_session.dart';
 import '../../application/boarding_sync.dart';
+import '../../application/departure_close.dart';
 import '../../application/road_progress.dart';
 import '../../application/simulated_scan.dart';
 import '../widgets/camera_view.dart';
@@ -25,6 +26,7 @@ class BoardingPage extends StatefulWidget {
     required this.session,
     this.simulatedScans = const [],
     this.sync,
+    this.close,
     this.road,
     this.onLeave,
     super.key,
@@ -41,6 +43,12 @@ class BoardingPage extends StatefulWidget {
   /// server behind it, and the control disappears rather than failing.
   final BoardingSync? sync;
 
+  /// Says the coach has left (J4). Null on a device with no server behind it,
+  /// and the control disappears rather than failing — this is the one write
+  /// here that cannot be queued, so an offline device must not offer it as
+  /// though it could.
+  final DepartureClose? close;
+
   /// Back to the list of today's coaches. Null when there is no list to go
   /// back to — a scanner that pinned the only departure it knows about.
   final VoidCallback? onLeave;
@@ -56,6 +64,25 @@ class BoardingPage extends StatefulWidget {
 class _BoardingPageState extends State<BoardingPage> {
   VerificationOutcome? _verdict;
   var _syncing = false;
+  var _closing = false;
+
+  /// The departure as this handset last heard it. Held here rather than read
+  /// from the widget each build so a close taken at the roadside is reflected
+  /// immediately, without re-pinning a manifest over a connection that was
+  /// barely enough to send one request.
+  DepartureClose? _close;
+
+  @override
+  void initState() {
+    super.initState();
+    _close = widget.close;
+  }
+
+  @override
+  void didUpdateWidget(BoardingPage old) {
+    super.didUpdateWidget(old);
+    if (!identical(old.close, widget.close)) _close = widget.close;
+  }
 
   /// One entry point for both the camera and the simulator, so a simulated
   /// scan cannot take a different code path from a real one — the moment it
@@ -101,6 +128,60 @@ class _BoardingPageState extends State<BoardingPage> {
         ),
       ),
     );
+  }
+
+  /// The coach has left, or has arrived.
+  ///
+  /// Confirmed first, and the sentence says what it costs: closing stops new
+  /// sales at once, which takes seats away from anybody mid-checkout at a
+  /// counter. It takes nothing from the forty people already on board, and
+  /// the dialog says that too — it is the first thing a conductor asks.
+  Future<void> _closeDeparture() async {
+    final close = _close;
+    final next = close?.next;
+    if (close == null || next == null || _closing) return;
+
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(dialogContext.t('scanner.close.${next.name}')),
+        content: Text(dialogContext.t('scanner.close.${next.name}Body')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(dialogContext.t('scanner.close.back')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(dialogContext.t('scanner.close.${next.name}')),
+          ),
+        ],
+      ),
+    );
+    if (go != true || !mounted) return;
+
+    setState(() => _closing = true);
+    try {
+      final moved = await close();
+      if (!mounted) return;
+      setState(() {
+        _close = moved;
+        _closing = false;
+      });
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(context.t('scanner.close.${next.name}Done'))),
+      );
+    } on Object {
+      // No network, or the server refused — a coach somebody else already
+      // closed, or one this handset is not rostered on. One sentence for all
+      // of them: the conductor's next move is the same, which is to try again
+      // where there is signal or to ring the office.
+      if (!mounted) return;
+      setState(() => _closing = false);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(context.t('scanner.close.failed'))),
+      );
+    }
   }
 
   void _dismiss() => setState(() => _verdict = null);
@@ -158,6 +239,9 @@ class _BoardingPageState extends State<BoardingPage> {
               onManual: _openManual,
               road: widget.road?.hasRoad == true ? widget.road : null,
               onRoad: _openRoad,
+              closeTo: _close?.next,
+              closing: _closing,
+              onClose: _closeDeparture,
             ),
           ],
         ),
@@ -360,13 +444,21 @@ class _BoardingFooter extends StatelessWidget {
     required this.session,
     required this.onManual,
     required this.onRoad,
+    required this.onClose,
     this.road,
+    this.closeTo,
+    this.closing = false,
   });
 
   final BoardingSession session;
   final VoidCallback onManual;
   final VoidCallback onRoad;
   final RoadProgress? road;
+
+  /// What the coach can still be told, or null when there is nothing left.
+  final DepartureState? closeTo;
+  final bool closing;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -411,6 +503,28 @@ class _BoardingFooter extends StatelessWidget {
                       ? context.t('scanner.road.title')
                       : context.t('scanner.road.report', {'place': last.name}),
                 ),
+                style: outlined,
+              ),
+            ),
+          ],
+          // Last, and smallest of the three. It is tapped once a run, at the
+          // end of it, and every pixel it takes from the manual-entry button
+          // is a pixel taken from the thing this app does sixty times a
+          // morning.
+          if (closeTo != null) ...[
+            SizedBox(height: kilo.space.s2),
+            SizedBox(
+              height: kilo.space.touchTarget,
+              child: OutlinedButton.icon(
+                onPressed: closing ? null : onClose,
+                icon: closing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.flag_outlined),
+                label: Text(context.t('scanner.close.${closeTo!.name}')),
                 style: outlined,
               ),
             ),

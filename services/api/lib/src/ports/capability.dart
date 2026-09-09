@@ -66,12 +66,27 @@ final class Capability {
   /// destination are different weights of consequence.
   static const paymentAccountVerify = 'platform.payment_account.verify';
 
+  /// Saying a coach has begun boarding, has left, or has arrived (J4).
+  ///
+  /// Held by the crew, which is the first capability `driver` has ever had —
+  /// and it is deliberately not enough on its own. Closing a departure stops
+  /// its sales, so the write additionally requires the person to be **on this
+  /// coach**, from the roster 0049 built. A capability alone would let any
+  /// driver in the company close any coach in it.
+  ///
+  /// Not folded into `departure.manage`: that is a dispatcher's authority
+  /// over the plan — which coach, which crew — and this is the crew's
+  /// statement about what has actually happened on the road. A dispatcher
+  /// holds both, and may close a coach whose crew has no signal.
+  static const departureClose = 'departure.close';
+
   /// Operator roles (ADR-0011). Most people hold several: in a five-coach
   /// operator the owner is also the finance office and often the dispatcher.
   static const operatorRoles = <String, Set<String>>{
     'org_owner': {
       bookingRead, bookingSell, bookingReschedule, bookingRefund,
       bookingRefundAboveCap, tillOpen, tillClose, departureManage,
+      departureClose,
       departureCancel, disruptionDeclare, boardingScan, fleetManage,
       routeManage, pricingManage, policyManage, vitrineManage, staffManage,
       financeRead, payoutApprove, protectionManage,
@@ -89,6 +104,7 @@ final class Capability {
       tillOpen,
       tillClose,
       departureManage,
+      departureClose,
       departureCancel,
       disruptionDeclare,
       boardingScan,
@@ -107,6 +123,7 @@ final class Capability {
     'dispatcher': {
       bookingRead,
       departureManage,
+      departureClose,
       departureCancel,
       disruptionDeclare,
     },
@@ -128,7 +145,8 @@ final class Capability {
       bookingRefund,
       tillOpen,
     },
-    'conductor': {boardingScan},
+    // The handset at the door, and the tap that says the coach has gone.
+    'conductor': {boardingScan, departureClose},
     // **Deliberately empty**, and the only role here that is.
     //
     // A driver drives. They do not scan tickets — that is the conductor, and
@@ -142,7 +160,12 @@ final class Capability {
     // was `bookingRead`, "so they can see who is on their coach", which is
     // read access to every booking in the company for the person whose phone
     // spends the day on a dashboard.
-    'driver': <String>{},
+    //
+    // J4 gives it its first and only entry. A driver says the coach has left
+    // — the "close the departure" the business asked for — and that is still
+    // not read access to anything: the write is refused unless they are
+    // rostered on the coach in question.
+    'driver': {departureClose},
     'viewer': {bookingRead, financeRead},
   };
 

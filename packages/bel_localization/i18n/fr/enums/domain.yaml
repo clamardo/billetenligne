@@ -41,6 +41,14 @@ enum:
   CrewRole:
     driver: "Chauffeur"
     conductor: "Contrôleur"
+  # Ce qui arrive au car. Lu à côté du départ concerné.
+  DepartureState:
+    scheduled: "Prévu"
+    delayed: "Retardé"
+    boarding: "Embarquement"
+    departed: "Parti"
+    arrived: "Arrivé"
+    cancelled: "Annulé"
   OperatorRole:
     orgOwner: "Directeur"
     orgAdmin: "Administrateur"

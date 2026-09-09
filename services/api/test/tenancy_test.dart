@@ -102,9 +102,18 @@ void main() {
       }
     });
 
-    test('a conductor can only scan', () {
+    test('a conductor scans, and says the coach has gone', () {
       final caps = Capability.forRoles(['conductor']);
-      expect(caps, {Capability.boardingScan});
+      expect(caps, {Capability.boardingScan, Capability.departureClose});
+    });
+
+    // The narrowest role in the table, and the only one whose whole set is a
+    // single entry. A driver drives: they do not scan, they do not sell, and
+    // they have no reason to read a booking. Closing a departure is not read
+    // access to anything, and it is refused anyway unless they are rostered
+    // on the coach in question (J4).
+    test('a driver says one thing and reads nothing', () {
+      expect(Capability.forRoles(['driver']), {Capability.departureClose});
     });
 
     test('roles are additive — a small operator wears several hats', () {

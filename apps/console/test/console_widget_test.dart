@@ -686,6 +686,136 @@ languages:
     });
   });
 
+  // J4. `departure_status` has carried six values since the first migration
+  // and three of them were written by nothing at all.
+  group('closing a departure', () {
+    ScriptedConsole crew({
+      String status = 'scheduled',
+      List<String> capabilities = const ['booking.read', 'departure.close'],
+      int held = 0,
+      int releases = 0,
+    }) => ScriptedConsole(capabilities: capabilities)
+      ..holdsReleasedOnClose = releases
+      ..boardList = [
+        DepartureBoardDto(
+          id: 'dep-1',
+          routeCode: 'BZV-PNR',
+          departsAt: DateTime.utc(2026, 8, 10, 5),
+          status: status,
+          capacity: 49,
+          sold: 12,
+          held: held,
+          available: 37 - held,
+          vehicle: 'ODN-001',
+        ),
+      ];
+
+    Future<void> confirm(WidgetTester tester, String label) async {
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, label));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a coach still in the yard can be closed', (tester) async {
+      final gateway = crew();
+      await pump(tester, gateway);
+      await confirm(tester, 'Clôturer le départ');
+
+      expect(gateway.saved, contains('departureState:dep-1:departed'));
+    });
+
+    // The release is what makes the question worth asking: closing takes
+    // seats away from people who are mid-checkout right now.
+    testWidgets('and says what closing costs before it happens', (
+      tester,
+    ) async {
+      await pump(tester, crew(held: 4));
+      await tester.tap(find.text('Clôturer le départ'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('4 places en cours de paiement'),
+        findsOneWidget,
+      );
+      // And the sentence that stops a dispatcher panicking about the forty
+      // people already holding tickets.
+      expect(
+        find.textContaining('billets déjà vendus restent valables'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a dismissed dialog closes nothing', (tester) async {
+      final gateway = crew();
+      await pump(tester, gateway);
+      await tester.tap(find.text('Clôturer le départ'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Annuler'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.saved, isEmpty);
+    });
+
+    testWidgets('a coach on the road is marked arrived instead', (
+      tester,
+    ) async {
+      final gateway = crew(status: 'departed');
+      await pump(tester, gateway);
+
+      expect(find.text('Clôturer le départ'), findsNothing);
+      await confirm(tester, 'Marquer arrivé');
+
+      expect(gateway.saved, contains('departureState:dep-1:arrived'));
+    });
+
+    // A row that has finished draws no button rather than a button whose
+    // only outcome is a refusal.
+    testWidgets('and one that has arrived is offered nothing', (tester) async {
+      await pump(tester, crew(status: 'arrived'));
+
+      expect(find.text('Clôturer le départ'), findsNothing);
+      expect(find.text('Marquer arrivé'), findsNothing);
+    });
+
+    // Cancelling has to tell everybody on board. It is a disruption, and the
+    // state route refuses it outright.
+    testWidgets('a cancelled coach is not closed', (tester) async {
+      await pump(tester, crew(status: 'cancelled'));
+
+      expect(find.text('Clôturer le départ'), findsNothing);
+      expect(find.text('Marquer arrivé'), findsNothing);
+    });
+
+    testWidgets('a counter clerk is offered no such button', (tester) async {
+      await pump(tester, crew(capabilities: const ['booking.read']));
+      expect(find.text('Clôturer le départ'), findsNothing);
+    });
+
+    // The number somebody is about to be asked about at the counter.
+    testWidgets('afterwards, the interrupted checkouts are named', (
+      tester,
+    ) async {
+      await pump(tester, crew(held: 4, releases: 4));
+      await confirm(tester, 'Clôturer le départ');
+
+      expect(
+        find.textContaining('4 achats en cours ont été libérés'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('and when there were none, nothing is invented', (
+      tester,
+    ) async {
+      await pump(tester, crew());
+      await confirm(tester, 'Clôturer le départ');
+
+      expect(find.textContaining("n'est plus en vente"), findsOneWidget);
+      expect(find.textContaining('ont été libérés'), findsNothing);
+    });
+  });
+
   group('declaring a disruption', () {
     /// The sheet scrolls: on an agency laptop the confirm button is below the
     /// fold once the causes are showing, which is exactly where it is on a

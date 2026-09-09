@@ -268,6 +268,16 @@ final class UnavailableOperatorConsole implements OperatorConsole {
   }) async => _refuse();
 
   @override
+  Future<Result<DepartureStateChange, DepartureTransitionRefusal>>
+  setDepartureState({
+    required String operatorId,
+    required String departureId,
+    required DepartureState? state,
+    required String actorUserId,
+    required bool actorMayManage,
+  }) async => _refuse();
+
+  @override
   Future<List<CustomRoleSummary>> customRoles(String operatorId) async =>
       _refuse();
 

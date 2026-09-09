@@ -34,6 +34,12 @@ console:
     disrupted: "Incidents"
     manifest: "Liste"
     crew: "Équipage"
+    # J4. La parole de l'équipage — et celle du bureau, quand le terminal du
+    # car n'a pas de réseau.
+    close: "Clôturer le départ"
+    arrive: "Marquer arrivé"
+    closeConfirm: "Clôturer {a1} ? Il sort de la vente immédiatement et {a2} places en cours de paiement sont rendues. Tous les billets déjà vendus restent valables."
+    arriveConfirm: "Enregistrer {a1} comme arrivé ? Son trajet devient un enregistrement."
     # L'état du départ lui-même, affiché seulement quand il n'est pas
     # « scheduled » : une étiquette présente sur chaque ligne est une
     # étiquette que personne ne lit.
@@ -697,6 +703,12 @@ console:
     refund.issued: "Billet {a1} remboursé."
     refund.paid: "Remboursement du billet {a1} payé."
     vehicle.saved: "Car {a1} enregistré."
+    # J4. La parole de l'équipage, prononcée depuis le bureau quand le
+    # terminal du car n'a pas de réseau.
+    departure.boarding: "L'embarquement est ouvert sur ce départ."
+    departure.departed: "Départ clôturé. Il n'est plus en vente ; tous les billets vendus restent valables."
+    departure.departedReleasing: "Départ clôturé. {a1} achats en cours ont été libérés — ces voyageurs choisissent à nouveau."
+    departure.arrived: "Arrivée enregistrée."
     vehicle.statusChanged: "Statut mis à jour."
     vehicle.statusAffects: "Statut mis à jour. {a1} départ(s) à venir n'ont plus de car."
     station.saved: "Gare enregistrée : {a1}"

@@ -1,0 +1,19 @@
+# Refus liés à l'état du départ (`18-…-can-join.md` J4).
+#
+# `errors.departure.{sold_out, closed, cancelled}` sont dans `travel.yaml` :
+# c'est la copie du **voyageur** pour la même table. Celles-ci sont celles de
+# l'équipage, lues par la personne qui tient le terminal dans une gare
+# routière au moment où le car part. Les clés sont volontairement distinctes :
+# là-bas `closed` parle de la vente, ici `has_left` parle du car.
+errors:
+  departure:
+    unknown_state: "Un car ne peut pas être dans cet état."
+    # La feuille de route est ce qui rend ceci vérifiable. Une simple
+    # habilitation laisserait n'importe quel chauffeur clôturer n'importe quel
+    # car de la compagnie.
+    not_crew: "Vous n'êtes pas sur ce car."
+    has_left: "Ce car est déjà parti. Son trajet est désormais un enregistrement."
+    out_of_order: "Ce n'est pas ce qui suit pour ce car."
+    # Il faut prévenir tout le monde à bord, et une simple pression ferait le
+    # quart du travail en laissant le reste en plan.
+    cancel_is_a_disruption: "L'annulation d'un car se signale comme un incident, elle ne se fait pas ici."

@@ -38,6 +38,26 @@ abstract interface class BoardingGateway {
     required String departureId,
     required List<PassageUploadDto> passages,
   });
+
+  /// Says the coach has left, or has arrived (J4).
+  ///
+  /// The one call here that is **not** queued, and deliberately. Everything
+  /// else on this port is a record of something that already happened at the
+  /// door or at the roadside, so it can wait for signal without becoming
+  /// untrue. Closing a departure is different: what it does is stop new sales
+  /// on the server, and a close that syncs three hours later has not stopped
+  /// anything — it has let a counter sell seats on a coach that is halfway to
+  /// Pointe-Noire. So it fails honestly when there is no signal, and the
+  /// conductor tries again.
+  ///
+  /// It does not touch the outbox. Boardings queued behind it upload
+  /// afterwards and are still accepted: the door happened while the coach was
+  /// there, and closing takes nothing away from a passenger already sitting
+  /// down.
+  Future<DepartureStateDto> setDepartureState({
+    required String departureId,
+    required String state,
+  });
 }
 
 /// A manifest, and the keys that make it verifiable.

@@ -220,6 +220,12 @@ final class ApiConsoleGateway implements ConsoleGateway {
   );
 
   @override
+  Future<DepartureStateDto> setDepartureState({
+    required String departureId,
+    required String state,
+  }) => _client.setDepartureState(departureId: departureId, state: state);
+
+  @override
   Future<DeclaredDisruptionDto> declareDisruption({
     required String departureId,
     required DeclareDisruptionRequest request,

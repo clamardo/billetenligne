@@ -481,6 +481,39 @@ final class ManifestPassengerDto {
   );
 }
 
+/// What a departure is now, after somebody said something about it (J4).
+final class DepartureStateDto {
+  const DepartureStateDto({
+    required this.state,
+    this.at,
+    this.changed = true,
+    this.holdsReleased = 0,
+  });
+
+  /// One of the six. Named by the catalog rather than by the server
+  /// (ADR-0008) — `enum.DepartureState.*`.
+  final String state;
+
+  /// When it happened, by the server's clock. Null when nothing happened.
+  final DateTime? at;
+
+  /// False when the coach was already in this state. A driver tapping twice
+  /// on a bad connection means it once.
+  final bool changed;
+
+  /// Checkouts that were let go rather than allowed to complete. The number
+  /// somebody is about to be asked about at the counter.
+  final int holdsReleased;
+
+  factory DepartureStateDto.fromJson(Map<String, Object?> json) =>
+      DepartureStateDto(
+        state: Wire.requireString(json['state'], 'state'),
+        at: Wire.readInstantOrNull(json['at'], field: 'at'),
+        changed: json['changed'] != false,
+        holdsReleased: (json['holdsReleased'] as num?)?.toInt() ?? 0,
+      );
+}
+
 /// Who is in the cab, as the manifest names them.
 ///
 /// No phone number, deliberately: the manifest is read under `booking.read`,

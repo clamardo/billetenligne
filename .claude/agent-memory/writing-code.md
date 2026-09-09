@@ -29,6 +29,26 @@ transaction, and leave the index as the backstop for the genuinely simultaneous 
 
 ---
 
+## A new column on `departures` or `operators` is unwritable until the GRANT names it
+
+**Tally: 1 — 2026-09-09, and it read as a bug in the new code.**
+
+`0050` added four columns and every write to them failed with
+`42501: permission denied for table departures` — which points at RLS, at the
+`DbScope`, at the policy, and at none of those. `bel_app` holds **no table-wide
+UPDATE** on `departures` or on `operators`: 0032 and 0035 revoked it and put a
+column list in its place, on the grounds that "revoking one column while a
+table-level grant stands is a control that reads as working and does nothing".
+The list *is* the control, so a column absent from it is read-only.
+
+**Do instead:** any migration adding a column to `departures` or `operators`
+needs `GRANT UPDATE (…new columns…) ON <table> TO bel_app;` in the same file.
+And read `permission denied for table X` on a brand-new column as *the grant*,
+not as the tenancy scope — the message names the table because that is where
+column privileges live, not because the table itself is off limits.
+
+---
+
 ## A query that consults only one table answers only for rows that table has
 
 **Tally: 1 — 2026-09-09, and it made the entire purchase funnel impossible.**

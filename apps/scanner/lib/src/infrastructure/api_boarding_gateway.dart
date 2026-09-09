@@ -90,4 +90,10 @@ final class ApiBoardingGateway implements BoardingGateway {
     // start being on it tomorrow either.
     return {...result.recorded, ...result.unknown};
   }
+
+  @override
+  Future<DepartureStateDto> setDepartureState({
+    required String departureId,
+    required String state,
+  }) => _client.setDepartureState(departureId: departureId, state: state);
 }

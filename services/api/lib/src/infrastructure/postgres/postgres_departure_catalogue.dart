@@ -173,12 +173,18 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                AND ((d.departs_at + make_interval(
                        mins => COALESCE(leg.from_offset, 0)))
                      AT TIME ZONE @tz)::date = @date::date
-               AND d.status <> 'cancelled'
-               -- A coach that has left is not a search result. The traveller
-               -- searching at 06:05 for the 06:00 needs the 09:00, not a row
-               -- they cannot buy — and on a leg it is the *boarding* time
-               -- that decides, because the coach left Brazzaville hours
-               -- before it reaches the town they are standing in.
+               -- A coach that has gone is not a search result either, and
+               -- since J4 that is a *fact* rather than an inference from the
+               -- clock: a driver who closed the 06:00 at 05:50 because
+               -- everybody was aboard has taken it off sale ten minutes
+               -- before the timetable would have.
+               AND d.status NOT IN ('cancelled', 'departed', 'arrived')
+               -- The clock still decides for every coach nobody closed, which
+               -- is most of them. The traveller searching at 06:05 for the
+               -- 06:00 needs the 09:00, not a row they cannot buy — and on a
+               -- leg it is the *boarding* time that decides, because the
+               -- coach left Brazzaville hours before it reaches the town they
+               -- are standing in.
                AND d.departs_at + make_interval(
                      mins => COALESCE(leg.from_offset, 0)) > now()
                AND (d.sales_close_at IS NULL OR d.sales_close_at > now())

@@ -415,6 +415,43 @@ final class ScriptedConsole implements ConsoleGateway {
     crewList.removeWhere((c) => c.userId == userId && c.role == role);
   }
 
+  /// What a close gives back. Set by a test that is about the number of
+  /// checkouts a dispatcher is told they interrupted.
+  int holdsReleasedOnClose = 0;
+  ApiFailure? departureStateFailure;
+
+  @override
+  Future<DepartureStateDto> setDepartureState({
+    required String departureId,
+    required String state,
+  }) async {
+    if (departureStateFailure case final failure?) throw failure;
+    saved.add('departureState:$departureId:$state');
+    boardList = [
+      for (final row in boardList)
+        if (row.id == departureId)
+          DepartureBoardDto(
+            id: row.id,
+            routeCode: row.routeCode,
+            departsAt: row.departsAt,
+            status: state,
+            capacity: row.capacity,
+            sold: row.sold,
+            held: row.held,
+            available: row.available,
+            vehicle: row.vehicle,
+            disruption: row.disruption,
+          )
+        else
+          row,
+    ];
+    return DepartureStateDto(
+      state: state,
+      at: DateTime.utc(2026, 8, 10, 5),
+      holdsReleased: holdsReleasedOnClose,
+    );
+  }
+
   @override
   Future<ManifestDto> manifest(String departureId) async => ManifestDto(
     departureId: departureId,

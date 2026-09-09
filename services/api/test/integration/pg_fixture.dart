@@ -184,6 +184,38 @@ final class PgFixture {
     return rows.first.toColumnMap()['id'].toString();
   }
 
+  /// One hold's state, as the database holds it. Null when there is no hold.
+  Future<String?> holdState(String holdId) async {
+    final rows = await _seed.execute(
+      Sql.named('SELECT state::text AS s FROM holds WHERE id = @id'),
+      parameters: {'id': TypedValue(Type.uuid, holdId)},
+    );
+    return rows.isEmpty ? null : rows.first.toColumnMap()['s'] as String;
+  }
+
+  /// How many seats this hold still occupies. Zero once it has been let go.
+  Future<int> occupancyFor(String holdId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT count(*)::int AS n FROM seat_occupancy WHERE hold_id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, holdId)},
+    );
+    return rows.first.toColumnMap()['n'] as int;
+  }
+
+  /// The three write-once stamps 0050 added, and who closed it.
+  Future<Map<String, Object?>> departureTimes(String departureId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT boarding_at, departed_at, arrived_at, closed_by
+          FROM departures WHERE id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, departureId)},
+    );
+    return rows.first.toColumnMap();
+  }
+
   /// A roster row written straight at the table, bypassing the port.
   ///
   /// Written through the seed connection — the most privileged caller there

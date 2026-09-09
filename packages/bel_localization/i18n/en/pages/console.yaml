@@ -34,6 +34,12 @@ console:
     disrupted: "Disruptions"
     manifest: "Manifest"
     crew: "Crew"
+    # J4. The crew's own statement — and the office's, when the coach's
+    # handset has no signal.
+    close: "Close departure"
+    arrive: "Mark arrived"
+    closeConfirm: "Close {a1}? It comes off sale immediately and {a2} seats being paid for right now go back. Every ticket already sold stays valid."
+    arriveConfirm: "Record {a1} as arrived? Its journey becomes a record."
     # The departure's own state, shown only when it is not
     # `scheduled`: a label on every row is a label nobody reads.
     status:
@@ -690,6 +696,12 @@ console:
     refund.issued: "Ticket {a1} refunded."
     refund.paid: "Refund for ticket {a1} paid out."
     vehicle.saved: "Coach {a1} saved."
+    # J4. The crew's own statement, made from the office when the coach's
+    # handset has no signal.
+    departure.boarding: "Boarding is open on this departure."
+    departure.departed: "Departure closed. It is off sale; every ticket sold is still valid."
+    departure.departedReleasing: "Departure closed. {a1} checkouts in progress were released — those travellers are choosing again."
+    departure.arrived: "Arrival recorded."
     vehicle.statusChanged: "Status updated."
     vehicle.statusAffects: "Status updated. {a1} future departure(s) now have no coach."
     station.saved: "Station saved: {a1}"

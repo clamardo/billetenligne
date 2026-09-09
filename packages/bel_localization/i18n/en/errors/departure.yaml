@@ -1,0 +1,20 @@
+# Refusals from the departure's own state (`18-…-can-join.md` J4).
+#
+# `errors.departure.{sold_out, closed, cancelled}` live in `travel.yaml` and
+# are the **traveller's** copy for the same table — "sales are closed for this
+# departure". These are the crew's, read by whoever is holding the handset in
+# a yard when a coach leaves, so each says what is true of the coach rather
+# than what the transition table thought of the request. The keys are kept
+# apart on purpose: `closed` there means sales, `has_left` here means the
+# coach.
+errors:
+  departure:
+    unknown_state: "That is not something a coach can be."
+    # The roster is what makes this answerable. A capability alone would let
+    # any driver in the company close any coach in it.
+    not_crew: "You are not on this coach."
+    has_left: "This coach has already left. Its journey is a record now."
+    out_of_order: "That is not what happens next to this coach."
+    # It has to tell everybody on board, and a tap on a handset would do a
+    # quarter of that and leave the rest undone.
+    cancel_is_a_disruption: "Cancelling a coach is reported as an incident, not closed here."

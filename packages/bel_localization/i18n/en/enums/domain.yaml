@@ -41,6 +41,16 @@ enum:
   CrewRole:
     driver: "Driver"
     conductor: "Conductor"
+  # What is happening to a coach. Said in the present tense, because it is
+  # read beside a departure that is doing it — never "has departed", which
+  # reads as a past a passenger standing in the yard can already see is wrong.
+  DepartureState:
+    scheduled: "Scheduled"
+    delayed: "Delayed"
+    boarding: "Boarding"
+    departed: "Departed"
+    arrived: "Arrived"
+    cancelled: "Cancelled"
   OperatorRole:
     orgOwner: "Director"
     orgAdmin: "Administrator"

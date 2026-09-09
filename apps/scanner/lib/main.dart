@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import 'src/application/boarding_session.dart';
 import 'src/application/boarding_sync.dart';
+import 'src/application/departure_close.dart';
 import 'src/application/ports/boarding_gateway.dart';
 import 'src/application/road_progress.dart';
 import 'src/application/simulated_scan.dart';
@@ -354,6 +355,10 @@ class _CoachFlowState extends State<_CoachFlow> {
 
   BoardingSession? _session;
   BoardingSync? _sync;
+
+  /// The one write on this device that cannot be queued (J4). Null until a
+  /// coach is pinned, and null again when the conductor leaves it.
+  DepartureClose? _close;
   RoadProgress? _road;
   List<SimulatedScan> _simulatedScans = const [];
 
@@ -474,6 +479,15 @@ class _CoachFlowState extends State<_CoachFlow> {
           road: road,
           departureId: coach.id,
         );
+        // Seeded from the coach as the list had it, so a conductor pinning a
+        // departure somebody already closed from the office is offered
+        // "arrived" rather than a close that would be refused.
+        _close = DepartureClose(
+          gateway: widget.gateway,
+          departureId: coach.id,
+          state:
+              DepartureState.byName(coach.status) ?? DepartureState.scheduled,
+        );
         _road = RoadProgress(
           road: pinned.waypoints,
           outbox: road,
@@ -542,6 +556,7 @@ class _CoachFlowState extends State<_CoachFlow> {
     setState(() {
       _session = null;
       _sync = null;
+      _close = null;
       _road = null;
       _simulatedScans = const [];
     });
@@ -558,6 +573,7 @@ class _CoachFlowState extends State<_CoachFlow> {
         session: session,
         simulatedScans: _simulatedScans,
         sync: _sync,
+        close: _close,
         road: _road,
         onLeave: _leave,
       );

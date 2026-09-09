@@ -1062,6 +1062,31 @@ final class ConsoleWorkspace {
     return crew;
   }
 
+  /// Closes a departure — the crew's own statement, made from the office when
+  /// the coach's own handset has no signal (J4).
+  ///
+  /// The day is reloaded afterwards rather than patched in place: closing
+  /// changes the row's state *and* releases held seats, so the load factor
+  /// beside it is stale the moment this returns.
+  Future<void> setDepartureState({
+    required String departureId,
+    required String state,
+  }) => _run(() async {
+    final change = await _gateway.setDepartureState(
+      departureId: departureId,
+      state: state,
+    );
+    // Named with the number when there is one, because it is what somebody
+    // is about to be asked about at the counter: four people were mid-
+    // checkout and are now choosing again. Only `departed` ever releases —
+    // by the time a coach arrives its checkouts are long gone — so the
+    // releasing sentence does not have to name the state.
+    _notice = change.holdsReleased == 0
+        ? 'departure.${change.state}'
+        : 'departure.departedReleasing|${change.holdsReleased}';
+    await _loadSection();
+  });
+
   Future<SeatMapDto?> seatMap(String departureId) async {
     SeatMapDto? map;
     await _run(() async => map = await _gateway.seatMap(departureId));

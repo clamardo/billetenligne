@@ -183,6 +183,22 @@ final class ErrorCode {
   static const crewRevoked = 'crew.revoked';
   static const crewDeparted = 'crew.departed';
 
+  // One per [DepartureTransitionRefusal] (`bel_platform`), same division of
+  // labour again: the pure table names the reason, the route names it on the
+  // wire, the catalog turns it into a sentence.
+  static const departureUnknownState = 'departure.unknown_state';
+  static const departureNotCrew = 'departure.not_crew';
+
+  /// The coach has already gone. `18-…-can-join.md` calls this
+  /// `departureAlreadyClosed`; it is spelled `has_left` on the wire because
+  /// [departureClosed] above already means *sales are closed*, and two
+  /// neighbouring keys reading "closed" is how the wrong sentence ends up on
+  /// a screen.
+  static const departureHasLeft = 'departure.has_left';
+  static const departureOutOfOrder = 'departure.out_of_order';
+  static const departureCancelIsADisruption =
+      'departure.cancel_is_a_disruption';
+
   // One per [CustomRoleRefusal] value (`bel_platform`), plus the two facts
   // only the database itself can guarantee: whether the name is already
   // taken, and whether a role is still in use.

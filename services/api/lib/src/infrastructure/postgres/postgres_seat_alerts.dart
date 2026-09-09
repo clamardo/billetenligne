@@ -35,7 +35,9 @@ final class PostgresSeatAlerts implements SeatAlerts {
           FROM departures d
           LEFT JOIN seats s ON s.departure_id = d.id
          WHERE d.id = @departure
-           AND d.status <> 'cancelled'
+           -- Nothing is worth waiting for on a coach that has gone, and
+           -- since J4 a coach can go before its timetabled hour.
+           AND d.status NOT IN ('cancelled', 'departed', 'arrived')
            AND d.departs_at > now()
            AND (d.sales_close_at IS NULL OR d.sales_close_at > now())
          GROUP BY d.id

@@ -86,6 +86,21 @@ scanner:
     confirmed: "{place} confirmed."
     report: "Passed {place} · report"
 
+  # J4. The one thing this app does that cannot wait for signal: closing a
+  # departure stops new sales on the server, and a close that syncs three
+  # hours later has let a counter sell seats on a coach halfway down the RN1.
+  close:
+    departed: "We have left"
+    departedBody: "This closes the departure. It comes off sale immediately, and anyone paying for a seat at a counter right now goes back to choosing. Everybody already on board keeps their ticket — boardings still on this phone will send later and still count."
+    departedDone: "Departure closed."
+    arrived: "We have arrived"
+    arrivedBody: "This records the arrival. The journey becomes a record."
+    arrivedDone: "Arrival recorded."
+    back: "Not yet"
+    # No network, or a coach this handset is not on. The next move is the
+    # same either way.
+    failed: "Could not reach the server. Try again where there is a signal, or call the office."
+
   pending:
     title:
       one: "{count} boarding not sent"

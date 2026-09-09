@@ -1226,6 +1226,20 @@ final class BelApiClient {
         await _get('/console/v1/departures/$departureId/manifest'),
       );
 
+  /// Says what has happened to this coach (J4).
+  ///
+  /// The write behind "close the departure". Reaching `departed` or `arrived`
+  /// stops new sales on it and lets go of the checkouts in flight — the
+  /// answer says how many — and touches no ticket that was already sold.
+  Future<DepartureStateDto> setDepartureState({
+    required String departureId,
+    required String state,
+  }) async => DepartureStateDto.fromJson(
+    await _postJson('/console/v1/departures/$departureId/state', {
+      'state': state,
+    }),
+  );
+
   /// Who is rostered on this coach (J3).
   Future<List<CrewMemberDto>> crew(String departureId) async {
     final body = await _get('/console/v1/departures/$departureId/crew');

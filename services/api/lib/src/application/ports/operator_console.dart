@@ -844,6 +844,28 @@ abstract interface class OperatorConsole {
     required CrewRole role,
   });
 
+  /// Says what has happened to this coach (J4).
+  ///
+  /// The write behind "close the departure": `boarding`, `departed` and
+  /// `arrived` become states something sets, and reaching one that
+  /// [DepartureLifecycle.closesSales] stops new sales on that departure and
+  /// nothing else. A ticket already sold stays valid — a passenger who
+  /// boarded and is sitting down has a valid ticket by definition — and a
+  /// scan uploaded from a dead zone three hours later is still accepted.
+  ///
+  /// [actorMayManage] is whether the caller holds `departure.manage`. It is
+  /// read at the route from the principal rather than looked up here, so the
+  /// policy stays where the other capability decisions are; being rostered on
+  /// this departure is looked up here, because only the database knows it.
+  Future<Result<DepartureStateChange, DepartureTransitionRefusal>>
+  setDepartureState({
+    required String operatorId,
+    required String departureId,
+    required DepartureState? state,
+    required String actorUserId,
+    required bool actorMayManage,
+  });
+
   // ── Custom roles ──────────────────────────────────────────────────────────
 
   /// This operator's own roles — cloned from one of `Capability.operatorRoles`
@@ -969,6 +991,35 @@ final class CrewMember {
   final String? staffRef;
 
   final String? phone;
+}
+
+/// What a departure looks like after somebody said something about it.
+final class DepartureStateChange {
+  const DepartureStateChange({
+    required this.state,
+    required this.at,
+    this.changed = true,
+    this.holdsReleased = 0,
+  });
+
+  final DepartureState state;
+
+  /// When it happened, by Postgres's clock — the one every API instance
+  /// shares. Null on a no-op, where nothing happened.
+  final DateTime? at;
+
+  /// False when the departure was already in this state. A driver tapping
+  /// "we have left" twice on a bad connection means it once, so the second
+  /// tap is a success that wrote nothing rather than a refusal.
+  final bool changed;
+
+  /// Checkouts in flight that were let go rather than allowed to complete.
+  ///
+  /// Worth returning rather than swallowing: it is the number a dispatcher
+  /// is about to be asked about at the counter — *"I was paying and it
+  /// vanished"* — and a close that silently dropped four of them is a close
+  /// nobody can explain an hour later.
+  final int holdsReleased;
 }
 
 /// One of an operator's own roles, as the application layer sees it —

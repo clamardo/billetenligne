@@ -405,7 +405,7 @@ the revocation's own transaction. `staff_ref` is set on the personnel edit
 form and is unique per operator by a partial index, so a clash comes back as
 `staff.ref_taken` rather than as a 500.
 
-#### J4 — the departure lifecycle is written, not just declared
+#### J4 — the departure lifecycle is written, not just declared — **built, 2026-09-09**
 **Depends on:** J3
 `boarding`, `departed` and `arrived` become states something writes.
 `boarding` when the first ticket is scanned; `departed` on the crew's own
@@ -417,6 +417,46 @@ Refusal: `errors.console.departureAlreadyClosed`.
 *Tests:* the six-state transition table, legal and illegal; a hold in flight
 when a departure closes is released rather than sold; a scan after `departed`
 still validates.
+
+**As built.** `0050_departure_lifecycle.sql` adds no enum and no table — the
+vocabulary was already there and what was missing is *when*, so three
+write-once timestamps and a `closed_by`. `DepartureLifecycle` in `bel_platform`
+holds the table (15 unit tests); `departure_lifecycle_pg_test.dart` (18 tests)
+proves what a pure table cannot reach — the write is one-way under a real
+`WHERE status = @from`, closing releases the checkouts in flight and the
+released hold can no longer be reserved from, and a scan uploaded three hours
+after the coach left is still recorded.
+
+`boarding` is written by the first scan inside `recordBoardings`, guarded by
+`status IN ('scheduled','delayed')` so a handset emptying its outbox after
+the coach has arrived cannot put it back in the yard. It is stamped with the
+earliest scan on the device, not with `now()`.
+
+**Two authorities, not one.** `POST /console/v1/departures/{id}/state` sits
+behind a new `departure.close` — the `driver` role's first and only capability
+— and that is deliberately not sufficient: the port also requires the caller
+to be rostered on *this* departure (J3), because a capability alone would let
+any driver in the company close any coach in it. A dispatcher holding
+`departure.manage` may close one whose crew has no signal.
+
+**Cancelling is refused here.** It has to tell everybody on board, mark their
+bookings involuntary and open the re-accommodation paths (ADR-0016), so it
+stays a disruption; the route answers `departure.cancel_is_a_disruption`.
+
+The refusal §J4 called `errors.console.departureAlreadyClosed` shipped as
+`departure.has_left`, because `departure.closed` already means *sales are
+closed* on the traveller's side and two neighbouring keys reading "closed" is
+how the wrong sentence reaches a screen.
+
+Surfaces: the dispatcher's day gains **Clôturer le départ** / **Marquer
+arrivé** with a confirmation that names how many checkouts it is about to
+interrupt, and `apps/scanner` gains the same on the footer — the crew's own
+handset, which is where the business asked for it. It is the **only** write in
+that app that is not queued: everything else there records something that
+already happened and stays true however late it arrives, while closing is an
+instruction, and a close that syncs three hours later has let a counter sell
+seats on a coach halfway down the RN1. Search and seat alerts now exclude
+`departed`/`arrived` as a fact rather than inferring it from the clock.
 
 #### J5 — confirming a stop is asked for, not hoped for
 **Depends on:** J3, J4
@@ -627,14 +667,14 @@ J3 ── J15
 J1 (gated: M1–M2) · J2 · J11 · J13 · J14 ✅ — independent, land any time
 ```
 
-**Build J3 and J4 first** even though they are the least visible slices here.
-They are the spine (§2): four of the seven gaps are downstream of a departure
-having no crew and no state.
+~~**Build J3 and J4 first**~~ — **done, 2026-09-09.** They were the spine
+(§2): four of the seven gaps were downstream of a departure having no crew and
+no state, and both of those now exist. J5 is unblocked and J7's only remaining
+gate is commercial.
 
 **J2 and J13 are the two money-and-trust slices** and neither depends on
 anything. They are each a day's work and each closes a distance between what
-`03-operator-lifecycle.md` promises and what the code enforces. Do them while
-J3 is in review.
+`03-operator-lifecycle.md` promises and what the code enforces.
 
 ---
 
