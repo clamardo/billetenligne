@@ -966,7 +966,18 @@ final class PostgresOperatorConsole implements OperatorConsole {
         SELECT d.id, d.departs_at, d.status::text AS status, d.capacity,
                r.code AS route_code, v.registration,
                count(*) FILTER (WHERE s.state = 'sold')::int AS sold,
-               count(*) FILTER (WHERE s.state = 'held')::int AS held
+               count(*) FILTER (WHERE s.state = 'held')::int AS held,
+               -- J5's coverage, counted rather than carried. Two scalar
+               -- subqueries rather than two more LEFT JOINs on purpose: the
+               -- seats are already fanned out by the join above, and a third
+               -- and fourth fan-out would multiply the counts against each
+               -- other. The row this reports is the one a dispatcher chases
+               -- with a phone call, so it has to be arithmetic nobody has to
+               -- reason about.
+               (SELECT count(*) FROM route_stops rs
+                 WHERE rs.route_id = d.route_id)::int AS stops,
+               (SELECT count(*) FROM departure_checkpoints c
+                 WHERE c.departure_id = d.id)::int AS confirmed_stops
           FROM departures d
           JOIN routes r ON r.id = d.route_id
           LEFT JOIN vehicles v ON v.id = d.vehicle_id
@@ -993,6 +1004,8 @@ final class PostgresOperatorConsole implements OperatorConsole {
           capacity: row.toColumnMap()['capacity'] as int,
           sold: row.toColumnMap()['sold'] as int,
           held: row.toColumnMap()['held'] as int,
+          stops: row.toColumnMap()['stops'] as int,
+          confirmedStops: row.toColumnMap()['confirmed_stops'] as int,
           vehicleRegistration: row.toColumnMap()['registration'] as String?,
         ),
     ];

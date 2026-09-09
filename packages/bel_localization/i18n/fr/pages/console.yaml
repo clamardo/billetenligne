@@ -30,6 +30,12 @@ console:
     sold: "Vendus"
     held: "Réservés"
     free: "Libres"
+    # J5. Les points confirmés sur ceux que compte la route, comptés depuis
+    # les passages eux-mêmes. C'est ici que vit la pression à signaler — un
+    # chiffre dans un bureau, sur lequel quelqu'un peut agir, jamais une
+    # fenêtre devant un receveur à la porte du car.
+    coverage: "Arrêts"
+    coverageHint: "{confirmed} arrêts confirmés par l'équipage sur les {stops} de cette route."
     departures: "Départs"
     disrupted: "Incidents"
     manifest: "Liste"

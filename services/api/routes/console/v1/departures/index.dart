@@ -75,6 +75,11 @@ Future<Response> onRequest(RequestContext context) async {
             'sold': row.sold,
             'held': row.held,
             'available': row.available,
+            // J5. Always both numbers, never a ratio: "0 / 4" and "0 / 0" are
+            // different mornings, and a percentage collapses them into the
+            // same dash.
+            'stops': row.stops,
+            'confirmedStops': row.confirmedStops,
             if (row.vehicleRegistration != null)
               'vehicle': row.vehicleRegistration,
             if (open[row.id] != null)

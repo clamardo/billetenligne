@@ -10,6 +10,7 @@ import '../../application/departure_close.dart';
 import '../../application/road_progress.dart';
 import '../../application/simulated_scan.dart';
 import '../widgets/camera_view.dart';
+import '../widgets/due_prompt.dart';
 import '../widgets/road_sheet.dart';
 import '../widgets/ticket_simulator.dart';
 import '../widgets/verdict_screen.dart';
@@ -66,6 +67,13 @@ class _BoardingPageState extends State<BoardingPage> {
   var _syncing = false;
   var _closing = false;
 
+  /// Re-asks the road whether a waypoint has fallen due (J5).
+  ///
+  /// A minute, because the answer changes on the timetable's scale and not on
+  /// a frame's: the prompt is *"the schedule says Dolisie was twenty minutes
+  /// ago"*, and a conductor who sees it sixty seconds later has lost nothing.
+  Timer? _dueTick;
+
   /// The departure as this handset last heard it. Held here rather than read
   /// from the widget each build so a close taken at the roadside is reflected
   /// immediately, without re-pinning a manifest over a connection that was
@@ -76,6 +84,17 @@ class _BoardingPageState extends State<BoardingPage> {
   void initState() {
     super.initState();
     _close = widget.close;
+    if (widget.road != null) {
+      _dueTick = Timer.periodic(const Duration(minutes: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _dueTick?.cancel();
+    super.dispose();
   }
 
   @override
@@ -184,6 +203,28 @@ class _BoardingPageState extends State<BoardingPage> {
     }
   }
 
+  /// The conductor answers the prompt: yes, we are past it.
+  void _confirmDue(RoadPoint point) {
+    final road = widget.road;
+    if (road == null) return;
+    setState(() => road.confirm(point.stopId));
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(
+          context.t('scanner.road.confirmed', {'place': point.name}),
+        ),
+      ),
+    );
+  }
+
+  /// Not now. The road counts it, and asks about this place once more before
+  /// leaving the conductor alone (§5.3).
+  void _waveDue(RoadPoint point) {
+    final road = widget.road;
+    if (road == null) return;
+    setState(() => road.wave(point.stopId));
+  }
+
   void _dismiss() => setState(() => _verdict = null);
 
   void _override() {
@@ -234,6 +275,15 @@ class _BoardingPageState extends State<BoardingPage> {
                 ],
               ),
             ),
+            // Above the footer and below the camera: in the conductor's way
+            // enough to be answered, never on top of the thing they are
+            // holding the phone for.
+            if (widget.road?.due case final point?)
+              DuePrompt(
+                point: point,
+                onConfirm: () => _confirmDue(point),
+                onWave: () => _waveDue(point),
+              ),
             _BoardingFooter(
               session: widget.session,
               onManual: _openManual,

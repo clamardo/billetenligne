@@ -340,6 +340,7 @@ void main() {
       final progress = RoadProgress(
         road: pinned.road,
         outbox: outbox,
+        departsAt: now,
         clock: FixedClock(now),
         deviceId: 'handset-1',
       );
@@ -365,6 +366,7 @@ void main() {
       final progress = RoadProgress(
         road: pinned.road,
         outbox: outbox,
+        departsAt: now,
         clock: FixedClock(now),
         deviceId: 'handset-1',
       );
@@ -400,6 +402,7 @@ void main() {
       final progress = RoadProgress(
         road: pinned.road,
         outbox: outbox,
+        departsAt: now,
         clock: FixedClock(now),
         deviceId: 'handset-1',
       );
@@ -427,6 +430,7 @@ void main() {
       RoadProgress(
         road: pinned.road,
         outbox: outbox,
+        departsAt: now,
         clock: FixedClock(now),
       ).confirm('stop-kinkala');
 

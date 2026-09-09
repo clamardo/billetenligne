@@ -271,6 +271,28 @@ class _DepartureRow extends StatelessWidget {
             value: '${row.available}',
             tone: kilo.color.contentSecondary,
           ),
+          // J5. Only on a road that has waypoints: a coverage figure on a
+          // direct run would be "0 / 0" beside every other row, which is a
+          // column somebody stops reading and therefore a column that hides
+          // the real one.
+          if (row.stops > 0)
+            _Count(
+              label: context.t('console.today.coverage'),
+              value: '${row.confirmedStops}/${row.stops}',
+              hint: context.t('console.today.coverageHint', {
+                'confirmed': row.confirmedStops,
+                'stops': row.stops,
+              }),
+              // Amber only once the coach has actually gone. Before that,
+              // nothing has been missed — a run that has not left cannot have
+              // passed Dolisie, and an amber figure on every unsent departure
+              // all morning is how a real one stops being noticed.
+              tone: row.confirmedStops >= row.stops
+                  ? kilo.color.success
+                  : _hasLeft
+                  ? kilo.color.warning
+                  : kilo.color.contentSecondary,
+            ),
 
           SizedBox(width: kilo.space.s3),
           // Flexible around a Wrap, for the same reason the route line is a
@@ -387,6 +409,10 @@ class _DepartureRow extends StatelessWidget {
       builder: (_) => ManifestSheet(manifest: manifest),
     );
   }
+
+  /// Whether the coach is actually on the road. What makes a missing
+  /// confirmation a *missed* one rather than one that has not come round yet.
+  bool get _hasLeft => row.status == 'departed' || row.status == 'arrived';
 
   /// What this row can still be told, or null when there is nothing left.
   ///
@@ -563,16 +589,25 @@ class _DepartureRow extends StatelessWidget {
 }
 
 class _Count extends StatelessWidget {
-  const _Count({required this.label, required this.value, required this.tone});
+  const _Count({
+    required this.label,
+    required this.value,
+    required this.tone,
+    this.hint,
+  });
 
   final String label;
   final String value;
   final Color tone;
 
+  /// The sentence behind a figure that is a fraction rather than a total.
+  /// "3/5" reads at a glance and says nothing about what the five are.
+  final String? hint;
+
   @override
   Widget build(BuildContext context) {
     final kilo = context.kilo;
-    return Padding(
+    final figure = Padding(
       padding: EdgeInsets.symmetric(horizontal: kilo.space.s3),
       child: Column(
         children: [
@@ -586,5 +621,7 @@ class _Count extends StatelessWidget {
         ],
       ),
     );
+
+    return hint == null ? figure : Tooltip(message: hint!, child: figure);
   }
 }

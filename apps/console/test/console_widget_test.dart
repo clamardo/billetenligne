@@ -330,6 +330,59 @@ languages:
       expect(find.text('ODN-001'), findsOneWidget);
     });
 
+    // J5. The pressure to confirm a stop is a figure in an office, never a
+    // modal in front of a conductor at a coach door (§5.3). This is the
+    // figure.
+    testWidgets('a road with waypoints shows how many were confirmed', (
+      tester,
+    ) async {
+      final gateway = ScriptedConsole(capabilities: const ['booking.read'])
+        ..boardList = [
+          DepartureBoardDto(
+            id: 'dep-1',
+            routeCode: 'BZV-PNR',
+            departsAt: DateTime.utc(2026, 8, 10, 5),
+            status: 'departed',
+            capacity: 49,
+            sold: 20,
+            held: 0,
+            available: 29,
+            stops: 4,
+            confirmedStops: 1,
+            vehicle: 'ODN-001',
+          ),
+        ];
+
+      await pump(tester, gateway);
+
+      // Both numbers. "0 / 4" and "0 / 0" are different mornings, and a
+      // percentage collapses them into the same dash.
+      expect(find.text('1/4'), findsOneWidget);
+    });
+
+    testWidgets('a direct run shows no coverage column at all', (tester) async {
+      final gateway = ScriptedConsole(capabilities: const ['booking.read'])
+        ..boardList = [
+          DepartureBoardDto(
+            id: 'dep-1',
+            routeCode: 'BZV-PNR',
+            departsAt: DateTime.utc(2026, 8, 10, 5),
+            status: 'departed',
+            capacity: 49,
+            sold: 20,
+            held: 0,
+            available: 29,
+            vehicle: 'ODN-001',
+          ),
+        ];
+
+      await pump(tester, gateway);
+
+      // A column reading "0 / 0" beside every direct run is a column somebody
+      // stops reading, which is how the real one goes unnoticed.
+      expect(find.text('Arrêts'), findsNothing);
+    });
+
     // The board query has no status filter, so a cancelled coach is on this
     // list — and it was drawn exactly like one that is running. That is the
     // one row on this screen somebody must not misread: the passengers have

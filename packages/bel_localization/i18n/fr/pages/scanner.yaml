@@ -85,6 +85,13 @@ scanner:
     passedAt: "Passé à {time}"
     confirmed: "{place} confirmé."
     report: "Passé {place} · signaler"
+    # J5. Demandé au moment où l'horaire dit que le lieu est dû, deux fois au
+    # plus, et jamais comme une question qu'il faut trancher avant que la
+    # caméra revienne : un receveur qui ne peut pas passer outre une invite à
+    # la porte du car range le terminal dans un tiroir.
+    due: "Passé {place} ?"
+    dueYes: "Oui"
+    dueNot: "Pas encore"
 
   # J4. La seule chose que fait cette application qui ne peut pas attendre le
   # réseau : clôturer un départ arrête la vente sur le serveur, et une clôture

@@ -85,6 +85,13 @@ scanner:
     passedAt: "Passed at {time}"
     confirmed: "{place} confirmed."
     report: "Passed {place} · report"
+    # J5. Asked at the moment the timetable says the place is due, twice at
+    # most, and never as something that has to be answered before the camera
+    # comes back: a conductor who cannot get past a prompt at a coach door
+    # puts the handset in a drawer.
+    due: "Passed {place}?"
+    dueYes: "Yes"
+    dueNot: "Not yet"
 
   # J4. The one thing this app does that cannot wait for signal: closing a
   # departure stops new sales on the server, and a close that syncs three

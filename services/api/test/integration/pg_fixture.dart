@@ -82,7 +82,8 @@ final class PgFixture {
         ('BZV', 'CG', 'Brazzaville', 'Brazzaville'),
         ('PNR', 'CG', 'Pointe-Noire', 'Pointe-Noire'),
         ('OYO', 'CG', 'Oyo', 'Oyo'),
-        ('DOL', 'CG', 'Dolisie', 'Dolisie')
+        ('DOL', 'CG', 'Dolisie', 'Dolisie'),
+        ('NKY', 'CG', 'Nkayi', 'Nkayi')
       ON CONFLICT (code) DO NOTHING
     ''');
     await _seed.execute('''
@@ -996,6 +997,55 @@ final class PgFixture {
       parameters: {'id': TypedValue(Type.uuid, departureId)},
     );
     return rows.first.toColumnMap()['s'] as String;
+  }
+
+  /// The market's own calendar day for a departure — the question the
+  /// dispatcher's board is actually asked.
+  ///
+  /// Computed by Postgres rather than in Dart. The zone is the database's
+  /// fact, and a `+1` written here would be right until the first time
+  /// anything about it changed, in a test that would then blame the query.
+  Future<DateTime> localDayOf(String departureId) async {
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT (departs_at AT TIME ZONE @tz)::date AS d
+          FROM departures WHERE id = @id
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, departureId),
+        'tz': TypedValue(Type.text, timeZone),
+      },
+    );
+    return rows.first.toColumnMap()['d'] as DateTime;
+  }
+
+  /// Writes a checkpoint the way anything other than the console might —
+  /// a backfill, a support fix, a second handset.
+  ///
+  /// Through the seed connection on purpose: J5's coverage figure has to be
+  /// counted from this table, so a test that could only ever write through
+  /// the one adapter that also maintains a counter would not be testing
+  /// anything.
+  Future<void> checkpoint({
+    required String departureId,
+    required String stopId,
+    required DateTime passedAt,
+  }) async {
+    await _seed.execute(
+      Sql.named('''
+        INSERT INTO departure_checkpoints
+          (departure_id, route_stop_id, operator_id, passed_at)
+        VALUES (@departure, @stop, @operator, @at)
+        ON CONFLICT DO NOTHING
+      '''),
+      parameters: {
+        'departure': TypedValue(Type.uuid, departureId),
+        'stop': TypedValue(Type.uuid, stopId),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'at': TypedValue(Type.timestampTz, passedAt),
+      },
+      ignoreRows: true,
+    );
   }
 
   /// Puts a departure into a state the fixture cannot reach by selling — a

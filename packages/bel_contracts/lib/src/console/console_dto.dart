@@ -395,6 +395,8 @@ final class DepartureBoardDto {
     required this.sold,
     required this.held,
     required this.available,
+    this.stops = 0,
+    this.confirmedStops = 0,
     this.vehicle,
     this.disruption,
   });
@@ -412,6 +414,14 @@ final class DepartureBoardDto {
   final int held;
 
   final int available;
+
+  /// The road's waypoints, and how many of them somebody on the coach has
+  /// confirmed (J5). Both figures, never a ratio: "0 / 4" and "0 / 0" are
+  /// different mornings and a percentage collapses them into the same dash.
+  final int stops;
+
+  final int confirmedStops;
+
   final String? vehicle;
 
   /// What is happening to this coach, when something is. Present on the board
@@ -429,6 +439,11 @@ final class DepartureBoardDto {
         sold: Wire.requireInt(json['sold'], 'sold'),
         held: Wire.requireInt(json['held'], 'held'),
         available: Wire.requireInt(json['available'], 'available'),
+        // Defaulted rather than required: a console talking to an API that
+        // predates J5 shows no coverage column, which is the honest answer
+        // there and not a screen that fails to parse.
+        stops: json['stops'] as int? ?? 0,
+        confirmedStops: json['confirmedStops'] as int? ?? 0,
         vehicle: json['vehicle'] as String?,
         disruption: json['disruption'] == null
             ? null

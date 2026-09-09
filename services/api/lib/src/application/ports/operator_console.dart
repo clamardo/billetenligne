@@ -1074,6 +1074,8 @@ final class DepartureBoardRow {
     required this.capacity,
     required this.sold,
     required this.held,
+    this.stops = 0,
+    this.confirmedStops = 0,
     this.vehicleRegistration,
   });
 
@@ -1088,6 +1090,18 @@ final class DepartureBoardRow {
   /// revenue and a dispatcher deciding whether to add a coach needs to know
   /// which of the two they are looking at.
   final int held;
+
+  /// How many waypoints this run's road has, and how many of them somebody on
+  /// the coach has actually confirmed (J5).
+  ///
+  /// **Counted from `departure_checkpoints`, not carried on the departure.**
+  /// A column incremented by whatever wrote the last checkpoint is a column
+  /// that drifts the first time a row is inserted by anything else — a
+  /// backfill, a support fix, a second handset — and a coverage figure that
+  /// drifts is one nobody in the office trusts a fortnight later.
+  final int stops;
+
+  final int confirmedStops;
 
   final String? vehicleRegistration;
 

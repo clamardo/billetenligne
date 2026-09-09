@@ -35,6 +35,7 @@ void main() {
       road: waypoints,
       outbox: outbox ?? MemoryCheckpointLog(),
       clock: FixedClock(now),
+      departsAt: now,
       deviceId: 'handset-1',
     );
 

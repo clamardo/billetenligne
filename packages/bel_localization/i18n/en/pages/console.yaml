@@ -30,6 +30,12 @@ console:
     sold: "Sold"
     held: "Held"
     free: "Free"
+    # J5. Confirmed waypoints over the road's own waypoints, counted from the
+    # checkpoints themselves. This is where the pressure to report lives — a
+    # figure in an office somebody can act on, never a modal in front of a
+    # conductor at a coach door.
+    coverage: "Stops"
+    coverageHint: "{confirmed} of {stops} stops on this road confirmed by the crew."
     departures: "Departures"
     disrupted: "Disruptions"
     manifest: "Manifest"

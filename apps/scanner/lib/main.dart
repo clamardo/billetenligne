@@ -491,6 +491,10 @@ class _CoachFlowState extends State<_CoachFlow> {
         _road = RoadProgress(
           road: pinned.waypoints,
           outbox: road,
+          // The timetable's own reading of when this run left, which is what
+          // makes "Dolisie is due" a statement about the road rather than
+          // about how long the handset has been switched on.
+          departsAt: pinned.manifest.departsAt,
           // Still the device's own reading of when it happened at the
           // roadside, rather than when the server heard about it — that is the
           // whole point of stamping here. Corrected only for how wrong this
