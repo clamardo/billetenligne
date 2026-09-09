@@ -36,6 +36,29 @@ time*, not as *the file does not compile*.
 
 ---
 
+## `check.sh` stops at the first failing block, and its output still reads like a list of OKs
+
+**Tally: 1 — 2026-09-09, and a broken guarantee was committed on the strength of it.**
+
+`infra/migrations/check.sh` pipes each verify file through
+`grep -E 'NOTICE|PASSED'`. When a `DO $$` block raises, psql stops there and the
+script stops with it — but everything up to that point has already printed as
+`OK …`. Read with `tail -25`, the run is indistinguishable from a passing one:
+the missing evidence is the *last* line, not a visible error, and the final
+`── schema checks passed` banner is off the bottom of the window.
+
+0051 granted `bel_public` SELECT on `departure_checkpoints`, which broke an
+assertion at the very end of `verify_public.sql` saying that role could not
+read the table at all. Three runs were read as passing before the exit code was
+looked at.
+
+**Do instead:** run it as `./infra/migrations/check.sh; echo "exit=$?"`, or
+`| tail -3` and require the green `── schema checks passed`. A tail of OKs is
+not a result. The same applies to `./tool/integration.sh`, whose own banner is
+the last line for the same reason.
+
+---
+
 ## Migrations are replayed, so a new one must be re-appliable
 
 **Tally: 1 — 2026-09-09 (`0048_operator_custom_roles.sql`, `42P07 relation … already exists`).**

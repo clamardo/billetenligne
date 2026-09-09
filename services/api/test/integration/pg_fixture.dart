@@ -590,6 +590,30 @@ final class PgFixture {
     return rows.first.toColumnMap()['id'] as String;
   }
 
+  /// Puts an operator in a lifecycle state the fixture cannot reach by
+  /// reviewing — suspended, most of the time.
+  ///
+  /// Restore it in a `tearDown`: every file in this suite shares one database
+  /// and one operator, so a company left suspended is the next file's
+  /// inexplicable empty search.
+  Future<void> setOperatorStatus(String operatorId, String status) async {
+    await _seed.execute(
+      Sql.named('''
+        UPDATE operators
+           SET status = @status::operator_status,
+               suspended_at = CASE WHEN @status = 'suspended' THEN now() END,
+               suspended_reason = CASE WHEN @status = 'suspended'
+                                       THEN 'fixture' END
+         WHERE id = @id
+      '''),
+      parameters: {
+        'id': TypedValue(Type.uuid, operatorId),
+        'status': TypedValue(Type.text, status),
+      },
+      ignoreRows: true,
+    );
+  }
+
   /// Erases the recorded acceptance of the platform agreement.
   ///
   /// The state a company onboarded by hand arrives in — no wizard, no

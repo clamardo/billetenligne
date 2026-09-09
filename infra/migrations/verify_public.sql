@@ -1474,6 +1474,139 @@ BEGIN
 END
 $$;
 
+-- ── A suspended company stops selling and keeps its promises ────────────────
+--
+-- J13. `03-operator-lifecycle.md` §1 states the rule and this executes it:
+--
+--   > `suspended` and `offboarding` both stop new sales but honour issued
+--   > tickets. A platform that strands paying passengers to punish an
+--   > operator has punished the wrong party.
+--
+-- Both halves in one block on purpose. **No implementation that simply hides
+-- the operator's rows can satisfy both**, which is what makes the guarantee
+-- regression-proof: the obvious way to stop the sales is the way that breaks
+-- the ticket, and this fails on the second half the moment somebody writes
+-- it.
+DO $$
+DECLARE
+  ocean CONSTANT UUID := '11111111-1111-1111-1111-111111111111';
+  road  CONSTANT UUID := 'aaaaaaaa-0000-0000-0000-000000000001';
+  rider CONSTANT UUID := '55555555-5555-5555-5555-555513000001';
+  nomad CONSTANT UUID := '55555555-5555-5555-5555-555513000002';
+  dep   CONSTANT UUID := 'cccccccc-1300-0000-0000-000000000001';
+  tick  CONSTANT UUID := 'eeeeeeee-1300-0000-0000-000000000001';
+  seen  INT;
+BEGIN
+  SET LOCAL ROLE bel_admin;
+  PERFORM set_config('app.platform', 'on', true);
+  PERFORM set_config('app.tenant_id', '', true);
+
+  INSERT INTO user_accounts (id, email, language) VALUES
+    (rider, 'rider-suspended@example.cg', 'fr'),
+    (nomad, 'nomad-suspended@example.cg', 'fr')
+  ON CONFLICT DO NOTHING;
+
+  -- A coach that has not run yet, and a paid seat on it.
+  INSERT INTO departures
+    (id, operator_id, route_id, seat_layout_id, departs_at, arrives_at,
+     capacity, fare_minor, currency)
+  SELECT dep, ocean, road, l.id,
+         now() + INTERVAL '3 days', now() + INTERVAL '3 days 8 hours',
+         49, 12000, 'XAF'
+    FROM seat_layouts l WHERE l.operator_id = ocean LIMIT 1;
+
+  INSERT INTO bookings
+    (id, ref, operator_id, departure_id, purchaser_user_id, state,
+     fare_minor, service_fee_minor, total_minor, currency, payment_method,
+     paid_at)
+  VALUES ('dddddddd-1300-0000-0000-000000000001', 'BELJ13', ocean, dep,
+          rider, 'confirmed', 12000, 300, 12300, 'XAF', 'mobile_money',
+          now());
+
+  INSERT INTO tickets
+    (id, booking_id, operator_id, departure_id, seat_label, payload,
+     signature, key_id, rotating_secret)
+  VALUES (tick, 'dddddddd-1300-0000-0000-000000000001', ocean, dep, '1A',
+          'BEL1.j13.1A', '\\x00'::bytea, 1, '\\x01'::bytea);
+
+  -- And the company stops selling.
+  UPDATE operators SET status = 'suspended', suspended_at = now(),
+         suspended_reason = 'licence lapsed'
+   WHERE id = ocean;
+
+  RESET ROLE;
+  PERFORM set_config('app.platform', 'off', true);
+
+  -- ── Half one: nothing is on sale ──
+  SET LOCAL ROLE bel_public;
+  PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.user_id', nomad::text, true);
+
+  SELECT count(*) INTO seen FROM departures WHERE id = dep;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION
+      'FAIL: a suspended company still has coaches on the public surface';
+  END IF;
+
+  -- Not merely absent from a search query: absent from the table, so a deep
+  -- link, a seat map and a hold all find nothing too. Stopping the sale must
+  -- not rest on one query remembering to join `operators`.
+  SELECT count(*) INTO seen FROM operators WHERE id = ocean;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: a suspended company is still a public company';
+  END IF;
+
+  -- ── Half two: the ticket already sold is untouched ──
+  PERFORM set_config('app.user_id', rider::text, true);
+
+  SELECT count(*) INTO seen FROM departures WHERE id = dep;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION
+      'FAIL: a passenger cannot see the coach they hold a ticket for';
+  END IF;
+
+  SELECT count(*) INTO seen FROM tickets WHERE id = tick AND voided_at IS NULL;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: suspending a company voided an issued ticket';
+  END IF;
+
+  RESET ROLE;
+  PERFORM set_config('app.public', 'off', true);
+  PERFORM set_config('app.user_id', '', true);
+
+  -- ── And the door still opens ──
+  --
+  -- Boarding reads the manifest under the operator's OWN tenant scope, never
+  -- the public one, which is why suspension cannot reach it. Executed rather
+  -- than asserted in prose: the tempting fix for half one is a rule on
+  -- `tickets` or `departures` that this would catch.
+  SET LOCAL ROLE bel_app;
+  PERFORM set_config('app.tenant_id', ocean::text, true);
+
+  SELECT count(*) INTO seen
+    FROM tickets t
+    JOIN bookings b ON b.id = t.booking_id
+   WHERE b.departure_id = dep AND t.voided_at IS NULL;
+  IF seen <> 1 THEN
+    RAISE EXCEPTION 'FAIL: a suspended company cannot board its own coach';
+  END IF;
+
+  RESET ROLE;
+  PERFORM set_config('app.tenant_id', '', true);
+
+  -- Put it back: every block after this one reads the same seeded operator.
+  PERFORM set_config('app.platform', 'on', true);
+  SET LOCAL ROLE bel_admin;
+  UPDATE operators SET status = 'active', suspended_at = NULL,
+         suspended_reason = NULL
+   WHERE id = ocean;
+  RESET ROLE;
+  PERFORM set_config('app.platform', 'off', true);
+
+  RAISE NOTICE 'OK  a suspended company stops selling and keeps its promises';
+END
+$$;
+
 -- ── The passenger reads the road their own coach is on ──────────────────────
 --
 -- J6. 0043 gave `departure_checkpoints` one reader — `followed_trip(TEXT)`,
@@ -2468,9 +2601,16 @@ $$;
 --
 -- Three claims, in the order they would break:
 --
---   * the follower reads a checkpoint only through `followed_trip`. A public
---     SELECT on the table would be row-enumerable across every operator's
---     movements, which is a fleet-tracking feed nobody agreed to publish;
+--   * a **stranger** reads a checkpoint only through `followed_trip`. That is
+--     what 0043 refused a SELECT policy for, and the refusal still stands: a
+--     public rule keyed on nothing would be row-enumerable across every
+--     operator's movements, which is a fleet-tracking feed nobody agreed to
+--     publish. 0051 opened the table to `bel_public` and did **not** weaken
+--     this, because its policy resolves to the departures the caller holds a
+--     confirmed booking on — so somebody browsing with no ticket, and
+--     somebody with no account at all, still read nothing. The ticket
+--     holder's own read is proved in *a passenger follows their own coach*
+--     above; this is the other side of it;
 --   * an operator sees its own coaches and no others, the shape 0004 gives
 --     every tenant table;
 --   * and nobody may revise one. A claim that a coach was somewhere at a time
@@ -2486,18 +2626,54 @@ BEGIN
   PERFORM set_config('app.platform', 'on', true);
   SET LOCAL ROLE bel_admin;
 
-  -- The public role cannot read the table at all — not filtered to nothing,
-  -- refused. A grant is what would have to be added for that to change, and
-  -- adding one would fail here.
+  -- Something to fail to see. Written as the platform, on a coach neither
+  -- caller below holds a ticket for.
+  INSERT INTO departure_checkpoints
+    (departure_id, route_stop_id, operator_id, passed_at)
+  SELECT d.id, rs.id, ocean, now() - INTERVAL '30 minutes'
+    FROM departures d
+    JOIN route_stops rs ON rs.route_id = d.route_id
+   WHERE d.operator_id = ocean
+   LIMIT 1
+  ON CONFLICT DO NOTHING;
+
+  -- Nobody, with no account. `app_user_id()` is NULL, both arms of the 0051
+  -- policy are false, and the answer is an empty set rather than a feed.
   SET LOCAL ROLE bel_public;
   PERFORM set_config('app.platform', 'off', true);
   PERFORM set_config('app.public', 'on', true);
+  PERFORM set_config('app.user_id', '', true);
+
+  SELECT count(*) INTO seen FROM departure_checkpoints;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: a stranger can read where coaches are';
+  END IF;
+
+  -- Somebody signed in, holding no ticket on anything. The account is not
+  -- what opens this table; the booking is.
+  PERFORM set_config('app.user_id',
+                     '55555555-5555-5555-5555-555555555552', true);
+  SELECT count(*) INTO seen FROM departure_checkpoints;
+  IF seen <> 0 THEN
+    RAISE EXCEPTION 'FAIL: an account with no ticket reads a fleet feed';
+  END IF;
+
+  -- And a traveller may not report a passage, whatever they hold. The tap is
+  -- the conductor's, from a handset bound to the run.
   BEGIN
-    SELECT count(*) INTO seen FROM departure_checkpoints;
-    RAISE EXCEPTION 'FAIL: the public role can read where coaches are';
+    INSERT INTO departure_checkpoints
+      (departure_id, route_stop_id, operator_id, passed_at)
+    SELECT d.id, rs.id, ocean, now()
+      FROM departures d JOIN route_stops rs ON rs.route_id = d.route_id
+     WHERE d.operator_id = ocean LIMIT 1;
+    wrote := TRUE;
   EXCEPTION WHEN insufficient_privilege THEN
     NULL;
   END;
+  IF wrote THEN
+    RAISE EXCEPTION 'FAIL: a traveller reported a coach past a place';
+  END IF;
+  PERFORM set_config('app.user_id', '', true);
 
   -- And the operator whose coach it is may not rewrite one.
   SET LOCAL ROLE bel_admin;
