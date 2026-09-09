@@ -18,6 +18,7 @@ export 'src/components/k_card.dart';
 export 'src/components/k_journey_bar.dart';
 export 'src/components/k_rail_skin.dart';
 export 'src/components/k_chip.dart';
+export 'src/components/k_choice_chip.dart';
 export 'src/components/k_countdown.dart';
 export 'src/components/k_field.dart';
 export 'src/components/k_language_menu.dart';

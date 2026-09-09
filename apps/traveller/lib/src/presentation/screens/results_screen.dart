@@ -1,8 +1,10 @@
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_design/bel_design.dart';
+import 'package:bel_domain/bel_domain.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n.dart';
+import '../widgets/filter_sheet.dart';
 import '../widgets/formatting.dart';
 
 /// The departures for a route on a day.
@@ -28,6 +30,8 @@ final class ResultsScreen extends StatelessWidget {
     this.onLoadMore,
     this.onTryTomorrow,
     this.onWatch,
+    this.onRefine,
+    this.operators = const {},
     this.watching = const <String>{},
     this.cityNames = const {},
     super.key,
@@ -67,6 +71,22 @@ final class ResultsScreen extends StatelessWidget {
   /// told when that changes.
   final void Function(DepartureSummaryDto)? onWatch;
 
+  /// The same road and day, ordered or narrowed differently (§6.1).
+  ///
+  /// The screen builds the query; the flow only runs it. The refined query
+  /// never carries the old cursor — a keyset names a position in one
+  /// particular order, and carrying it into another is the mistake §6.2
+  /// exists to refuse.
+  final void Function(SearchDeparturesQuery)? onRefine;
+
+  /// Every company seen on this road and day, id to name.
+  ///
+  /// Accumulated across the searches of one road rather than read off the
+  /// rows on screen: a list filtered to one company can no longer name the
+  /// others, and a filter that cannot be undone from the sheet that set it is
+  /// a trap.
+  final Map<String, String> operators;
+
   /// Departure ids already being waited on. Drawn as a state rather than an
   /// offer: asking twice is asking once on the server, and a button that
   /// re-offers something already done reads as one that did nothing.
@@ -83,16 +103,31 @@ final class ResultsScreen extends StatelessWidget {
     final kilo = context.kilo;
     final locale = context.language;
 
+    // An empty list means two different things, and offering the wrong one
+    // sends somebody looking for another day's coach when today's is sitting
+    // behind a filter they set thirty seconds ago.
+    final narrowed = query.isFiltered && onRefine != null;
+
     final list = departures.isEmpty
         ? KStateView(
             KEmpty(
               art: KArt.noTrips,
-              title: context.t('travel.results.emptyTitle'),
-              body: context.t('travel.results.emptyBody'),
-              actionLabel: onTryTomorrow == null
+              title: context.t(
+                narrowed
+                    ? 'travel.results.filteredEmptyTitle'
+                    : 'travel.results.emptyTitle',
+              ),
+              body: context.t(
+                narrowed
+                    ? 'travel.results.filteredEmptyBody'
+                    : 'travel.results.emptyBody',
+              ),
+              actionLabel: narrowed
+                  ? context.t('travel.results.clearFilters')
+                  : onTryTomorrow == null
                   ? null
                   : context.t('travel.results.tryTomorrow'),
-              onAction: onTryTomorrow,
+              onAction: narrowed ? _clearFilters : onTryTomorrow,
             ),
           )
         : CustomScrollView(
@@ -233,18 +268,101 @@ final class ResultsScreen extends StatelessWidget {
         ),
       ),
       body: SafeArea(
-        child: stale
-            ? KStateView(
-                KOffline(
-                  title: context.t('travel.results.offlineTitle'),
-                  body: context.t('travel.results.offlineBody'),
-                  cached: _refreshable(list),
-                ),
-              )
-            : _refreshable(list),
+        // The controls sit above the scroller, not inside it. Somebody who
+        // has filtered the day down to nothing has to be able to undo it
+        // without a list to scroll — and a sort row that scrolls away is one
+        // a traveller re-finds by flicking upward.
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (onRefine != null) _controls(context),
+            Expanded(
+              child: stale
+                  ? KStateView(
+                      KOffline(
+                        title: context.t('travel.results.offlineTitle'),
+                        body: context.t('travel.results.offlineBody'),
+                        cached: _refreshable(list),
+                      ),
+                    )
+                  : _refreshable(list),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  /// Order, and how much is hidden.
+  ///
+  /// **The sort is chips and the filters are a sheet**, and the difference is
+  /// the point: reordering hides nothing and is worth one tap, while
+  /// narrowing takes things away and is worth a considered screen. Putting
+  /// them in one control would make "le moins cher" feel like a commitment.
+  ///
+  /// Only the filters carry a count. A badge on a sort would be counting a
+  /// list that is all still there.
+  Widget _controls(BuildContext context) {
+    final kilo = context.kilo;
+    final refine = onRefine!;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: EdgeInsets.symmetric(horizontal: kilo.space.s4),
+      child: Row(
+        children: [
+          for (final sort in TripSort.values) ...[
+            KChoiceChip(
+              label: context.t(sort.labelKey),
+              selected: query.sort == sort,
+              // Re-asking for the order it already has would throw the list
+              // away and fetch the same rows back.
+              onPressed: query.sort == sort
+                  ? null
+                  : () => refine(query.refined(sort: sort)),
+            ),
+            SizedBox(width: kilo.space.s2),
+          ],
+          KChoiceChip(
+            label: query.isFiltered
+                ? context.t('travel.results.filterCount', {
+                    'count': _filterCount,
+                  })
+                : context.t('travel.results.filter'),
+            icon: Icons.tune,
+            selected: query.isFiltered,
+            onPressed: () => _openFilters(context, refine),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// How many of the three narrowings are on. The window counts once: it is
+  /// one question with two ends, and counting it twice would say "3" for a
+  /// traveller who chose *matin*.
+  int get _filterCount =>
+      (query.operatorId != null ? 1 : 0) +
+      (query.departFromHour != null || query.departToHour != null ? 1 : 0) +
+      (query.maxFareMinor != null ? 1 : 0);
+
+  Future<void> _openFilters(
+    BuildContext context,
+    void Function(SearchDeparturesQuery) refine,
+  ) async {
+    final refined = await showFilterSheet(
+      context,
+      query: query,
+      operators: operators,
+      departures: departures,
+    );
+    // Null is the traveller backing out, which is not a search.
+    if (refined != null) refine(refined);
+  }
+
+  void _clearFilters() => onRefine?.call(
+    query.refined(clearOperator: true, clearWindow: true, clearCeiling: true),
+  );
 
   /// The end of the list, and the trigger for the next page.
   ///

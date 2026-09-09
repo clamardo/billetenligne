@@ -293,6 +293,7 @@ class _FunnelState extends State<_Funnel> {
         :final hasMore,
         :final loadingMore,
         :final watching,
+        :final operators,
       ) =>
         ResultsScreen(
           query: _flow.lastQuery!,
@@ -301,6 +302,10 @@ class _FunnelState extends State<_Funnel> {
           hasMore: hasMore,
           loadingMore: loadingMore,
           watching: watching,
+          operators: operators,
+          // A sort or a filter is a new list from the top, so it runs the
+          // ordinary search. `refined` has already dropped the cursor.
+          onRefine: _flow.search,
           cityNames: {for (final c in _flow.cities) c.code: c.name},
           onSelect: _flow.openSeatMap,
           // A full coach is not a dead end. It is the one row on this screen

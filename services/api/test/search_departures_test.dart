@@ -389,6 +389,198 @@ void main() {
       expect((result as Err).failure, isA<UnreadableCursor>());
     });
   });
+
+  group('the order the traveller asked for', () {
+    // Midnight, so a 05:00 coach on the searched day is still ahead of the
+    // clock and the four below can be ordered against each other.
+    final dayClock = FixedClock(today);
+
+    /// Four coaches whose three orders disagree with each other, so no
+    /// assertion below can pass by accident on the insertion order.
+    ///
+    ///   dep-early  05:00, 20 000, 5 h   — first away, quickest, dearest
+    ///   dep-mid    09:00, 12 000, 8 h
+    ///   dep-noon   12:00,  9 000, 6 h
+    ///   dep-late   21:00,  8 000, 11 h  — last away, slowest, cheapest
+    SearchDepartures sorted({int size = 20}) {
+      final inventory = MemorySeatInventory(
+        clock: dayClock,
+        departures: [
+          MemoryDeparture.coach(
+            id: 'dep-mid',
+            operatorId: 'op-odn',
+            departsAt: today.add(const Duration(hours: 9)),
+            fare: const Money.xaf(12000),
+          ),
+          MemoryDeparture.coach(
+            id: 'dep-late',
+            operatorId: 'op-tbv',
+            departsAt: today.add(const Duration(hours: 21)),
+            fare: const Money.xaf(8000),
+            duration: const Duration(hours: 11),
+          ),
+          MemoryDeparture.coach(
+            id: 'dep-early',
+            operatorId: 'op-odn',
+            departsAt: today.add(const Duration(hours: 5)),
+            fare: const Money.xaf(20000),
+            duration: const Duration(hours: 5),
+          ),
+          MemoryDeparture.coach(
+            id: 'dep-noon',
+            operatorId: 'op-tbv',
+            departsAt: today.add(const Duration(hours: 12)),
+            fare: const Money.xaf(9000),
+            duration: const Duration(hours: 6),
+          ),
+        ],
+      );
+      return SearchDepartures(
+        catalogue: MemoryDepartureCatalogue(inventory, clock: dayClock),
+        pageSize: size,
+      );
+    }
+
+    SearchDeparturesQuery ordered(
+      TripSort sort, {
+      String? cursor,
+      int? fromHour,
+      int? toHour,
+      int? maxFare,
+    }) => SearchDeparturesQuery(
+      originCity: 'BZV',
+      destinationCity: 'PNR',
+      date: today,
+      sort: sort,
+      cursor: cursor,
+      departFromHour: fromHour,
+      departToHour: toHour,
+      maxFareMinor: maxFare,
+    );
+
+    Future<List<String>> ids(SearchDeparturesQuery query) async {
+      final page = await sorted()(query, now: today);
+      return [...page.valueOrNull!.departures.map((d) => d.id)];
+    }
+
+    test('earliest is the departure time', () async {
+      expect(await ids(ordered(TripSort.earliest)), [
+        'dep-early',
+        'dep-mid',
+        'dep-noon',
+        'dep-late',
+      ]);
+    });
+
+    test('cheapest is the fare', () async {
+      expect(await ids(ordered(TripSort.cheapest)), [
+        'dep-late',
+        'dep-noon',
+        'dep-mid',
+        'dep-early',
+      ]);
+    });
+
+    test('fastest is time on the coach, not time of arrival', () async {
+      // dep-noon arrives after dep-mid and is still the quicker ride. This is
+      // the whole reason `fastest` exists: nothing on the row says so.
+      expect(await ids(ordered(TripSort.fastest)), [
+        'dep-early',
+        'dep-noon',
+        'dep-mid',
+        'dep-late',
+      ]);
+    });
+
+    test('a cursor minted under one order is refused under another', () async {
+      final first = (await sorted(size: 2)(
+        ordered(TripSort.cheapest),
+        now: today,
+      )).valueOrNull!;
+
+      final crossed = await sorted(size: 2)(
+        ordered(TripSort.fastest, cursor: first.nextCursor!),
+        now: today,
+      );
+
+      // Not re-sorted. Re-sorting answers with rows already seen and skips
+      // ones that will never be seen — which reads as the inventory being
+      // wrong, not as a paging bug.
+      final refusal = crossed.failureOrNull;
+      expect(refusal, isA<CursorSortChanged>());
+      expect(refusal!.code, ErrorCode.searchCursorSortChanged);
+      // Both orders named, so a client can say which list it was on.
+      expect(refusal.params['cursorSort'], 'cheapest');
+      expect(refusal.params['sort'], 'fastest');
+    });
+
+    test('paging under a sort walks every coach exactly once', () async {
+      for (final sort in TripSort.values) {
+        final seen = <String>[];
+        var page = (await sorted(size: 2)(
+          ordered(sort),
+          now: today,
+        )).valueOrNull!;
+        seen.addAll(page.departures.map((d) => d.id));
+        var guard = 0;
+        while (page.nextCursor != null && guard++ < 10) {
+          page = (await sorted(size: 2)(
+            ordered(sort, cursor: page.nextCursor),
+            now: today,
+          )).valueOrNull!;
+          seen.addAll(page.departures.map((d) => d.id));
+        }
+
+        expect(seen, await ids(ordered(sort)), reason: sort.name);
+        expect(seen.toSet(), hasLength(4), reason: sort.name);
+      }
+    });
+
+    test('a departure window keeps the coaches inside it', () async {
+      expect(await ids(ordered(TripSort.earliest, fromHour: 9, toHour: 20)), [
+        'dep-mid',
+        'dep-noon',
+      ]);
+    });
+
+    test('a price ceiling is the fare, not the total', () async {
+      // 12 000 exactly: the service fee is added after this, and a ceiling
+      // that included it would drop the coach priced at the figure typed.
+      expect(await ids(ordered(TripSort.cheapest, maxFare: 12000)), [
+        'dep-late',
+        'dep-noon',
+        'dep-mid',
+      ]);
+    });
+
+    test('a sold-out coach is filtered by nothing', () async {
+      // §6.1: a filter narrows what is offered, never what is knowable.
+      // Seeing "complet" on the 09:00 is how somebody decides to take the
+      // 05:00 rather than come back tomorrow.
+      final inventory = MemorySeatInventory(
+        clock: dayClock,
+        departures: [
+          MemoryDeparture(
+            id: 'dep-full',
+            operatorId: 'op-odn',
+            departsAt: today.add(const Duration(hours: 9)),
+            seatLabels: const ['1A'],
+            fare: const Money.xaf(9000),
+          ),
+        ],
+      );
+      await inventory.claim(
+        SeatClaimFixture.forSeats(['1A'], departureId: 'dep-full'),
+      );
+
+      final page = (await SearchDepartures(
+        catalogue: MemoryDepartureCatalogue(inventory, clock: dayClock),
+      )(ordered(TripSort.cheapest, maxFare: 12000), now: today)).valueOrNull!;
+
+      expect(page.departures.single.id, 'dep-full');
+      expect(page.departures.single.seatsAvailable, 0);
+    });
+  });
 }
 
 /// Small helper so these tests read as searches rather than as claims.

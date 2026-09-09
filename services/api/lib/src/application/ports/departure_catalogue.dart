@@ -12,6 +12,10 @@ final class DepartureQuery {
     this.mode,
     this.after,
     this.limit = 100,
+    this.sort = TripSort.earliest,
+    this.departFromHour,
+    this.departToHour,
+    this.maxFareMinor,
   });
 
   final String originCity;
@@ -38,6 +42,23 @@ final class DepartureQuery {
   /// return, which is how it learns whether there is another page without a
   /// second `COUNT(*)` over the same joins.
   final int limit;
+
+  /// The order, which decides both the `ORDER BY` and the shape of the
+  /// keyset comparison [after] is used in (§6.2).
+  final TripSort sort;
+
+  /// Local hours of the searched day, `0`–`24`, bounded before they get here.
+  ///
+  /// **Narrows what is offered, never what is knowable** (§6.1). A window
+  /// removes coaches from the list; nothing here removes a sold-out one,
+  /// because seeing that the 06:00 is full is how somebody decides to take
+  /// the 05:30 rather than come back tomorrow.
+  final int? departFromHour;
+  final int? departToHour;
+
+  /// A ceiling on the **fare**, in minor units. Not the total: the service
+  /// fee is a market fact this adapter has no business knowing.
+  final int? maxFareMinor;
 }
 
 /// One sellable departure, straight off the read model.

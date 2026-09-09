@@ -43,9 +43,17 @@ final class ResultsReady extends BookingStep {
     this.hasMore = false,
     this.loadingMore = false,
     this.watching = const <String>{},
+    this.operators = const {},
   });
 
   final List<DepartureSummaryDto> departures;
+
+  /// Every company seen on this road and day, id to name.
+  ///
+  /// Kept across a refinement rather than read off the rows: once the list is
+  /// filtered to one company the rows can no longer name the others, and a
+  /// filter that cannot be undone from the sheet that set it is a trap.
+  final Map<String, String> operators;
 
   /// Departure ids this traveller is already waiting on. Carried on the step
   /// rather than read per row, so a full coach can say "you are waiting"
@@ -282,6 +290,8 @@ final class BookingFlow {
   /// did nothing and left the traveller on a dead end. The test caught it.
   DepartureSummaryDto? _activeDeparture;
 
+  final Map<String, String> _operators = {};
+
   SearchDeparturesQuery? _lastQuery;
   SearchDeparturesQuery? get lastQuery => _lastQuery;
 
@@ -338,6 +348,11 @@ final class BookingFlow {
   // ── Search ────────────────────────────────────────────────────────────────
 
   Future<void> search(SearchDeparturesQuery query) async {
+    // The companies belong to the road and the day, not to one search of it.
+    // Kept across a sort or a filter so the sheet can still offer the company
+    // whose rows the current filter is hiding; dropped the moment the road or
+    // the day changes, because then they are somebody else's companies.
+    if (!_sameRoad(_lastQuery, query)) _operators.clear();
     _lastQuery = query;
     _nextCursor = null;
     _emit(const Searching());
@@ -346,17 +361,44 @@ final class BookingFlow {
       final page = await _gateway.search(query);
       _lastResults = page.items;
       _nextCursor = page.nextCursor;
+      _remember(page.items);
       _emit(
-        ResultsReady(_lastResults, hasMore: page.hasMore, watching: _watching),
+        ResultsReady(
+          _lastResults,
+          hasMore: page.hasMore,
+          watching: _watching,
+          operators: {..._operators},
+        ),
       );
     } on ApiFailure catch (failure) {
       // Signal dropped mid-search. Showing what we had a minute ago, clearly
       // marked as old, beats an empty screen — the 06:00 has not moved.
       if (_lastResults.isNotEmpty && failure is! ServerRefused) {
-        _emit(ResultsReady(_lastResults, stale: true, watching: _watching));
+        _emit(
+          ResultsReady(
+            _lastResults,
+            stale: true,
+            watching: _watching,
+            operators: {..._operators},
+          ),
+        );
       } else {
         _emit(StepFailed(failure));
       }
+    }
+  }
+
+  /// Whether two searches are of the same road on the same day — which is
+  /// what a sort or a filter changes nothing about.
+  static bool _sameRoad(SearchDeparturesQuery? a, SearchDeparturesQuery b) =>
+      a != null &&
+      a.originCity == b.originCity &&
+      a.destinationCity == b.destinationCity &&
+      a.date == b.date;
+
+  void _remember(List<DepartureSummaryDto> rows) {
+    for (final row in rows) {
+      _operators[row.operatorId] = row.operatorName;
     }
   }
 
@@ -417,6 +459,7 @@ final class BookingFlow {
         hasMore: true,
         loadingMore: true,
         watching: _watching,
+        operators: {..._operators},
       ),
     );
 
@@ -424,11 +467,24 @@ final class BookingFlow {
       final page = await _gateway.search(query.nextPage(cursor));
       _lastResults = [..._lastResults, ...page.items];
       _nextCursor = page.nextCursor;
+      _remember(page.items);
       _emit(
-        ResultsReady(_lastResults, hasMore: page.hasMore, watching: _watching),
+        ResultsReady(
+          _lastResults,
+          hasMore: page.hasMore,
+          watching: _watching,
+          operators: {..._operators},
+        ),
       );
     } on ApiFailure catch (_) {
-      _emit(ResultsReady(_lastResults, hasMore: true, watching: _watching));
+      _emit(
+        ResultsReady(
+          _lastResults,
+          hasMore: true,
+          watching: _watching,
+          operators: {..._operators},
+        ),
+      );
     }
   }
 

@@ -85,6 +85,12 @@ errors:
     sold_out: "Ce départ est complet."
     closed: "Les ventes sont fermées pour ce départ."
     cancelled: "Ce départ a été annulé par la compagnie."
+  travel:
+    # §6.2. Presque toujours notre bogue et non celui du voyageur — l'écran
+    # est censé abandonner le curseur quand le tri change — donc la phrase dit
+    # quoi faire et rien sur les curseurs, qui ne veulent rien dire pour
+    # quelqu'un qui cherche un car.
+    search_cursor_sort_changed: "La liste a été réordonnée. Tirez vers le bas pour la recharger."
   asset:
     unsupported_type: "Format non accepté. Envoyez un PNG, un JPEG ou un SVG."
     too_large: "Fichier trop lourd. Maximum {maxKb} Ko."

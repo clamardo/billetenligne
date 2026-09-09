@@ -56,6 +56,35 @@ travel:
     onTime: "{rate}% on time"
     offlineTitle: "No signal"
     offlineBody: "The times below are from your last connection."
+    # Sorting and filtering (§6.1). A sort reorders, a filter hides: two
+    # different gestures, two different controls, and the badge counts only
+    # the things that hide something.
+    filter: "Filter"
+    filterCount: "Filter · {count}"
+    clearFilters: "Clear filters"
+    # The list is empty because somebody narrowed it, not because the road
+    # is. Offering "see tomorrow" here would send them looking elsewhere for
+    # a coach that is sitting just behind a filter.
+    filteredEmptyTitle: "No coach matches"
+    filteredEmptyBody: "Widen your choices to see the rest of the day again."
+  # The filter sheet. Each section answers a question somebody actually asks
+  # at a ticket window — which company, what time, up to how much — and never
+  # a column of the database.
+  filter:
+    title: "Filter"
+    operator: "Company"
+    anyOperator: "All"
+    window: "Departure time"
+    anyTime: "Any time"
+    morning: "Morning"
+    afternoon: "Afternoon"
+    evening: "Evening"
+    price: "Maximum price"
+    anyPrice: "No limit"
+    upTo: "Up to {amount}"
+    apply: "See the coaches"
+    clear: "Clear all"
+
   # The coach is full. We offer to tell them, and the wording is chosen with
   # care: "back on sale", never "a seat is being held". Nothing is kept,
   # everybody is told at the same moment, and the first to pay gets it. Warmer

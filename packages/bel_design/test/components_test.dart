@@ -1,3 +1,5 @@
+import 'dart:ui' show Tristate;
+
 import 'package:bel_design/bel_design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -481,6 +483,88 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('KChoiceChip', () {
+    testWidgets('is never smaller than a thumb', (tester) async {
+      await tester.pumpWidget(
+        host(
+          KChoiceChip(
+            label: 'Le moins cher',
+            selected: false,
+            onPressed: () {},
+          ),
+        ),
+      );
+
+      // A row of chips reads as light. It must not be hard to hit.
+      final box = tester.getSize(find.byType(KChoiceChip));
+      expect(box.height, greaterThanOrEqualTo(48));
+    });
+
+    testWidgets('selection is announced, not only coloured', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          Row(
+            children: [
+              KChoiceChip(
+                label: 'Le plus tôt',
+                selected: true,
+                onPressed: () {},
+              ),
+              KChoiceChip(
+                label: 'Le moins cher',
+                selected: false,
+                onPressed: () {},
+              ),
+            ],
+          ),
+        ),
+      );
+
+      // Direct sun flattens hue, and a screen reader sees none of it. The
+      // chosen option has to say so.
+      expect(
+        tester
+            .getSemantics(find.text('Le plus tôt'))
+            .flagsCollection
+            .isSelected,
+        Tristate.isTrue,
+      );
+      expect(
+        tester
+            .getSemantics(find.text('Le moins cher'))
+            .flagsCollection
+            .isSelected,
+        Tristate.isFalse,
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('a chip with nothing behind it says so', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        host(
+          const KChoiceChip(
+            label: 'Le plus rapide',
+            selected: false,
+            onPressed: null,
+          ),
+        ),
+      );
+
+      // Disabled while the list it reorders is in flight. A control that
+      // looks live and does nothing is worse than one that looks spent.
+      expect(
+        tester
+            .getSemantics(find.text('Le plus rapide'))
+            .flagsCollection
+            .isEnabled,
+        Tristate.isFalse,
+      );
+      semantics.dispose();
     });
   });
 

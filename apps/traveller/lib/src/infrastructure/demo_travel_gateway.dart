@@ -143,11 +143,20 @@ final class DemoTravelGateway implements TravelGateway {
         _departures.values
             .where((d) => d.originCity == query.originCity)
             .where((d) => d.destinationCity == query.destinationCity)
+            .where((d) => query.operatorId == null
+                ? true
+                : d.operatorId == query.operatorId)
+            .where((d) => query.maxFareMinor == null
+                ? true
+                : d.fare.minor <= query.maxFareMinor!)
+            .where((d) => query.departFromHour == null
+                ? true
+                : d.departsAt.hour >= query.departFromHour!)
+            .where((d) => query.departToHour == null
+                ? true
+                : d.departsAt.hour < query.departToHour!)
             .toList()
-          ..sort((a, b) {
-            final byTime = a.departsAt.compareTo(b.departsAt);
-            return byTime != 0 ? byTime : a.id.compareTo(b.id);
-          });
+          ..sort((a, b) => _order(query.sort, a, b));
 
     // Pages the same way the server does, keyset and all. A demo gateway that
     // answered everything at once would hide the paging from every screen
@@ -156,12 +165,19 @@ final class DemoTravelGateway implements TravelGateway {
     final after = query.cursor == null
         ? null
         : SearchCursor.decode(query.cursor!);
+    // A cursor from a differently ordered list is refused here exactly as the
+    // server refuses it (§6.2), so a screen that mishandled a sort change
+    // would fail on a fresh clone rather than only in production.
+    if (after != null && after.sort != query.sort) {
+      throw const ServerRefused(
+        400,
+        ApiError(code: ErrorCode.searchCursorSortChanged),
+      );
+    }
+
     final rest = after == null
         ? all
-        : all.where((d) {
-            final byTime = d.departsAt.compareTo(after.departsAt);
-            return byTime > 0 || (byTime == 0 && d.id.compareTo(after.id) > 0);
-          }).toList();
+        : all.where((d) => _after(query.sort, d, after)).toList();
 
     final page = rest.take(size).toList();
     final more = rest.length > size;
@@ -172,6 +188,8 @@ final class DemoTravelGateway implements TravelGateway {
           ? SearchCursor(
               departsAt: page.last.departsAt,
               id: page.last.id,
+              sort: query.sort,
+              value: _key(query.sort, page.last),
             ).encode()
           : null,
       query: query.toQuery(),
@@ -905,5 +923,36 @@ final class DemoTravelGateway implements TravelGateway {
           ? DateTime.now().add(const Duration(days: 90))
           : null,
     );
+  }
+
+  /// The leading key of an order, in the units the cursor carries: minor
+  /// units under `cheapest`, seconds under `fastest`, nothing under
+  /// `earliest` — which orders on the two keys every cursor already has.
+  static int? _key(TripSort sort, DepartureSummaryDto d) => switch (sort) {
+    TripSort.earliest => null,
+    TripSort.cheapest => d.fare.minor,
+    TripSort.fastest => d.arrivesAt.difference(d.departsAt).inSeconds,
+  };
+
+  /// `(key, departs, id)` — the same tuple the SQL spells out. Written once
+  /// and used for both the sort and the keyset, because those two disagreeing
+  /// is exactly how a coach disappears between two pages.
+  static int _order(
+    TripSort sort,
+    DepartureSummaryDto a,
+    DepartureSummaryDto b,
+  ) {
+    final byKey = (_key(sort, a) ?? 0).compareTo(_key(sort, b) ?? 0);
+    if (byKey != 0) return byKey;
+    final byTime = a.departsAt.compareTo(b.departsAt);
+    return byTime != 0 ? byTime : a.id.compareTo(b.id);
+  }
+
+  static bool _after(TripSort sort, DepartureSummaryDto d, SearchCursor c) {
+    final byKey = (_key(sort, d) ?? 0).compareTo(c.value ?? 0);
+    if (byKey != 0) return byKey > 0;
+    final byTime = d.departsAt.compareTo(c.departsAt);
+    if (byTime != 0) return byTime > 0;
+    return d.id.compareTo(c.id) > 0;
   }
 }

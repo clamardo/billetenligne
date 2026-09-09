@@ -84,6 +84,12 @@ errors:
     sold_out: "This departure is full."
     closed: "Sales are closed for this departure."
     cancelled: "This departure was cancelled by the operator."
+  travel:
+    # §6.2. Almost always our own bug rather than the traveller's — the screen
+    # is supposed to drop the cursor when the sort changes — so the sentence
+    # says what to do and nothing about cursors, which mean nothing to
+    # somebody looking for a coach.
+    search_cursor_sort_changed: "The list was reordered. Pull down to load it again."
   asset:
     unsupported_type: "That format is not accepted. Send a PNG, a JPEG or an SVG."
     too_large: "That file is too heavy. Maximum {maxKb} KB."

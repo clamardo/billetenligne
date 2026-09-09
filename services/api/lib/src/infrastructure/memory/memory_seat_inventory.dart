@@ -48,6 +48,7 @@ final class MemoryDeparture {
     required DateTime departsAt,
     int rows = 13,
     Money fare = const Money.xaf(12000),
+    Duration duration = const Duration(hours: 8),
     String status = 'scheduled',
     String operatorName = 'Ocean du Nord',
     String originCity = 'BZV',
@@ -57,6 +58,7 @@ final class MemoryDeparture {
     operatorId: operatorId,
     departsAt: departsAt,
     fare: fare,
+    duration: duration,
     status: status,
     operatorName: operatorName,
     originCity: originCity,
@@ -347,20 +349,27 @@ final class MemoryDepartureCatalogue implements DepartureCatalogue {
             return false;
           }
           if (query.mode != null && d.mode != query.mode) return false;
+          if (query.maxFareMinor case final ceiling?) {
+            if (d.fare.minor > ceiling) return false;
+          }
+          // Hours of the departure day, the same window §6.1 describes. This
+          // fake reads the instant as local, exactly as its day check below
+          // already does — the timezone is Postgres's job, and the adapter
+          // test is where it is proven.
+          if (query.departFromHour case final from?) {
+            if (d.departsAt.hour < from) return false;
+          }
+          if (query.departToHour case final to?) {
+            if (d.departsAt.hour >= to) return false;
+          }
           if (query.after case final after?) {
             // The same strict ordering the SQL uses, and it has to be the same:
             // a fake that paged differently would let a bug through that only
             // ever shows up against Postgres.
-            final byTime = d.departsAt.compareTo(after.departsAt);
-            if (byTime < 0 || (byTime == 0 && d.id.compareTo(after.id) <= 0)) {
-              return false;
-            }
+            if (_compare(query.sort, d, after) <= 0) return false;
           }
           return _isSameLocalDay(d.departsAt, query.localDate);
-        }).toList()..sort((a, b) {
-          final byTime = a.departsAt.compareTo(b.departsAt);
-          return byTime != 0 ? byTime : a.id.compareTo(b.id);
-        });
+        }).toList()..sort((a, b) => _order(query.sort, a, b));
 
     return [
       for (final d in matches.take(query.limit))
@@ -442,6 +451,34 @@ final class MemoryDepartureCatalogue implements DepartureCatalogue {
   /// Compared in UTC, which is a simplification the Postgres adapter does not
   /// make. Fine here: the fakes exist so a fresh clone answers something, and
   /// the timezone question is tested where it is actually decided.
+  /// The leading key of an order, for a departure the fake holds.
+  ///
+  /// Seconds under `fastest`, so it matches what the cursor carries and what
+  /// the SQL floors an epoch down to.
+  static int _key(TripSort sort, MemoryDeparture d) => switch (sort) {
+    TripSort.earliest => 0,
+    TripSort.cheapest => d.fare.minor,
+    TripSort.fastest => d.arrivesAt.difference(d.departsAt).inSeconds,
+  };
+
+  /// The order itself, `(key, departs, id)` — the same tuple the adapter
+  /// spells in SQL. Written once and used for both the sort and the keyset,
+  /// because the two disagreeing is precisely the bug that hides a coach.
+  static int _order(TripSort sort, MemoryDeparture a, MemoryDeparture b) {
+    final byKey = _key(sort, a).compareTo(_key(sort, b));
+    if (byKey != 0) return byKey;
+    final byTime = a.departsAt.compareTo(b.departsAt);
+    return byTime != 0 ? byTime : a.id.compareTo(b.id);
+  }
+
+  /// Where a departure sits relative to the row a cursor names.
+  static int _compare(TripSort sort, MemoryDeparture d, SearchCursor after) {
+    final byKey = _key(sort, d).compareTo(after.value ?? 0);
+    if (byKey != 0) return byKey;
+    final byTime = d.departsAt.compareTo(after.departsAt);
+    return byTime != 0 ? byTime : d.id.compareTo(after.id);
+  }
+
   static bool _isSameLocalDay(DateTime instant, DateTime date) =>
       instant.year == date.year &&
       instant.month == date.month &&

@@ -1350,6 +1350,216 @@ void main() {
     });
   });
 
+  group('sorting and narrowing the results', () {
+    // §6.1–6.2. The sort is not a decoration on the request: it is half the
+    // definition of what a cursor points at.
+    test('a cursor carries the order it was minted under', () {
+      final cursor = SearchCursor(
+        departsAt: DateTime.utc(2026, 8, 15, 6),
+        id: 'dep-1',
+        sort: TripSort.cheapest,
+        value: 9000,
+      );
+
+      final back = SearchCursor.decode(cursor.encode());
+
+      expect(back.sort, TripSort.cheapest);
+      expect(back.value, 9000);
+      expect(back.departsAt, DateTime.utc(2026, 8, 15, 6));
+      expect(back.id, 'dep-1');
+    });
+
+    test('the same row under two orders is two different cursors', () {
+      // Otherwise a client could carry one across a sort change and the
+      // server would have no way to tell.
+      final byTime = SearchCursor(
+        departsAt: DateTime.utc(2026, 8, 15, 6),
+        id: 'dep-1',
+      ).encode();
+      final byPrice = SearchCursor(
+        departsAt: DateTime.utc(2026, 8, 15, 6),
+        id: 'dep-1',
+        sort: TripSort.cheapest,
+        value: 9000,
+      ).encode();
+
+      expect(byTime, isNot(byPrice));
+    });
+
+    test('an id with a dot in it still comes back whole', () {
+      // The encoding joins on dots, so the id is rejoined from the right
+      // rather than read as one field. A uuid has none today; the next
+      // identifier scheme might.
+      final back = SearchCursor.decode(
+        SearchCursor(
+          departsAt: DateTime.utc(2026, 8, 15, 6),
+          id: 'dep.1.b',
+          sort: TripSort.fastest,
+          value: 28800,
+        ).encode(),
+      );
+
+      expect(back.id, 'dep.1.b');
+      expect(back.value, 28800);
+    });
+
+    test('a cursor minted before sorting existed still reads', () {
+      // Two parts, `micros.id` — what the previous build encoded. A traveller
+      // mid-scroll across a deploy keeps their place instead of being told
+      // their cursor is malformed.
+      final legacy = base64Url
+          .encode(
+            utf8.encode(
+              '${DateTime.utc(2026, 8, 15, 6).microsecondsSinceEpoch}.dep-1',
+            ),
+          )
+          .replaceAll('=', '');
+
+      final back = SearchCursor.decode(legacy);
+
+      expect(back.sort, TripSort.earliest);
+      expect(back.value, isNull);
+      expect(back.id, 'dep-1');
+    });
+
+    test('a cursor naming an order we removed is refused', () {
+      final gone = base64Url
+          .encode(utf8.encode('scenic..1755237600000000.dep-1'))
+          .replaceAll('=', '');
+
+      expect(
+        () => SearchCursor.decode(gone),
+        throwsA(isA<WireFormatException>()),
+      );
+    });
+
+    test('a cursor missing the key its order sorts on is refused', () {
+      // `cheapest..<micros>.<id>` — well-formed to look at, and the SQL
+      // keyset built from it compares against NULL and matches nothing. An
+      // empty page reads as "no coaches"; a 400 reads as what it is.
+      final hollow = base64Url
+          .encode(utf8.encode('cheapest..1755237600000000.dep-1'))
+          .replaceAll('=', '');
+
+      expect(
+        () => SearchCursor.decode(hollow),
+        throwsA(isA<WireFormatException>()),
+      );
+    });
+
+    test('the default sort is not on the wire at all', () {
+      final plain = SearchDeparturesQuery(
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        date: DateTime.utc(2026, 8, 15),
+      );
+
+      // The commonest search is the shortest URL, and one cache key rather
+      // than two for the same list.
+      expect(plain.toQuery().containsKey('sort'), isFalse);
+      expect(SearchDeparturesQuery.fromQuery(plain.toQuery()).sort,
+          TripSort.earliest);
+    });
+
+    test('the filters survive the round trip', () {
+      final asked = SearchDeparturesQuery(
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        date: DateTime.utc(2026, 8, 15),
+        sort: TripSort.fastest,
+        departFromHour: 6,
+        departToHour: 12,
+        maxFareMinor: 15000,
+      );
+
+      final back = SearchDeparturesQuery.fromQuery(asked.toQuery());
+
+      expect(back.sort, TripSort.fastest);
+      expect(back.departFromHour, 6);
+      expect(back.departToHour, 12);
+      expect(back.maxFareMinor, 15000);
+    });
+
+    test('an unknown sort is refused, not quietly answered', () {
+      // Answering an unrecognised sort with `earliest` gives a client that
+      // asked for one we removed a list it will believe is cheapest-first.
+      expect(
+        () => SearchDeparturesQuery.fromQuery({
+          'from': 'BZV',
+          'to': 'PNR',
+          'date': '2026-08-15',
+          'sort': 'scenic',
+        }),
+        throwsA(isA<WireFormatException>()),
+      );
+    });
+
+    test('an hour outside the day names the field it came from', () {
+      // A 400 saying `fromHour`, not an empty list a traveller reads as "no
+      // coaches on this road".
+      for (final bad in ['25', '-1', 'morning']) {
+        expect(
+          () => SearchDeparturesQuery.fromQuery({
+            'from': 'BZV',
+            'to': 'PNR',
+            'date': '2026-08-15',
+            'fromHour': bad,
+          }),
+          throwsA(
+            isA<WireFormatException>().having((e) => e.field, 'field',
+                'fromHour'),
+          ),
+          reason: bad,
+        );
+      }
+
+      // Midnight at both ends is a whole day, and 24 is a legitimate top.
+      final whole = SearchDeparturesQuery.fromQuery({
+        'from': 'BZV',
+        'to': 'PNR',
+        'date': '2026-08-15',
+        'fromHour': '0',
+        'toHour': '24',
+      });
+      expect(whole.departFromHour, 0);
+      expect(whole.departToHour, 24);
+    });
+
+    test('refining a search always drops the cursor', () {
+      final page2 = SearchDeparturesQuery(
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        date: DateTime.utc(2026, 8, 15),
+        passengers: 3,
+        cursor: 'abc',
+      );
+
+      final cheaper = page2.refined(sort: TripSort.cheapest);
+
+      // Carrying it would earn a refusal from the server, shown to somebody
+      // who only tapped "le moins cher".
+      expect(cheaper.cursor, isNull);
+      expect(cheaper.sort, TripSort.cheapest);
+      expect(cheaper.passengers, 3);
+      expect(cheaper.originCity, 'BZV');
+    });
+
+    test('a plain search is not a filtered one', () {
+      final plain = SearchDeparturesQuery(
+        originCity: 'BZV',
+        destinationCity: 'PNR',
+        date: DateTime.utc(2026, 8, 15),
+      );
+
+      // The sort is not a filter: reordering hides nothing, so a screen that
+      // shows "filtres actifs" must not light up for it.
+      expect(plain.isFiltered, isFalse);
+      expect(plain.refined(sort: TripSort.cheapest).isFiltered, isFalse);
+      expect(plain.refined(maxFareMinor: 9000).isFiltered, isTrue);
+      expect(plain.refined(departFromHour: 6).isFiltered, isTrue);
+    });
+  });
+
   group('the yard', () {
     test('a terminal survives the round trip, directions included', () {
       const sent = StationDto(

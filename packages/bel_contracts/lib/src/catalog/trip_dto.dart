@@ -165,6 +165,10 @@ final class SearchDeparturesQuery {
     this.mode,
     this.cursor,
     this.limit,
+    this.sort = TripSort.earliest,
+    this.departFromHour,
+    this.departToHour,
+    this.maxFareMinor,
   });
 
   final String originCity;
@@ -192,6 +196,25 @@ final class SearchDeparturesQuery {
   /// ten thousand" is a slow query anybody can ask for by typing.
   final int? limit;
 
+  /// Earliest, cheapest or fastest (§6.1). Part of the cursor as well as of
+  /// the request — see [SearchCursor.sort].
+  final TripSort sort;
+
+  /// A departure window, as **local hours of the searched day**, `0`–`24`.
+  ///
+  /// Hours rather than instants because that is the question somebody is
+  /// actually asking: *something in the morning*. An instant pair would make
+  /// the client compute the market's offset, which is the one calculation
+  /// this codebase keeps refusing to do outside Postgres.
+  final int? departFromHour;
+  final int? departToHour;
+
+  /// A price ceiling, in minor units of the market's currency. The **fare**,
+  /// not the total: it is what the rows show and what an operator sets, and a
+  /// ceiling that silently included our service fee would filter out a coach
+  /// priced exactly at the figure the traveller typed.
+  final int? maxFareMinor;
+
   Map<String, String> toQuery() => {
     'from': originCity,
     'to': destinationCity,
@@ -201,6 +224,12 @@ final class SearchDeparturesQuery {
     if (mode != null) 'mode': mode!,
     if (cursor != null) 'cursor': cursor!,
     if (limit != null) 'limit': '$limit',
+    // Omitted at the default, so the commonest search is the shortest URL and
+    // the CDN sees one cache key for it rather than two.
+    if (sort != TripSort.earliest) 'sort': sort.name,
+    if (departFromHour != null) 'fromHour': '$departFromHour',
+    if (departToHour != null) 'toHour': '$departToHour',
+    if (maxFareMinor != null) 'maxFare': '$maxFareMinor',
   };
 
   factory SearchDeparturesQuery.fromQuery(Map<String, String> q) =>
@@ -217,7 +246,32 @@ final class SearchDeparturesQuery {
         mode: q['mode'],
         cursor: q['cursor'],
         limit: q['limit'] == null ? null : int.tryParse(q['limit']!),
+        // An unknown sort is a refusal rather than a silent `earliest`: a
+        // client asking for one we removed should find out.
+        sort:
+            q['sort'] == null
+                ? TripSort.earliest
+                : TripSort.byName(q['sort']) ??
+                      (throw const WireFormatException('sort', 'unknown')),
+        departFromHour: _hour(q['fromHour'], 'fromHour'),
+        departToHour: _hour(q['toHour'], 'toHour'),
+        maxFareMinor: q['maxFare'] == null
+            ? null
+            : int.tryParse(q['maxFare']!) ??
+                  (throw const WireFormatException('maxFare', 'malformed')),
       );
+
+  /// A local hour of the day, or a refusal. Bounded here rather than in SQL
+  /// so `fromHour=99` is a 400 with the field named, not an empty list a
+  /// traveller reads as "no coaches".
+  static int? _hour(String? raw, String field) {
+    if (raw == null) return null;
+    final value = int.tryParse(raw);
+    if (value == null || value < 0 || value > 24) {
+      throw WireFormatException(field, 'out of range');
+    }
+    return value;
+  }
 
   /// The same search, from where this page stopped.
   SearchDeparturesQuery nextPage(String cursor) => SearchDeparturesQuery(
@@ -229,7 +283,50 @@ final class SearchDeparturesQuery {
     mode: mode,
     cursor: cursor,
     limit: limit,
+    sort: sort,
+    departFromHour: departFromHour,
+    departToHour: departToHour,
+    maxFareMinor: maxFareMinor,
   );
+
+  /// The same road and day, ordered or narrowed differently.
+  ///
+  /// **Drops the cursor, always.** Changing the sort or a filter is a new
+  /// list, and carrying the old cursor into it is the exact mistake §6.2
+  /// refuses — the server would answer with a refusal, and the screen would
+  /// show it to somebody who only tapped "le moins cher".
+  SearchDeparturesQuery refined({
+    TripSort? sort,
+    String? operatorId,
+    int? departFromHour,
+    int? departToHour,
+    int? maxFareMinor,
+    bool clearOperator = false,
+    bool clearWindow = false,
+    bool clearCeiling = false,
+  }) => SearchDeparturesQuery(
+    originCity: originCity,
+    destinationCity: destinationCity,
+    date: date,
+    passengers: passengers,
+    operatorId: clearOperator ? null : operatorId ?? this.operatorId,
+    mode: mode,
+    limit: limit,
+    sort: sort ?? this.sort,
+    departFromHour: clearWindow
+        ? null
+        : departFromHour ?? this.departFromHour,
+    departToHour: clearWindow ? null : departToHour ?? this.departToHour,
+    maxFareMinor: clearCeiling ? null : maxFareMinor ?? this.maxFareMinor,
+  );
+
+  /// Whether anything narrows this search beyond the road and the day. What
+  /// the screen renders a "clear" affordance from.
+  bool get isFiltered =>
+      operatorId != null ||
+      departFromHour != null ||
+      departToHour != null ||
+      maxFareMinor != null;
 
   static String _isoDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
@@ -255,7 +352,12 @@ final class SearchDeparturesQuery {
 /// cursor, the ordering becomes a shared contract instead of a server
 /// decision, and it can never be changed again.
 final class SearchCursor {
-  const SearchCursor({required this.departsAt, required this.id});
+  const SearchCursor({
+    required this.departsAt,
+    required this.id,
+    this.sort = TripSort.earliest,
+    this.value,
+  });
 
   /// The instant the last row on the previous page leaves.
   final DateTime departsAt;
@@ -263,9 +365,29 @@ final class SearchCursor {
   /// That row's departure id, which breaks the tie.
   final String id;
 
+  /// The order this cursor was minted under (§6.2).
+  ///
+  /// Carried because a keyset is defined *against* an order, so a cursor from
+  /// an `earliest` page is meaningless on a `cheapest` one. The server
+  /// compares it to the request and refuses a disagreement rather than
+  /// re-sorting, because a silent re-sort produces duplicate and missing rows
+  /// across a page boundary — the failure that reads as the inventory being
+  /// wrong.
+  final TripSort sort;
+
+  /// The leading sort key of the last row, when the order has one: the fare
+  /// in minor units under `cheapest`, the leg's length in seconds under
+  /// `fastest`. Null under `earliest`, whose only keys are the two above.
+  final int? value;
+
   /// Base64url, unpadded — it travels in a query string.
   String encode() => base64Url
-      .encode(utf8.encode('${departsAt.toUtc().microsecondsSinceEpoch}.$id'))
+      .encode(
+        utf8.encode(
+          '${sort.name}.${value ?? ''}.'
+          '${departsAt.toUtc().microsecondsSinceEpoch}.$id',
+        ),
+      )
       .replaceAll('=', '');
 
   /// Throws [WireFormatException] on anything malformed.
@@ -277,14 +399,50 @@ final class SearchCursor {
     try {
       final padded = raw.padRight((raw.length + 3) ~/ 4 * 4, '=');
       final text = utf8.decode(base64Url.decode(padded));
-      final dot = text.indexOf('.');
-      if (dot <= 0 || dot == text.length - 1) {
+      // `sort.value.micros.id`, and the id is the only part that may itself
+      // contain a dot, so the split is bounded from the left.
+      final parts = text.split('.');
+
+      // A two-part cursor is one this server minted before sorting existed,
+      // and it means `earliest` — which is what that build could produce.
+      // Three lines so a traveller mid-scroll across a deploy keeps their
+      // place rather than being told their cursor is malformed.
+      if (parts.length == 2) {
+        return SearchCursor(
+          departsAt: DateTime.fromMicrosecondsSinceEpoch(
+            int.parse(parts[0]),
+            isUtc: true,
+          ),
+          id: parts[1],
+        );
+      }
+
+      if (parts.length < 4) {
         throw const WireFormatException('cursor', 'malformed');
       }
-      final micros = int.parse(text.substring(0, dot));
+      final sort = TripSort.byName(parts[0]);
+      if (sort == null) throw const WireFormatException('cursor', 'malformed');
+
+      final id = parts.sublist(3).join('.');
+      if (id.isEmpty) throw const WireFormatException('cursor', 'malformed');
+
+      final value = parts[1].isEmpty ? null : int.parse(parts[1]);
+      // An order with a second key needs it. Without it the keyset comparison
+      // in SQL is NULL for every row, and the traveller reads an empty page
+      // as "no coaches on this road" rather than as the malformed cursor it
+      // is.
+      if (sort.needsValue && value == null) {
+        throw const WireFormatException('cursor', 'malformed');
+      }
+
       return SearchCursor(
-        departsAt: DateTime.fromMicrosecondsSinceEpoch(micros, isUtc: true),
-        id: text.substring(dot + 1),
+        sort: sort,
+        value: value,
+        departsAt: DateTime.fromMicrosecondsSinceEpoch(
+          int.parse(parts[2]),
+          isUtc: true,
+        ),
+        id: id,
       );
     } on WireFormatException {
       rethrow;

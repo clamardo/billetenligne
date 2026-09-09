@@ -39,6 +39,29 @@ final class UnreadableCursor extends SearchFailure {
   Map<String, Object?> get params => const {'field': 'cursor'};
 }
 
+/// A cursor from a differently ordered list (§6.2).
+///
+/// A keyset cursor is defined **against** an order, so one minted under
+/// `earliest` names a position that does not exist under `cheapest`. Refused
+/// rather than silently re-sorted: re-sorting produces duplicate and missing
+/// rows across a page boundary, and a traveller who sees the same coach twice
+/// and never sees a third concludes the inventory is wrong.
+///
+/// The client's fix is to drop the cursor, which is what changing a sort
+/// means — a new list, from the top.
+final class CursorSortChanged extends SearchFailure {
+  const CursorSortChanged({required this.cursorSort, required this.asked});
+  final TripSort cursorSort;
+  final TripSort asked;
+  @override
+  String get code => ErrorCode.searchCursorSortChanged;
+  @override
+  Map<String, Object?> get params => {
+    'cursorSort': cursorSort.name,
+    'sort': asked.name,
+  };
+}
+
 /// Searching more than a year out is a typo, not a plan. Refused with a code
 /// rather than an empty list, because "no results" and "you typed 2027 by
 /// accident" should not look identical to a traveller.
@@ -127,6 +150,12 @@ final class SearchDepartures {
       return const Err(UnreadableCursor());
     }
 
+    if (after != null && after.sort != query.sort) {
+      return Err(
+        CursorSortChanged(cursorSort: after.sort, asked: query.sort),
+      );
+    }
+
     final size = (query.limit ?? pageSize).clamp(1, maxPageSize);
 
     final rows = await _catalogue.search(
@@ -137,6 +166,10 @@ final class SearchDepartures {
         passengers: query.passengers,
         operatorId: query.operatorId,
         mode: query.mode,
+        sort: query.sort,
+        departFromHour: query.departFromHour,
+        departToHour: query.departToHour,
+        maxFareMinor: query.maxFareMinor,
         after: after,
         // One more than a page. The extra row is never returned — it is the
         // whole answer to "is there another page?", and it costs one row
@@ -157,11 +190,25 @@ final class SearchDepartures {
             ? SearchCursor(
                 departsAt: page.last.departsAt,
                 id: page.last.id,
+                sort: query.sort,
+                value: _sortValue(query.sort, page.last),
               ).encode()
             : null,
       ),
     );
   }
+
+  /// The leading key of the order, read off the row the page stopped at.
+  ///
+  /// Taken from the row rather than recomputed from the request, so the
+  /// number in the cursor is the number the database ordered by. Seconds for
+  /// `fastest`, matching the `FLOOR(EXTRACT(EPOCH …))` the adapter sorts on
+  /// — `inSeconds` truncates and so does the floor.
+  static int? _sortValue(TripSort sort, DepartureRow row) => switch (sort) {
+    TripSort.earliest => null,
+    TripSort.cheapest => row.fare.minor,
+    TripSort.fastest => row.arrivesAt.difference(row.departsAt).inSeconds,
+  };
 
   DepartureSummaryDto _toDto(DepartureRow row) => DepartureSummaryDto(
     id: row.id,

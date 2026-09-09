@@ -1,4 +1,7 @@
+import 'dart:ui' show Tristate;
+
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_domain/bel_domain.dart';
 import 'package:bel_localization/bel_localization.dart';
 import 'package:bel_design/bel_design.dart';
 import 'package:bel_traveller/src/application/booking_flow.dart';
@@ -8,6 +11,7 @@ import 'package:bel_traveller/src/application/tickets_flow.dart';
 import 'package:bel_traveller/src/infrastructure/demo_identity_gateway.dart';
 import 'package:bel_traveller/src/infrastructure/demo_travel_gateway.dart';
 import 'package:bel_traveller/src/presentation/app.dart';
+import 'package:bel_traveller/src/presentation/widgets/filter_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -608,6 +612,16 @@ void main() {
     });
   });
 
+  /// The "tell me if a seat frees up" affordance sits under the last card,
+  /// and the sort row above the list costs it the last of a test-sized
+  /// screen. Dragged rather than `scrollUntilVisible`: that helper wants
+  /// exactly one Scrollable, and this screen now has the horizontal row of
+  /// sort chips as well.
+  Future<void> scrollToAlert(WidgetTester tester) async {
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+  }
+
   group('a coach that is full', () {
     testWidgets('a sold-out row is shown, and offers to tell them', (
       tester,
@@ -625,6 +639,7 @@ void main() {
       await pumpApp(tester);
       await searchBzvToPnr(tester);
 
+      await scrollToAlert(tester);
       await tester.tap(find.text('Prevenez-moi'));
       await tester.pumpAndSettle();
 
@@ -639,6 +654,7 @@ void main() {
       await pumpApp(tester);
       await searchBzvToPnr(tester);
 
+      await scrollToAlert(tester);
       await tester.tap(find.text('Prevenez-moi'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(KButton, 'Prevenez-moi'));
@@ -655,6 +671,7 @@ void main() {
       await pumpApp(tester, signedIn: false);
       await searchBzvToPnr(tester);
 
+      await scrollToAlert(tester);
       await tester.tap(find.text('Prevenez-moi'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(KButton, 'Prevenez-moi'));
@@ -664,6 +681,135 @@ void main() {
       // nobody to send it to.
       expect(find.text('Car complet'), findsNothing);
       expect(find.byType(TextField), findsWidgets);
+    });
+  });
+
+  group('ordering and narrowing the day', () {
+    /// The sheet, opened from the chip that carries the count.
+    Future<void> openFilters(WidgetTester tester) async {
+      await tester.tap(find.textContaining('Filtrer'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the order tapped is the order asked for', (tester) async {
+      final flow = await pumpApp(tester);
+      await searchBzvToPnr(tester);
+
+      await tester.tap(find.text('Le moins cher'));
+      await tester.pumpAndSettle();
+
+      expect(flow.lastQuery!.sort, TripSort.cheapest);
+      // A keyset names a position in one order. Carrying it into another is
+      // the mistake the server refuses (§6.2), so the screen never sends it.
+      expect(flow.lastQuery!.cursor, isNull);
+      expect(flow.step, isA<ResultsReady>());
+    });
+
+    testWidgets('the order already showing is not offered again', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await pumpApp(tester);
+      await searchBzvToPnr(tester);
+
+      // Re-asking for the order on screen would throw the list away and
+      // fetch the same rows back over a connection that is paying for them.
+      expect(
+        tester.getSemantics(find.text('Au plus tôt')).flagsCollection.isEnabled,
+        Tristate.isFalse,
+      );
+      expect(
+        tester
+            .getSemantics(find.text('Le moins cher'))
+            .flagsCollection
+            .isEnabled,
+        Tristate.isTrue,
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('a window from the sheet reaches the search, and is counted', (
+      tester,
+    ) async {
+      final flow = await pumpApp(tester);
+      await searchBzvToPnr(tester);
+
+      await openFilters(tester);
+      await tester.tap(find.text('Matin'));
+      await tester.pump();
+      await tester.tap(find.text('Voir les cars'));
+      await tester.pumpAndSettle();
+
+      // Hours, not instants: "quelque chose le matin" is the question, and
+      // the market's own offset is Postgres's job.
+      expect(flow.lastQuery!.departFromHour, 5);
+      expect(flow.lastQuery!.departToHour, 12);
+      expect(flow.lastQuery!.cursor, isNull);
+      // One question with two ends counts once. A traveller who chose
+      // "matin" has not set three filters.
+      expect(find.text('Filtrer · 1'), findsOneWidget);
+    });
+
+    testWidgets('the sheet still names the company its own filter hides', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      await searchBzvToPnr(tester);
+
+      await openFilters(tester);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(FilterSheet),
+          matching: find.text('Ocean du Nord'),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.text('Voir les cars'));
+      await tester.pumpAndSettle();
+
+      await openFilters(tester);
+
+      // The rows on screen are all one company now. A sheet that offered
+      // only what the rows name would be a filter nobody can undo from the
+      // place they set it.
+      expect(
+        find.descendant(
+          of: find.byType(FilterSheet),
+          matching: find.text('Trans Bony Voyages'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a day narrowed to nothing offers the way back', (
+      tester,
+    ) async {
+      final flow = await pumpApp(tester);
+      await searchBzvToPnr(tester);
+
+      // The only evening coach on this road belongs to somebody else, so
+      // these two together leave the list empty.
+      await openFilters(tester);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(FilterSheet),
+          matching: find.text('Ocean du Nord'),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.text('Soir'));
+      await tester.pump();
+      await tester.tap(find.text('Voir les cars'));
+      await tester.pumpAndSettle();
+
+      // Not "try tomorrow": the coach they want is on this road today,
+      // sitting behind a filter they set thirty seconds ago.
+      expect(find.text('Aucun car ne correspond'), findsOneWidget);
+      await tester.tap(find.text('Effacer les filtres'));
+      await tester.pumpAndSettle();
+
+      expect(flow.lastQuery!.isFiltered, isFalse);
+      expect(find.textContaining('Ocean du Nord'), findsWidgets);
     });
   });
 

@@ -36,7 +36,11 @@ final class Problem {
     ErrorCode.customRoleNameRequired ||
     ErrorCode.customRoleNameCollidesWithDefault ||
     ErrorCode.customRoleNoCapabilities ||
-    ErrorCode.customRoleExceedsOwnCapabilities => 400,
+    ErrorCode.customRoleExceedsOwnCapabilities ||
+    // A cursor minted under one order, presented under another (§6.2). The
+    // client could have checked it: changing a sort means dropping the
+    // cursor, and it holds both halves.
+    ErrorCode.searchCursorSortChanged => 400,
     ErrorCode.unauthorized ||
     ErrorCode.otpIncorrect ||
     ErrorCode.otpExpired ||

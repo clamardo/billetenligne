@@ -84,6 +84,13 @@ enum:
     technical_inspection: "technical inspection certificate"
     rccm: "trade register entry"
     tax_id: "tax identifier"
+  # §6.1. Three, and the labels are what a traveller would say rather than
+  # what the column is called: "earliest" is a departure time, "fastest" is a
+  # journey length, and nobody in a station says "sort key".
+  TripSort:
+    earliest: "Earliest"
+    cheapest: "Cheapest"
+    fastest: "Fastest"
 seat:
   class:
     standard: "Standard"

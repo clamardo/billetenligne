@@ -58,6 +58,35 @@ travel:
     onTime: "{rate} % à l'heure"
     offlineTitle: "Pas de réseau"
     offlineBody: "Les horaires ci-dessous datent de votre dernière connexion."
+    # Trier et filtrer (§6.1). Le tri réordonne, le filtre cache : deux
+    # gestes différents, deux commandes différentes, et le compteur ne
+    # compte que ce qui cache quelque chose.
+    filter: "Filtrer"
+    filterCount: "Filtrer · {count}"
+    clearFilters: "Effacer les filtres"
+    # La liste est vide parce que quelqu'un l'a réduite, pas parce que la
+    # route est vide. Proposer « voir demain » ici enverrait chercher un car
+    # ailleurs alors qu'il est juste derrière un filtre.
+    filteredEmptyTitle: "Aucun car ne correspond"
+    filteredEmptyBody: "Élargissez vos critères pour revoir les autres départs du jour."
+  # La feuille de filtres. Chaque section répond à une question qu'on se pose
+  # vraiment devant un guichet — quelle compagnie, à quelle heure, jusqu'à
+  # combien — et jamais à une colonne de la base.
+  filter:
+    title: "Filtrer"
+    operator: "Compagnie"
+    anyOperator: "Toutes"
+    window: "Heure de départ"
+    anyTime: "À toute heure"
+    morning: "Matin"
+    afternoon: "Après-midi"
+    evening: "Soir"
+    price: "Prix maximum"
+    anyPrice: "Sans limite"
+    upTo: "Jusqu'à {amount}"
+    apply: "Voir les cars"
+    clear: "Tout effacer"
+
   # Le car est complet. On propose d'etre prevenu, et le vocabulaire est
   # choisi avec soin : « remise en vente », jamais « place reservee ». Rien
   # n'est garde, tout le monde est prevenu au meme instant, le premier qui

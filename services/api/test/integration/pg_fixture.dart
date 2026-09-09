@@ -2204,6 +2204,7 @@ final class PgFixture {
     required int daysAhead,
     required int localHour,
     int fareMinor = 12000,
+    int durationHours = 8,
   }) async {
     final created = await _seed.execute(
       Sql.named('''
@@ -2216,7 +2217,7 @@ final class PgFixture {
              + make_interval(hours => @hour)) AT TIME ZONE @tz),
            ((((now() AT TIME ZONE @tz)::date + make_interval(days => @days))
              + make_interval(hours => @hour)) AT TIME ZONE @tz)
-             + INTERVAL '8 hours',
+             + make_interval(hours => @hours),
            @capacity, @fare, 'XAF',
            int4range(0, 1 + (SELECT count(*)::int FROM route_stops rs
                               WHERE rs.route_id = @route)))
@@ -2229,6 +2230,7 @@ final class PgFixture {
         'tz': TypedValue(Type.text, timeZone),
         'days': TypedValue(Type.integer, daysAhead),
         'hour': TypedValue(Type.integer, localHour),
+        'hours': TypedValue(Type.integer, durationHours),
         'capacity': TypedValue(Type.integer, seatLabels.length),
         'fare': TypedValue(Type.bigInteger, fareMinor),
       },

@@ -199,6 +199,13 @@ final class ErrorCode {
   static const departureCancelIsADisruption =
       'departure.cancel_is_a_disruption';
 
+  /// A cursor minted under one order, presented under another (§6.2).
+  ///
+  /// Refused rather than silently re-sorted: a keyset is defined against an
+  /// order, so re-sorting produces duplicate and missing rows across a page
+  /// boundary — which reads to everybody as the inventory being wrong.
+  static const searchCursorSortChanged = 'travel.search_cursor_sort_changed';
+
   // One per [ActivationBlock] value (`bel_platform`). Activation is refused
   // with the *specific* precondition named, because a bare "refusé" on a
   // reviewer's screen is a support call — and the reviewer is the only person

@@ -32,6 +32,9 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
   @override
   Future<List<DepartureRow>> search(DepartureQuery query) =>
       _db.transaction(const DbScope.anonymous(), (tx) async {
+        final order = _order(query.sort);
+        final keyset = _keyset(query.sort);
+
         // The availability count is computed in the same statement rather than
         // in a second round trip: a search on 2G that needs two requests is a
         // screen that visibly stalls, and the count is a rendering hint anyway
@@ -196,15 +199,42 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
                AND o.sales_blocked_at IS NULL
                AND (@operator::uuid IS NULL OR d.operator_id = @operator::uuid)
                AND (@mode::text IS NULL OR d.mode = @mode::text)
+               -- The traveller's own three filters (§6.1). Each narrows what
+               -- is *offered*; none of them touches availability, because a
+               -- filter that hid the full 06:00 would delete the fact that
+               -- makes somebody take the 05:30.
+               --
+               -- The window is read in the market's zone off the **boarding**
+               -- instant, so "something in the morning" means morning in the
+               -- town they are standing in rather than morning at the far end
+               -- of the road.
+               AND (@fromHour::int IS NULL
+                    OR EXTRACT(HOUR FROM ((d.departs_at + make_interval(
+                         mins => COALESCE(leg.from_offset, 0)))
+                       AT TIME ZONE @tz)) >= @fromHour::int)
+               AND (@toHour::int IS NULL
+                    OR EXTRACT(HOUR FROM ((d.departs_at + make_interval(
+                         mins => COALESCE(leg.from_offset, 0)))
+                       AT TIME ZONE @tz)) < @toHour::int)
+               -- The operator's price for the piece of road asked for, which
+               -- is the number on the row. Never the total: the service fee
+               -- is a market fact and this statement does not know it.
+               AND (@maxFare::bigint IS NULL
+                    OR COALESCE(leg.fare_minor, d.fare_minor)
+                       <= @maxFare::bigint)
                -- Everything strictly after the last row of the previous
                -- page. A row comparison rather than two ORs, so the index on
                -- `(departs_at, id)` is usable and the tie between two
                -- companies running the same 06:00 is broken the same way the
                -- ORDER BY breaks it.
-               AND (@afterAt::timestamptz IS NULL
-                    OR (d.departs_at + make_interval(
-                          mins => COALESCE(leg.from_offset, 0)), d.id)
-                       > (@afterAt::timestamptz, @afterId::uuid))
+               --
+               -- Interpolated from the sort rather than parameterised,
+               -- because the *shape* of the comparison changes with the
+               -- order and a tuple's arity is not a bind parameter. The
+               -- string comes from a `TripSort` and from nowhere else — an
+               -- enum the wire is parsed into — so no request reaches this
+               -- statement as SQL.
+               AND (@afterAt::timestamptz IS NULL OR $keyset)
              GROUP BY d.id, o.trading_name, o.legal_name, o.accent_hue,
                       o.logo_asset, o.on_time_rate, r.origin_city,
                       r.destination_city, r.duration_minutes, os.id, ds.id,
@@ -214,8 +244,7 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
              -- The id is part of the order, not decoration: without it two
              -- coaches leaving at the same minute have no defined order, and
              -- a keyset cursor over an undefined order skips rows.
-             ORDER BY d.departs_at + make_interval(
-                        mins => COALESCE(leg.from_offset, 0)), d.id
+             ORDER BY $order
              LIMIT @limit
           '''),
           parameters: {
@@ -227,12 +256,71 @@ final class PostgresDepartureCatalogue implements DepartureCatalogue {
             'mode': TypedValue(Type.text, query.mode),
             'afterAt': TypedValue(Type.timestampTz, query.after?.departsAt),
             'afterId': TypedValue(Type.uuid, query.after?.id),
+            // Only where the keyset mentions it. `earliest` orders on the two
+            // keys every cursor already carries, so its SQL never names
+            // `@afterValue` — and postgres refuses a bound parameter the
+            // statement does not use. The condition is the same enum the
+            // keyset is built from, so the two cannot drift apart.
+            if (query.sort.needsValue)
+              'afterValue': TypedValue(Type.bigInteger, query.after?.value),
+            'fromHour': TypedValue(Type.integer, query.departFromHour),
+            'toHour': TypedValue(Type.integer, query.departToHour),
+            'maxFare': TypedValue(Type.bigInteger, query.maxFareMinor),
             'limit': TypedValue(Type.integer, query.limit),
           },
         );
 
         return [for (final row in rows) _toRow(row.toColumnMap())];
       });
+
+  /// The boarding instant for the leg actually asked for. Written once here
+  /// because the WHERE, the ORDER BY and the keyset all have to agree about
+  /// it, and three copies of it drifting apart is how a keyset starts
+  /// skipping rows.
+  static const _departs =
+      'd.departs_at + make_interval(mins => COALESCE(leg.from_offset, 0))';
+
+  static const _arrives =
+      'CASE WHEN leg.to_offset IS NULL THEN d.arrives_at '
+      'ELSE d.departs_at + make_interval(mins => leg.to_offset) END';
+
+  static const _fare = 'COALESCE(leg.fare_minor, d.fare_minor)';
+
+  /// How long the traveller is on the coach, in seconds. Seconds rather than
+  /// minutes so two roads a hundred seconds apart do not tie and fall back to
+  /// the departure time — which would be an order the cursor's `value` cannot
+  /// reproduce.
+  ///
+  /// `FLOOR` before the cast, and it is load-bearing: a numeric cast to
+  /// `bigint` in Postgres **rounds**, and Dart's `Duration.inSeconds`
+  /// truncates. On a road whose length has a fractional second the two would
+  /// disagree by one, and the cursor built from the Dart side would land the
+  /// next page one row into the wrong place.
+  static const _duration =
+      'FLOOR(EXTRACT(EPOCH FROM (($_arrives) - ($_departs))))::bigint';
+
+  /// The full order for a sort, ending in `(departs, id)` so that every one of
+  /// them is total. Without the id two coaches leaving at the same minute have
+  /// no defined order, and a keyset over an undefined order skips rows.
+  static String _order(TripSort sort) => switch (sort) {
+    TripSort.earliest => '$_departs, d.id',
+    TripSort.cheapest => '$_fare, $_departs, d.id',
+    TripSort.fastest => '$_duration, $_departs, d.id',
+  };
+
+  /// The same tuple, compared against the cursor. Arity changes with the
+  /// sort, which is why this is interpolated rather than bound — and why the
+  /// only source of the string is a `TripSort`.
+  static String _keyset(TripSort sort) => switch (sort) {
+    TripSort.earliest =>
+      '($_departs, d.id) > (@afterAt::timestamptz, @afterId::uuid)',
+    TripSort.cheapest =>
+      '($_fare, $_departs, d.id) > '
+          '(@afterValue::bigint, @afterAt::timestamptz, @afterId::uuid)',
+    TripSort.fastest =>
+      '($_duration, $_departs, d.id) > '
+          '(@afterValue::bigint, @afterAt::timestamptz, @afterId::uuid)',
+  };
 
   DepartureRow _toRow(Map<String, dynamic> r) {
     final currency =

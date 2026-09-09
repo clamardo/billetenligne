@@ -83,6 +83,13 @@ enum:
     technical_inspection: "visite technique"
     rccm: "registre du commerce"
     tax_id: "identifiant fiscal"
+  # §6.1. Trois, et les libellés sont ce qu'un voyageur dirait plutôt que le
+  # nom de la colonne : « au plus tôt » est une heure de départ, « le plus
+  # rapide » est une durée, et personne dans une gare ne dit « clé de tri ».
+  TripSort:
+    earliest: "Au plus tôt"
+    cheapest: "Le moins cher"
+    fastest: "Le plus rapide"
 seat:
   class:
     standard: "Standard"
