@@ -21,8 +21,17 @@ PORT="${BEL_API_PORT:-8080}"
 
 red() { printf '\033[31m%s\033[0m\n' "$*"; }
 
-ENV_FILE="$HERE/infra/dev/.env"
-[[ -f "$ENV_FILE" ]] || ENV_FILE="$HERE/infra/dev/.env.example"
+# A second stack — a different Postgres on a different port, say — is a
+# different env file, not a pile of exports: `set -a; source` below assigns
+# unconditionally, so anything exported into this script is overwritten by the
+# file and the override silently does nothing.
+if [[ -n "${BEL_ENV_FILE:-}" ]]; then
+  ENV_FILE="$BEL_ENV_FILE"
+  [[ -f "$ENV_FILE" ]] || { red "BEL_ENV_FILE does not exist: $ENV_FILE"; exit 1; }
+else
+  ENV_FILE="$HERE/infra/dev/.env"
+  [[ -f "$ENV_FILE" ]] || ENV_FILE="$HERE/infra/dev/.env.example"
+fi
 
 # `set -a` exports everything the file assigns; the file is shell-shaped on
 # purpose, which is also why it is sourced rather than parsed.

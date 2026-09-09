@@ -13,7 +13,7 @@
 # Test runs:  BEL_TEST_RUN=true docker compose --profile test up
 # Lean mode:  docker compose up postgres firebase-auth   (domain work needs neither)
 
-name: billetenligne-dev
+name: ${BEL_DEV_PROJECT:-billetenligne-dev}
 
 services:
   # ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ services:
       # app role must NOT be a superuser — superusers bypass RLS silently.
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
     ports:
-      - "5432:5432"
+      - "${BEL_DEV_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./seed/00-roles.sql:/docker-entrypoint-initdb.d/00-roles.sql:ro
@@ -50,7 +50,7 @@ services:
       POSTGRES_PASSWORD: bel
       POSTGRES_DB: billetenligne_test
     ports:
-      - "5433:5432"
+      - "${BEL_DEV_TEST_PORT:-5433}:5432"
     tmpfs:
       - /var/lib/postgresql/data
     healthcheck:
@@ -88,12 +88,12 @@ services:
         --project ${FIREBASE_PROJECT_ID:-demo-billetenligne}
         ${FIREBASE_PERSISTENCE:---import /home/node/firebase-data/data --export-on-exit /home/node/firebase-data/data}
     ports:
-      - "9099:9099"   # auth
-      - "4000:4000"   # emulator UI
-      - "4400:4400"   # hub
+      - "${BEL_DEV_FIREBASE_PORT:-9099}:9099"   # auth
+      - "${BEL_DEV_FIREBASE_UI_PORT:-4000}:4000"   # emulator UI
+      - "${BEL_DEV_FIREBASE_HUB_PORT:-4400}:4400"   # hub
     volumes:
       - ./firebase.json:/home/node/firebase.json:ro
-      - ./firebase-data:/home/node/firebase-data
+      - ${BEL_DEV_FIREBASE_DATA:-./firebase-data}:/home/node/firebase-data
     healthcheck:
       # Node, because this image ships neither wget nor curl — and a
       # healthcheck whose tool is missing reports `unhealthy` forever, which
@@ -121,9 +121,9 @@ services:
     restart: unless-stopped
     command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --location /data
     ports:
-      - "10000:10000"   # blob
-      - "10001:10001"   # queue
-      - "10002:10002"   # table
+      - "${BEL_DEV_BLOB_PORT:-10000}:10000"   # blob
+      - "${BEL_DEV_QUEUE_PORT:-10001}:10001"   # queue
+      - "${BEL_DEV_TABLE_PORT:-10002}:10002"   # table
     volumes:
       - azurite-data:/data
     healthcheck:
@@ -147,8 +147,8 @@ services:
     image: axllent/mailpit:latest
     restart: unless-stopped
     ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # web UI
+      - "${BEL_DEV_SMTP_PORT:-1025}:1025"   # SMTP
+      - "${BEL_DEV_MAILPIT_UI_PORT:-8025}:8025"   # web UI
     environment:
       MP_MAX_MESSAGES: 500
       MP_SMTP_AUTH_ACCEPT_ANY: 1

@@ -11,6 +11,11 @@ docker compose up -d --wait    # --wait, so the next line does not race the data
 
 That is the whole setup. No cloud credentials, no network required (ADR-0020).
 
+**Something else already on 5432?** Every host port here is `${VAR:-default}`
+and the compose project name is `BEL_DEV_PROJECT`, so a second stack with its
+own volume is three exports rather than an edited file. The recipe, and the
+three ways it fails silently, are in `.claude/skills/run-local-stack/SKILL.md`.
+
 **In VS Code, none of the above is typed.** `.vscode/launch.json` carries the
 whole thing: press **Everything (API + worker + traveller)** and the compose
 stack, the migrations, the demo world, the route table, the server, the drain

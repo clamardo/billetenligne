@@ -8,6 +8,8 @@ build/
 
 # Local dev secrets and emulator state (ADR-0020)
 infra/dev/.env
+infra/dev/.env.*
+!infra/dev/.env.example
 infra/dev/firebase-data/data/*
 !infra/dev/firebase-data/data/.gitignore
 
