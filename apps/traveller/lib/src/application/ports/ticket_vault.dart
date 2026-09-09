@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:bel_contracts/bel_contracts.dart';
 
 /// Where a ticket lives between one launch of the app and the next.
@@ -34,6 +36,27 @@ abstract interface class TicketVault {
   /// keep a refunded ticket renderable forever.
   Future<void> write(String userId, List<BookingDto> bookings);
 
+  /// The company's mark, as bytes, or null when this handset has never
+  /// managed to fetch it.
+  ///
+  /// Keyed by URL rather than by company: the URL is what changes when an
+  /// operator uploads a new mark, and keying on it means the old bytes are
+  /// never served for the new logo. What keeps that from growing without
+  /// bound is [keepLogos].
+  Future<Uint8List?> logo(String url);
+
+  /// Stores the bytes of one mark. Called at issue — while there is a
+  /// connection — never while a ticket is being drawn (ADR-0003).
+  Future<void> putLogo(String url, List<int> bytes);
+
+  /// Drops every stored mark not in [urls].
+  ///
+  /// The whole reason logos are bounded. A traveller who flies the same road
+  /// for a year through a company that redesigns its mark twice would
+  /// otherwise carry three copies of it forever, on a handset where the
+  /// ticket file is meant to be small enough that nothing ever reclaims it.
+  Future<void> keepLogos(Set<String> urls);
+
   /// Forgets everything, for every traveller. Called on sign-out.
   Future<void> clear();
 }
@@ -51,6 +74,15 @@ final class NoTicketVault implements TicketVault {
 
   @override
   Future<void> write(String userId, List<BookingDto> bookings) async {}
+
+  @override
+  Future<Uint8List?> logo(String url) async => null;
+
+  @override
+  Future<void> putLogo(String url, List<int> bytes) async {}
+
+  @override
+  Future<void> keepLogos(Set<String> urls) async {}
 
   @override
   Future<void> clear() async {}

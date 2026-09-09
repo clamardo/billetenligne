@@ -411,6 +411,18 @@ final class _ScriptedGateway implements TravelGateway {
     return journeyResult;
   }
 
+  /// The bytes a mark's URL answers with, and the URLs that were asked for.
+  /// Null — nothing there — is the ordinary case and the one the ticket has
+  /// to survive.
+  List<int>? logoBytes;
+  final logoCalls = <String>[];
+
+  @override
+  Future<List<int>?> operatorLogo(String url) async {
+    logoCalls.add(url);
+    return logoBytes;
+  }
+
   // ── The passenger's own choice ────────────────────────────────────────────
 
   /// What the choice screen will find, and what the tap returns. Both

@@ -316,6 +316,11 @@ final class Services {
   static String? Function(String)? _logoUrlFrom(ObjectStore storage) =>
       storage.isConfigured ? (key) => storage.publicUrl(key).toString() : null;
 
+  /// The same rule, for a caller holding a key that may be null — a ticket,
+  /// where the great majority of bookings carry no mark at all.
+  String? logoUrlFor(String? assetKey) =>
+      assetKey == null ? null : _logoUrlFrom(storage)?.call(assetKey);
+
   final PaymentStore payments;
   final PayForBooking payForBooking;
 

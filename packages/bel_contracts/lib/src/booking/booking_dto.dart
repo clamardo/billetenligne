@@ -169,6 +169,7 @@ final class BookingDto {
     this.originStation,
     this.destinationStation,
     this.operatorAccentHue,
+    this.operatorLogoUrl,
   });
 
   final String id;
@@ -184,6 +185,17 @@ final class BookingDto {
   /// case for an operator who has never opened the vitrine, and the ticket
   /// draws in the house colour rather than guessing one.
   final String? operatorAccentHue;
+
+  /// Where the company's mark can be fetched, already resolved (J10).
+  ///
+  /// A URL rather than a storage key, for the reason every other surface
+  /// carries one: where a file lives is a fact about the deployment, and a
+  /// client that built the URL would break on a storage migration. Null for
+  /// a company that never uploaded a mark — and for every booking issued
+  /// before this field existed, which is why nothing on the ticket depends
+  /// on it.
+  final String? operatorLogoUrl;
+
   final String originCity;
   final String destinationCity;
 
@@ -245,6 +257,7 @@ final class BookingDto {
     'departureId': departureId,
     'operatorName': operatorName,
     'operatorAccentHue': operatorAccentHue,
+    'operatorLogoUrl': operatorLogoUrl,
     'originCity': originCity,
     'destinationCity': destinationCity,
     'departsAt': Wire.instant(departsAt),
@@ -273,6 +286,7 @@ final class BookingDto {
     departureId: Wire.requireString(json['departureId'], 'departureId'),
     operatorName: Wire.requireString(json['operatorName'], 'operatorName'),
     operatorAccentHue: json['operatorAccentHue'] as String?,
+    operatorLogoUrl: json['operatorLogoUrl'] as String?,
     originCity: Wire.requireString(json['originCity'], 'originCity'),
     destinationCity: Wire.requireString(
       json['destinationCity'],

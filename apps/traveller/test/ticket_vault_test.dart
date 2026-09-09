@@ -2,6 +2,7 @@
 library;
 
 import 'dart:ffi';
+import 'dart:typed_data';
 import 'dart:io';
 
 import 'package:bel_contracts/bel_contracts.dart';
@@ -132,5 +133,71 @@ void main() {
     // A traveller whose last booking was refunded holds no tickets, and the
     // handset has to agree with that.
     expect(await vault.read('user-1'), isEmpty);
+  });
+
+  group('the company mark that travels with the ticket', () {
+    // Not a real PNG. Nothing here decodes them — the vault stores bytes and
+    // the widget decides what to do with what it gets — so a recognisable
+    // pattern makes a failure readable.
+    Uint8List mark(int seed, {int length = 64}) =>
+        Uint8List.fromList(List.filled(length, seed));
+
+    test('what was stored is what comes back', () async {
+      await vault.putLogo('https://cdn/odn.png', mark(7));
+
+      expect(await vault.logo('https://cdn/odn.png'), mark(7));
+      // A mark this handset never managed to fetch is null, not an empty
+      // list: the ticket draws its band and its name instead.
+      expect(await vault.logo('https://cdn/never.png'), isNull);
+    });
+
+    test('a new mark at the same URL replaces the old bytes', () async {
+      await vault.putLogo('https://cdn/odn.png', mark(1));
+      await vault.putLogo('https://cdn/odn.png', mark(2));
+
+      expect(await vault.logo('https://cdn/odn.png'), mark(2));
+    });
+
+    test(
+      'a company that redesigns its mark does not cost two copies',
+      () async {
+        await vault.putLogo('https://cdn/odn-v1.png', mark(1));
+        await vault.putLogo('https://cdn/odn-v2.png', mark(2));
+
+        // The tickets now name only the new one. The old bytes are nobody's.
+        await vault.keepLogos({'https://cdn/odn-v2.png'});
+
+        expect(await vault.logo('https://cdn/odn-v1.png'), isNull);
+        expect(await vault.logo('https://cdn/odn-v2.png'), mark(2));
+      },
+    );
+
+    test('a traveller holding no marked tickets holds no marks', () async {
+      await vault.putLogo('https://cdn/odn.png', mark(1));
+
+      await vault.keepLogos(const {});
+
+      expect(await vault.logo('https://cdn/odn.png'), isNull);
+    });
+
+    test('an oversized file is refused rather than kept', () async {
+      // What answers a URL is whatever answers it. A misconfigured CDN
+      // handing back a 4 MB original must not end up in the file that has to
+      // survive on a full handset.
+      await vault.putLogo(
+        'https://cdn/huge.png',
+        mark(3, length: SqliteTicketVault.maxLogoBytes + 1),
+      );
+
+      expect(await vault.logo('https://cdn/huge.png'), isNull);
+    });
+
+    test('signing out forgets the marks too', () async {
+      await vault.putLogo('https://cdn/odn.png', mark(1));
+
+      await vault.clear();
+
+      expect(await vault.logo('https://cdn/odn.png'), isNull);
+    });
   });
 }

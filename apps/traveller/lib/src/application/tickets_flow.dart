@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:bel_client/bel_client.dart';
 import 'package:bel_contracts/bel_contracts.dart';
@@ -45,6 +46,7 @@ final class ViewingTicket extends TicketsStep {
     required this.booking,
     required this.seatIndex,
     this.journey,
+    this.logo,
   });
 
   final BookingDto booking;
@@ -62,6 +64,16 @@ final class ViewingTicket extends TicketsStep {
   /// coach door (ADR-0003). This step is emitted without it and re-emitted
   /// with it.
   final TripJourneyDto? journey;
+
+  /// The company's mark, from the handset's own vault (J10).
+  ///
+  /// **Read, never fetched.** The bytes were stored when the ticket list was
+  /// last refreshed, so this screen reaches disk and not the network — the
+  /// one rule the ticket screen has (ADR-0003). Null on a booking issued
+  /// before marks travelled, on a company that has none, and on a handset
+  /// that never had a connection long enough to keep one: all three draw the
+  /// monogram, and none of them is an error.
+  final Uint8List? logo;
 
   List<TicketDto> get tickets => booking.tickets;
 
@@ -344,6 +356,10 @@ final class TicketsFlow {
       // error path below.
       if (_userId case final id?) {
         unawaited(_vault.write(id, _cached));
+        // The marks, while there is a connection to fetch them with. Not
+        // awaited: the tickets are on the screen either way, and a logo is
+        // never worth a spinner.
+        unawaited(_cacheLogos());
       }
       if (!silent) _emit(_ready());
     } on ApiFailure catch (failure) {
@@ -356,6 +372,28 @@ final class TicketsFlow {
         _emit(TicketsFailed(failure));
       }
     }
+  }
+
+  /// Keeps the handset's copy of every mark its tickets point at (J10).
+  ///
+  /// Fetched only for a URL not already held, so an unchanged logo costs
+  /// nothing on every refresh, and pruned to exactly the set the current
+  /// tickets name — which is what keeps the vault bounded when a company
+  /// redesigns its mark.
+  Future<void> _cacheLogos() async {
+    final urls = {
+      for (final booking in _cached)
+        if (booking.operatorLogoUrl case final url?) url,
+    };
+
+    for (final url in urls) {
+      if (await _vault.logo(url) != null) continue;
+      final bytes = await _gateway.operatorLogo(url);
+      if (bytes == null) continue;
+      await _vault.putLogo(url, bytes);
+    }
+
+    await _vault.keepLogos(urls);
   }
 
   TicketsReady _ready({bool stale = false}) {
@@ -383,7 +421,33 @@ final class TicketsFlow {
   void open(BookingDto booking, {int seatIndex = 0}) {
     if (booking.tickets.isEmpty) return;
     _emit(ViewingTicket(booking: booking, seatIndex: seatIndex));
+    unawaited(_loadLogo(booking));
     unawaited(_loadJourney(booking));
+  }
+
+  /// The company's mark, off the handset's own disk.
+  ///
+  /// Not awaited by [open] for the same reason the journey is not: the QR is
+  /// what somebody opened this screen for, and it is drawn from what the
+  /// booking already carries. A vault read is milliseconds — but it is still
+  /// a read, and the ticket does not wait on one.
+  Future<void> _loadLogo(BookingDto booking) async {
+    final url = booking.operatorLogoUrl;
+    if (url == null) return;
+
+    final bytes = await _vault.logo(url);
+    if (bytes == null) return;
+
+    final current = _step;
+    if (current is! ViewingTicket || current.booking.ref != booking.ref) return;
+    _emit(
+      ViewingTicket(
+        booking: current.booking,
+        seatIndex: current.seatIndex,
+        journey: current.journey,
+        logo: bytes,
+      ),
+    );
   }
 
   /// Where the coach is, fetched behind the ticket that is already on screen.
@@ -417,6 +481,7 @@ final class TicketsFlow {
         booking: current.booking,
         seatIndex: current.seatIndex,
         journey: journey,
+        logo: current.logo,
       ),
     );
   }
@@ -445,9 +510,10 @@ final class TicketsFlow {
         booking: current.booking,
         seatIndex: (index % count + count) % count,
         // Carried across. Moving between two passengers on one booking is not
-        // a new journey, and refetching it would blank the road for a second
-        // every time somebody swipes.
+        // a new journey, and refetching it would blank the road — and the
+        // company's mark — for a second every time somebody swipes.
         journey: current.journey,
+        logo: current.logo,
       ),
     );
   }

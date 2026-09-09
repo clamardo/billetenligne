@@ -908,6 +908,11 @@ final class DemoTravelGateway implements TravelGateway {
     );
   }
 
+  /// The demo ships no files, so there is nothing to fetch. Every ticket in
+  /// it draws its monogram, which is the ordinary case in the product too.
+  @override
+  Future<List<int>?> operatorLogo(String url) async => null;
+
   @override
   Future<CancellationDoneDto> cancelBooking(String bookingRef) async {
     final booking = _byRef(bookingRef);

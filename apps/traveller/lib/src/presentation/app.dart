@@ -567,7 +567,12 @@ class _FunnelState extends State<_Funnel> {
         cityNames: {for (final c in _flow.cities) c.code: c.name},
       ),
 
-      ViewingTicket(:final booking, :final seatIndex, :final journey) =>
+      ViewingTicket(
+        :final booking,
+        :final seatIndex,
+        :final journey,
+        :final logo,
+      ) =>
         switch (step.ticket) {
           // A booking with no ticket cannot reach this step — the flow refuses
           // to open one — so this arm is the type system's, not a state.
@@ -577,6 +582,7 @@ class _FunnelState extends State<_Funnel> {
             ticket: ticket,
             seatIndex: seatIndex,
             journey: journey,
+            logo: logo,
             clock: widget.clock,
             onSeat: widget.tickets.showSeat,
             onClose: widget.tickets.closeTicket,

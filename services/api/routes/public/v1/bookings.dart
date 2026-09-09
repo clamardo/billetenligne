@@ -55,7 +55,9 @@ Future<Response> _list(
   final bookings = await services.bookings.forTraveller(principal.userId);
   return Response.json(
     body: {
-      'items': [for (final b in bookings) _toDto(b).toJson()],
+      'items': [
+        for (final b in bookings) _toDto(b, services.logoUrlFor).toJson(),
+      ],
     },
     headers: {
       BelHeaders.traceId: trace,
@@ -118,7 +120,7 @@ Future<Response> _create(
     Ok(:final value) => await _complete(
       idempotency,
       key,
-      _toDto(value).toJson(),
+      _toDto(value, services.logoUrlFor).toJson(),
       trace,
     ),
     Err(:final ReserveBookingFailure failure) => await _fail(
@@ -163,13 +165,20 @@ Future<Response> _fail(
   return _error(Problem.statusFor(error.code), error, trace);
 }
 
-BookingDto _toDto(BookingRecord record) => BookingDto(
+/// [logoUrl] resolves the company's stored key into something a handset can
+/// fetch. Passed in rather than read here, because *where a file lives* is a
+/// fact about the deployment and a route is not where that belongs.
+BookingDto _toDto(
+  BookingRecord record,
+  String? Function(String?) logoUrl,
+) => BookingDto(
   id: record.id,
   ref: record.ref.display,
   state: record.state,
   departureId: record.departureId,
   operatorName: record.trip.operatorName,
   operatorAccentHue: record.trip.operatorAccentHue,
+  operatorLogoUrl: logoUrl(record.trip.operatorLogoAsset),
   originCity: record.trip.originCity,
   destinationCity: record.trip.destinationCity,
   originStation: _station(record.trip.originStation),

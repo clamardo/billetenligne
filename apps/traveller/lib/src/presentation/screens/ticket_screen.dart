@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'dart:typed_data';
+
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_crypto/bel_crypto.dart';
 import 'package:bel_design/bel_design.dart';
@@ -38,6 +40,7 @@ final class TicketScreen extends StatefulWidget {
     this.onChoices,
     this.onShare,
     this.journey,
+    this.logo,
     this.clock = const SystemClock(),
     super.key,
   });
@@ -55,6 +58,14 @@ final class TicketScreen extends StatefulWidget {
   /// exactly as it always has and the road is simply absent. A ticket that
   /// waited on a request is not a ticket (ADR-0003).
   final TripJourneyDto? journey;
+
+  /// The company's mark, from the handset's own vault (J10).
+  ///
+  /// Bytes rather than a URL, and that is the point: this screen never
+  /// fetches. They were kept when the list was last refreshed, and a ticket
+  /// whose mark never downloaded draws exactly as it always has — the band is
+  /// already in the company's colour and already carries their name (§7.1).
+  final Uint8List? logo;
 
   /// Moves between the tickets of one booking. A family of four is one
   /// booking and four QRs, scanned in turn.
@@ -167,6 +178,20 @@ class _TicketScreenState extends State<TicketScreen> {
                   '${Format.time(booking.departsAt)}',
               footnote: booking.operatorName,
               accent: AccentHue.tryByName(booking.operatorAccentHue),
+              // Only when the bytes are actually here. A monogram on the band
+              // would be the company's initials in the company's own colour
+              // beside the company's name — three sayings of one thing, on
+              // the screen with the least room to spare.
+              trailing: widget.logo == null
+                  ? null
+                  : KOperatorMark(
+                      name: booking.operatorName,
+                      accent:
+                          AccentHue.tryByName(booking.operatorAccentHue) ??
+                          AccentHue.foret,
+                      bytes: widget.logo,
+                      size: 40,
+                    ),
             ),
 
             // Where to stand, above the QR rather than below it. This is the

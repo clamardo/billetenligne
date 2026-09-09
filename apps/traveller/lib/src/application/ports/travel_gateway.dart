@@ -125,6 +125,15 @@ abstract interface class TravelGateway {
   /// an error and must not reach the ticket screen as one.
   Future<TripJourneyDto?> tripJourney(String bookingRef);
 
+  /// The bytes of an operator's mark (J10).
+  ///
+  /// Fetched **at issue**, while the list is being refreshed and there is a
+  /// connection, so the ticket screen itself never reaches for the network
+  /// (ADR-0003). Null on anything that is not plainly an image — a refusal, a
+  /// timeout, a file too large — none of which is an error worth showing:
+  /// a ticket whose mark never downloaded is a ticket (§7.1).
+  Future<List<int>?> operatorLogo(String url);
+
   // ── Changing their mind ───────────────────────────────────────────────────
 
   /// What cancelling this booking would do (§8.2).

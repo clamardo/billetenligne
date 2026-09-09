@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../kilo_theme.dart';
@@ -25,6 +27,7 @@ final class KOperatorMark extends StatelessWidget {
     required this.name,
     required this.accent,
     this.logoUrl,
+    this.bytes,
     this.size = 32,
     super.key,
   });
@@ -38,6 +41,14 @@ final class KOperatorMark extends StatelessWidget {
   final AccentHue accent;
 
   final String? logoUrl;
+
+  /// The mark already on the handset, which outranks [logoUrl].
+  ///
+  /// The ticket passes these and never a URL: it is the one screen that must
+  /// draw with no network at all, so its mark comes off the device's own disk
+  /// or not at all (ADR-0003).
+  final Uint8List? bytes;
+
   final double size;
 
   @override
@@ -52,16 +63,34 @@ final class KOperatorMark extends StatelessWidget {
       filled: true,
     );
     final url = logoUrl;
+    final stored = bytes;
+
+    // A ground under the image, because a mark is usually drawn for white
+    // paper and this one is laid on a card, a coloured ticket band, or
+    // whatever a future surface is. Transparent artwork on a dark band
+    // disappears, and the company has not been recognised.
+    Widget ground(Widget child) =>
+        ColoredBox(color: const Color(0xFFFFFFFF), child: child);
 
     return Semantics(
       label: name,
-      image: url != null,
+      image: url != null || stored != null,
       child: SizedBox(
         width: size,
         height: size,
         child: ClipRRect(
           borderRadius: kilo.radius.controlBorder,
-          child: url == null
+          child: stored != null
+              ? ground(
+                  Image.memory(
+                    stored,
+                    width: size,
+                    height: size,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => fallback,
+                  ),
+                )
+              : url == null
               ? fallback
               : Image.network(
                   url,

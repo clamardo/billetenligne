@@ -165,10 +165,16 @@ final class TripSummary {
     this.originStation,
     this.destinationStation,
     this.operatorAccentHue,
+    this.operatorLogoAsset,
   });
 
   final String operatorName;
   final String operatorCode;
+
+  /// The company's stored logo key, when it has one. A key rather than a
+  /// URL: where a file can be fetched from is a fact about the deployment,
+  /// and the row knows none of it.
+  final String? operatorLogoAsset;
 
   /// The operator's chosen hue by name, from the closed set on
   /// `operators.accent_hue`. Carried so the ticket can be drawn in the

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:path_provider/path_provider.dart';
@@ -50,7 +51,26 @@ final class SqliteTicketVault implements TicketVault {
         PRIMARY KEY (user_id, ref)
       )
     ''');
+    // Not keyed by traveller. A mark belongs to the company, several people
+    // sharing a handset ride the same companies, and the bytes are the one
+    // thing here that is public on a poster — so the second person to sign in
+    // is spared a download rather than shown somebody else's ticket.
+    _db.execute('''
+      CREATE TABLE IF NOT EXISTS logos (
+        url      TEXT NOT NULL PRIMARY KEY,
+        bytes    BLOB NOT NULL,
+        saved_at INTEGER NOT NULL
+      )
+    ''');
   }
+
+  /// The largest mark this will keep, in bytes.
+  ///
+  /// The same 40 KB the upload route enforces (`asset.too_large`), asserted
+  /// again here because what arrives is whatever a URL answered with: a
+  /// misconfigured CDN handing back a 4 MB original must not put it in the
+  /// file that has to survive on a full handset.
+  static const maxLogoBytes = 40 * 1024;
 
   @override
   Future<List<BookingDto>> read(String userId) async {
@@ -120,9 +140,56 @@ final class SqliteTicketVault implements TicketVault {
   }
 
   @override
+  Future<Uint8List?> logo(String url) async {
+    try {
+      final rows = _db.select('SELECT bytes FROM logos WHERE url = ?', [url]);
+      if (rows.isEmpty) return null;
+      return rows.first['bytes'] as Uint8List;
+    } on Object {
+      // A mark that will not read is a ticket without a mark, which is a
+      // ticket (§7.1).
+      return null;
+    }
+  }
+
+  @override
+  Future<void> putLogo(String url, List<int> bytes) async {
+    if (bytes.isEmpty || bytes.length > maxLogoBytes) return;
+    try {
+      _db.execute(
+        'INSERT INTO logos (url, bytes, saved_at) VALUES (?, ?, ?) '
+        'ON CONFLICT(url) DO UPDATE SET bytes = excluded.bytes, '
+        'saved_at = excluded.saved_at',
+        [url, Uint8List.fromList(bytes), DateTime.now().millisecondsSinceEpoch],
+      );
+    } on Object {
+      // Not being able to keep a logo is not a failure to hold a ticket.
+    }
+  }
+
+  @override
+  Future<void> keepLogos(Set<String> urls) async {
+    try {
+      if (urls.isEmpty) {
+        _db.execute('DELETE FROM logos');
+        return;
+      }
+      // Parameterised rather than interpolated even here: the values come
+      // from a server response, and building SQL out of a response is a habit
+      // that is wrong the first time one of them contains a quote.
+      final holes = List.filled(urls.length, '?').join(',');
+      _db.execute('DELETE FROM logos WHERE url NOT IN ($holes)', [...urls]);
+    } on Object {
+      // Leaving a stale mark behind costs kilobytes. Throwing here would cost
+      // the write that has just stored the tickets.
+    }
+  }
+
+  @override
   Future<void> clear() async {
     try {
       _db.execute('DELETE FROM tickets');
+      _db.execute('DELETE FROM logos');
     } on Object {
       // Sign-out must not fail because a cache would not empty.
     }

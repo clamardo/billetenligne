@@ -100,6 +100,9 @@ final class ApiTravelGateway implements TravelGateway {
       _client.tripJourney(bookingRef);
 
   @override
+  Future<List<int>?> operatorLogo(String url) => _client.publicAsset(url);
+
+  @override
   Future<CancellationOfferDto> cancellationOffer(String bookingRef) =>
       _client.cancellationOffer(bookingRef);
 

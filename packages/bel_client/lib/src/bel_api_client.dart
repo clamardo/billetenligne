@@ -393,6 +393,38 @@ final class BelApiClient {
     }
   }
 
+  /// The bytes behind a public asset URL — an operator's mark, today (J10).
+  ///
+  /// Deliberately not one of the `_get` family: it carries **no bearer, no
+  /// idempotency key and no retries**, because the thing at the other end is
+  /// a file on a CDN and not our API. Sending the session token to whatever
+  /// host a stored URL names would be handing a credential to a third party
+  /// on the strength of a database column.
+  ///
+  /// Null on anything that is not a straightforward image: a refusal, a
+  /// timeout, a redirect to a login page, or a body over [maxAssetBytes].
+  /// Nothing here is worth an exception — the caller is caching a logo, and a
+  /// ticket without one is a ticket (§7.1).
+  Future<List<int>?> publicAsset(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme || !uri.isScheme('https')) return null;
+    try {
+      final response = await _http.get(uri).timeout(timeout);
+      if (response.statusCode != 200) return null;
+      final type = response.headers['content-type'] ?? '';
+      if (!type.startsWith('image/')) return null;
+      final bytes = response.bodyBytes;
+      return bytes.isEmpty || bytes.length > maxAssetBytes ? null : bytes;
+    } on Object {
+      return null;
+    }
+  }
+
+  /// The most this will hold in memory for one asset. The same 40 KB the
+  /// upload route enforces, asserted again because what answers a URL is
+  /// whatever answers it.
+  static const maxAssetBytes = 40 * 1024;
+
   Future<void> revokeTripShare(String bookingRef) => _send(
     'DELETE',
     '/public/v1/bookings/$bookingRef/share',

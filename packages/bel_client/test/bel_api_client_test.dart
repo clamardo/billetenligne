@@ -697,6 +697,71 @@ void main() {
     );
   });
 
+  group('fetching a public asset', () {
+    const png = (200, 'not-really-png', {'content-type': 'image/png'});
+
+    test('the bytes come back, with no credential attached', () async {
+      final transport = _ScriptedClient([png]);
+      final client = clientFor(transport, token: 'a-session-token');
+
+      final bytes = await client.publicAsset('https://cdn.example/logo.png');
+
+      expect(bytes, utf8.encode('not-really-png'));
+      // The thing at the other end is a file on a CDN, not our API. Sending
+      // the session token to whatever host a stored URL names would be
+      // handing a credential to a third party on the strength of a database
+      // column.
+      final sent = transport.requests.single;
+      expect(sent.headers.containsKey('authorization'), isFalse);
+      expect(sent.url, Uri.parse('https://cdn.example/logo.png'));
+    });
+
+    test('anything that is not plainly an image is nothing', () async {
+      // A refusal, a redirect to a sign-in page, an empty body, a URL that is
+      // not one. None of them is an error worth raising: the caller is
+      // caching a logo, and a ticket without one is a ticket.
+      for (final response in <Object>[
+        (404, '', <String, String>{}),
+        (200, '<html>sign in</html>', {'content-type': 'text/html'}),
+        (200, '', {'content-type': 'image/png'}),
+        const SocketishException(),
+      ]) {
+        final client = clientFor(_ScriptedClient([response]));
+        expect(
+          await client.publicAsset('https://cdn.example/logo.png'),
+          isNull,
+          reason: '$response',
+        );
+      }
+    });
+
+    test('a file over the budget is refused, not held', () async {
+      final client = clientFor(
+        _ScriptedClient([
+          (
+            200,
+            'x' * (BelApiClient.maxAssetBytes + 1),
+            {'content-type': 'image/png'},
+          ),
+        ]),
+      );
+
+      // What answers a URL is whatever answers it. A misconfigured CDN
+      // handing back a 4 MB original must not reach the file that has to
+      // survive on a full handset.
+      expect(await client.publicAsset('https://cdn.example/logo.png'), isNull);
+    });
+
+    test('an unencrypted URL is never fetched at all', () async {
+      final transport = _ScriptedClient([png]);
+      final client = clientFor(transport);
+
+      expect(await client.publicAsset('http://cdn.example/logo.png'), isNull);
+      expect(await client.publicAsset('nonsense'), isNull);
+      expect(transport.requests, isEmpty);
+    });
+  });
+
   group('idempotency keys', () {
     test('are unique across calls', () {
       final keys = {for (var i = 0; i < 1000; i++) IdempotencyKey.generate()};

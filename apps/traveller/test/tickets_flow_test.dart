@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:bel_client/bel_client.dart';
 import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_design/bel_design.dart';
@@ -38,12 +40,14 @@ BookingDto _booking({
   bool withTicket = true,
   int seats = 1,
   DateTime? voidedAt,
+  String? logoUrl,
 }) => BookingDto(
   id: id,
   ref: 'BEL-$id',
   state: state,
   departureId: 'dep-$id',
   operatorName: 'Ocean du Nord',
+  operatorLogoUrl: logoUrl,
   originCity: 'Brazzaville',
   destinationCity: 'Pointe-Noire',
   departsAt: departsAt,
@@ -268,6 +272,134 @@ void main() {
     });
   });
 
+  group('the company mark on the ticket', () {
+    Uint8List mark(int seed) => Uint8List.fromList(List.filled(32, seed));
+
+    test('the bytes are fetched once and kept', () async {
+      gateway.logoBytes = mark(1);
+      gateway.bookingsResult = [
+        _booking(
+          id: 'marked',
+          departsAt: now.add(const Duration(hours: 3)),
+          logoUrl: 'https://cdn/odn.png',
+        ),
+      ];
+
+      await flow.loadCachedThen('user-1');
+      await pumpEventQueue();
+
+      expect(vault.logos['https://cdn/odn.png'], mark(1));
+
+      // A second refresh with the same mark costs nothing: the URL changes
+      // when the file does, so what is already held is already right.
+      await flow.refresh();
+      await pumpEventQueue();
+
+      expect(gateway.logoCalls, ['https://cdn/odn.png']);
+    });
+
+    test('a cold start with no network still draws the mark', () async {
+      // Everything this test is about happened yesterday: the bytes are on
+      // the handset and the radio is off.
+      vault.rows['user-1'] = [
+        _booking(
+          id: 'marked',
+          departsAt: now.add(const Duration(hours: 3)),
+          logoUrl: 'https://cdn/odn.png',
+        ),
+      ];
+      vault.logos['https://cdn/odn.png'] = mark(2);
+      gateway.bookingsFailure = const NetworkUnreachable();
+
+      await flow.loadCachedThen('user-1');
+      final ready = flow.step as TicketsReady;
+      flow.open(ready.upcoming.single);
+      await pumpEventQueue();
+
+      expect((flow.step as ViewingTicket).logo, mark(2));
+      // And nothing went to the network for it. The ticket screen's one rule
+      // (ADR-0003) is not weakened by a logo.
+      expect(gateway.logoCalls, isEmpty);
+    });
+
+    test('a booking from before marks travelled opens without one', () async {
+      gateway.bookingsResult = [
+        _booking(id: 'plain', departsAt: now.add(const Duration(hours: 3))),
+      ];
+      await flow.loadCachedThen('user-1');
+      await pumpEventQueue();
+
+      flow.open((flow.step as TicketsReady).upcoming.single);
+      await pumpEventQueue();
+
+      // The band is already the company's colour and already carries their
+      // name. A ticket with no mark is a ticket (§7.1).
+      expect((flow.step as ViewingTicket).logo, isNull);
+      expect(gateway.logoCalls, isEmpty);
+    });
+
+    test('a mark that will not download is not an error', () async {
+      gateway.logoBytes = null;
+      gateway.bookingsResult = [
+        _booking(
+          id: 'marked',
+          departsAt: now.add(const Duration(hours: 3)),
+          logoUrl: 'https://cdn/odn.png',
+        ),
+      ];
+
+      await flow.loadCachedThen('user-1');
+      await pumpEventQueue();
+      flow.open((flow.step as TicketsReady).upcoming.single);
+      await pumpEventQueue();
+
+      expect(flow.step, isA<ViewingTicket>());
+      expect((flow.step as ViewingTicket).logo, isNull);
+      expect(vault.logos, isEmpty);
+    });
+
+    test('a mark nothing points at any more is dropped', () async {
+      vault.logos['https://cdn/old.png'] = mark(3);
+      gateway.logoBytes = mark(4);
+      gateway.bookingsResult = [
+        _booking(
+          id: 'marked',
+          departsAt: now.add(const Duration(hours: 3)),
+          logoUrl: 'https://cdn/new.png',
+        ),
+      ];
+
+      await flow.loadCachedThen('user-1');
+      await pumpEventQueue();
+
+      // What keeps the handset's file bounded when a company redesigns.
+      expect(vault.logos.keys, ['https://cdn/new.png']);
+    });
+
+    test('moving between passengers keeps the mark on screen', () async {
+      vault.logos['https://cdn/odn.png'] = mark(5);
+      gateway.bookingsResult = [
+        _booking(
+          id: 'family',
+          departsAt: now.add(const Duration(hours: 3)),
+          seats: 3,
+          logoUrl: 'https://cdn/odn.png',
+        ),
+      ];
+      await flow.loadCachedThen('user-1');
+      await pumpEventQueue();
+
+      flow.open((flow.step as TicketsReady).upcoming.single);
+      await pumpEventQueue();
+      flow.showSeat(1);
+
+      // Blanking the band for a second on every swipe would read as the
+      // ticket reloading, on the screen where that is the last thing anybody
+      // wants to see.
+      expect((flow.step as ViewingTicket).logo, mark(5));
+    });
+  });
+
   group('the list', () {
     test('puts the next departure first and history behind it', () async {
       gateway.bookingsResult = [
@@ -387,29 +519,32 @@ void main() {
     // The claim under test is never "the request was made". It is that the
     // ticket draws first and the road arrives behind it: a passenger at a
     // coach door in a dead zone must get the QR they came for.
-    test('the road arrives behind a ticket that is already on screen', () async {
-      final booking = _booking(
-        id: 'moving',
-        departsAt: now.subtract(const Duration(hours: 2)),
-      );
-      gateway.bookingsResult = [booking];
-      gateway.journeyResult = _journey(
-        departsAt: booking.departsAt,
-        arrivesAt: booking.arrivesAt,
-      );
-      await flow.load();
+    test(
+      'the road arrives behind a ticket that is already on screen',
+      () async {
+        final booking = _booking(
+          id: 'moving',
+          departsAt: now.subtract(const Duration(hours: 2)),
+        );
+        gateway.bookingsResult = [booking];
+        gateway.journeyResult = _journey(
+          departsAt: booking.departsAt,
+          arrivesAt: booking.arrivesAt,
+        );
+        await flow.load();
 
-      flow.open(booking);
+        flow.open(booking);
 
-      // Drawn before anything has been asked for. This is the assertion that
-      // keeps ADR-0003 true on the one screen it is about.
-      expect((flow.step as ViewingTicket).journey, isNull);
+        // Drawn before anything has been asked for. This is the assertion that
+        // keeps ADR-0003 true on the one screen it is about.
+        expect((flow.step as ViewingTicket).journey, isNull);
 
-      await pumpEventQueue();
+        await pumpEventQueue();
 
-      expect((flow.step as ViewingTicket).journey?.tier, 'checkpoint');
-      expect(gateway.journeyCalls, ['BEL-moving']);
-    });
+        expect((flow.step as ViewingTicket).journey?.tier, 'checkpoint');
+        expect(gateway.journeyCalls, ['BEL-moving']);
+      },
+    );
 
     test('no signal costs the passenger nothing but the road', () async {
       final booking = _booking(
@@ -486,6 +621,75 @@ void main() {
   });
 
   group('the ticket screen', () {
+    /// The smallest real PNG: one transparent pixel. A real file rather than
+    /// a pattern of bytes, because this is the one test where something
+    /// actually decodes it.
+    final onePixelPng = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk'
+      'YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    );
+
+    testWidgets('draws the company mark when the handset has it', (
+      tester,
+    ) async {
+      final catalog = await loadTestCatalog();
+      final booking = _booking(
+        id: 'marked',
+        departsAt: now.add(const Duration(hours: 2)),
+        logoUrl: 'https://cdn/odn.png',
+      );
+
+      await tester.pumpWidget(
+        Localized(
+          catalog: catalog,
+          child: MaterialApp(
+            theme: KiloTheme.materialTheme(),
+            home: TicketScreen(
+              booking: booking,
+              ticket: booking.tickets.single,
+              seatIndex: 0,
+              onClose: () {},
+              logo: onePixelPng,
+              clock: clock,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(KOperatorMark), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('and draws no mark when it does not', (tester) async {
+      final catalog = await loadTestCatalog();
+      final booking = _booking(
+        id: 'plain',
+        departsAt: now.add(const Duration(hours: 2)),
+      );
+
+      await tester.pumpWidget(
+        Localized(
+          catalog: catalog,
+          child: MaterialApp(
+            theme: KiloTheme.materialTheme(),
+            home: TicketScreen(
+              booking: booking,
+              ticket: booking.tickets.single,
+              seatIndex: 0,
+              onClose: () {},
+              clock: clock,
+            ),
+          ),
+        ),
+      );
+
+      // Not a monogram: on the band it would be the company's initials in
+      // the company's colour beside the company's name. The QR is what this
+      // screen is for.
+      expect(find.byType(KOperatorMark), findsNothing);
+      expect(find.byType(QrImageView), findsOneWidget);
+    });
+
     testWidgets('renders the QR and a live six-digit code', (tester) async {
       final catalog = await loadTestCatalog();
       final booking = _booking(
@@ -2514,6 +2718,7 @@ final class _MapVault implements TicketVault {
   final rows = <String, List<BookingDto>>{};
   final reads = <String>[];
   final writes = <String>[];
+  final logos = <String, Uint8List>{};
   bool failReads = false;
 
   @override
@@ -2530,5 +2735,20 @@ final class _MapVault implements TicketVault {
   }
 
   @override
-  Future<void> clear() async => rows.clear();
+  Future<Uint8List?> logo(String url) async => logos[url];
+
+  @override
+  Future<void> putLogo(String url, List<int> bytes) async {
+    logos[url] = Uint8List.fromList(bytes);
+  }
+
+  @override
+  Future<void> keepLogos(Set<String> urls) async =>
+      logos.removeWhere((url, _) => !urls.contains(url));
+
+  @override
+  Future<void> clear() async {
+    rows.clear();
+    logos.clear();
+  }
 }
