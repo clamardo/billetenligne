@@ -315,6 +315,14 @@ verified collection account although `03-operator-lifecycle.md` §1 says it does
 that is specified and unenforced — and **J13**, because "suspension honours issued tickets" is a
 sentence rather than a schema guarantee.
 
+**The browser is not a fallback surface**, and [ADR-0033](adr/0033-the-web-traveller-surface.md)
+says so: a phone that cannot take a 15 MB install is the phone a large share of this market
+carries, so for that person the web *is* the product. It carries the whole journey — search
+through ticket — and it is **server-rendered by extending `infrastructure/web/`** rather than a
+Flutter web build, because a ~2 MB canvas engine billed to a metered bundle is precisely the
+download those users cannot afford. The layer it extends already renders the hardest screen: the
+boarding pass, whole, QR inline, no JavaScript at all.
+
 It is *recommended rather than phased* for the same reason data residency is: nothing in Phases
 1–6 is blocked by it, and the first operator who is not us will meet all seven gaps in their first
 week.

@@ -68,7 +68,7 @@ And the seven things this document exists for:
 | The passenger on the coach watches it move | ⬜ **not built** | The checkpoints exist and only the **follower** page reads them. A passenger would have to open their own share link |
 | Sort and filter the results | ⬜ **not built** | No control in `results_screen.dart`. Interacts with the keyset cursor — §6.2 |
 | The company's logo on the ticket | ⬜ **not built** | `BookingDto` carries `operatorName` and `operatorAccentHue` and no logo. The logo exists only on `VitrineDto` |
-| A web traveller surface | ⬜ **not built** | `apps/console` and `apps/admin` have `web/`. `apps/traveller` has `android/` and `ios/` |
+| The whole journey in a browser | ⬜ **not built** | `infrastructure/web/` renders the landing page, the storefront, the follower page and **the boarding pass** — the hardest screen — and nothing of the funnel. ~1,900 lines of the layer this extends already exist ([ADR-0033](adr/0033-the-web-traveller-surface.md)) |
 | Telling a passenger who has not arrived | 🔨 **plumbed, switched off** | Templates, drain and channel all exist; no provisioned ACS sender number, so the API answers 503 for the phone channel |
 
 ---
@@ -280,26 +280,49 @@ affordable. A logo is refused at upload, never resampled — re-encoding
 somebody's brand mark is a silent change to the one asset they care about
 most.
 
-### 7.2 `billet.cg` sells; it does not hold
+### 7.2 The browser carries the whole journey
 
-Full parity with the app is the wrong target, and the reasons are already
-written down:
+**Decision:** [ADR-0033](adr/0033-the-web-traveller-surface.md). The web
+surface is the **complete** traveller journey — search, results, seat map,
+hold, pay, ticket, change, cancel — and it is **server-rendered HTML built by
+extending `infrastructure/web/`**, not a `web/` target on `apps/traveller`.
 
-- **Secure storage on web is obfuscation.** Known gap #4: the web
-  implementation puts an AES key in `localStorage` beside the value it
-  encrypts. The honest web equivalent of a persisted session is a same-site
-  cookie set by the server, and that is a slice of its own.
-- **The ticket vault is `sqlite3_flutter_libs`**, and the camera and push have
-  no place on this surface at all.
+The requirement is not convenience. It is that a phone which cannot take a
+15 MB install is the phone a large share of this market carries: storage
+full, somebody else's Play account, a 500 MB monthly bundle, an Android Go
+handset (ADR-0002). For that person the browser is not a fallback, it is the
+product — which is exactly why a Flutter web build fails here. CanvasKit is
+about 2 MB before our own code, painted to a canvas that a 2 GB handset
+renders worse than HTML, and invisible to the search engine that is a
+marketplace's cheapest acquisition channel. The follower page's budget is
+50 KB.
 
-**Decision:** the web surface is a **sales** surface — search, results, seat
-map, hold, pay — and it hands over an **ADR-0026 ticket link** rather than
-building a wallet. That link already exists, is already the answer to "my
-phone died / I have no app", and is already the thing a traveller forwards to
-whoever is paying for their seat.
+We already render the hardest screen this way. `boarding_pass_page.dart` is
+the ticket, whole, QR inline as SVG, **no JavaScript at all**, because a
+browser with scripting off still has to board somebody at half past five in
+the morning. The design system is compiled into the API, so these pages are
+not off-brand by construction. What gets written twice is markup for about
+seven screens; the domain, the use cases, the ledger and ticketing are
+untouched.
 
-This is not a lesser product. It is the correct product for somebody who
-cannot install 15 MB, and it is roughly a third of the work of parity.
+Two things follow, and both are improvements:
+
+- **A real web session** — the `HttpOnly` `SameSite` cookie that known gap #4
+  already names as the honest alternative to an AES key sitting in
+  `localStorage` beside the value it encrypts. The refresh token stays on the
+  server; the browser never holds a bearer. It fixes `apps/console` and
+  `apps/admin` in the same slice, where a session still dies with the tab.
+- **Offline is a service worker**, caching the boarding pass — the standard
+  answer for this market — with two backstops that already exist: the same QR
+  is in the e-mail, and the ADR-0026 link resolves from any device.
+
+One capability differs and is stated rather than blurred. The **rotating
+30-second code** proves live possession, which a forwarded screenshot cannot.
+A signed-in web traveller gets it — the server computes it and the page
+refreshes it, and the HMAC secret never reaches the browser. An anonymous
+ADR-0026 link does not, and that is correct rather than missing: a link is
+transferable *by design*, so a possession proof on it would prove the wrong
+thing.
 
 ---
 
@@ -440,23 +463,35 @@ not an error (§7.1).
 booking issued before this slice renders without one; the vault's size stays
 bounded when a logo changes.
 
-### Part E — the web surface
+### Part E — the browser
 
-#### J11 — `billet.cg` sells
-**Depends on:** J8
-`apps/traveller` gains `web/`, and the funnel through payment. The vault, the
-camera and push are **excluded at the composition root** rather than
-conditionally compiled, so the exclusion is a thing a reviewer can see.
-*Tests:* the web build refuses to link the vault; the funnel completes on web
-against a fake rail; first paint under 2 s on 3G.
+#### J11 — the session the browser can actually keep
+**Depends on:** nothing. **Blocking for J12.**
+The server sets an `HttpOnly`, `Secure`, `SameSite=Lax` cookie and holds the
+refresh token; the browser never holds a bearer. Replaces `MemorySessionStore`
+on `apps/console` and `apps/admin` too, where a session dies with the tab, and
+retires the web `SecureSessionStore` that keeps an AES key beside its own
+ciphertext (known gap #4).
+*Tests:* the cookie carries no bearer and no refresh token; a rotated refresh
+does not race across two tabs; sign-out invalidates server-side and not only
+in the browser; `localStorage` holds nothing that reads as a credential.
 
-#### J12 — the ticket link is the wallet on web
-**Depends on:** J11, ADR-0026
-Payment on web ends in a ticket **link**, delivered in the page and by email,
-rather than in a stored ticket. A web session ends when the tab closes and the
-link is what survives it (§7.2).
-*Tests:* the link opens the ticket with no session; revoking it refuses;
-nothing is written to `localStorage` that would read as a credential.
+#### J12 — the browser carries the whole journey
+**Depends on:** J8, J11 · **Decides:** [ADR-0033](adr/0033-the-web-traveller-surface.md)
+Search, results, seat map, hold, pay, ticket, change and cancel, rendered by
+`infrastructure/web/` beside the pages already there. The seat map is emitted
+as SVG with selection in a small amount of vanilla JavaScript — **the
+no-JavaScript rule relaxes for the seat map and stays absolute for the
+boarding pass** (§7.2). A service worker caches the ticket. A signed-in
+traveller is served the rotating code; an anonymous link is not, by design.
+*Tests:* the funnel completes end to end in a browser against the fake rail;
+first paint under 2 s on 3G and the page under 50 KB before artwork; the
+boarding pass renders with scripting disabled; the results page is crawlable;
+the same smoke suite runs against both surfaces so they cannot drift silently.
+
+Sized honestly: this is the largest slice in the document. It is roughly seven
+screens of markup against an API that needs no change, and about 1,900 lines
+of the layer it extends already exist.
 
 ### Part F — the operator that stops
 
@@ -477,10 +512,11 @@ J3 ─┬─ J4 ─┬─ J5 ── J6
     │      └─ J7 (gated: ACS sender number)
     └─ (any future GPS tier)
 
-J1 (gated: M1–M2)      J2      J13        — independent, land any time
-
 J8 ─┬─ J9
-    └─ J11 ── J12
+    └─┐
+J11 ──┴─ J12
+
+J1 (gated: M1–M2)   ·   J2   ·   J11   ·   J13   — independent, land any time
 ```
 
 **Build J3 and J4 first** even though they are the least visible slices here.
@@ -505,6 +541,9 @@ J3 is in review.
 - **It does not put conductor mode in the traveller app.** ADR-0022 settled
   that, and the size argument alone settles it: a camera and an ML barcode
   pipeline is a permanent tax on 100% of users to serve well under 1%.
+- **It does not build a Flutter web app.** ADR-0033. A canvas engine is a
+  permanent tax on the users least able to pay it, which is the same trade
+  ADR-0022 made in the other direction.
 - **It does not build a live map.** §5.3. Tier 1 GPS is a separate slice
   against a separate ADR, and J3 exists partly so that it has somewhere to
   attach when it comes.
