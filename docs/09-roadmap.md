@@ -294,6 +294,33 @@ Ten slices, V1–V10. Worth building alongside the first vertical that ships rat
 
 ---
 
+## Recommended, not gated by any phase above — the coach that leaves
+
+[`18-the-platform-other-companies-can-join.md`](18-the-platform-other-companies-can-join.md), 13
+slices **J1–J13**, written by walking the tree against the business's own description of the
+marketplace: a company picks a country, is approved, activates, puts a crew on the road, and a
+traveller compares every company on one screen and watches the coach move.
+
+Half the document is a list of what already exists and must not be rebuilt. The finding is the
+other half: **everything about selling a seat is built and almost nothing about the coach leaving
+is.** A departure has no crew, no state after `scheduled` and no way to say it has gone — the
+`boarding`, `departed` and `arrived` values have sat in `departure_status` since migration `0001`
+with nothing writing them, which is the same shape as `route_stops` and `kyb_documents.expires_at`
+before them. Four of the seven gaps are downstream of that single absence, so **J3 (a departure has
+a crew) and J4 (the lifecycle is written) are the spine and come first**, even though they are the
+least visible slices in the set.
+
+Two of them are a day each and gated on nothing: **J2**, because activation does not check for a
+verified collection account although `03-operator-lifecycle.md` §1 says it does — a money control
+that is specified and unenforced — and **J13**, because "suspension honours issued tickets" is a
+sentence rather than a schema guarantee.
+
+It is *recommended rather than phased* for the same reason data residency is: nothing in Phases
+1–6 is blocked by it, and the first operator who is not us will meet all seven gaps in their first
+week.
+
+---
+
 ## Recommended, not gated by any phase above — regional data residency
 
 [ADR-0032](adr/0032-regional-data-residency.md), **status: Proposed.** Every operator's data lives
