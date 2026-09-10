@@ -204,5 +204,16 @@ attribute. The declaration is invalid, `getComputedStyle` says `background-image
 getComputedStyle(document.querySelector('.wrap')).backgroundImage   // must not be "none"
 ```
 
-The same check catches the other silent one: `Uri.encodeComponent` on a colour *and* a later
-`#` → `%23` pass produces `%2523`.
+The same check catches the other silent one: **a colour pre-encoded as `%23ffffff` and then passed
+through the escaper produces `%2523ffffff`**, an invalid colour that draws nothing while every
+other attribute in the same SVG renders perfectly.
+
+**Tally: 2 — 2026-09-09.** The second time, `Weave.image('%23ffffff', …)` on the printed ticket's
+header drew the pattern's dots and none of its strokes, which looked like a stroke-width problem
+and was not. `Weave` says in its own doc comment *"not pre-encoded: `_uri` below escapes the `#`"*.
+Pass `'#ffffff'`. When a pattern half-appears, read the computed value before touching the
+geometry:
+
+```js
+getComputedStyle(el).backgroundImage.slice(0, 300)   // look for %2523
+```

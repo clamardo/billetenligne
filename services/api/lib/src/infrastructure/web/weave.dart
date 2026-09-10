@@ -25,14 +25,23 @@ abstract final class Weave {
   /// since `#` has to be escaped and `rgba(...)` brings commas and brackets
   /// that some proxies mangle. Control the strength with [opacity] rather
   /// than by making the colour transparent.
-  static String image(String ink, {double opacity = 0.06}) {
+  ///
+  /// [strokeWidth] is in the tile's own 68-unit space. The default draws the
+  /// hairline the landing page wants across a whole screen; a band 20 mm tall
+  /// on a printed ticket needs a heavier line, because the tile there is a
+  /// tenth the size and the stroke scales down with it.
+  static String image(
+    String ink, {
+    double opacity = 0.06,
+    double strokeWidth = 1.4,
+  }) {
     // Not pre-encoded: `_uri` below escapes the `#`, and doing it twice
     // produces `%2523` and a tile that never loads.
     final hex = ink;
     final svg =
         '<svg xmlns="http://www.w3.org/2000/svg" width="68" height="68" '
         'viewBox="0 0 68 68" opacity="$opacity">'
-        '<g fill="none" stroke="$hex" stroke-width="1.4" '
+        '<g fill="none" stroke="$hex" stroke-width="$strokeWidth" '
         'stroke-linecap="round" stroke-linejoin="round">'
         '<path d="$_chevrons"/></g>'
         '<g fill="$hex">$_dots</g></svg>';

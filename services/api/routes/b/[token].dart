@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:bel_api/src/composition.dart';
 import 'package:bel_api/src/infrastructure/web/boarding_pass_page.dart';
+import 'package:bel_api/src/infrastructure/web/printed_ticket_page.dart';
+import 'package:bel_domain/bel_domain.dart';
 import 'package:dart_frog/dart_frog.dart';
 
 /// `GET /b/{token}` — the ticket, as a page (ADR-0026).
@@ -51,6 +53,29 @@ Future<Response> onRequest(RequestContext context, String token) async {
     );
   }
 
+  // `?format=` turns the same link into the printable ticket. One URL, not
+  // two: a vendor at a counter, a customer forwarding it to the cousin doing
+  // the collecting, and a passenger opening it at the door are all holding
+  // the same address, and a second one would be a second thing to lose.
+  //
+  // The format is a query parameter rather than an operator setting applied
+  // silently, because the choice is made at the printer: the same agency
+  // prints three-to-a-page all morning and one full page for the customer
+  // who asked for a receipt.
+  final format = _format(context.request.uri.queryParameters['format']);
+  if (format != null) {
+    return Response(
+      body: PrintedTicketPage.render(
+        ticket: ticket,
+        design: _designFor(format),
+        catalog: Services.translations,
+        language: language,
+        autoPrint: context.request.uri.queryParameters['auto'] == '1',
+      ),
+      headers: _headers,
+    );
+  }
+
   return Response(
     body: BoardingPassPage.render(
       ticket: ticket,
@@ -60,6 +85,24 @@ Future<Response> onRequest(RequestContext context, String token) async {
     headers: _headers,
   );
 }
+
+/// Null means "not a print request" — an unknown value is treated as absent
+/// rather than defaulted, so a mistyped link renders the page the reader
+/// expected instead of silently sending them to a printer.
+TicketFormat? _format(String? raw) {
+  for (final format in TicketFormat.values) {
+    if (format.name == raw) return format;
+  }
+  return null;
+}
+
+/// The operator's own design, once they have saved one. Until then the
+/// starter, in their hue: a counter must be able to print on its first day
+/// without anybody having opened a builder.
+TicketDesign _designFor(TicketFormat format) => switch (format) {
+  TicketFormat.boardingPass => TicketStarters.classicPass,
+  TicketFormat.a4 => TicketStarters.fullPageReceipt,
+};
 
 const Map<String, Object> _headers = {
   HttpHeaders.contentTypeHeader: 'text/html; charset=utf-8',

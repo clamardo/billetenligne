@@ -90,6 +90,13 @@ enum:
     earliest: "Au plus tôt"
     cheapest: "Le moins cher"
     fastest: "Le plus rapide"
+  TicketFormat:
+    boardingPass: "Carte d'embarquement, trois par page"
+    a4: "Un billet par page A4"
+  TicketField:
+    station: "Gare d'embarquement et accès"
+    arrival: "Heure d'arrivée"
+    boardingNote: "Rappel d'arriver en avance"
 seat:
   class:
     standard: "Standard"

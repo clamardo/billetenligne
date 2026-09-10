@@ -20,3 +20,20 @@ boardingPass:
   gone: "This link no longer works"
   goneBody: "It was withdrawn, or the trip is over. Ask the agency that sold you the ticket for a new one."
   cta: "Find your trips in the BilletEnLigne app"
+
+# The ticket on paper. The counter sale — cash, no app, no smartphone — is
+# the most common way a seat is bought in this market, and it ends with
+# something in the customer's hand that scans exactly like a phone does.
+printedTicket:
+  title: "Ticket BEL-{ref}"
+  kind: "Coach ticket"
+  lead: "{count} ticket(s), laid out for {format}."
+  print: "Print"
+  switchToA4: "Print one per A4 page instead"
+  switchToPass: "Print three passes per page instead"
+  passenger: "Passenger"
+  seat: "Seat"
+  reference: "Reference"
+  station: "Boarding terminal"
+  beEarly: "Be at the terminal 30 minutes before departure."
+  voided: "Cancelled — does not board."

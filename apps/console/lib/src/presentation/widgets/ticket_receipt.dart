@@ -16,11 +16,23 @@ import '../l10n.dart';
 /// the single most common counter interaction after a sale is a traveller
 /// asking for their reference again over the phone.
 ///
-/// It shows the ticket payload as text, not a QR image. The QR belongs on the
-/// traveller's phone where it can rotate its freshness code every thirty
-/// seconds; a printed one from this screen would be a frozen code that fails
-/// the check (ADR-0007). What a vendor needs here is proof the sale happened
-/// and a reference to quote.
+/// **It shows no QR, and that is not because a printed one would fail.** It
+/// would not: `tickets.payload` is the complete signed string and it is
+/// static, so a QR on paper verifies exactly like one on a screen — the
+/// control at the door is one scan per seat, not freshness (ADR-0007,
+/// ADR-0026). The rotating six digits defend against a photograph of a *live*
+/// screen, which is a different attack from a ticket printed on purpose.
+///
+/// This doc comment used to claim the opposite, and that sentence was the
+/// only thing standing between this market and its most likely ticket: cash,
+/// across a counter, to somebody who will not install an app. The printed
+/// ticket lives at `/b/{token}?format=…` and is rendered by
+/// `PrintedTicketPage`.
+///
+/// What this dialog is for is the two minutes after the money changes hands:
+/// proof the sale happened, a reference to quote over the telephone, and the
+/// one question only askable while the customer is still standing there —
+/// where to send the ticket.
 final class TicketReceipt extends StatefulWidget {
   const TicketReceipt({required this.sale, required this.workspace, super.key});
 

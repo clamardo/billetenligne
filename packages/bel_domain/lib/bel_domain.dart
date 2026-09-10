@@ -38,6 +38,7 @@ export 'src/catalog/segment.dart';
 export 'src/catalog/recurrence.dart';
 export 'src/policy/refund_policy.dart';
 export 'src/policy/change_policy.dart';
+export 'src/ticketing/ticket_design.dart';
 export 'src/ticketing/rotating_code.dart';
 export 'src/ticketing/ticket_payload.dart';
 export 'src/ticketing/verification.dart';

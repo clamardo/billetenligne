@@ -91,6 +91,13 @@ enum:
     earliest: "Earliest"
     cheapest: "Cheapest"
     fastest: "Fastest"
+  TicketFormat:
+    boardingPass: "Boarding pass, three per page"
+    a4: "One per A4 page"
+  TicketField:
+    station: "Boarding terminal and directions"
+    arrival: "Arrival time"
+    boardingNote: "Be early notice"
 seat:
   class:
     standard: "Standard"
