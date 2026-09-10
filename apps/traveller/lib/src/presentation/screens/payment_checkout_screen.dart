@@ -56,88 +56,99 @@ final class PaymentCheckoutScreen extends StatelessWidget {
       body: KPattern(
         opacity: 0.05,
         child: SafeArea(
-          child: ListView(
-            padding: EdgeInsets.all(kilo.space.s5),
-            children: [
-              SizedBox(height: kilo.space.s5),
+          child: CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.all(kilo.space.s5),
+                sliver: SliverList.list(
+                  children: [
+                    SizedBox(height: kilo.space.s5),
 
-              if (url == null) ...[
-                // The PSP has not answered with a page yet. A real state, and
-                // one worth naming: a browser opening on nothing is worse than
-                // a sentence saying to wait a moment.
-                const Center(child: CircularProgressIndicator()),
-                SizedBox(height: kilo.space.s5),
-                Text(
-                  context.t('payment.checkout.preparing'),
-                  style: kilo.text.body,
-                  textAlign: TextAlign.center,
-                ),
-              ] else ...[
-                Center(
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: kilo.color.brandPrimarySoft,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.open_in_new,
-                      color: kilo.color.brandPrimary,
-                      size: 32,
-                    ),
-                  ),
-                ),
-                SizedBox(height: kilo.space.s4),
-                Text(
-                  context.t('payment.checkout.lead', {'rail': rail}),
-                  style: kilo.text.bodyLg,
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: kilo.space.s3),
-                Text(
-                  context.t('payment.checkout.onTheirPage'),
-                  style: kilo.text.body.copyWith(
-                    color: kilo.color.contentSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: kilo.space.s6),
-                if (onOpen != null) ...[
-                  Text(
-                    // Pressing it twice is safe, and saying so is what stops
-                    // somebody starting a second payment out of doubt.
-                    context.t('payment.checkout.openAgain'),
-                    style: kilo.text.caption.copyWith(
-                      color: kilo.color.contentSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ] else ...[
-                  // Matches `PaymentWaitingScreen`'s treatment of its USSD
-                  // code: the one thing on this screen somebody has to copy
-                  // by hand gets a card, not bare text.
-                  KCard(
-                    child: Column(
-                      children: [
+                    if (url == null) ...[
+                      // The PSP has not answered with a page yet. A real state, and
+                      // one worth naming: a browser opening on nothing is worse than
+                      // a sentence saying to wait a moment.
+                      const Center(child: CircularProgressIndicator()),
+                      SizedBox(height: kilo.space.s5),
+                      Text(
+                        context.t('payment.checkout.preparing'),
+                        style: kilo.text.body,
+                        textAlign: TextAlign.center,
+                      ),
+                    ] else ...[
+                      Center(
+                        child: Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: kilo.color.brandPrimarySoft,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.open_in_new,
+                            color: kilo.color.brandPrimary,
+                            size: 32,
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: kilo.space.s4),
+                      Text(
+                        context.t('payment.checkout.lead', {'rail': rail}),
+                        style: kilo.text.bodyLg,
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: kilo.space.s3),
+                      Text(
+                        context.t('payment.checkout.onTheirPage'),
+                        style: kilo.text.body.copyWith(
+                          color: kilo.color.contentSecondary,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: kilo.space.s6),
+                      if (onOpen != null) ...[
                         Text(
-                          context.t('payment.checkout.copyLink'),
-                          style: kilo.text.bodySm,
+                          // Pressing it twice is safe, and saying so is what stops
+                          // somebody starting a second payment out of doubt.
+                          context.t('payment.checkout.openAgain'),
+                          style: kilo.text.caption.copyWith(
+                            color: kilo.color.contentSecondary,
+                          ),
                           textAlign: TextAlign.center,
                         ),
-                        SizedBox(height: kilo.space.s2),
-                        SelectableText(
-                          url,
-                          style: kilo.text.code,
-                          textAlign: TextAlign.center,
+                      ] else ...[
+                        // Matches `PaymentWaitingScreen`'s treatment of its USSD
+                        // code: the one thing on this screen somebody has to copy
+                        // by hand gets a card, not bare text.
+                        KCard(
+                          child: Column(
+                            children: [
+                              Text(
+                                context.t('payment.checkout.copyLink'),
+                                style: kilo.text.bodySm,
+                                textAlign: TextAlign.center,
+                              ),
+                              SizedBox(height: kilo.space.s2),
+                              SelectableText(
+                                url,
+                                style: kilo.text.code,
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
                         ),
                       ],
-                    ),
-                  ),
-                ],
-              ],
-
-              SizedBox(height: kilo.space.s5),
+                    ],
+                  ],
+                ),
+              ),
+              // A wait is the screen most likely to be stared at, and a field
+              // of bare ground is what makes one feel stuck. The road closes
+              // it — the thing being waited for.
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: const KClosingScene(art: KSceneArt.journey),
+              ),
             ],
           ),
         ),

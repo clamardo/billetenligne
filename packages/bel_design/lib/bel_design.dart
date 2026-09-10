@@ -12,6 +12,7 @@ library;
 export 'src/art/kilo_art.dart';
 export 'src/art/kilo_pattern.dart';
 export 'src/components/k_action_bar.dart';
+export 'src/components/k_closing_scene.dart';
 export 'src/components/k_avatar.dart';
 export 'src/components/k_brand_header.dart';
 export 'src/components/k_button.dart';

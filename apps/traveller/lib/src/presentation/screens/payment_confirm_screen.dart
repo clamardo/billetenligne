@@ -39,84 +39,97 @@ final class PaymentConfirmScreen extends StatelessWidget {
         title: context.t('payment.confirm.title'),
       ),
       body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s4),
-          children: [
-            // The rail's own picture, the same one the method screen opened
-            // on. Continuity is the point: this is still the payment, one
-            // step further along, not a different part of the app.
-            Center(child: KIllustration(KArt.payment, size: 96)),
-            SizedBox(height: kilo.space.s2),
-            Center(
-              child: KMoney(
-                Format.money(step.amount, locale: locale),
-                size: KMoneySize.hero,
-              ),
-            ),
-            SizedBox(height: kilo.space.s5),
-
-            KCard(
-              child: Column(
+        child: CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.all(kilo.space.s4),
+              sliver: SliverList.list(
                 children: [
-                  _Line(
-                    label: context.t('payment.confirm.wallet'),
-                    value: context.t(step.option.labelKey),
-                  ),
-                  const Divider(),
-                  _Line(
-                    label: context.t('payment.confirm.from'),
-                    value: Format.msisdn(step.payerMsisdn),
-                  ),
-                  const Divider(),
-                  // The two lines that matter most. A number with no name
-                  // beside it is what a scam looks like, and this is the last
-                  // moment anybody can notice.
-                  _Line(
-                    label: context.t('payment.confirm.to'),
-                    value: Format.msisdn(step.option.collectionMsisdn),
-                    strong: true,
-                  ),
-                  _Line(
-                    label: context.t('payment.confirm.toName'),
-                    value: step.option.collectionName,
-                  ),
-                ],
-              ),
-            ),
-
-            SizedBox(height: kilo.space.s5),
-
-            // What happens next, in order. Somebody who does not know a PIN
-            // prompt is coming reads the pause as a failure and taps again.
-            // A card, like the details above it — not decoration, parity: the
-            // two things worth reading on this screen should look alike.
-            KCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    context.t('payment.confirm.whatNext'),
-                    style: kilo.text.label,
-                  ),
+                  // The rail's own picture, the same one the method screen opened
+                  // on. Continuity is the point: this is still the payment, one
+                  // step further along, not a different part of the app.
+                  Center(child: KIllustration(KArt.payment, size: 96)),
                   SizedBox(height: kilo.space.s2),
-                  for (final step in const [1, 2, 3])
-                    Padding(
-                      padding: EdgeInsets.only(bottom: kilo.space.s2),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('$step. ', style: kilo.text.body),
-                          Expanded(
-                            child: Text(
-                              context.t('payment.confirm.step$step'),
-                              style: kilo.text.body,
+                  Center(
+                    child: KMoney(
+                      Format.money(step.amount, locale: locale),
+                      size: KMoneySize.hero,
+                    ),
+                  ),
+                  SizedBox(height: kilo.space.s5),
+
+                  KCard(
+                    child: Column(
+                      children: [
+                        _Line(
+                          label: context.t('payment.confirm.wallet'),
+                          value: context.t(step.option.labelKey),
+                        ),
+                        const Divider(),
+                        _Line(
+                          label: context.t('payment.confirm.from'),
+                          value: Format.msisdn(step.payerMsisdn),
+                        ),
+                        const Divider(),
+                        // The two lines that matter most. A number with no name
+                        // beside it is what a scam looks like, and this is the last
+                        // moment anybody can notice.
+                        _Line(
+                          label: context.t('payment.confirm.to'),
+                          value: Format.msisdn(step.option.collectionMsisdn),
+                          strong: true,
+                        ),
+                        _Line(
+                          label: context.t('payment.confirm.toName'),
+                          value: step.option.collectionName,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  SizedBox(height: kilo.space.s5),
+
+                  // What happens next, in order. Somebody who does not know a PIN
+                  // prompt is coming reads the pause as a failure and taps again.
+                  // A card, like the details above it — not decoration, parity: the
+                  // two things worth reading on this screen should look alike.
+                  KCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          context.t('payment.confirm.whatNext'),
+                          style: kilo.text.label,
+                        ),
+                        SizedBox(height: kilo.space.s2),
+                        for (final step in const [1, 2, 3])
+                          Padding(
+                            padding: EdgeInsets.only(bottom: kilo.space.s2),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('$step. ', style: kilo.text.body),
+                                Expanded(
+                                  child: Text(
+                                    context.t('payment.confirm.step$step'),
+                                    style: kilo.text.body,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
+                      ],
                     ),
+                  ),
                 ],
               ),
+            ),
+            // The picture that closes every short screen of the funnel. In a
+            // `SliverFillRemaining` it is exactly as tall as the gap the
+            // content left, and no taller.
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: const KClosingScene(art: KSceneArt.journey),
             ),
           ],
         ),

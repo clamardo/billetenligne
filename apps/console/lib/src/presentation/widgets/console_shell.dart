@@ -44,84 +44,101 @@ final class ConsoleShell extends StatelessWidget {
           // it; the working area stays pale, which is what a day of
           // reading numbers needs.
           KRailSkin(
-            child: NavigationRail(
-              selectedIndex: index < 0 ? 0 : index,
-              onDestinationSelected: (i) => workspace.openSection(sections[i]),
-              labelType: NavigationRailLabelType.all,
-              leading: Padding(
-                padding: EdgeInsets.symmetric(vertical: kilo.space.s4),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.directions_bus,
-                      color: kilo.color.onBrandPrimary,
-                    ),
-                    SizedBox(height: kilo.space.s2),
-                    Text(
-                      'BEL',
-                      style: kilo.text.label.copyWith(
-                        color: kilo.color.onBrandPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              destinations: [
-                for (final section in sections)
-                  NavigationRailDestination(
-                    // A count on the tab, and only on the tab that has
-                    // something waiting on a person. A protection request nobody
-                    // notices is a coachload nobody comes back for (§2.3), and
-                    // this console is not the app somebody is staring at.
-                    icon: switch (_waiting(workspace, section)) {
-                      0 => Icon(_icon(section)),
-                      final n => Badge.count(
-                        count: n,
-                        child: Icon(_icon(section)),
-                      ),
-                    },
-                    label: Text(context.t(_labelKey(section))),
-                  ),
-              ],
-              trailing: Expanded(
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: kilo.space.s4),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // A console is open all day, often in an office with
-                        // the blinds down. The choice belongs where somebody
-                        // will find it without being told.
-                        KModeToggle(
-                          lightLabel: context.t('common.theme.light'),
-                          darkLabel: context.t('common.theme.dark'),
-                        ),
-                        // Beside the theme toggle, for the same reason it is
-                        // there: this console has no settings screen and a
-                        // person who cannot read the navigation is not going to
-                        // find one behind it. Every language written in its own
-                        // name, in the catalog's display order.
-                        KLanguageMenu(
-                          tooltip: context.t('common.language'),
-                          current: context.language,
-                          languages: [
-                            for (final language in context.languages)
-                              (
-                                code: language.code,
-                                nativeName: language.nativeName,
+            // Eleven destinations and a foot of controls stopped fitting at
+            // 900 px: the rail overflowed by 36 px and the last tab could not
+            // be reached at all. So it scrolls — and the foot stays pinned
+            // when there is room, because `minHeight` gives the `trailing`
+            // `Expanded` something to fill on a tall screen while
+            // `IntrinsicHeight` lets the column shrink to its content on a
+            // short one.
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: IntrinsicHeight(
+                    child: NavigationRail(
+                      selectedIndex: index < 0 ? 0 : index,
+                      onDestinationSelected: (i) =>
+                          workspace.openSection(sections[i]),
+                      labelType: NavigationRailLabelType.all,
+                      leading: Padding(
+                        padding: EdgeInsets.symmetric(vertical: kilo.space.s4),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.directions_bus,
+                              color: kilo.color.onBrandPrimary,
+                            ),
+                            SizedBox(height: kilo.space.s2),
+                            Text(
+                              'BEL',
+                              style: kilo.text.label.copyWith(
+                                color: kilo.color.onBrandPrimary,
                               ),
+                            ),
                           ],
-                          onChanged: context.setLanguage,
                         ),
-                        if (onManageSecondFactor != null)
-                          IconButton(
-                            icon: const Icon(Icons.lock_outline),
-                            tooltip: context.t('auth.enrol.manage'),
-                            onPressed: onManageSecondFactor,
+                      ),
+                      destinations: [
+                        for (final section in sections)
+                          NavigationRailDestination(
+                            // A count on the tab, and only on the tab that has
+                            // something waiting on a person. A protection request nobody
+                            // notices is a coachload nobody comes back for (§2.3), and
+                            // this console is not the app somebody is staring at.
+                            icon: switch (_waiting(workspace, section)) {
+                              0 => Icon(_icon(section)),
+                              final n => Badge.count(
+                                count: n,
+                                child: Icon(_icon(section)),
+                              ),
+                            },
+                            label: Text(context.t(_labelKey(section))),
                           ),
                       ],
+                      trailing: Expanded(
+                        child: Align(
+                          alignment: Alignment.bottomCenter,
+                          child: Padding(
+                            padding: EdgeInsets.only(bottom: kilo.space.s4),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // A console is open all day, often in an office with
+                                // the blinds down. The choice belongs where somebody
+                                // will find it without being told.
+                                KModeToggle(
+                                  lightLabel: context.t('common.theme.light'),
+                                  darkLabel: context.t('common.theme.dark'),
+                                ),
+                                // Beside the theme toggle, for the same reason it is
+                                // there: this console has no settings screen and a
+                                // person who cannot read the navigation is not going to
+                                // find one behind it. Every language written in its own
+                                // name, in the catalog's display order.
+                                KLanguageMenu(
+                                  tooltip: context.t('common.language'),
+                                  current: context.language,
+                                  languages: [
+                                    for (final language in context.languages)
+                                      (
+                                        code: language.code,
+                                        nativeName: language.nativeName,
+                                      ),
+                                  ],
+                                  onChanged: context.setLanguage,
+                                ),
+                                if (onManageSecondFactor != null)
+                                  IconButton(
+                                    icon: const Icon(Icons.lock_outline),
+                                    tooltip: context.t('auth.enrol.manage'),
+                                    onPressed: onManageSecondFactor,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),

@@ -76,53 +76,69 @@ class _PassengersScreenState extends State<PassengersScreen> {
         title: context.t('travel.passengers.title'),
       ),
       body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s4),
-          children: [
-            Center(child: KIllustration(KArt.boarding, size: 96)),
-            SizedBox(height: kilo.space.s2),
-            Text(context.t('travel.passengers.intro'), style: kilo.text.body),
-            SizedBox(height: kilo.space.s4),
+        child: CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.all(kilo.space.s4),
+              sliver: SliverList.list(
+                children: [
+                  Center(child: KIllustration(KArt.boarding, size: 96)),
+                  SizedBox(height: kilo.space.s2),
+                  Text(
+                    context.t('travel.passengers.intro'),
+                    style: kilo.text.body,
+                  ),
+                  SizedBox(height: kilo.space.s4),
 
-            for (final seat in widget.hold.seatLabels) ...[
-              Text(
-                context.t('travel.passengers.forSeat', {'seat': seat}),
-                style: kilo.text.label,
-              ),
-              SizedBox(height: kilo.space.s2),
-              KField(
-                label: context.t('common.labels.name'),
-                controller: _names[seat],
-                autofocus: seat == widget.hold.seatLabels.first,
-                enabled: !widget.busy,
-                onChanged: (_) => setState(() {}),
-              ),
-              SizedBox(height: kilo.space.s3),
-              KField(
-                label: context.t('travel.passengers.phoneOptional'),
-                hint: context.t('auth.phone.hint'),
-                controller: _phones[seat],
-                keyboardType: TextInputType.phone,
-                enabled: !widget.busy,
-                // Per passenger, not per booking. The ticket goes to the
-                // person travelling, who may not be the person paying.
-                helper: context.t('travel.passengers.phoneHelp'),
-              ),
-              SizedBox(height: kilo.space.s5),
-            ],
+                  for (final seat in widget.hold.seatLabels) ...[
+                    Text(
+                      context.t('travel.passengers.forSeat', {'seat': seat}),
+                      style: kilo.text.label,
+                    ),
+                    SizedBox(height: kilo.space.s2),
+                    KField(
+                      label: context.t('common.labels.name'),
+                      controller: _names[seat],
+                      autofocus: seat == widget.hold.seatLabels.first,
+                      enabled: !widget.busy,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    SizedBox(height: kilo.space.s3),
+                    KField(
+                      label: context.t('travel.passengers.phoneOptional'),
+                      hint: context.t('auth.phone.hint'),
+                      controller: _phones[seat],
+                      keyboardType: TextInputType.phone,
+                      enabled: !widget.busy,
+                      // Per passenger, not per booking. The ticket goes to the
+                      // person travelling, who may not be the person paying.
+                      helper: context.t('travel.passengers.phoneHelp'),
+                    ),
+                    SizedBox(height: kilo.space.s5),
+                  ],
 
-            if (widget.failure != null) ...[
-              Text(
-                context.t(
-                  widget.failure!.messageKey,
-                  widget.failure is ServerRefused
-                      ? (widget.failure! as ServerRefused).params
-                      : const {},
-                ),
-                style: kilo.text.body.copyWith(color: kilo.color.danger),
+                  if (widget.failure != null) ...[
+                    Text(
+                      context.t(
+                        widget.failure!.messageKey,
+                        widget.failure is ServerRefused
+                            ? (widget.failure! as ServerRefused).params
+                            : const {},
+                      ),
+                      style: kilo.text.body.copyWith(color: kilo.color.danger),
+                    ),
+                    SizedBox(height: kilo.space.s4),
+                  ],
+                ],
               ),
-              SizedBox(height: kilo.space.s4),
-            ],
+            ),
+            // One passenger is two fields, which on a tall handset left half
+            // a screen of bare cream under them. The road closes it, and
+            // collapses to its floor for a party of four.
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: const KClosingScene(art: KSceneArt.journey),
+            ),
           ],
         ),
       ),

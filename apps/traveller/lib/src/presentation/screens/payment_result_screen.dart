@@ -43,63 +43,76 @@ final class PaymentReceiptScreen extends StatelessWidget {
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s5),
-          children: [
-            Center(child: KIllustration(KArt.success, size: 140)),
-            SizedBox(height: kilo.space.s2),
-            Center(
-              child: KMoney(
-                Format.money(step.intent.amount, locale: locale),
-                size: KMoneySize.hero,
-              ),
-            ),
-            SizedBox(height: kilo.space.s5),
-
-            KCard(
-              child: Column(
+        child: CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.all(kilo.space.s5),
+              sliver: SliverList.list(
                 children: [
-                  _Line(
-                    context.t('payment.receipt.reference'),
-                    booking.ref,
-                    strong: true,
+                  Center(child: KIllustration(KArt.success, size: 140)),
+                  SizedBox(height: kilo.space.s2),
+                  Center(
+                    child: KMoney(
+                      Format.money(step.intent.amount, locale: locale),
+                      size: KMoneySize.hero,
+                    ),
                   ),
-                  const Divider(),
-                  _Line(
-                    context.t('payment.receipt.route'),
-                    '${booking.originCity} → ${booking.destinationCity}',
+                  SizedBox(height: kilo.space.s5),
+
+                  KCard(
+                    child: Column(
+                      children: [
+                        _Line(
+                          context.t('payment.receipt.reference'),
+                          booking.ref,
+                          strong: true,
+                        ),
+                        const Divider(),
+                        _Line(
+                          context.t('payment.receipt.route'),
+                          '${booking.originCity} → ${booking.destinationCity}',
+                        ),
+                        _Line(
+                          context.t('payment.receipt.departure'),
+                          '${Format.shortDate(booking.departsAt, locale: locale)} '
+                          '${Format.time(booking.departsAt)}',
+                        ),
+                        _Line(
+                          context.t('payment.receipt.seats'),
+                          booking.passengers
+                              .map((p) => p.seatLabel ?? '')
+                              .where((s) => s.isNotEmpty)
+                              .join(', '),
+                        ),
+                        const Divider(),
+                        _Line(
+                          context.t('payment.receipt.wallet'),
+                          context.t('enum.PaymentRailKind.mobileMoney'),
+                        ),
+                      ],
+                    ),
                   ),
-                  _Line(
-                    context.t('payment.receipt.departure'),
-                    '${Format.shortDate(booking.departsAt, locale: locale)} '
-                    '${Format.time(booking.departsAt)}',
-                  ),
-                  _Line(
-                    context.t('payment.receipt.seats'),
-                    booking.passengers
-                        .map((p) => p.seatLabel ?? '')
-                        .where((s) => s.isNotEmpty)
-                        .join(', '),
-                  ),
-                  const Divider(),
-                  _Line(
-                    context.t('payment.receipt.wallet'),
-                    context.t('enum.PaymentRailKind.mobileMoney'),
+
+                  SizedBox(height: kilo.space.s4),
+                  Text(
+                    // The SMS goes through the outbox and may take a minute. Saying
+                    // "sent" when the drain has not run is how somebody reports
+                    // never receiving it.
+                    context.t('payment.success.body'),
+                    style: kilo.text.caption.copyWith(
+                      color: kilo.color.contentSecondary,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
             ),
-
-            SizedBox(height: kilo.space.s4),
-            Text(
-              // The SMS goes through the outbox and may take a minute. Saying
-              // "sent" when the drain has not run is how somebody reports
-              // never receiving it.
-              context.t('payment.success.body'),
-              style: kilo.text.caption.copyWith(
-                color: kilo.color.contentSecondary,
-              ),
-              textAlign: TextAlign.center,
+            // The picture that closes every short screen of the funnel. In a
+            // `SliverFillRemaining` it is exactly as tall as the gap the
+            // content left, and no taller.
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: const KClosingScene(art: KSceneArt.station),
             ),
           ],
         ),

@@ -38,80 +38,91 @@ final class PaymentWaitingScreen extends StatelessWidget {
       body: KPattern(
         opacity: 0.05,
         child: SafeArea(
-          child: ListView(
-            padding: EdgeInsets.all(kilo.space.s5),
-            children: [
-              SizedBox(height: kilo.space.s5),
-              Center(
-                child: SizedBox(
-                  width: 96,
-                  height: 96,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          color: kilo.color.brandPrimarySoft,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(
+          child: CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.all(kilo.space.s5),
+                sliver: SliverList.list(
+                  children: [
+                    SizedBox(height: kilo.space.s5),
+                    Center(
+                      child: SizedBox(
                         width: 96,
                         height: 96,
-                        child: CircularProgressIndicator(),
-                      ),
-                      Icon(
-                        // Names where to look: their own handset, not this
-                        // screen — people stare at the app and miss the prompt.
-                        Icons.smartphone,
-                        color: kilo.color.brandPrimary,
-                        size: 32,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(height: kilo.space.s5),
-
-              Text(
-                context.t('payment.waitingExtra.checkPhone', {
-                  'msisdn': Format.msisdn(step.payerMsisdn),
-                }),
-                style: kilo.text.bodyLg,
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: kilo.space.s3),
-              Text(
-                context.t('payment.confirm.step2'),
-                style: kilo.text.body.copyWith(
-                  color: kilo.color.contentSecondary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              SizedBox(height: kilo.space.s6),
-
-              if (step.option.ussdCode != null)
-                KCard(
-                  child: Column(
-                    children: [
-                      Text(
-                        context.t('payment.waiting.noPromptTitle'),
-                        style: kilo.text.bodySm,
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: kilo.space.s2),
-                      SelectableText(
-                        step.option.ussdCode!,
-                        style: kilo.text.h2.copyWith(
-                          color: kilo.color.brandPrimary,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              decoration: BoxDecoration(
+                                color: kilo.color.brandPrimarySoft,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 96,
+                              height: 96,
+                              child: CircularProgressIndicator(),
+                            ),
+                            Icon(
+                              // Names where to look: their own handset, not this
+                              // screen — people stare at the app and miss the prompt.
+                              Icons.smartphone,
+                              color: kilo.color.brandPrimary,
+                              size: 32,
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
+                    ),
+                    SizedBox(height: kilo.space.s5),
 
-              SizedBox(height: kilo.space.s5),
+                    Text(
+                      context.t('payment.waitingExtra.checkPhone', {
+                        'msisdn': Format.msisdn(step.payerMsisdn),
+                      }),
+                      style: kilo.text.bodyLg,
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: kilo.space.s3),
+                    Text(
+                      context.t('payment.confirm.step2'),
+                      style: kilo.text.body.copyWith(
+                        color: kilo.color.contentSecondary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+
+                    SizedBox(height: kilo.space.s6),
+
+                    if (step.option.ussdCode != null)
+                      KCard(
+                        child: Column(
+                          children: [
+                            Text(
+                              context.t('payment.waiting.noPromptTitle'),
+                              style: kilo.text.bodySm,
+                              textAlign: TextAlign.center,
+                            ),
+                            SizedBox(height: kilo.space.s2),
+                            SelectableText(
+                              step.option.ussdCode!,
+                              style: kilo.text.h2.copyWith(
+                                color: kilo.color.brandPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // A wait is the screen most likely to be stared at, and a field
+              // of bare ground is what makes one feel stuck. The road closes
+              // it — the thing being waited for.
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: const KClosingScene(art: KSceneArt.journey),
+              ),
             ],
           ),
         ),

@@ -57,121 +57,136 @@ final class HoldScreen extends StatelessWidget {
         title: context.t('travel.hold.title'),
       ),
       body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
+        child: CustomScrollView(
+          slivers: [
             // A seam, not a hero: the countdown stays the largest thing on
             // the screen, this only keeps the top edge from being bare.
-            KPattern(
-              motif: KPatternMotif.vagues,
-              height: 10,
-              opacity: 0.12,
-              color: kilo.color.brandPrimary,
-              background: kilo.color.surfaceBase,
-            ),
-            Padding(
-              padding: EdgeInsets.all(kilo.space.s4),
-              child: Column(
-                children: [
-                  Center(
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: kilo.space.s5,
-                        vertical: kilo.space.s4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: kilo.color.brandPrimarySoft,
-                        borderRadius: BorderRadius.all(kilo.radius.pill),
-                      ),
-                      child: KCountdown(
-                        expiresAt: hold.expiresAt,
-                        onExpired: onExpired,
-                        now: now ?? _systemNow,
-                        labelBuilder: (remaining) => context.t(
-                          'travel.hold.countdown',
-                          {'time': formatCountdown(remaining)},
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: kilo.space.s4),
-                  Text(
-                    context.t('travel.hold.body'),
-                    textAlign: TextAlign.center,
-                    style: kilo.text.body.copyWith(
-                      color: kilo.color.contentSecondary,
-                    ),
-                  ),
-
-                  SizedBox(height: kilo.space.s6),
-                  KCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                departure.operatorName,
-                                style: kilo.text.h3,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            KChip(
-                              '${departure.originCity} → ${departure.destinationCity}',
-                              tone: KChipTone.brand,
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: kilo.space.s2),
-                        Text(
-                          '${Format.shortDate(departure.departsAt, locale: locale)} · '
-                          '${Format.time(departure.departsAt)} → '
-                          '${Format.time(departure.arrivesAt)}',
-                          style: kilo.text.body.copyWith(
-                            color: kilo.color.contentSecondary,
-                          ),
-                        ),
-                        SizedBox(height: kilo.space.s3),
-                        Text(
-                          context.t('travel.hold.seatsLabel', {
-                            'seats': hold.seatLabels.join(' · '),
-                          }),
-                          style: kilo.text.amount,
-                        ),
-
-                        Padding(
-                          padding: EdgeInsets.symmetric(
-                            vertical: kilo.space.s4,
-                          ),
-                          child: Divider(
-                            color: kilo.color.borderSubtle,
-                            height: 1,
-                          ),
-                        ),
-
-                        _Line(
-                          label: context.t('common.labels.fare'),
-                          amount: Format.money(hold.fare, locale: locale),
-                        ),
-                        SizedBox(height: kilo.space.s2),
-                        _Line(
-                          label: context.t('common.labels.serviceFee'),
-                          amount: Format.money(hold.serviceFee, locale: locale),
-                        ),
-                        SizedBox(height: kilo.space.s3),
-                        _Line(
-                          label: context.t('common.labels.total'),
-                          amount: Format.money(hold.total, locale: locale),
-                          emphasis: true,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  SizedBox(height: kilo.space.s4),
-                ],
+            SliverToBoxAdapter(
+              child: KPattern(
+                motif: KPatternMotif.vagues,
+                height: 10,
+                opacity: 0.12,
+                color: kilo.color.brandPrimary,
+                background: kilo.color.surfaceBase,
               ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(kilo.space.s4),
+                child: Column(
+                  children: [
+                    Center(
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: kilo.space.s5,
+                          vertical: kilo.space.s4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: kilo.color.brandPrimarySoft,
+                          borderRadius: BorderRadius.all(kilo.radius.pill),
+                        ),
+                        child: KCountdown(
+                          expiresAt: hold.expiresAt,
+                          onExpired: onExpired,
+                          now: now ?? _systemNow,
+                          labelBuilder: (remaining) => context.t(
+                            'travel.hold.countdown',
+                            {'time': formatCountdown(remaining)},
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: kilo.space.s4),
+                    Text(
+                      context.t('travel.hold.body'),
+                      textAlign: TextAlign.center,
+                      style: kilo.text.body.copyWith(
+                        color: kilo.color.contentSecondary,
+                      ),
+                    ),
+
+                    SizedBox(height: kilo.space.s6),
+                    KCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  departure.operatorName,
+                                  style: kilo.text.h3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              KChip(
+                                '${departure.originCity} → ${departure.destinationCity}',
+                                tone: KChipTone.brand,
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: kilo.space.s2),
+                          Text(
+                            '${Format.shortDate(departure.departsAt, locale: locale)} · '
+                            '${Format.time(departure.departsAt)} → '
+                            '${Format.time(departure.arrivesAt)}',
+                            style: kilo.text.body.copyWith(
+                              color: kilo.color.contentSecondary,
+                            ),
+                          ),
+                          SizedBox(height: kilo.space.s3),
+                          Text(
+                            context.t('travel.hold.seatsLabel', {
+                              'seats': hold.seatLabels.join(' · '),
+                            }),
+                            style: kilo.text.amount,
+                          ),
+
+                          Padding(
+                            padding: EdgeInsets.symmetric(
+                              vertical: kilo.space.s4,
+                            ),
+                            child: Divider(
+                              color: kilo.color.borderSubtle,
+                              height: 1,
+                            ),
+                          ),
+
+                          _Line(
+                            label: context.t('common.labels.fare'),
+                            amount: Format.money(hold.fare, locale: locale),
+                          ),
+                          SizedBox(height: kilo.space.s2),
+                          _Line(
+                            label: context.t('common.labels.serviceFee'),
+                            amount: Format.money(
+                              hold.serviceFee,
+                              locale: locale,
+                            ),
+                          ),
+                          SizedBox(height: kilo.space.s3),
+                          _Line(
+                            label: context.t('common.labels.total'),
+                            amount: Format.money(hold.total, locale: locale),
+                            emphasis: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // The price of a seat is four lines, and on a tall handset those
+            // four lines left a field of bare cream between themselves and
+            // the bar. This closes it with the road they are holding a seat
+            // on, and collapses to its floor where there is nothing to close.
+            SliverFillRemaining(
+              hasScrollBody: false,
+              // No caption: the sentence that matters is already under the
+              // countdown, and repeating it at the foot of the screen would
+              // be saying the same thing twice to fill a gap.
+              child: const KClosingScene(art: KSceneArt.journey),
             ),
           ],
         ),

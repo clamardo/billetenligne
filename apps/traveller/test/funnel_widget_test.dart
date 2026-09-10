@@ -457,7 +457,12 @@ void main() {
       );
       // Dragged rather than `scrollUntilVisible`: that helper requires
       // exactly one Scrollable and this screen's Scaffold has more than one.
-      await tester.drag(find.byType(ListView).last, const Offset(0, -400));
+      // By type `CustomScrollView`, not `ListView`: the screen ends on a
+      // `SliverFillRemaining` closing panel, which needs slivers.
+      await tester.drag(
+        find.byType(CustomScrollView).last,
+        const Offset(0, -400),
+      );
       await tester.pumpAndSettle();
       expect(find.textContaining('À payer avant'), findsOneWidget);
 

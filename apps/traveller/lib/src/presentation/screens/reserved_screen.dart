@@ -51,127 +51,142 @@ final class ReservedScreen extends StatelessWidget {
         title: context.t('travel.reserved.title'),
       ),
       body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s4),
-          children: [
-            Center(child: KIllustration(KArt.boarding, size: 120)),
-            SizedBox(height: kilo.space.s2),
-            KCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.all(kilo.space.s4),
+              sliver: SliverList.list(
                 children: [
-                  Text(
-                    context.t('travel.reserved.payAtAgency', {
-                      'operator': booking.operatorName,
-                    }),
-                    style: kilo.text.body,
-                    textAlign: TextAlign.center,
+                  Center(child: KIllustration(KArt.boarding, size: 120)),
+                  SizedBox(height: kilo.space.s2),
+                  KCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          context.t('travel.reserved.payAtAgency', {
+                            'operator': booking.operatorName,
+                          }),
+                          style: kilo.text.body,
+                          textAlign: TextAlign.center,
+                        ),
+                        SizedBox(height: kilo.space.s4),
+
+                        if (code != null)
+                          Semantics(
+                            label: context.t('travel.reserved.codeLabel'),
+                            child: SelectableText(
+                              // Spaced, because a five-character code read aloud is
+                              // read in pieces and typed in pieces.
+                              code.split('').join(' '),
+                              textAlign: TextAlign.center,
+                              style: kilo.text.codeHero.copyWith(
+                                color: kilo.color.brandPrimary,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                          ),
+
+                        SizedBox(height: kilo.space.s3),
+                        KButton(
+                          label: context.t('common.actions.copy'),
+                          tone: KButtonTone.ghost,
+                          onPressed: code == null
+                              ? null
+                              : () => Clipboard.setData(
+                                  ClipboardData(text: code),
+                                ),
+                        ),
+                      ],
+                    ),
                   ),
+
                   SizedBox(height: kilo.space.s4),
 
-                  if (code != null)
-                    Semantics(
-                      label: context.t('travel.reserved.codeLabel'),
-                      child: SelectableText(
-                        // Spaced, because a five-character code read aloud is
-                        // read in pieces and typed in pieces.
-                        code.split('').join(' '),
-                        textAlign: TextAlign.center,
-                        style: kilo.text.codeHero.copyWith(
-                          color: kilo.color.brandPrimary,
-                          letterSpacing: 2,
+                  KCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _line(
+                          context,
+                          context.t('travel.reserved.reference'),
+                          booking.ref,
                         ),
-                      ),
+                        _line(
+                          context,
+                          context.t('travel.reserved.route'),
+                          '${booking.originCity} → ${booking.destinationCity}',
+                        ),
+                        _line(
+                          context,
+                          context.t('travel.reserved.departure'),
+                          '${Format.shortDate(booking.departsAt, locale: locale)} ${Format.time(booking.departsAt)}',
+                        ),
+                        _line(
+                          context,
+                          context.t('travel.reserved.seats'),
+                          booking.passengers
+                              .map((p) => p.seatLabel ?? '')
+                              .where((s) => s.isNotEmpty)
+                              .join(', '),
+                        ),
+                        const Divider(),
+                        if (booking.fare != null)
+                          _line(
+                            context,
+                            context.t('travel.reserved.fare'),
+                            Format.money(booking.fare!, locale: locale),
+                          ),
+                        if (booking.serviceFee != null)
+                          _line(
+                            context,
+                            context.t('travel.reserved.serviceFee'),
+                            Format.money(booking.serviceFee!, locale: locale),
+                          ),
+                        _line(
+                          context,
+                          context.t('travel.reserved.total'),
+                          Format.money(booking.total, locale: locale),
+                          strong: true,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  SizedBox(height: kilo.space.s4),
+
+                  if (booking.paymentDeadline != null)
+                    Text(
+                      // A time, not a countdown. Four hours of ticking clock is
+                      // stressful and useless; "before 14h30" is what somebody
+                      // plans an afternoon around.
+                      context.t('travel.reserved.deadline', {
+                        'time': Format.time(booking.paymentDeadline!),
+                      }),
+                      style: kilo.text.body.copyWith(color: kilo.color.warning),
+                      textAlign: TextAlign.center,
                     ),
 
                   SizedBox(height: kilo.space.s3),
-                  KButton(
-                    label: context.t('common.actions.copy'),
-                    tone: KButtonTone.ghost,
-                    onPressed: code == null
-                        ? null
-                        : () => Clipboard.setData(ClipboardData(text: code)),
+                  Text(
+                    context.t('travel.reserved.afterPayment'),
+                    style: kilo.text.bodySm.copyWith(
+                      color: kilo.color.contentSecondary,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
+
+                  SizedBox(height: kilo.space.s5),
                 ],
               ),
             ),
-
-            SizedBox(height: kilo.space.s4),
-
-            KCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _line(
-                    context,
-                    context.t('travel.reserved.reference'),
-                    booking.ref,
-                  ),
-                  _line(
-                    context,
-                    context.t('travel.reserved.route'),
-                    '${booking.originCity} → ${booking.destinationCity}',
-                  ),
-                  _line(
-                    context,
-                    context.t('travel.reserved.departure'),
-                    '${Format.shortDate(booking.departsAt, locale: locale)} ${Format.time(booking.departsAt)}',
-                  ),
-                  _line(
-                    context,
-                    context.t('travel.reserved.seats'),
-                    booking.passengers
-                        .map((p) => p.seatLabel ?? '')
-                        .where((s) => s.isNotEmpty)
-                        .join(', '),
-                  ),
-                  const Divider(),
-                  if (booking.fare != null)
-                    _line(
-                      context,
-                      context.t('travel.reserved.fare'),
-                      Format.money(booking.fare!, locale: locale),
-                    ),
-                  if (booking.serviceFee != null)
-                    _line(
-                      context,
-                      context.t('travel.reserved.serviceFee'),
-                      Format.money(booking.serviceFee!, locale: locale),
-                    ),
-                  _line(
-                    context,
-                    context.t('travel.reserved.total'),
-                    Format.money(booking.total, locale: locale),
-                    strong: true,
-                  ),
-                ],
-              ),
+            // The picture that closes every short screen of the funnel. In a
+            // `SliverFillRemaining` it is exactly as tall as the gap the
+            // content left, and no taller.
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: const KClosingScene(art: KSceneArt.station),
             ),
-
-            SizedBox(height: kilo.space.s4),
-
-            if (booking.paymentDeadline != null)
-              Text(
-                // A time, not a countdown. Four hours of ticking clock is
-                // stressful and useless; "before 14h30" is what somebody
-                // plans an afternoon around.
-                context.t('travel.reserved.deadline', {
-                  'time': Format.time(booking.paymentDeadline!),
-                }),
-                style: kilo.text.body.copyWith(color: kilo.color.warning),
-                textAlign: TextAlign.center,
-              ),
-
-            SizedBox(height: kilo.space.s3),
-            Text(
-              context.t('travel.reserved.afterPayment'),
-              style: kilo.text.bodySm.copyWith(
-                color: kilo.color.contentSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-
-            SizedBox(height: kilo.space.s5),
           ],
         ),
       ),
