@@ -185,43 +185,62 @@ final class PostgresUserDirectory implements UserDirectory {
     return _resolved(tx, rows.first.toColumnMap());
   });
 
-  /// Fills in `auth_uid` the first time we sign somebody in.
+  /// Fills in `auth_uid` the first time we sign somebody in, and reads back
+  /// who this person actually is.
   ///
   /// The Firebase UID **is** our account id. Letting Firebase mint one instead
   /// would mean a network round trip inside this transaction, and a failure
   /// there would leave an account nobody can ever sign in to.
+  ///
+  /// **The second read is not a tidy-up.** The upsert above returns the
+  /// `user_accounts` row and nothing else — a `RETURNING` clause cannot see a
+  /// LATERAL join — so the account it produced carried `staff: null` and
+  /// `platformRole: null` for *everybody*, including an operator's owner and
+  /// our own administrators. `SecondFactorSignIn.isRequiredFor` reads exactly
+  /// those two fields, so it answered "not needed" on every sign-in and
+  /// ADR-0013's mandatory second factor on both back-office surfaces was
+  /// never once asked for. Nothing on screen said so: the sign-in succeeded,
+  /// the console opened, and the only visible trace was an enrolment screen
+  /// that never appeared.
+  ///
+  /// So the row is re-read through the same joined query every other caller
+  /// uses, in the same transaction. One extra round trip on the rarest
+  /// request this system serves.
   Future<({Account account, bool created})> _resolved(
     TxSession tx,
     Map<String, dynamic> row,
   ) async {
     final created = row['created'] == true;
-    var account = _account(row);
+    final id = row['id'].toString();
 
-    if (account.authUid == null) {
+    if (row['auth_uid'] == null) {
       await tx.execute(
         Sql.named(
           'UPDATE user_accounts SET auth_uid = @uid WHERE id = @id '
           'AND auth_uid IS NULL',
         ),
         parameters: {
-          'uid': TypedValue(Type.text, account.id),
-          'id': TypedValue(Type.uuid, account.id),
+          'uid': TypedValue(Type.text, id),
+          'id': TypedValue(Type.uuid, id),
         },
-      );
-      account = Account(
-        id: account.id,
-        authUid: account.id,
-        email: account.email,
-        phone: account.phone,
-        fullName: account.fullName,
-        language: account.language,
-        emailVerifiedAt: account.emailVerifiedAt,
-        phoneVerifiedAt: account.phoneVerifiedAt,
-        disabledAt: account.disabledAt,
       );
     }
 
-    return (account: account, created: created);
+    final joined = await tx.execute(
+      Sql.named('''
+        SELECT $_columns,
+               staff.operator_id AS staff_operator_id,
+               staff.roles       AS staff_roles,
+               staff.station_ids AS staff_station_ids,
+               custom_roles.by_name AS custom_role_caps,
+               platform.role     AS platform_role
+          FROM user_accounts $_staffJoin $_customRolesJoin $_platformJoin
+         WHERE user_accounts.id = @id
+      '''),
+      parameters: {'id': TypedValue(Type.uuid, id)},
+    );
+
+    return (account: _account(joined.first.toColumnMap()), created: created);
   }
 
   @override

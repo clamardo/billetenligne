@@ -200,6 +200,22 @@ void main() {
       expect(sent.toString(), isNot(contains('%3F')));
     });
 
+    // The same mistake, made again on a different endpoint and found by
+    // opening the screen rather than by a test: the back office's Compliance
+    // tab asked for `/admin/v1/compliance?days=60`, sent
+    // `/admin/v1/compliance%3Fdays=60`, got a 404, and drew *"Nothing to
+    // chase"* over an operator whose insurance had already lapsed — under a
+    // red banner blaming the app's version.
+    test('a compliance window as a query parameter, not inside the path', () async {
+      final transport = _ScriptedClient([(200, '{"items":[]}')]);
+      await clientFor(transport).complianceCalendar(withinDays: 90);
+
+      final sent = transport.requests.single.url;
+      expect(sent.path, endsWith('/admin/v1/compliance'));
+      expect(sent.queryParameters['days'], '90');
+      expect(sent.toString(), isNot(contains('%3F')));
+    });
+
     test('no query at all when there is no change to pay for', () async {
       final transport = _ScriptedClient([
         (200, '{"items":[],"amount":{"minor":0,"currency":"XAF"}}'),

@@ -2,6 +2,7 @@ import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_localization/bel_localization.dart';
 
 import 'artwork.g.dart';
+import 'weave.dart';
 import 'accent_hues.dart';
 
 /// The public storefront at `blt.cg/o/<code>` (`03-operator-lifecycle.md`
@@ -193,11 +194,15 @@ abstract final class StorefrontPage {
     }
 
     buffer
+      ..writeln('  </main>')
+      // Outside `main`, in the company's own colour, so the page ends on a
+      // band rather than trailing off into paper. On a laptop the routes are
+      // four lines and everything below them used to be a white field.
       ..writeln(
-        '    <p class="foot">'
-        '${_text(t('storefront.operated', {'operator': name}))}</p>',
-      )
-      ..writeln('  </main>');
+        '  <footer class="foot">'
+        '<p>${_text(t('storefront.operated', {'operator': name}))}</p>'
+        '</footer>',
+      );
     return buffer.toString();
   }
 
@@ -275,8 +280,13 @@ abstract final class StorefrontPage {
     required String accent,
     required String head,
     required String body,
-  }) =>
-      '''
+  }) {
+    // The app's own cloth, in white, on the closing band. Whatever colour a
+    // company chose, the weave is the mark that says the page and the app are
+    // the same product.
+    final weave = Weave.image('#ffffff', opacity: 0.12);
+    final weavePaper = Weave.image('#1d5c46', opacity: 0.05);
+    return '''
 <!doctype html>
 <html lang="${_attr(language)}">
 <head>
@@ -285,20 +295,37 @@ abstract final class StorefrontPage {
 <meta name="theme-color" content="$accent">
 $head
 <style>
-:root{--accent:$accent;--ink:#141a17;--soft:#6b7a72;--line:#e2e8e4;--bg:#fbfcfb;
+:root{--accent:$accent;--ink:#141a17;--soft:#6b7a72;--line:#e2e8e4;--bg:#f6f4ee;
       --art-ink:#141a17;--art-muted:#6b7a72;--art-wash:#e9f1ec;
       --art-accent:#d9772f;--art-accent-wash:#fbeee2;--art-surface:#fff;
-      --art-line:#e2e8e4}
+      --art-line:#e2e8e4;--measure:36rem}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
+/* Hero, routes, band — and the routes take the slack. A storefront with four
+   departures on it used to be a short column of cards with the rest of the
+   window left blank underneath. */
+html{background:var(--accent)}
+body{margin:0;min-height:100dvh;display:flex;flex-direction:column;
+     background:var(--bg) $weavePaper center/44px 44px;color:var(--ink);
      font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:36rem;margin:0 auto;padding:1.5rem 1.25rem 3rem}
-main.narrow{padding-top:4rem;text-align:center}
+/* The list starts at the top, because lists do — but the space under it is
+   the app's own cloth rather than a blank sheet, which is the whole
+   difference between "quiet" and "broken". */
+/* Top-aligned, because a timetable is a list and lists start at the top.
+   Centring it vertically was tried and looked worse than the problem: two
+   routes floated halfway down a tall window with a gap above them and no
+   reason for it. The band below simply grows, and it is cloth rather than a
+   blank sheet, which is what the emptiness needed. */
+main{flex:1;width:100%;max-width:var(--measure);margin:0 auto;
+     padding:2rem 1.25rem 3rem}
+main.narrow{display:flex;flex-direction:column;justify-content:center;
+            text-align:center}
 h1{font-size:1.6rem;margin:0}
 h2{font-size:1rem;color:var(--soft);font-weight:600;margin:0 0 .75rem;
    text-transform:uppercase;letter-spacing:.04em}
 .sub{color:var(--soft)}
 .hero{position:relative;background:var(--accent);color:#fff;overflow:hidden;
+      /* Room for the drawing to be a drawing rather than a stripe. */
+      min-height:min(18rem,40dvh);display:flex;align-items:center;
       /* The drawing turns into a silhouette here: the company's colour is
          already the ground, so hills painted in it would be invisible. */
       --art-brand:rgba(255,255,255,.34);--art-wash:rgba(0,0,0,.20);
@@ -310,6 +337,12 @@ h2{font-size:1rem;color:var(--soft);font-weight:600;margin:0 0 .75rem;
              object-fit:cover;opacity:.55}
 .hero .scene{position:absolute;inset:0}
 .hero .scene svg{width:100%;height:100%;display:block}
+/* The scrim `KScene` paints behind text in the apps: a company's own cover
+   photograph can be any brightness, and white type on it must not be a
+   matter of luck. */
+.hero:before{content:"";position:absolute;inset:0;z-index:0;
+             background:linear-gradient(180deg,
+               rgba(9,42,32,.50) 0%,rgba(9,42,32,.22) 60%,rgba(9,42,32,0) 100%)}
 .art{margin:1.5rem auto 1rem;max-width:15rem}
 .art svg{width:100%;height:auto;display:block}
 /* The three generated motifs, drawn in CSS rather than shipped as files: a
@@ -333,8 +366,12 @@ h2{font-size:1rem;color:var(--soft);font-weight:600;margin:0 0 .75rem;
     repeating-linear-gradient(-45deg,rgba(255,255,255,.10) 0 2px,
                               transparent 2px 17px);
   background-position:0 0,12px 12px}
-.heroInner{position:relative;max-width:36rem;margin:0 auto;
-           padding:2.25rem 1.25rem 2rem}
+/* `width:100%` matters: the hero is a flex row, and without it this block
+   shrinks to its own text and centres on that — which put the company name
+   and its tagline a hundred and seventy pixels to the right of the routes
+   underneath, on the same page. */
+.heroInner{position:relative;z-index:1;width:100%;max-width:var(--measure);
+           margin:0 auto;padding:2.75rem 1.25rem 2.5rem}
 .logo{width:64px;height:64px;border-radius:14px;object-fit:cover;
       background:#fff;display:block;margin-bottom:.9rem}
 .logo.mono{display:flex;align-items:center;justify-content:center;
@@ -351,12 +388,32 @@ h2{font-size:1rem;color:var(--soft);font-weight:600;margin:0 0 .75rem;
       color:var(--accent);white-space:nowrap}
 .go{grid-column:2;grid-row:2;text-align:right;color:var(--soft);
     font-size:.85rem;white-space:nowrap}
-.foot{color:var(--soft);font-size:.8rem;margin-top:2rem}
+.foot{background:var(--accent);color:rgba(255,255,255,.86);font-size:.82rem;
+      padding:1.6rem 1.25rem;background-image:$weave;background-size:44px 44px}
+.foot p{margin:0 auto;max-width:var(--measure)}
 a.cta{display:inline-block;margin-top:1.5rem;padding:.85rem 1.5rem;
       background:var(--accent);color:#fff;text-decoration:none;
       border-radius:10px}
+@media(min-width:62rem){
+  /* Two columns need cards wide enough that "Brazzaville → Pointe-Noire" and
+     its fare do not fight over one line. Below this width one column reads
+     better than two cramped ones. */
+  :root{--measure:58rem}
+  /* `auto-fit`, not `auto-fill`: `auto-fill` keeps the empty tracks, so a
+     company with two routes got two cards squeezed into a three-column grid
+     and "Brazzaville → Dolisie" wrapped for no reason. `auto-fit` collapses
+     what is unused and lets the cards that exist take the width. */
+  .routes{display:grid;grid-template-columns:repeat(auto-fit,minmax(22rem,1fr));
+          gap:.75rem}
+  .routes li{margin-bottom:0}
+}
+@media(min-width:92rem){
+  /* A wider measure on a real desktop; how many columns that becomes is left
+     to `auto-fit` above rather than pinned to a number. */
+  :root{--measure:70rem}
+}
 @media(prefers-color-scheme:dark){
-  :root{--ink:#e8efea;--soft:#93a49b;--line:#26312c;--bg:#0d1210;
+  :root{--ink:#e8efea;--soft:#93a49b;--line:#26312c;--bg:#101715;
         --art-ink:#e8efea;--art-muted:#93a49b;--art-wash:#122019;
         --art-accent:#f0a05c;--art-accent-wash:#2a1a0e;--art-surface:#161b18;
         --art-line:#26312c}
@@ -369,13 +426,17 @@ $body
 </body>
 </html>
 ''';
+  }
 
   /// Crops the drawing to the header rather than letterboxing it. The
   /// default is `meet`, which would leave bands of flat colour above and
   /// below on any header that is not exactly the artwork's proportions —
   /// which is every header, since the height comes from the text on it.
+  /// `YMax`, not `YMid`: these scenes carry the horizon high and the road,
+  /// the coach and the ground along the bottom edge, so a centre crop keeps
+  /// the sky and cuts the coach in half.
   static String _cover(String svg) =>
-      svg.replaceFirst('<svg ', '<svg preserveAspectRatio="xMidYMid slice" ');
+      svg.replaceFirst('<svg ', '<svg preserveAspectRatio="xMidYMax slice" ');
 
   static String _attr(String value) =>
       value.replaceAll('"', '&quot;').replaceAll('<', '&lt;');

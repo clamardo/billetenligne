@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:bel_api/src/application/hold_seats.dart';
 import 'package:bel_api/src/application/ports/platform_console.dart';
+import 'package:bel_api/src/application/second_factor_sign_in.dart';
 import 'package:bel_api/src/application/reserve_booking.dart';
 import 'package:bel_api/src/infrastructure/db/database.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_operator_applications.dart';
@@ -11,8 +13,11 @@ import 'package:bel_api/src/adapters/ed25519_ticket_issuer.dart';
 import 'package:bel_api/src/infrastructure/config/ticket_signing_key.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_booking_store.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_protection.dart';
+import 'package:bel_api/src/infrastructure/postgres/postgres_second_factors.dart';
 import 'package:bel_api/src/infrastructure/postgres/postgres_seat_inventory.dart';
+import 'package:bel_api/src/ports/capability.dart';
 import 'package:bel_contracts/bel_contracts.dart';
+import 'package:bel_crypto/bel_crypto.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:postgres/postgres.dart' hide Result;
 
@@ -52,6 +57,27 @@ const demoCodePrefix = 'DEMO-';
 const demoEmailDomain = 'demo.billetenligne.cg';
 const demoPhonePrefix = '+2420690';
 
+/// The authenticator every demo staff account shares.
+///
+/// **The second place this world cheats, and the reason it has to.** Both
+/// back-office surfaces demand a second factor from anybody who is staff
+/// (`SecondFactorSignIn.isRequiredFor`), and enrolment is a one-shot screen:
+/// the secret is shown once and never again. A world that enrolled fourteen
+/// people with fourteen random secrets is a world whose fourteen consoles
+/// nobody can open a second time — every screen behind a role would be
+/// written and never once looked at, which is the exact failure this whole
+/// file exists to prevent.
+///
+/// So the seed is fixed, shared, printed at the end of a seed run, and true
+/// only of accounts at `@demo.billetenligne.cg`. What makes it safe is that
+/// it is not a back door: nothing here weakens the check. Every demo staff
+/// member still has a confirmed factor, still proves a real RFC 6238 code
+/// against it, and still gets locked out after five wrong ones. Add it to any
+/// authenticator, or compute one at a shell:
+///
+///     oathtool --totp -b DEMOBELDEMOBELDEMOBELDEMOBELDEMO
+const demoTotpSecret = 'DEMOBELDEMOBELDEMOBELDEMOBELDEMO';
+
 final class DemoWorld {
   DemoWorld({required Database db, required Connection seed})
     : _db = db,
@@ -59,7 +85,25 @@ final class DemoWorld {
       _applications = PostgresOperatorApplications(db),
       _platform = PostgresPlatformConsole(db),
       _console = PostgresOperatorConsole(db, timeZone: 'Africa/Brazzaville'),
-      _protection = PostgresProtection(db);
+      _protection = PostgresProtection(db),
+      _factors = PostgresSecondFactors(
+        db,
+        // Null on a local stack, and that is a supported state: the adapter
+        // stores the seed in the clear and re-seals it the first time an API
+        // holding a key reads it.
+        cipher: SecretCipher.fromPassphrase(
+          Platform.environment['TOTP__ENCRYPTIONKEY'],
+        ),
+      ) {
+    _second = SecondFactorSignIn(
+      factors: _factors,
+      mac: const HmacSha256Authenticator(),
+      // Only ever used to sign a half-session and to hash a recovery code,
+      // and this seeder does neither: it confirms an enrolment with a real
+      // TOTP code and stops. A key that matched the API's would buy nothing.
+      signingKey: utf8.encode('demo-world'),
+    );
+  }
 
   final Database _db;
   final Connection _seed;
@@ -67,6 +111,8 @@ final class DemoWorld {
   final PostgresPlatformConsole _platform;
   final PostgresOperatorConsole _console;
   final PostgresProtection _protection;
+  final PostgresSecondFactors _factors;
+  late final SecondFactorSignIn _second;
 
   /// Removes the demo world.
   ///
@@ -256,6 +302,11 @@ final class DemoWorld {
     await _cities();
     final reviewer = await _staff('operations', 'operations');
     await _staff('super_admin', 'direction');
+    // The third platform role. `viewer` is the one somebody is given on their
+    // first week and the one an auditor is given for good, and it is the only
+    // platform role whose back office is *mostly* greyed out — which is worth
+    // being able to look at.
+    await _staff('viewer', 'lecture');
 
     // Two companies actually selling, on the same road. The second is not
     // decoration: a protection agreement, a rescue coach and an open call for
@@ -286,8 +337,20 @@ final class DemoWorld {
       line: '00020',
     );
 
-    await _network(alizes, code: 'ALZ', hour: '06:00', fare: 12000);
-    await _network(kouilou, code: 'KLV', hour: '07:30', fare: 11000);
+    await _network(
+      alizes,
+      code: 'ALZ',
+      hour: '06:00',
+      nightHour: '21:00',
+      fare: 12000,
+    );
+    await _network(
+      kouilou,
+      code: 'KLV',
+      hour: '07:30',
+      nightHour: '22:00',
+      fare: 11000,
+    );
 
     // Both in the open-protection channel (`08-disruption.md` §5), so a call
     // put out from either console has somebody on the other end of it. Opting
@@ -333,6 +396,12 @@ final class DemoWorld {
     await _tills(alizes, owner: 'angele');
     await _tills(kouilou, owner: 'prosper');
 
+    // One of every role at Alizés, and a smaller company's real staffing at
+    // Kouilou — where three people do nine jobs, which is what a nine-coach
+    // operator actually looks like and is the case the capability model has
+    // to survive.
+    await _payroll(alizes, kouilou);
+
     final lapsed = await _company(
       code: 'LKN',
       legalName: 'Cars Lékana SARL',
@@ -368,6 +437,13 @@ final class DemoWorld {
       dailyDepartures: 2,
     );
 
+    // Somebody to buy a ticket as. The Auth emulator accepts 123456 for any
+    // number, so this account is signed into without a handset. Created
+    // before the counter sales below, because one of those seats is hers:
+    // an account with no ticket opens the handset app on an empty screen,
+    // and the QR at the coach door is the thing worth being able to look at.
+    await _person('voyageur', 'Chancelvie Okemba', phone: '00001');
+
     // People on the coaches. Tomorrow's 06:00 to Pointe-Noire is the one that
     // carries a load worth breaking down: enough passengers that a rescue
     // coach is a decision rather than an arithmetic exercise, and few enough
@@ -376,11 +452,44 @@ final class DemoWorld {
     final onBoard =
         await _sell(alizes, code: 'ALZ', inDays: 1, seats: 12) +
         await _sell(alizes, code: 'ALZ', inDays: 2, seats: 3) +
-        await _sell(kouilou, code: 'KLV', inDays: 1, seats: 5);
+        await _sell(kouilou, code: 'KLV', inDays: 1, seats: 5) +
+        // Tonight's coach, the one a conductor can actually stand at a door
+        // with. Chancelvie is on it, so the handset this demo is opened on
+        // holds a ticket for a coach that has not left.
+        await _sell(
+          alizes,
+          code: 'ALZ',
+          seats: 6,
+          nextToLeave: true,
+          buyer: 'voyageur',
+        );
 
-    // Somebody to buy a ticket as. The Auth emulator accepts 123456 for any
-    // number, so this account is signed into without a handset.
-    await _person('voyageur', 'Chancelvie Okemba', phone: '00001');
+    // A crew on tomorrow morning's coaches and on tonight's. Without it the
+    // scanner has nothing to sign into — `boarding.scan` is held by the
+    // conductor, and closing a departure additionally requires being rostered
+    // on that coach — so the whole boarding half of this product is
+    // unreachable in a seeded world.
+    await _crew(
+      alizes,
+      nextToLeave: true,
+      driver: 'blaise',
+      conductor: 'armand',
+      actor: 'angele',
+    );
+    await _crew(
+      alizes,
+      inDays: 1,
+      driver: 'blaise',
+      conductor: 'armand',
+      actor: 'angele',
+    );
+    await _crew(
+      kouilou,
+      inDays: 1,
+      driver: 'fabrice',
+      conductor: 'fabrice',
+      actor: 'prosper',
+    );
 
     stdout
       ..writeln('── demo world seeded')
@@ -389,10 +498,18 @@ final class DemoWorld {
       ..writeln(
         '   $onBoard passengers on tomorrow\'s coaches, paid at the guichet',
       )
+      ..writeln('   a night coach still to leave, crewed, with people on it')
       ..writeln('   2 applications waiting for the onboarding pass')
       ..writeln(
         '   people: *@$demoEmailDomain, traveller ${demoPhonePrefix}00001',
       )
+      ..writeln('   platform: direction · operations · lecture')
+      ..writeln(
+        '   Alizés: angele nadege thierry sylvain carine gaston perside '
+        'armand blaise aline edwige',
+      )
+      ..writeln('   Kouilou: prosper rachel fabrice merveille')
+      ..writeln('   authenticator for all of them: $demoTotpSecret')
       ..writeln(
         '   remove with: dart run services/worker/bin/seed_demo.dart --purge',
       );
@@ -405,7 +522,14 @@ final class DemoWorld {
       ('BZV', 'CG', 'Brazzaville', 'Brazzaville'),
       ('PNR', 'CG', 'Pointe-Noire', 'Pointe-Noire'),
       ('DOL', 'CG', 'Dolisie', 'Dolisie'),
-      ('OYO', 'CG', 'Oyo', 'Oyo')
+      ('OYO', 'CG', 'Oyo', 'Oyo'),
+      -- The two towns the RN1 actually passes between Brazzaville and
+      -- Dolisie. They are here because a coach that stops nowhere has no
+      -- road to report progress along: without them the scanner's "where
+      -- are we" sheet never appears and ADR-0014's second tier is written
+      -- and never once looked at.
+      ('KLA', 'CG', 'Kinkala', 'Kinkala'),
+      ('NKY', 'CG', 'Nkayi', 'Nkayi')
     ON CONFLICT (code) DO NOTHING
   ''', ignoreRows: true);
 
@@ -441,6 +565,151 @@ final class DemoWorld {
     return rows.first.toColumnMap()['id'] as String;
   }
 
+  /// The people behind both consoles.
+  ///
+  /// Alizés gets one person per role, so every screen can be opened as the
+  /// person it was drawn for. Kouilou gets three people holding nine roles
+  /// between them, because that is what a nine-coach operator looks like and
+  /// because a capability model only ever breaks on somebody wearing two
+  /// hats at once.
+  Future<void> _payroll(String alizes, String kouilou) async {
+    for (final (handle, name, roles, atStation) in const [
+      ('nadege', 'Nadège Ekondzo', ['org_admin'], false),
+      ('thierry', 'Thierry Ngouabi', ['finance'], false),
+      ('sylvain', 'Sylvain Ibara', ['fleet_manager'], false),
+      ('carine', 'Carine Mabika', ['dispatcher'], false),
+      ('gaston', 'Gaston Nkodia', ['station_manager'], true),
+      ('perside', 'Perside Bantsimba', ['vendor'], true),
+      ('armand', 'Armand Kibangou', ['conductor'], true),
+      ('blaise', 'Blaise Samba', ['driver'], true),
+      ('aline', 'Aline Mouko', ['viewer'], false),
+    ]) {
+      await _hire(
+        alizes,
+        handle: handle,
+        name: name,
+        roles: roles,
+        atStation: atStation,
+      );
+    }
+
+    // A role the company designed rather than one we shipped (ADR-0011's
+    // "a new role is a configuration row, not a release"). An escale chief
+    // runs a station for the day: they sell, they open and close the till,
+    // and they move a coach's departure time — which is not any one of the
+    // roles above and is exactly the shape a real operator asks for.
+    final escale = await _console.createCustomRole(
+      operatorId: alizes,
+      name: "Chef d'escale",
+      capabilities: const [
+        Capability.bookingRead,
+        Capability.bookingSell,
+        Capability.bookingReschedule,
+        Capability.tillOpen,
+        Capability.tillClose,
+        Capability.departureManage,
+      ],
+      clonedFromRole: 'station_manager',
+    );
+    if (escale != null) {
+      await _hire(
+        alizes,
+        handle: 'edwige',
+        name: 'Edwige Nsondé',
+        roles: [escale.name],
+        atStation: true,
+      );
+    }
+
+    for (final (handle, name, roles, atStation) in const [
+      ('rachel', 'Rachel Ondzé', ['dispatcher', 'station_manager'], true),
+      ('fabrice', 'Fabrice Loemba', ['conductor', 'driver'], true),
+      ('merveille', 'Merveille Tati', ['vendor'], true),
+    ]) {
+      await _hire(
+        kouilou,
+        handle: handle,
+        name: name,
+        roles: roles,
+        atStation: atStation,
+      );
+    }
+  }
+
+  /// Everybody who works at a company, one of each.
+  ///
+  /// **Why every role, and not just the owner.** Nine of this console's
+  /// screens are the same screen with different things missing, and which
+  /// things depends on `Capability.operatorRoles`. Seeding only the owner
+  /// means the *only* console anybody ever opens is the one that can do
+  /// everything — so a screen that a dispatcher cannot open, a till a viewer
+  /// can read but not touch, or a Personnel page that hides the role it is
+  /// not allowed to grant is written, reviewed, and never once looked at
+  /// through the eyes it was written for.
+  ///
+  /// Through `inviteStaff`, which is the console's own Personnel screen and
+  /// the only writer of `operator_staff.station_ids` — a vendor seeded any
+  /// other way has no till to sell from.
+  Future<String> _hire(
+    String operatorId, {
+    required String handle,
+    required String name,
+    required List<String> roles,
+    bool atStation = false,
+  }) async {
+    final userId = await _person(handle, name, phone: _digits(handle));
+    await _console.inviteStaff(
+      operatorId: operatorId,
+      accountId: userId,
+      roles: roles,
+      // Empty means whole-org, which is what an office job is. A person at a
+      // counter or on a coach belongs to a station, and the guichet resolves
+      // their till from the first entry.
+      stationIds: atStation ? await _stationIds(operatorId) : const [],
+    );
+    await _authenticator(userId);
+    return userId;
+  }
+
+  Future<List<String>> _stationIds(String operatorId) async {
+    final rows = await _seed.execute(
+      Sql.named(
+        'SELECT id::text AS id FROM stations WHERE operator_id = @op '
+        'ORDER BY created_at',
+      ),
+      parameters: {'op': TypedValue(Type.uuid, operatorId)},
+    );
+    return [for (final row in rows) row.toColumnMap()['id'] as String];
+  }
+
+  /// A confirmed second factor on [demoTotpSecret], so this person can sign
+  /// in twice.
+  ///
+  /// The enrolment is begun with a fixed seed and **confirmed with a real
+  /// code computed against it** rather than by stamping `confirmed_at`: the
+  /// row this leaves behind is the row a genuine enrolment leaves behind, and
+  /// a change that broke `Totp.compute` would fail the seed rather than
+  /// producing fourteen accounts that cannot sign in.
+  Future<void> _authenticator(String userId) async {
+    final stored = await _factors.beginEnrolment(
+      userId: userId,
+      secretBase32: demoTotpSecret,
+      // None. A recovery code is hashed under the *API's* signing key, and
+      // this seeder does not hold it — a list seeded here would be eight
+      // codes that never work, which is worse than none.
+      recoveryHashes: const [],
+    );
+    if (stored == null || stored.isConfirmed) return;
+
+    final secret = Base32.decode(demoTotpSecret)!;
+    final code = Totp.compute(
+      secret: secret,
+      counter: Totp.windowAt(DateTime.now().toUtc()),
+      mac: const HmacSha256Authenticator(),
+    );
+    await _second.confirmEnrolment(userId: userId, code: code);
+  }
+
   Future<String> _staff(String role, String handle) async {
     final userId = await _person(handle, 'BEL — $handle');
     await _seed.execute(
@@ -455,6 +724,9 @@ final class DemoWorld {
       },
       ignoreRows: true,
     );
+    // Our own people are staff too, and the back office asks them for the
+    // same second factor it asks an operator for.
+    await _authenticator(userId);
     return userId;
   }
 
@@ -574,6 +846,11 @@ final class DemoWorld {
       reason: 'mise en service',
     );
 
+    // Activation is the moment an applicant becomes staff, and staff are
+    // asked for a second factor. Before this the owner was the one person in
+    // the world who could not open their own console twice.
+    await _authenticator(await _userIdOf(owner));
+
     return operatorId;
   }
 
@@ -582,6 +859,7 @@ final class DemoWorld {
     String operatorId, {
     required String code,
     required String hour,
+    required String nightHour,
     required int fare,
   }) async {
     final layout = await _console.saveLayout(
@@ -611,7 +889,34 @@ final class DemoWorld {
       'station Mikalou',
     );
 
+    // Two roads by day, and one of them again at night. **The night coach is
+    // what makes the door demonstrable at all**: the scanner asks the server
+    // for *today's* coaches and has no date picker, so a world whose only
+    // departures leave at six in the morning is a world where boarding can be
+    // rehearsed for about an hour a day. A 21:00 BZV–Pointe-Noire is also
+    // what the road actually runs — seven and a half hours is a night most
+    // people would rather sleep through than sit through.
     for (final road in const [('PNR', 450), ('DOL', 300)]) {
+      // The stops on the way, and only on the long road. A 300-minute run to
+      // Dolisie is direct; the 450-minute one to Pointe-Noire passes three
+      // towns, which is what gives the conductor something to report from
+      // (ADR-0014 §1, tier 2) and the due-stop prompt something to fall due.
+      final itinerary = road.$1 != 'PNR'
+          ? Itinerary.empty
+          : ok(
+              Itinerary.of(
+                const [
+                  RouteStop(cityCode: 'KLA', offsetMinutes: 90),
+                  RouteStop(cityCode: 'NKY', offsetMinutes: 300),
+                  RouteStop(cityCode: 'DOL', offsetMinutes: 400),
+                ],
+                originCity: 'BZV',
+                destinationCity: road.$1,
+                durationMinutes: road.$2,
+              ),
+              'itinerary BZV-${road.$1}',
+            );
+
       final route = must(
         await _console.saveRoute(
           operatorId: operatorId,
@@ -619,6 +924,7 @@ final class DemoWorld {
           originCity: 'BZV',
           destinationCity: road.$1,
           durationMinutes: road.$2,
+          stops: itinerary,
         ),
         'route BZV-${road.$1}',
       );
@@ -642,6 +948,29 @@ final class DemoWorld {
       await _console.materialise(
         operatorId: operatorId,
         patternId: pattern.id,
+        from: _inDays(0),
+        to: _inDays(14),
+      );
+
+      if (road.$1 != 'PNR') continue;
+
+      final night = must(
+        await _console.savePattern(
+          operatorId: operatorId,
+          routeId: route.id,
+          recurrence: Recurrence.daily(),
+          departureTime: nightHour,
+          fare: Money.xaf(fare - 500),
+          validFrom: _inDays(0),
+          vehicleId: vehicle.id,
+          originStationId: station.id,
+        ),
+        'pattern BZV-PNR nuit',
+      );
+
+      await _console.materialise(
+        operatorId: operatorId,
+        patternId: night.id,
         from: _inDays(0),
         to: _inDays(14),
       );
@@ -744,6 +1073,86 @@ final class DemoWorld {
     ignoreRows: true,
   );
 
+  /// Tomorrow's — or any day's — first coach to Pointe-Noire.
+  ///
+  /// Shared by the counter sales and the roster so both name the *same*
+  /// departure: a crew rostered onto a coach nobody is on, or a manifest with
+  /// no crew, is two half-demonstrations instead of one journey.
+  Future<({String id, String station})?> _coach(
+    String operatorId, {
+    int? inDays,
+    bool nextToLeave = false,
+  }) async {
+    // **`nextToLeave` is what the boarding half of this world hangs on.** The
+    // scanner asks the server for *today's* coaches and offers no date
+    // picker, so a load put on tomorrow's six o'clock can be looked at in a
+    // console and never once scanned at a door. The night coach is always
+    // still to leave, whatever hour the demo is being run at.
+    final when = nextToLeave
+        ? 'd.departs_at > now()'
+        : "d.departs_at::date = (now() + make_interval(days => @days))::date";
+
+    final rows = await _seed.execute(
+      Sql.named('''
+        SELECT d.id::text AS id, d.origin_station_id::text AS station
+          FROM departures d
+          JOIN routes r ON r.id = d.route_id
+         WHERE d.operator_id = @op
+           AND r.destination_city = 'PNR'
+           AND $when
+         ORDER BY d.departs_at
+         LIMIT 1
+      '''),
+      parameters: {
+        'op': TypedValue(Type.uuid, operatorId),
+        if (!nextToLeave) 'days': TypedValue(Type.integer, inDays),
+      },
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first.toColumnMap();
+    return (id: row['id'] as String, station: row['station'] as String);
+  }
+
+  /// Who is on the coach tomorrow.
+  ///
+  /// Through `assignCrew`, which runs `CrewAssignment.validate` inside its own
+  /// transaction — so a seed that rostered somebody unqualified would be
+  /// refused here rather than producing a roster the product would not have
+  /// allowed. In a small company one person drives *and* takes the tickets,
+  /// which is why [driver] and [conductor] may be the same handle.
+  Future<void> _crew(
+    String operatorId, {
+    int? inDays,
+    bool nextToLeave = false,
+    required String driver,
+    required String conductor,
+    required String actor,
+  }) async {
+    final coach = await _coach(
+      operatorId,
+      inDays: inDays,
+      nextToLeave: nextToLeave,
+    );
+    if (coach == null) return;
+    final actorId = await _userIdOf(actor);
+
+    for (final (handle, role) in [
+      (driver, CrewRole.driver),
+      (conductor, CrewRole.conductor),
+    ]) {
+      final assigned = await _console.assignCrew(
+        operatorId: operatorId,
+        departureId: coach.id,
+        staffUserId: await _userIdOf(handle),
+        role: role,
+        actorUserId: actorId,
+      );
+      if (assigned case Err(:final failure)) {
+        throw StateError('roster $handle as ${role.name} refused: $failure');
+      }
+    }
+  }
+
   /// Passengers on a coach, sold over the counter.
   ///
   /// **Without this the demo world has roads and no people on them**, and
@@ -765,28 +1174,19 @@ final class DemoWorld {
   Future<int> _sell(
     String operatorId, {
     required String code,
-    required int inDays,
     required int seats,
+    int? inDays,
+    String? buyer,
+    bool nextToLeave = false,
   }) async {
-    final rows = await _seed.execute(
-      Sql.named('''
-        SELECT d.id::text AS id, d.origin_station_id::text AS station
-          FROM departures d
-          JOIN routes r ON r.id = d.route_id
-         WHERE d.operator_id = @op
-           AND r.destination_city = 'PNR'
-           AND d.departs_at::date = (now() + make_interval(days => @days))::date
-         ORDER BY d.departs_at
-         LIMIT 1
-      '''),
-      parameters: {
-        'op': TypedValue(Type.uuid, operatorId),
-        'days': TypedValue(Type.integer, inDays),
-      },
+    final coach = await _coach(
+      operatorId,
+      inDays: inDays,
+      nextToLeave: nextToLeave,
     );
-    if (rows.isEmpty) return 0;
-    final departureId = rows.first.toColumnMap()['id'] as String;
-    final stationId = rows.first.toColumnMap()['station'] as String;
+    if (coach == null) return 0;
+    final departureId = coach.id;
+    final stationId = coach.station;
 
     // The same seed the API in front of this database will sign with, rather
     // than the development one unconditionally: a stack whose seeded tickets
@@ -817,10 +1217,16 @@ final class DemoWorld {
     var sold = 0;
     for (final (index, row) in free.indexed) {
       final label = row.toColumnMap()['seat_label'] as String;
-      final who = _passengers[index % _passengers.length];
       // A handle per seat, so re-seeding produces the same people and the
       // purge finds every one of them by the address it already looks for.
-      final handle = '${code.toLowerCase()}-p${index + 1}';
+      // The first seat can be sold to a named persona instead — the traveller
+      // whose handset this demo is opened on.
+      final handle = index == 0 && buyer != null
+          ? buyer
+          : '${code.toLowerCase()}-p${index + 1}';
+      final who = handle == buyer
+          ? 'Chancelvie Okemba'
+          : _passengers[index % _passengers.length];
       final userId = await _person(handle, who, phone: '${_digits(handle)}');
 
       final held = await holds(

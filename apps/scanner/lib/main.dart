@@ -96,6 +96,18 @@ Future<void> main() async {
     language: 'fr',
   );
 
+  // The refresh token the Keystore kept, spent for a live one before the
+  // first screen is drawn. Without this line the store above is written and
+  // never read, and the app is exactly the thing its own comment says it must
+  // not be: a sign-in at the coach door, with a queue behind it, needing a
+  // one-time code by e-mail *and* an authenticator — neither of which a
+  // handset in a dead zone can obtain. Every other surface already does this;
+  // this one is the surface where it is not merely convenient.
+  //
+  // A failure here is "not signed in", which is the screen this app opens on
+  // anyway.
+  await session.restore();
+
   // The conductor's own clock, corrected by what the last response said the
   // real one was.
   //
@@ -292,7 +304,14 @@ class _Root extends StatefulWidget {
 }
 
 class _RootState extends State<_Root> {
-  late bool _signedIn = widget.session == null;
+  /// Signed in already, or asking.
+  ///
+  /// `isSignedIn` rather than a bare `session == null`, because `main` has
+  /// already spent whatever the Keystore held: a handset that was signed in
+  /// yesterday and killed overnight opens on its coaches, not on a form
+  /// asking for a code by e-mail that a yard with no signal cannot deliver.
+  late bool _signedIn =
+      widget.session == null || widget.session!.isSignedIn;
 
   @override
   Widget build(BuildContext context) {
@@ -305,6 +324,8 @@ class _RootState extends State<_Root> {
         session: session,
         title: context.t('scanner.title'),
         icon: Icons.qr_code_scanner,
+        // A conductor opens this at the coach door, not at a desk.
+        scene: KSceneArt.scan,
         t: context.t,
         onSignedIn: () => setState(() => _signedIn = true),
       );

@@ -128,6 +128,33 @@ final class AdminWorkspace {
 
   bool can(String capability) => _identity?.can(capability) ?? false;
 
+  /// The sections this person can actually open, in rail order.
+  ///
+  /// It lives here rather than in the shell because it is a capability
+  /// decision, not a layout one — and because `start` has to consult it
+  /// before the first screen is drawn. A rail built from one list and a body
+  /// drawn from another is how a `viewer` used to land on the application
+  /// queue: the rail correctly offered two tabs, the body rendered a third
+  /// nobody had opened, and the screen said "you do not have access to this
+  /// action" over an empty state claiming there was nothing to review.
+  List<AdminSection> get sections => [
+    if (can('platform.operator.review')) AdminSection.queue,
+    if (can('platform.operator.review')) AdminSection.operators,
+    // The same authority that reviews an application. Compliance is that job
+    // on a slower clock, and splitting it into its own capability would mean
+    // the person who approved a company cannot see when its licence runs out.
+    if (can('platform.operator.review')) AdminSection.compliance,
+    if (can('platform.payment.reconcile')) AdminSection.payments,
+    // Reading the queue needs finance.read; moving anything on it needs
+    // payout.approve. Our own analyst can answer "has Ocean du Nord been
+    // paid?" without holding the authority to pay them.
+    if (can('finance.read')) AdminSection.payouts,
+    // Same capability as the payout queue, and for the same reason: aggregate
+    // counts, no traveller on them, and the analyst who is asked why last
+    // Tuesday was quiet should not need the authority to move money first.
+    if (can('finance.read')) AdminSection.funnel,
+  ];
+
   void openSection(AdminSection section) {
     _section = section;
     _openOperator = null;
@@ -150,6 +177,11 @@ final class AdminWorkspace {
   /// one frame — and a tab that appears and vanishes reads as a bug.
   Future<void> start() => _run(() async {
     _identity = await _gateway.identity();
+    // A section nobody can open is not a landing screen. The queue is where
+    // everybody else starts; somebody who cannot review applications starts
+    // on the first thing they can.
+    final open = sections;
+    if (open.isNotEmpty && !open.contains(_section)) _section = open.first;
     await _load();
   });
 

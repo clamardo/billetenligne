@@ -36,9 +36,13 @@ class CoachPickerPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: kilo.color.surfaceBase,
-      appBar: AppBar(
-        backgroundColor: kilo.color.surfaceRaised,
-        title: Text(context.t('scanner.coaches.title')),
+      // The same woven band the traveller's funnel wears. This is the first
+      // screen a conductor sees every morning and it used to be a white list
+      // under a white bar: correct, and indistinguishable from any other
+      // list on the handset.
+      appBar: KJourneyBar(
+        title: context.t('scanner.coaches.title'),
+        automaticallyImplyLeading: false,
         actions: [
           IconButton(
             onPressed: pinning == null ? onRefresh : null,
@@ -61,6 +65,11 @@ class CoachPickerPage extends StatelessWidget {
           ),
         ],
       ),
+      // The traveller's results screen is the recipe: a calm cream ground and
+      // white cards that carry their own edge. A woven ground was tried here
+      // and reverted — behind borderless tiles the rows dissolved into the
+      // pattern and the list read as wallpaper with text on it. The band
+      // above carries the brand; the body's job is to stay quiet.
       body: SafeArea(
         child: Column(
           children: [
@@ -79,21 +88,116 @@ class CoachPickerPage extends StatelessWidget {
                   ? _Empty(onRefresh: onRefresh)
                   : RefreshIndicator(
                       onRefresh: onRefresh,
-                      child: ListView.separated(
-                        padding: EdgeInsets.all(kilo.space.s4),
-                        itemCount: coaches.length,
-                        separatorBuilder: (_, _) =>
-                            SizedBox(height: kilo.space.s3),
-                        itemBuilder: (context, i) => _CoachTile(
-                          coach: coaches[i],
-                          busy: pinning == coaches[i].id,
-                          enabled: pinning == null,
-                          onTap: () => onPick(coaches[i]),
-                        ),
+                      // A scroll view rather than a list, so the space the
+                      // coaches leave can be closed by something. Three
+                      // departures on a tall handset ended the page halfway
+                      // down and left the rest blank; the traveller's results
+                      // screen has never done that, and a conductor's first
+                      // screen of the day should not look like a different
+                      // product from the one their passengers are holding.
+                      child: CustomScrollView(
+                        slivers: [
+                          SliverPadding(
+                            padding: EdgeInsets.fromLTRB(
+                              kilo.space.s4,
+                              kilo.space.s4,
+                              kilo.space.s4,
+                              0,
+                            ),
+                            sliver: SliverList.separated(
+                              itemCount: coaches.length,
+                              separatorBuilder: (_, _) =>
+                                  SizedBox(height: kilo.space.s3),
+                              itemBuilder: (context, i) => _CoachTile(
+                                coach: coaches[i],
+                                busy: pinning == coaches[i].id,
+                                enabled: pinning == null,
+                                onTap: () => onPick(coaches[i]),
+                              ),
+                            ),
+                          ),
+                          SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: _EndOfDay(count: coaches.length),
+                          ),
+                        ],
                       ),
                     ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Closes the day, the way the traveller's results screen closes a search.
+///
+/// `SliverFillRemaining` hands this tight constraints covering exactly what
+/// the coaches left, so the panel is as tall as the gap on every handset with
+/// nothing measured — and never shorter than its own words when the list is
+/// long enough to scroll.
+///
+/// **Every screen of this product closes.** A band above and nothing below is
+/// how a screen stops looking like the app it belongs to.
+class _EndOfDay extends StatelessWidget {
+  const _EndOfDay({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+
+    return Padding(
+      padding: EdgeInsets.all(kilo.space.s4),
+      child: ClipRRect(
+        borderRadius: kilo.radius.cardBorder,
+        child: KScene(
+          // The road, not the terminus. `station` was tried and the full-sun
+          // palette turns its awning into a bar of orange across the middle
+          // of the panel — `roadtrip` is the scene the traveller's own
+          // end-of-list has always used, and it reads in every mode.
+          KSceneArt.roadtrip,
+          height: 180,
+          overlay: true,
+          // A scrim under the words rather than a wash over the picture: the
+          // palest band of this scene is exactly where the sentence sits.
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: const [0.4, 1],
+                colors: [
+                  kilo.color.brandPrimaryStrong.withValues(alpha: 0),
+                  kilo.color.brandPrimaryStrong.withValues(alpha: 0.95),
+                ],
+              ),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(kilo.space.s4),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    context.tPlural('scanner.coaches.endOfDay', count),
+                    style: kilo.text.body.copyWith(
+                      color: kilo.color.onBrandPrimary,
+                    ),
+                  ),
+                  SizedBox(height: kilo.space.s1),
+                  Text(
+                    context.t('scanner.coaches.endOfDayBody'),
+                    style: kilo.text.bodySm.copyWith(
+                      color: kilo.color.onBrandPrimary.withValues(alpha: 0.82),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -118,9 +222,16 @@ class _CoachTile extends StatelessWidget {
     final kilo = context.kilo;
     final cancelled = coach.status == 'cancelled';
 
-    return Material(
-      color: kilo.color.surfaceRaised,
-      borderRadius: kilo.radius.cardBorder,
+    // The border is what makes a white card legible on a near-white ground.
+    // Without one these read as bands rather than cards — the traveller's
+    // results screen has carried it since it was written.
+    return Container(
+      decoration: BoxDecoration(
+        color: kilo.color.surfaceRaised,
+        borderRadius: kilo.radius.cardBorder,
+        border: Border.all(color: kilo.color.borderSubtle),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         borderRadius: kilo.radius.cardBorder,
         onTap: enabled && !cancelled ? onTap : null,

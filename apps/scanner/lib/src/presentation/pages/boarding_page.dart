@@ -452,6 +452,15 @@ class _SyncButton extends StatelessWidget {
 /// Shown so a conductor can decide to re-sync *before* departure, rather than
 /// discovering at the door that someone who bought a seat ten minutes ago is
 /// not on their list.
+///
+/// **It says nothing about the signal, and used to.** The fresh line read
+/// *"Offline · list up to date 0 min ago"* on a handset that had pinned the
+/// manifest a second earlier over a working connection and went on uploading
+/// boardings from it — the word was asserting a fact nothing here had
+/// checked. The only input this widget has is [BoardingManifest.ageAt], so
+/// the age is now all it claims. Whether there is signal is answered where it
+/// is actually known: the outbox chip beside it, which says how many
+/// boardings are still waiting to go up.
 class _StalenessChip extends StatelessWidget {
   const _StalenessChip({required this.manifest});
 
@@ -478,8 +487,8 @@ class _StalenessChip extends StatelessWidget {
         Text(
           context.t(
             stale
-                ? 'scanner.boarding.staleOnline'
-                : 'scanner.boarding.staleOffline',
+                ? 'scanner.boarding.listStale'
+                : 'scanner.boarding.listFresh',
             {'minutes': age.inMinutes},
           ),
           style: kilo.text.bodySm.copyWith(color: color),

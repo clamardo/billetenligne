@@ -369,6 +369,71 @@ void main() {
   );
 
   test(
+    'signing in resolves who somebody is, not only that they exist',
+    () async {
+      // **The regression this exists for.** `forVerifiedEmail` is an upsert,
+      // and a `RETURNING` clause cannot see a LATERAL join — so the account
+      // it handed back carried `staff: null` and `platformRole: null` for
+      // everybody, an operator's owner and our own administrators included.
+      // `SecondFactorSignIn.isRequiredFor` reads exactly those two fields.
+      // The result was that ADR-0013's mandatory second factor on both
+      // back-office surfaces was never once asked for, on any sign-in, and
+      // nothing on screen said so: the console simply opened.
+      //
+      // Every other caller reads the joined query, so nothing but a sign-in
+      // was ever wrong — which is why no console test caught it.
+      final userId = await fixture.staffMember(
+        roles: const ['org_owner'],
+        suffix: '7742',
+        name: 'Angele Mbemba',
+      );
+      final email = freshEmail();
+      await fixture.rows(
+        "UPDATE user_accounts SET email = '$email' WHERE id = '$userId'",
+      );
+
+      final signedIn = await directory.forVerifiedEmail(
+        email: email,
+        language: 'fr',
+      );
+
+      expect(signedIn.account.id, userId);
+      expect(signedIn.account.staff, isNotNull);
+      expect(signedIn.account.staff!.roles, contains('org_owner'));
+
+      // And it agrees with the query every request after sign-in uses. Two
+      // shapes of the same person is how this diverged in the first place.
+      final later = await directory.byId(userId);
+      expect(later!.staff!.operatorId, signedIn.account.staff!.operatorId);
+    },
+  );
+
+  test('our own people are resolved as staff on sign-in too', () async {
+    // The platform half of the same bug. A `super_admin` who signed in was
+    // handed an account with no platform role, so the back office asked them
+    // for nothing either.
+    final email = freshEmail();
+    final seeded = await directory.forVerifiedEmail(
+      email: email,
+      language: 'fr',
+    );
+    await fixture.rows(
+      'INSERT INTO platform_staff (user_id, role) '
+      "VALUES ('${seeded.account.id}', 'operations') "
+      'ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role, '
+      'revoked_at = NULL',
+    );
+
+    final again = await directory.forVerifiedEmail(
+      email: email,
+      language: 'fr',
+    );
+
+    expect(again.account.platformRole, 'operations');
+    expect(again.account.isPlatformStaff, isTrue);
+  });
+
+  test(
     'the language on an account can be changed, and only to a real one',
     () async {
       final email = freshEmail();

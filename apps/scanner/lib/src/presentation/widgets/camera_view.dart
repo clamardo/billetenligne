@@ -146,37 +146,54 @@ class _CameraUnavailable extends StatelessWidget {
 
     // A dead camera must never mean a stranded coach. Manual boarding is one
     // tap below this, and saying so beats showing a black rectangle.
-    return ColoredBox(
-      color: kilo.color.surfaceSunken,
-      child: Center(
-        child: Padding(
-          padding: EdgeInsets.all(kilo.space.s6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.no_photography_outlined,
-                size: 48,
-                color: kilo.color.contentMuted,
+    //
+    // The scene rather than a flat sunken field: this is what a conductor is
+    // looking at for the whole of boarding when the camera will not start,
+    // and a grey rectangle with an icon on it reads as a broken app rather
+    // than as a working one with a broken lens.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        KScene(KSceneArt.scan, height: double.infinity, overlay: true),
+        Center(
+          child: Padding(
+            padding: EdgeInsets.all(kilo.space.s6),
+            // The words sit on their own quiet ground. Dark ink straight onto
+            // the scene is a contrast gamble that changes with every crop.
+            child: Container(
+              decoration: BoxDecoration(
+                color: kilo.color.surfaceRaised,
+                borderRadius: kilo.radius.cardBorder,
               ),
-              SizedBox(height: kilo.space.s3),
-              Text(
-                context.t('scanner.camera.unavailable'),
-                style: kilo.text.h3,
-                textAlign: TextAlign.center,
+              padding: EdgeInsets.all(kilo.space.s5),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.no_photography_outlined,
+                    size: 48,
+                    color: kilo.color.contentMuted,
+                  ),
+                  SizedBox(height: kilo.space.s3),
+                  Text(
+                    context.t('scanner.camera.unavailable'),
+                    style: kilo.text.h3,
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: kilo.space.s2),
+                  Text(
+                    context.t('scanner.camera.unavailableBody'),
+                    textAlign: TextAlign.center,
+                    style: kilo.text.body.copyWith(
+                      color: kilo.color.contentSecondary,
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(height: kilo.space.s2),
-              Text(
-                context.t('scanner.camera.unavailableBody'),
-                textAlign: TextAlign.center,
-                style: kilo.text.body.copyWith(
-                  color: kilo.color.contentSecondary,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 }

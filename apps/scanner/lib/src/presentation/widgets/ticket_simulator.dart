@@ -22,7 +22,16 @@ import '../l10n.dart';
 /// Takes plain [SimulatedScan] values rather than the departure that produced
 /// them: presentation never reaches into infrastructure, and the layer check
 /// enforces it.
-class TicketSimulator extends StatelessWidget {
+///
+/// **The paste field is why this renders with no canned scans at all.** The
+/// canned list is empty against a real coach and always will be — a simulated
+/// scan needs a signed payload and a live secret, and only the demo departure
+/// holds those. That left the one case the door most needs rehearsing in
+/// unreachable: a *genuine* ticket, bought on the handset beside this one,
+/// against a *genuine* manifest pinned from the server. Pasting the string a
+/// camera would have decoded closes it, and takes the same code path
+/// everything else here takes.
+class TicketSimulator extends StatefulWidget {
   const TicketSimulator({required this.scans, required this.onScan, super.key});
 
   final List<SimulatedScan> scans;
@@ -34,8 +43,29 @@ class TicketSimulator extends StatelessWidget {
   static bool get isAvailable => kDebugMode;
 
   @override
+  State<TicketSimulator> createState() => _TicketSimulatorState();
+}
+
+class _TicketSimulatorState extends State<TicketSimulator> {
+  final _paste = TextEditingController();
+
+  @override
+  void dispose() {
+    _paste.dispose();
+    super.dispose();
+  }
+
+  void _read() {
+    final raw = _paste.text.trim();
+    if (raw.isEmpty) return;
+    // No code beside it: a pasted payload carries its own, and a conductor
+    // reading a screen has the screen's rotating code in the string.
+    widget.onScan(raw, null);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (!isAvailable || scans.isEmpty) return const SizedBox.shrink();
+    if (!TicketSimulator.isAvailable) return const SizedBox.shrink();
 
     final kilo = context.kilo;
 
@@ -86,13 +116,30 @@ class TicketSimulator extends StatelessWidget {
               ),
             ),
             SizedBox(height: kilo.space.s4),
-            for (final scan in scans) ...[
+            for (final scan in widget.scans) ...[
               _ScanTile(
                 scan: scan,
-                onTap: () => onScan(scan.payload, scan.code),
+                onTap: () => widget.onScan(scan.payload, scan.code),
               ),
               SizedBox(height: kilo.space.s2),
             ],
+            TextField(
+              controller: _paste,
+              minLines: 1,
+              maxLines: 3,
+              style: kilo.text.bodySm,
+              decoration: InputDecoration(
+                labelText: context.t('scanner.simulator.pasteLabel'),
+                hintText: context.t('scanner.simulator.pasteHint'),
+                border: const OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _read(),
+            ),
+            SizedBox(height: kilo.space.s2),
+            KButton(
+              label: context.t('scanner.simulator.pasteSubmit'),
+              onPressed: _read,
+            ),
           ],
         ),
       ),

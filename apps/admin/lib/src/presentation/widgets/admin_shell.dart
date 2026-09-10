@@ -52,7 +52,7 @@ class _AdminShellState extends State<AdminShell> {
   Widget build(BuildContext context) {
     final kilo = context.kilo;
     final workspace = widget.workspace;
-    final sections = _visibleSections(workspace);
+    final sections = workspace.sections;
 
     // A `viewer` holds `booking.read` and `finance.read` and neither of the
     // two capabilities this app is built from. They are not shown an empty
@@ -182,25 +182,6 @@ class _AdminShellState extends State<AdminShell> {
       ),
     );
   }
-
-  /// Only the sections this person can actually use.
-  static List<AdminSection> _visibleSections(AdminWorkspace w) => [
-    if (w.can('platform.operator.review')) AdminSection.queue,
-    if (w.can('platform.operator.review')) AdminSection.operators,
-    // The same authority that reviews an application. Compliance is that job
-    // on a slower clock, and splitting it into its own capability would mean
-    // the person who approved a company cannot see when its licence runs out.
-    if (w.can('platform.operator.review')) AdminSection.compliance,
-    if (w.can('platform.payment.reconcile')) AdminSection.payments,
-    // Reading the queue needs finance.read; moving anything on it needs
-    // payout.approve. Our own analyst can answer "has Océan du Nord been
-    // paid?" without holding the authority to pay them.
-    if (w.can('finance.read')) AdminSection.payouts,
-    // Same capability as the payout queue, and for the same reason: aggregate
-    // counts, no traveller on them, and the analyst who is asked why last
-    // Tuesday was quiet should not need the authority to move money first.
-    if (w.can('finance.read')) AdminSection.funnel,
-  ];
 
   static IconData _icon(AdminSection s) => switch (s) {
     AdminSection.queue => Icons.inbox,

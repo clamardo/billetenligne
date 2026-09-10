@@ -118,6 +118,22 @@ void main() {
       expect(find.text('Paiements'), findsNothing);
     });
 
+    testWidgets('a viewer lands on a section they can open', (tester) async {
+      // The rail and the body used to be built from two lists. A `viewer`
+      // opened on the application queue — a section their rail did not even
+      // offer — and got "you do not have access to this action" printed over
+      // an empty state saying there was nothing to review, while two
+      // applications sat waiting.
+      await pump(
+        tester,
+        ScriptedAdmin(capabilities: const ['booking.read', 'finance.read']),
+      );
+
+      expect(find.text('Versements'), findsWidgets);
+      expect(find.textContaining('accès'), findsNothing);
+      expect(find.text('Dossiers à traiter'), findsNothing);
+    });
+
     testWidgets('a failure to load identity is a retry, not a blank app', (
       tester,
     ) async {

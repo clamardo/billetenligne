@@ -1229,7 +1229,15 @@ final class BelApiClient {
     int withinDays = 60,
   }) async => Wire.readList(
     (await _get(
-      '/admin/v1/compliance?days=$withinDays',
+      '/admin/v1/compliance',
+      // `query:`, never a `?` inside the path. `Uri.replace(path:)` escapes
+      // what it is given, so `'/admin/v1/compliance?days=60'` went out as
+      // `/admin/v1/compliance%3Fdays=60` — one path segment, no route, a 404,
+      // and a back office that told a reviewer *"this version of the app does
+      // not understand the server's reply"* while drawing "Nothing to chase"
+      // over a company whose insurance had already lapsed. The wrongest kind
+      // of screen: confident and empty.
+      query: {'days': '$withinDays'},
       reason: reason,
     ))['items'],
     ComplianceDto.fromJson,

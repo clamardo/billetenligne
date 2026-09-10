@@ -2,6 +2,7 @@ import 'package:bel_localization/bel_localization.dart';
 
 import 'accent_hues.dart';
 import 'artwork.g.dart';
+import 'weave.dart';
 
 /// `blt.cg/` — the address on the poster.
 ///
@@ -44,6 +45,10 @@ abstract final class LandingPage {
   }) {
     final t = CatalogTranslator(catalog, language);
     final accent = AccentHues.hex(null);
+    // The paper's own cloth, and the same weave again on the closing band in
+    // white. One motif, two grounds — the app does exactly this.
+    final weave = Weave.image('#1d5c46', opacity: 0.05);
+    final weaveOnGreen = Weave.image('#ffffff', opacity: 0.12);
 
     // Both halves, or neither. A page that says "Brazzaville ->" has lost the
     // second half of the only fact it was given.
@@ -98,13 +103,25 @@ abstract final class LandingPage {
 <meta property="og:type" content="website">
 <style>
 :root{--ink:#141a17;--soft:#6b7a72;--line:#e2e8e4;--accent:$accent;
-      --bg:#fbfcfb;--card:#ffffff}
+      --bg:#f6f4ee;--card:#ffffff;--measure:34rem}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
+/* Three bands, and the middle one takes the slack. A poster fills the wall
+   it is on: before this, the page was a 34rem column that simply stopped,
+   and every viewport taller than the content ended in a field of white. */
+html{background:var(--accent)}
+body{margin:0;min-height:100dvh;display:flex;flex-direction:column;
+     background:var(--bg);color:var(--ink);
      font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:34rem;margin:0 auto;padding:0 0 3rem}
+.band{padding-inline:1.25rem}
+/* The measure applies to the words, never to the artwork: `.scene` is a
+   child of the hero and was being clamped to 44rem with it, which left the
+   drawing as a rectangle floating in a flat green field. */
+.band>*:not(.scene){max-width:var(--measure);margin-inline:auto}
 .hero{position:relative;background:var(--accent);color:#fff;overflow:hidden;
-      padding:2.5rem 1.25rem 2.75rem;
+      /* Enough band for the drawing to be a drawing. Below this the road and
+         the coach are a stripe. */
+      min-height:min(20rem,46dvh);display:flex;align-items:center;
+      padding-block:3rem 5rem;
       /* The drawing turns into a silhouette here: the ground is already the
          house colour, so hills painted in it would be invisible. The same
          eight overrides the storefront's own hero uses. */
@@ -113,40 +130,76 @@ main{max-width:34rem;margin:0 auto;padding:0 0 3rem}
       --art-surface:rgba(255,255,255,.9);--art-accent:rgba(255,255,255,.5);
       --art-accent-wash:rgba(255,255,255,.26);
       --art-line:rgba(255,255,255,.3)}
-.hero .scene{position:absolute;inset:0;opacity:.9}
-.hero .scene svg{width:100%;height:100%;display:block;object-fit:cover}
-.heroInner{position:relative}
-h1{font-size:1.6rem;line-height:1.25;margin:0}
-.tag{margin:.5rem 0 0;color:rgba(255,255,255,.92)}
-.journey{display:inline-block;margin:0 0 .75rem;padding:.3rem .7rem;
+/* `preserveAspectRatio`, not `object-fit`: an inline <svg> ignores the
+   latter, which is why the road used to be sliced off mid-drawing at the
+   bottom of the band. */
+.hero .scene{position:absolute;inset:0;max-width:none;opacity:.92}
+.hero .scene svg{width:100%;height:100%;display:block}
+/* The same scrim `KScene` paints behind text in the apps. Without it the
+   headline sits on whatever part of the drawing the crop happens to put
+   under it, and the contrast is a matter of luck. */
+.hero:before{content:"";position:absolute;inset:0;
+             background:linear-gradient(180deg,
+               rgba(9,42,32,.55) 0%,rgba(9,42,32,.28) 55%,rgba(9,42,32,0) 100%)}
+.heroInner{position:relative;width:100%}
+h1{font-size:clamp(1.6rem,1.1rem + 2.2vw,2.6rem);line-height:1.2;margin:0;
+   letter-spacing:-.01em}
+.tag{margin:.6rem 0 0;color:rgba(255,255,255,.92);max-width:30rem}
+.journey{display:inline-block;margin:0 0 .85rem;padding:.3rem .7rem;
          border-radius:999px;background:rgba(255,255,255,.18);
          font-weight:600;font-size:.95rem}
-.wrap{padding:1.25rem}
-ul.what{list-style:none;margin:0 0 1.5rem;padding:0}
+/* The paper, with the app's own cloth on it. Faint on purpose — it should
+   read as texture at arm's length and as nothing at all under body text. */
+/* Centred in whatever height is left over. Five elements on a desktop
+   viewport pooled at the top and left two thirds of the page empty; the same
+   five, centred, read as a composed page at every height the poster is
+   opened at. */
+/* 44px rather than the tile's own 68: at full size the weave reads as
+   wallpaper on a desktop and competes with the words. Small and faint, it is
+   the cloth you notice only once you look for it. */
+.wrap{flex:1;display:flex;align-items:center;padding-block:3rem;
+      background-image:$weave;background-size:44px 44px;
+      background-position:center}
+ul.what{list-style:none;margin:0 0 1.75rem;padding:0;display:grid;gap:.25rem}
 ul.what li{position:relative;padding:.45rem 0 .45rem 1.6rem}
 ul.what li:before{content:"";position:absolute;left:.2rem;top:1.05rem;
                   width:.5rem;height:.5rem;border-radius:50%;
                   background:var(--accent)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
-      padding:1.1rem;margin-bottom:1rem}
+.cards{display:grid;gap:1rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+      padding:1.15rem}
 .card h2{font-size:1.05rem;margin:0 0 .35rem}
 .card p{margin:0;color:var(--soft);font-size:.92rem}
-a.cta{display:block;text-align:center;margin-top:.6rem;padding:.85rem;
+a.cta{display:block;text-align:center;margin-top:.7rem;padding:.85rem;
       background:var(--accent);color:#fff;text-decoration:none;
       border-radius:10px;font-weight:600}
-a.ghost{display:block;text-align:center;margin-top:.6rem;padding:.8rem;
+a.ghost{display:block;text-align:center;margin-top:.7rem;padding:.8rem;
         border:1px solid var(--line);border-radius:10px;
         color:var(--ink);text-decoration:none}
-.foot{color:var(--soft);font-size:.8rem;text-align:center;margin-top:1.5rem}
+/* The page ends on the house colour rather than trailing off. It also means
+   a viewport taller than the content shows cloth, never a white sheet. */
+.foot{background:var(--accent);color:rgba(255,255,255,.86);font-size:.85rem;
+      padding-block:1.6rem;background-image:$weaveOnGreen;
+      background-size:44px 44px}
+/* Block margins only. `margin:0` here used to cancel the `margin-inline:auto`
+   that centres everything else on the page, and dropped the line to the far
+   left of a wide screen. */
+.foot p{margin-block:0}
+@media(min-width:52rem){
+  :root{--measure:44rem}
+  ul.what{grid-template-columns:repeat(3,1fr);gap:1.25rem}
+  ul.what li{padding:.6rem 0 0 0;border-top:2px solid var(--accent)}
+  ul.what li:before{display:none}
+  .cards{grid-template-columns:1fr 1fr;align-items:start}
+}
 @media(prefers-color-scheme:dark){
-  :root{--ink:#e8efea;--soft:#93a49b;--line:#26312c;--bg:#0d1210;--card:#131a17}
+  :root{--ink:#e8efea;--soft:#93a49b;--line:#26312c;--bg:#101715;--card:#161e1b}
 }
 </style>
 </head>
 <body>
-<main>
-  <header class="hero">
-    <div class="scene" aria-hidden="true">${Artwork.css(Artwork.journey)}</div>
+  <header class="hero band">
+    <div class="scene" aria-hidden="true">${_cover(Artwork.css(Artwork.journey))}</div>
     <div class="heroInner">
       $journeyHtml
       <h1>${_text(t('landing.title'))}</h1>
@@ -154,28 +207,44 @@ a.ghost{display:block;text-align:center;margin-top:.6rem;padding:.8rem;
     </div>
   </header>
 
-  <div class="wrap">
-    <ul class="what">
-      <li>${_text(t('landing.what1'))}</li>
-      <li>${_text(t('landing.what2'))}</li>
-      <li>${_text(t('landing.what3'))}</li>
-    </ul>
+  <main class="wrap band">
+    <div>
+      <ul class="what">
+        <li>${_text(t('landing.what1'))}</li>
+        <li>${_text(t('landing.what2'))}</li>
+        <li>${_text(t('landing.what3'))}</li>
+      </ul>
 
-    $appCard
-
-    <div class="card">
-      <h2>${_text(t('landing.operators'))}</h2>
-      <p>${_text(t('landing.operatorsBody'))}</p>
-      $consoleLink
+      <div class="cards">
+        $appCard
+        <div class="card">
+          <h2>${_text(t('landing.operators'))}</h2>
+          <p>${_text(t('landing.operatorsBody'))}</p>
+          $consoleLink
+        </div>
+      </div>
     </div>
+  </main>
 
-    <p class="foot">${_text(t('landing.footer'))}</p>
-  </div>
-</main>
+  <footer class="foot band">
+    <p>${_text(t('landing.footer'))}</p>
+  </footer>
 </body>
 </html>
 ''';
   }
+
+  /// Fill the band rather than letter-box inside it. An inline `<svg>`
+  /// ignores `object-fit`, which is what sliced the road off mid-drawing at
+  /// the bottom of the hero; `preserveAspectRatio` is the attribute that
+  /// actually crops it. The storefront's hero keeps the same rule.
+  static String _cover(String svg) => svg.replaceFirst(
+    '<svg ',
+    // `YMax`, not `YMid`. These scenes are drawn with the horizon high and
+    // the road, the coach and the ground along the bottom edge; cropping
+    // from the centre cuts the coach in half and keeps the sky.
+    '<svg preserveAspectRatio="xMidYMax slice" ',
+  );
 
   static String _text(String value) => value
       .replaceAll('&', '&amp;')
