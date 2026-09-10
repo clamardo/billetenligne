@@ -37,6 +37,7 @@ an operator's insurance lapsed.
 |---|---|---|---|---|
 | [traveller](traveller/buying-a-seat/walkthrough.md) | buying a seat | 2026-09-09 | 0.1.0+1 · `0a6c851` | 0 — search to signed ticket, on a handset, against real Postgres |
 | [traveller](traveller/the-ticket-at-the-door/walkthrough.md) | the ticket at the door | 2026-09-09 | 0.1.0+1 · `0a6c851` | 0 — the QR was decoded **optically** and is the payload it claims to be |
+| [agency-customer](agency-customer/the-ticket-you-print/walkthrough.md) | the ticket you print | 2026-09-09 | 0.1.0+1 · `1950540` | 2 — the counter receipt **documented the opposite of the truth** about printed QRs (fixed); a vendor still cannot print from the till |
 | [conductor](conductor/boarding-and-the-road/walkthrough.md) | boarding, the road, closing the departure | 2026-09-09 | 0.1.0+1 · `0a6c851` | 4 — the **second factor was never asked for** (P1, fixed), the scanner said "Offline" while online (fixed), no way to drive it without a camera (fixed), and "today" with no clock |
 | [operator-owner](operator-owner/the-days-board/walkthrough.md) | the day's board, and who works here | 2026-09-09 | 0.1.0+1 · `0a6c851` | 1 — the navigation rail overflows by 36px on a 900px screen, for owners only |
 | [vendor](vendor/the-guichet/walkthrough.md) | the guichet | 2026-09-09 | 0.1.0+1 · `0a6c851` | 2 — an empty state that sends a vendor to a tab vendors do not have, and a seeded day with no coaches on it |
