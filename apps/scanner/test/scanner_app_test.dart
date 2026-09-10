@@ -56,7 +56,7 @@ void main() {
 
 final class _OneCoach implements BoardingGateway {
   @override
-  Future<List<BoardingDepartureDto>> coachesOn(DateTime localDate) async => [
+  Future<List<BoardingDepartureDto>> coachesBetween(DateTime from, DateTime to) async => [
     BoardingDepartureDto(
       id: 'dep-1',
       routeCode: 'BZV>PNR',
@@ -68,6 +68,10 @@ final class _OneCoach implements BoardingGateway {
       status: 'scheduled',
     ),
   ];
+
+  @override
+  Future<ScannerIdentity> whoAmI() async => ScannerIdentity.blank;
+
 
   @override
   Future<PinnedDeparture> pin(String departureId) => throw UnimplementedError();
@@ -93,8 +97,12 @@ final class _OneCoach implements BoardingGateway {
 
 final class _Refuses implements BoardingGateway {
   @override
-  Future<List<BoardingDepartureDto>> coachesOn(DateTime localDate) async =>
+  Future<List<BoardingDepartureDto>> coachesBetween(DateTime from, DateTime to) async =>
       throw StateError('no');
+
+  @override
+  Future<ScannerIdentity> whoAmI() async => ScannerIdentity.blank;
+
 
   @override
   Future<PinnedDeparture> pin(String departureId) => throw UnimplementedError();

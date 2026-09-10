@@ -21,12 +21,35 @@ final class ConsoleIdentityDto {
     required this.capabilities,
     required this.stationIds,
     this.language = 'fr',
+    this.fullName,
+    this.staffRef,
+    this.operatorName,
+    this.operatorCode,
   });
 
   final String userId;
   final String operatorId;
   final List<String> roles;
   final List<String> capabilities;
+
+  /// What this person is called, as the company wrote it on the roster.
+  ///
+  /// Null when nobody has filled it in, and then the surfaces that show it
+  /// show nothing rather than a UUID — which is what the admin identity strip
+  /// did, and it read as a bug to everybody who saw it.
+  final String? fullName;
+
+  /// The operator's own identifier for this person — the matricule on the
+  /// roster and stuck to the dashboard of the coach. **Not a credential**
+  /// (ADR-0024): it is here so a conductor can check the handset in their
+  /// hand is signed in as them, and so a station manager on the phone can be
+  /// told which person is at the door.
+  final String? staffRef;
+
+  /// The company, as it trades. Null on a membership the query could not
+  /// resolve, and never a fallback to the code.
+  final String? operatorName;
+  final String? operatorCode;
 
   /// Empty means every station. A vendor is scoped to theirs: the
   /// Pointe-Noire agent must not open the Brazzaville till.
@@ -45,6 +68,10 @@ final class ConsoleIdentityDto {
             (json['capabilities'] as List?)?.cast<String>() ?? const [],
         stationIds: (json['stationIds'] as List?)?.cast<String>() ?? const [],
         language: json['language'] as String? ?? 'fr',
+        fullName: json['fullName'] as String?,
+        staffRef: json['staffRef'] as String?,
+        operatorName: json['operatorName'] as String?,
+        operatorCode: json['operatorCode'] as String?,
       );
 }
 
@@ -654,6 +681,7 @@ final class BoardingDepartureDto {
     required this.capacity,
     required this.status,
     this.stationName,
+    this.crewRole,
   });
 
   final String id;
@@ -673,6 +701,15 @@ final class BoardingDepartureDto {
   /// one told nothing.
   final String? stationName;
 
+  /// `driver`, `conductor`, or null when this person is not on this coach's
+  /// roster.
+  ///
+  /// The whole reason the list can be a *plan* rather than a board: a
+  /// conductor looking a fortnight ahead is asking which runs are theirs, and
+  /// a list that cannot answer that is the dispatcher's screen with the money
+  /// taken out.
+  final String? crewRole;
+
   Map<String, Object?> toJson() => Wire.compact({
     'id': id,
     'routeCode': routeCode,
@@ -683,6 +720,7 @@ final class BoardingDepartureDto {
     'capacity': capacity,
     'status': status,
     'stationName': stationName,
+    'crewRole': crewRole,
   });
 
   factory BoardingDepartureDto.fromJson(Map<String, Object?> json) =>
@@ -699,6 +737,7 @@ final class BoardingDepartureDto {
         capacity: Wire.requireInt(json['capacity'], 'capacity'),
         status: Wire.requireString(json['status'], 'status'),
         stationName: json['stationName'] as String?,
+        crewRole: json['crewRole'] as String?,
       );
 }
 

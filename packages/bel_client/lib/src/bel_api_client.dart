@@ -1351,10 +1351,21 @@ final class BelApiClient {
   /// A different list from the dispatcher's board and behind a different
   /// capability: `boarding.scan` rather than `booking.read`, so a conductor's
   /// handset can find its coach without being able to read the day's takings.
-  Future<List<BoardingDepartureDto>> boardingDay(DateTime localDate) async {
+  Future<List<BoardingDepartureDto>> boardingDay(DateTime localDate) =>
+      boardingPlan(from: localDate, to: localDate);
+
+  /// The same list over a span of local days — the conductor's rota.
+  ///
+  /// One call rather than seven, because the signal this is fetched on is a
+  /// yard's: a week assembled from seven requests is a screen that finishes
+  /// only if all seven do. The server caps the span at a month.
+  Future<List<BoardingDepartureDto>> boardingPlan({
+    required DateTime from,
+    required DateTime to,
+  }) async {
     final body = await _get(
       '/console/v1/boarding',
-      query: {'date': _isoDate(localDate)},
+      query: {'from': _isoDate(from), 'to': _isoDate(to)},
     );
     return [
       for (final row in (body['departures'] as List? ?? const []))

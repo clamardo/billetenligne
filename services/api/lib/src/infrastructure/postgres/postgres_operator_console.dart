@@ -1133,14 +1133,20 @@ final class PostgresOperatorConsole implements OperatorConsole {
   });
 
   @override
-  Future<List<BoardingDeparture>> boardingDay({
+  Future<List<BoardingDeparture>> boardingPlan({
     required String operatorId,
-    required DateTime localDate,
+    required DateTime from,
+    required DateTime to,
+    String? staffUserId,
   }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
-    // A LOCAL calendar day, like the dispatcher's board: "coaches on the 15th"
+    // LOCAL calendar days, like the dispatcher's board: "coaches on the 15th"
     // is a local question, and a UTC comparison puts the 06:00 on the wrong
     // day. The zone is the market's, applied by Postgres — Dart has no zone
     // database and this is the one place a one-hour error strands somebody.
+    //
+    // The crew join is a LEFT JOIN and never a filter. A company that has not
+    // filled in a rota must not wake up to a screen with nothing on it; what
+    // the roster changes is what each row *says*, not whether it is there.
     final rows = await tx.execute(
       Sql.named('''
         SELECT d.id, d.departs_at, d.capacity, d.status::text AS status,
@@ -1148,17 +1154,28 @@ final class PostgresOperatorConsole implements OperatorConsole {
                s.name AS station_name,
                (SELECT count(*)::int FROM tickets t
                  WHERE t.departure_id = d.id AND t.voided_at IS NULL)
-                 AS expected
+                 AS expected,
+               (SELECT c.role::text FROM departure_crew c
+                 WHERE c.departure_id = d.id
+                   AND c.user_id = @staff::uuid
+                 -- A person may hold both jobs on one coach (0049). Driving is
+                 -- the one to name: it is the earlier commitment and the one a
+                 -- rota is planned around.
+                 ORDER BY (c.role = 'driver') DESC
+                 LIMIT 1) AS crew_role
           FROM departures d
           JOIN routes r ON r.id = d.route_id
           LEFT JOIN stations s ON s.id = d.origin_station_id
          WHERE d.operator_id = @operator
-           AND (d.departs_at AT TIME ZONE @tz)::date = @day::date
+           AND (d.departs_at AT TIME ZONE @tz)::date
+                 BETWEEN @from::date AND @to::date
          ORDER BY d.departs_at
       '''),
       parameters: {
         'operator': TypedValue(Type.uuid, operatorId),
-        'day': TypedValue(Type.date, localDate),
+        'from': TypedValue(Type.date, from),
+        'to': TypedValue(Type.date, to),
+        'staff': TypedValue(Type.uuid, staffUserId),
         'tz': TypedValue(Type.text, timeZone),
       },
     );
@@ -1177,9 +1194,44 @@ final class PostgresOperatorConsole implements OperatorConsole {
             capacity: r['capacity']! as int,
             stationName: r['station_name'] as String?,
             status: r['status']! as String,
+            crewRole: r['crew_role'] as String?,
           );
         }(),
     ];
+  });
+
+  @override
+  Future<StaffIdentity> staffIdentity({
+    required String operatorId,
+    required String userId,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    // The membership rather than the account is the anchor, because the
+    // matricule belongs to the employment and not to the person: the same
+    // human driving for two companies is two rosters and two numbers.
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT u.full_name, st.staff_ref,
+               coalesce(o.trading_name, o.legal_name) AS operator_name,
+               o.code AS operator_code
+          FROM operator_staff st
+          JOIN user_accounts u ON u.id = st.user_id
+          JOIN operators o ON o.id = st.operator_id
+         WHERE st.operator_id = @operator AND st.user_id = @user
+      '''),
+      parameters: {
+        'operator': TypedValue(Type.uuid, operatorId),
+        'user': TypedValue(Type.uuid, userId),
+      },
+    );
+    if (rows.isEmpty) return const StaffIdentity();
+
+    final r = rows.first.toColumnMap();
+    return StaffIdentity(
+      fullName: r['full_name'] as String?,
+      staffRef: r['staff_ref'] as String?,
+      operatorName: r['operator_name'] as String?,
+      operatorCode: r['operator_code'] as String?,
+    );
   });
 
   @override

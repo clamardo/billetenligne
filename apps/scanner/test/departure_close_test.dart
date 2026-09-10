@@ -100,8 +100,12 @@ final class _Server implements BoardingGateway {
   }
 
   @override
-  Future<List<BoardingDepartureDto>> coachesOn(DateTime localDate) =>
+  Future<List<BoardingDepartureDto>> coachesBetween(DateTime from, DateTime to) =>
       throw UnimplementedError();
+
+  @override
+  Future<ScannerIdentity> whoAmI() async => ScannerIdentity.blank;
+
 
   @override
   Future<PinnedDeparture> pin(String departureId) => throw UnimplementedError();

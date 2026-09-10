@@ -377,7 +377,12 @@ void main() {
       ).boardingDay(DateTime.utc(2026, 8, 20));
 
       expect(transport.requests.single.url.path, '/console/v1/boarding');
-      expect(transport.requests.single.url.query, 'date=2026-08-20');
+      // A day is the span whose ends are equal: one shape on the wire, so
+      // the rota and the morning's list cannot drift apart.
+      expect(
+        transport.requests.single.url.query,
+        'from=2026-08-20&to=2026-08-20',
+      );
       expect(day.single.expected, 41);
     });
 

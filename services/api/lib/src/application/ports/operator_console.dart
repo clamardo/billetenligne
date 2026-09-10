@@ -256,6 +256,7 @@ final class BoardingDeparture {
     required this.capacity,
     this.stationName,
     this.status = 'scheduled',
+    this.crewRole,
   });
 
   final String id;
@@ -272,6 +273,35 @@ final class BoardingDeparture {
   /// The yard it leaves from, when the operator has named one.
   final String? stationName;
   final String status;
+
+  /// `driver`, `conductor` or null — what the caller is rostered as on this
+  /// coach (`departure_crew`). Null is the ordinary case in a company that
+  /// has not started using the rota, and the list is still theirs to read.
+  final String? crewRole;
+}
+
+/// Who the person holding this handset is, as their employer wrote it down.
+///
+/// Read once, at sign-in, and never on a hot path. Everything here is on the
+/// screen so somebody can check the device in their hand belongs to them —
+/// a conductor's handset is issued by an agency and passed between people,
+/// and a screen that says only *coaches* cannot answer *whose coaches*.
+final class StaffIdentity {
+  const StaffIdentity({
+    this.fullName,
+    this.staffRef,
+    this.operatorName,
+    this.operatorCode,
+  });
+
+  final String? fullName;
+
+  /// The matricule. **Not a credential** (ADR-0024) — an identifier written
+  /// on the roster and printed on the manifest.
+  final String? staffRef;
+
+  final String? operatorName;
+  final String? operatorCode;
 }
 
 /// The pinned departure a scanner boards from (ADR-0022).
@@ -613,17 +643,36 @@ abstract interface class OperatorConsole {
     required String departureId,
   });
 
-  /// The coaches a conductor might be boarding today (ADR-0022).
+  /// The coaches a conductor might be boarding, over a span of local days
+  /// (ADR-0022).
   ///
   /// **Not the dispatcher's board.** That one carries held seats, load factors
   /// and the whole day's shape, and it is read under `booking.read` — which a
   /// conductor does not have, deliberately: the narrowest role that can still
   /// do the job is the one whose handset going missing costs the least. This
   /// answers the one question a conductor has in a yard at half past five —
-  /// *which of these is my coach?* — and nothing else.
-  Future<List<BoardingDeparture>> boardingDay({
+  /// *which of these is my coach?* — and one more the crew table now makes
+  /// answerable: *which of the next four weeks are mine?*
+  ///
+  /// [from] and [to] are inclusive **local** dates, so a fortnight is a
+  /// fortnight in the market's zone rather than in UTC. [staffUserId] decides
+  /// only what `crewRole` says on each row; it never removes a row, because a
+  /// company that has not filled in a rota would otherwise hand every
+  /// conductor an empty screen on the morning this shipped.
+  Future<List<BoardingDeparture>> boardingPlan({
     required String operatorId,
-    required DateTime localDate,
+    required DateTime from,
+    required DateTime to,
+    String? staffUserId,
+  });
+
+  /// The name and matricule on the handset's own header.
+  ///
+  /// Null fields rather than placeholders: a company that has not written
+  /// somebody's name down gets a header with no name on it, never a UUID.
+  Future<StaffIdentity> staffIdentity({
+    required String operatorId,
+    required String userId,
   });
 
   // ── Terms ─────────────────────────────────────────────────────────────────

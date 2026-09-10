@@ -18,8 +18,18 @@ final class DemoBoardingGateway implements BoardingGateway {
       _departure ??= await DemoDeparture.build();
 
   @override
-  Future<List<BoardingDepartureDto>> coachesOn(DateTime localDate) async {
+  Future<List<BoardingDepartureDto>> coachesBetween(
+    DateTime from,
+    DateTime to,
+  ) async {
     final demo = await _build();
+    // One coach, and it is today's. A demo that invented a fortnight of runs
+    // would be demonstrating a rota nobody rostered.
+    final day = demo.manifest.departsAt.toLocal();
+    if (day.isBefore(DateTime(from.year, from.month, from.day)) ||
+        day.isAfter(DateTime(to.year, to.month, to.day, 23, 59, 59))) {
+      return const [];
+    }
     return [
       BoardingDepartureDto(
         id: demo.manifest.departureId,
@@ -31,9 +41,19 @@ final class DemoBoardingGateway implements BoardingGateway {
         capacity: 60,
         status: 'scheduled',
         stationName: 'Gare routière de Brazzaville',
+        crewRole: 'conductor',
       ),
     ];
   }
+
+  /// A name on the demo header, so the strip it sits in is exercised on a
+  /// fresh clone rather than only against a server.
+  @override
+  Future<ScannerIdentity> whoAmI() async => const ScannerIdentity(
+    fullName: 'Démonstration',
+    staffRef: 'DEMO-01',
+    operatorName: 'Cars Lékana',
+  );
 
   @override
   Future<PinnedDeparture> pin(String departureId) async {

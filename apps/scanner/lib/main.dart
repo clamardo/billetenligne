@@ -392,7 +392,8 @@ class _CoachFlowState extends State<_CoachFlow> {
   Future<void> _load() async {
     setState(() => _failure = null);
     try {
-      final coaches = await widget.gateway.coachesOn(DateTime.now());
+      final now = DateTime.now();
+      final coaches = await widget.gateway.coachesBetween(now, now);
       if (!mounted) return;
       setState(() => _coaches = coaches);
       // This request just proved there is signal, which is the only thing a

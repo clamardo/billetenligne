@@ -663,9 +663,11 @@ void main() {
 
         // The market's own day, not UTC's: the fixture coach leaves in eight
         // hours, and at some hours of the night those are two different dates.
-        final day = await console.boardingDay(
+        final on = _localDay(await fixture.departsAt(departureId));
+        final day = await console.boardingPlan(
           operatorId: PgFixture.operatorId,
-          localDate: _localDay(await fixture.departsAt(departureId)),
+          from: on,
+          to: on,
         );
 
         final row = day.firstWhere((d) => d.id == departureId);
@@ -685,9 +687,11 @@ void main() {
       );
       await fixture.secondOperator();
 
-      final day = await console.boardingDay(
+      final on = _localDay(await fixture.departsAt(departureId));
+      final day = await console.boardingPlan(
         operatorId: PgFixture.secondOperatorId,
-        localDate: _localDay(await fixture.departsAt(departureId)),
+        from: on,
+        to: on,
       );
 
       expect(day.where((d) => d.id == departureId), isEmpty);

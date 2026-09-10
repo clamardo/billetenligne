@@ -150,10 +150,18 @@ final class UnavailableOperatorConsole implements OperatorConsole {
   }) async => throw const ConsoleRequiresDatabase();
 
   @override
-  Future<List<BoardingDeparture>> boardingDay({
+  Future<List<BoardingDeparture>> boardingPlan({
     required String operatorId,
-    required DateTime localDate,
+    required DateTime from,
+    required DateTime to,
+    String? staffUserId,
   }) async => throw const ConsoleRequiresDatabase();
+
+  @override
+  Future<StaffIdentity> staffIdentity({
+    required String operatorId,
+    required String userId,
+  }) async => const StaffIdentity();
 
   @override
   Future<BoardingManifestData?> boardingManifest({

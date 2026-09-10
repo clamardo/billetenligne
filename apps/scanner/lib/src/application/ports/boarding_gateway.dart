@@ -10,12 +10,30 @@ import '../simulated_scan.dart';
 /// outbox is emptied at the other end (ADR-0022). Anything that made boarding
 /// wait on this port would be the wrong design, not a slow one.
 abstract interface class BoardingGateway {
-  /// The coaches this conductor could be boarding today.
+  /// The coaches this conductor could be boarding, over a span of local days.
   ///
-  /// A date rather than "the next few": a conductor working an evening
-  /// service on the far side of midnight is looking at a day, and a rolling
-  /// window would quietly hide their coach.
-  Future<List<BoardingDepartureDto>> coachesOn(DateTime localDate);
+  /// **Calendar days rather than "the next few hours".** A conductor working
+  /// an evening service on the far side of midnight is looking at a day, and
+  /// a rolling window would quietly hide their coach.
+  ///
+  /// The span is what makes a plan: one call for a day, a week or a month,
+  /// because the signal this is fetched on is a yard's and a week assembled
+  /// from seven requests finishes only if all seven do. Each row says whether
+  /// this person is rostered on it, and as what.
+  Future<List<BoardingDepartureDto>> coachesBetween(
+    DateTime from,
+    DateTime to,
+  );
+
+  /// Whose handset this is: the name and the matricule the company wrote down.
+  ///
+  /// Asked once, after sign-in. A conductor's handset is issued by an agency
+  /// and passed between people, and a screen that lists coaches without
+  /// saying whose they are cannot be checked by the person holding it.
+  ///
+  /// Failure is a blank identity and never an error: this is a header, and a
+  /// yard with no signal must still reach the door.
+  Future<ScannerIdentity> whoAmI();
 
   /// The one request before the door opens.
   Future<PinnedDeparture> pin(String departureId);
@@ -58,6 +76,30 @@ abstract interface class BoardingGateway {
     required String departureId,
     required String state,
   });
+}
+
+/// Who is signed in on this handset.
+///
+/// Every field is nullable, and blank renders nothing. A company that has not
+/// written somebody's name down gets a header with no name on it — never a
+/// UUID, which is what the back office used to show and what everybody who
+/// saw it read as a bug.
+final class ScannerIdentity {
+  const ScannerIdentity({this.fullName, this.staffRef, this.operatorName});
+
+  final String? fullName;
+
+  /// The matricule. An identifier on the roster, printed on the manifest and
+  /// stuck to the dashboard of the coach — and deliberately **not** a
+  /// credential (ADR-0024).
+  final String? staffRef;
+
+  final String? operatorName;
+
+  bool get isBlank =>
+      fullName == null && staffRef == null && operatorName == null;
+
+  static const blank = ScannerIdentity();
 }
 
 /// A manifest, and the keys that make it verifiable.

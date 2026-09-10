@@ -465,7 +465,7 @@ void main() {
     });
   });
 
-  test("the day's coaches are asked for by local date", () async {
+  test("the coaches are asked for by an inclusive span of local dates", () async {
     final transport = _Scripted([
       (
         200,
@@ -484,10 +484,18 @@ void main() {
       clock: FixedClock(now),
     );
 
-    final coaches = await gateway.coachesOn(DateTime(2026, 8, 15));
+    final coaches = await gateway.coachesBetween(
+      DateTime(2026, 8, 15),
+      DateTime(2026, 8, 15),
+    );
 
     expect(coaches.single.id, 'dep-1');
-    expect(transport.requests.single.url.query, 'date=2026-08-15');
+    // A span, always — a single day is the span whose ends are equal, and the
+    // server reads `from`/`to` as inclusive local dates.
+    expect(
+      transport.requests.single.url.query,
+      'from=2026-08-15&to=2026-08-15',
+    );
   });
 }
 

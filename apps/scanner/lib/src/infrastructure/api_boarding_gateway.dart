@@ -20,8 +20,27 @@ final class ApiBoardingGateway implements BoardingGateway {
   final Clock _clock;
 
   @override
-  Future<List<BoardingDepartureDto>> coachesOn(DateTime localDate) =>
-      _client.boardingDay(localDate);
+  Future<List<BoardingDepartureDto>> coachesBetween(
+    DateTime from,
+    DateTime to,
+  ) => _client.boardingPlan(from: from, to: to);
+
+  @override
+  Future<ScannerIdentity> whoAmI() async {
+    // A blank header rather than a failed launch. This is the one call here
+    // that nothing downstream depends on, and a conductor in a yard with a
+    // half-open connection should reach the coach list regardless.
+    try {
+      final me = await _client.consoleIdentity();
+      return ScannerIdentity(
+        fullName: me.fullName,
+        staffRef: me.staffRef,
+        operatorName: me.operatorName,
+      );
+    } on Object {
+      return ScannerIdentity.blank;
+    }
+  }
 
   @override
   Future<PinnedDeparture> pin(String departureId) async {
