@@ -194,6 +194,25 @@ Ceiling **300 ms**, and most things are 160 ms. Every animation respects `MediaQ
 
 **`KDisruptionBanner`** — persistent, high-contrast, always states *what has already been done for you* before offering choices (`08-disruption.md` §3.2).
 
+**`KActionBar`** — the bottom-anchored bar every funnel screen ends on. A raised
+ground, the safe area, an optional line of context *above* the button (the price
+about to be paid, the note that a ticket works offline) and the primary action
+under it. It is the executed half of §8's "the primary action is always reachable
+by thumb": a screen whose commitment sits inline, in the scroll, has an action a
+tall passenger list can push under the fold. **A screen with a commitment and no
+`KActionBar` is a bug**, and the tests that broke when the bar arrived — six
+`findsOneWidget`s that had been finding a button only because it happened to be
+above the fold — are the proof it was needed.
+
+**`KClosingScene`** — the illustrated foot of a scrolling screen. Short content
+on a tall handset leaves a band of empty ground between the last field and the
+action bar; this fills it with a `KSceneArt` under a gradient of
+`brandPrimaryStrong`, so the screen ends on the product rather than trailing off.
+Put it in a `SliverFillRemaining(hasScrollBody: false)` — it takes its height
+from tight constraints and falls back to `minHeight` (180) when it has none, and
+it is deliberately **not** a `LayoutBuilder`, which cannot report an intrinsic
+height to a sliver.
+
 ### 7.3 Console components
 
 **`KDataTable`** — compact density, sticky header, column sort, inline actions, virtualised. Numeric columns right-aligned and tabular, always.
@@ -226,6 +245,39 @@ Every screen defines **five** states, and a screen missing any of them is not do
 - Bottom navigation only where there are 3–5 destinations (traveller: Rechercher · Mes billets · Compte).
 - Tablet and console: 12-column grid, 1280 dp max content width, `compact` density.
 - **Same components, two densities** (ADR-0010 rule 10). Never a parallel component set.
+
+### 8.1 No screen is a white field
+
+The rule, in the words it was given in:
+
+> *No screen is meant to be all white with a small header background and nothing
+> at the footer. Keep consistency regardless of the screen. The user experience
+> needs to be the same.*
+
+A screen is not finished when its widgets are correct. It is finished when it
+looks like the same product as the screen before it. Concretely, **every screen
+in the traveller funnel has three things**:
+
+1. **A top that is not a bare app bar.** `KJourneyBar` where there is a journey
+   to name, a `KScene` or `KPattern` band otherwise. Brand colour at the top of
+   the screen is what tells somebody mid-funnel they are still in the same app.
+2. **A body that is content, not a form floating on white.** Fields live in
+   `KCard`s on `surfaceBase`; an empty or waiting body gets `KStateView` with a
+   `KArt` spot rather than a centred sentence.
+3. **A bottom that closes.** `KActionBar` where there is an action; where the
+   content is short enough to leave a gap above it, `KClosingScene` fills the
+   gap.
+
+The failure this rule exists to prevent is not ugliness. It is the moment
+somebody halfway through paying meets a screen that looks like a different
+application and wonders whether they have been redirected somewhere — which, in
+a market where mobile-money fraud is what everybody has been warned about, is
+where they stop.
+
+**How it is checked:** by looking. Every funnel screen is in
+`docs/walkthroughs/`, shot in order, and an all-white frame in that sequence is
+the defect. Widget tests cannot see this; they pass on a screen nobody would
+trust.
 
 ---
 
