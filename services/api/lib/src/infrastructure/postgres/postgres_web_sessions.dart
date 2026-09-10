@@ -98,14 +98,15 @@ final class PostgresWebSessions implements WebSessions {
   }
 
   @override
-  Future<WebSessionToken?> resolve(String selector) =>
-      _db.transaction(const DbScope.identity(), (tx) async {
-        final now = _clock.now();
+  Future<WebSessionToken?> resolve(String selector) => _db.transaction(
+    const DbScope.identity(),
+    (tx) async {
+      final now = _clock.now();
 
-        // `FOR UPDATE` and not a plain read. See the class comment: this lock
-        // is what stops two tabs racing to spend one refresh token.
-        final rows = await tx.execute(
-          Sql.named('''
+      // `FOR UPDATE` and not a plain read. See the class comment: this lock
+      // is what stops two tabs racing to spend one refresh token.
+      final rows = await tx.execute(
+        Sql.named('''
             SELECT id, user_id, refresh_cipher,
                    id_token_cipher, id_token_expires_at
               FROM web_sessions
@@ -114,56 +115,51 @@ final class PostgresWebSessions implements WebSessions {
                AND expires_at > @now
              FOR UPDATE
           '''),
+        parameters: {
+          'hash': TypedValue(Type.text, _hash(selector)),
+          'now': TypedValue(Type.timestampTz, now),
+        },
+      );
+      if (rows.isEmpty) return null;
+
+      final row = rows.first.toColumnMap();
+      final id = row['id'].toString();
+      final userId = row['user_id'].toString();
+
+      final expiresAt = row['id_token_expires_at'] as DateTime?;
+      final stored = row['id_token_cipher'] as String?;
+      if (stored != null &&
+          expiresAt != null &&
+          expiresAt.isAfter(now.add(skew))) {
+        await _touch(tx, id, now);
+        return WebSessionToken(idToken: await _open(stored), userId: userId);
+      }
+
+      final ExchangedSession fresh;
+      try {
+        fresh = await _exchange.refresh(
+          await _open(row['refresh_cipher'] as String),
+        );
+      } on TokenExchangeRefused {
+        // Firebase says this session is over — the account was disabled, or
+        // the token was revoked from elsewhere. Ending it here rather than
+        // leaving a row that fails the same way on every request.
+        await tx.execute(
+          Sql.named('UPDATE web_sessions SET revoked_at = @now WHERE id = @id'),
           parameters: {
-            'hash': TypedValue(Type.text, _hash(selector)),
+            'id': TypedValue(Type.uuid, id),
             'now': TypedValue(Type.timestampTz, now),
           },
         );
-        if (rows.isEmpty) return null;
+        return null;
+      } on Object {
+        // Google unreachable. Not this session's fault and not its end: the
+        // caller gets a 401 for this request and the row is left alone.
+        return null;
+      }
 
-        final row = rows.first.toColumnMap();
-        final id = row['id'].toString();
-        final userId = row['user_id'].toString();
-
-        final expiresAt = row['id_token_expires_at'] as DateTime?;
-        final stored = row['id_token_cipher'] as String?;
-        if (stored != null &&
-            expiresAt != null &&
-            expiresAt.isAfter(now.add(skew))) {
-          await _touch(tx, id, now);
-          return WebSessionToken(
-            idToken: await _open(stored),
-            userId: userId,
-          );
-        }
-
-        final ExchangedSession fresh;
-        try {
-          fresh = await _exchange.refresh(
-            await _open(row['refresh_cipher'] as String),
-          );
-        } on TokenExchangeRefused {
-          // Firebase says this session is over — the account was disabled, or
-          // the token was revoked from elsewhere. Ending it here rather than
-          // leaving a row that fails the same way on every request.
-          await tx.execute(
-            Sql.named(
-              'UPDATE web_sessions SET revoked_at = @now WHERE id = @id',
-            ),
-            parameters: {
-              'id': TypedValue(Type.uuid, id),
-              'now': TypedValue(Type.timestampTz, now),
-            },
-          );
-          return null;
-        } on Object {
-          // Google unreachable. Not this session's fault and not its end: the
-          // caller gets a 401 for this request and the row is left alone.
-          return null;
-        }
-
-        await tx.execute(
-          Sql.named('''
+      await tx.execute(
+        Sql.named('''
             UPDATE web_sessions
                SET refresh_cipher = @refresh,
                    id_token_cipher = @id,
@@ -171,20 +167,18 @@ final class PostgresWebSessions implements WebSessions {
                    last_used_at = @now
              WHERE id = @row
           '''),
-          parameters: {
-            'row': TypedValue(Type.uuid, id),
-            'refresh': TypedValue(Type.text, await _seal(fresh.refreshToken)),
-            'id': TypedValue(Type.text, await _seal(fresh.idToken)),
-            'idExpires': TypedValue(
-              Type.timestampTz,
-              now.add(fresh.expiresIn),
-            ),
-            'now': TypedValue(Type.timestampTz, now),
-          },
-        );
+        parameters: {
+          'row': TypedValue(Type.uuid, id),
+          'refresh': TypedValue(Type.text, await _seal(fresh.refreshToken)),
+          'id': TypedValue(Type.text, await _seal(fresh.idToken)),
+          'idExpires': TypedValue(Type.timestampTz, now.add(fresh.expiresIn)),
+          'now': TypedValue(Type.timestampTz, now),
+        },
+      );
 
-        return WebSessionToken(idToken: fresh.idToken, userId: userId);
-      });
+      return WebSessionToken(idToken: fresh.idToken, userId: userId);
+    },
+  );
 
   @override
   Future<bool> revoke(String selector) =>

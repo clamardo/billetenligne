@@ -1,3 +1,4 @@
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 
 /// Why a link was not sent.
@@ -165,6 +166,28 @@ abstract interface class TicketLinks {
     required String bookingRef,
     required String channel,
     required String? sendTo,
+    required String? byUserId,
+    required DateTime now,
+  });
+
+  /// A link that exists only so a vendor's browser can print, now.
+  ///
+  /// **The narrow exception to "the console never learns a token".**
+  /// [queueSend] refuses to return a URL, and the reason is good: a link on a
+  /// till screen is a ticket anybody standing behind the customer can
+  /// photograph. But a counter still has to hand over paper, and the
+  /// alternative — printing from the customer's own emailed link — needs the
+  /// customer to have an address, a handset, and a signal, which is precisely
+  /// the customer this path exists for.
+  ///
+  /// So the exception is made as small as it can be: minted for one press of
+  /// one button, **valid for minutes rather than a month**, never sent
+  /// anywhere, and recorded on channel `print` so an operator asking "who
+  /// printed this twice" gets an answer.
+  Future<Result<PrintLinkDto, LinkRefusal>> mintForPrint({
+    required String operatorId,
+    required String bookingRef,
+    required String format,
     required String? byUserId,
     required DateTime now,
   });

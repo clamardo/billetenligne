@@ -1,9 +1,11 @@
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 
 import '../application/ports/billing_desk.dart';
 import '../application/ports/disruption_desk.dart';
 import '../application/ports/payout_desk.dart';
 import '../application/ports/operator_console.dart';
+import '../application/ports/ticket_designs.dart';
 import '../application/ports/ticket_links.dart';
 import '../application/ports/platform_console.dart';
 
@@ -533,6 +535,15 @@ final class TicketLinksRequireDatabase implements TicketLinks {
   }) async => throw const ConsoleRequiresDatabase();
 
   @override
+  Future<Result<PrintLinkDto, LinkRefusal>> mintForPrint({
+    required String operatorId,
+    required String bookingRef,
+    required String format,
+    required String? byUserId,
+    required DateTime now,
+  }) async => throw const ConsoleRequiresDatabase();
+
+  @override
   Future<LinkedTicket?> open({
     required String token,
     required DateTime now,
@@ -553,4 +564,34 @@ final class TicketLinksRequireDatabase implements TicketLinks {
     required String bookingRef,
     required DateTime now,
   }) async => throw const ConsoleRequiresDatabase();
+}
+
+/// The fakes composition, which stores no stationery.
+///
+/// Every method answers "nothing saved" rather than throwing, because that is
+/// the true answer and it is a *supported* state: an operator who has never
+/// opened the builder prints `TicketStarters.classicPass` in their own hue,
+/// and the demo composition is exactly such an operator.
+final class NoTicketDesigns implements TicketDesigns {
+  const NoTicketDesigns();
+
+  @override
+  Future<List<TicketDesignDto>> forOperator(String operatorId) async =>
+      const [];
+
+  @override
+  Future<TicketDesignDto?> save({
+    required String operatorId,
+    required SaveTicketDesignRequest edit,
+  }) async => throw const ConsoleRequiresDatabase();
+
+  @override
+  Future<bool> remove({required String operatorId, required String id}) async =>
+      false;
+
+  @override
+  Future<TicketDesignDto?> defaultFor({
+    required String operatorCode,
+    required String format,
+  }) async => null;
 }

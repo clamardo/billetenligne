@@ -85,26 +85,26 @@ Future<Response> onRequest(RequestContext context, String id) async {
 /// the capability, so this is not a permission they are missing. It is a
 /// statement about a coach they are not on, and the sentence they need says
 /// so rather than sending them to find an administrator.
-Response _refused(String trace, DepartureTransitionRefusal refusal) =>
-    Response.json(
-      statusCode: HttpStatus.conflict,
-      body: ApiError(
-        code: switch (refusal) {
-          DepartureTransitionRefusal.unknownState =>
-            ErrorCode.departureUnknownState,
-          DepartureTransitionRefusal.notCrew => ErrorCode.departureNotCrew,
-          DepartureTransitionRefusal.cancelled => ErrorCode.departureCancelled,
-          DepartureTransitionRefusal.alreadyClosed =>
-            ErrorCode.departureHasLeft,
-          DepartureTransitionRefusal.outOfOrder =>
-            ErrorCode.departureOutOfOrder,
-          DepartureTransitionRefusal.cancelIsADisruption =>
-            ErrorCode.departureCancelIsADisruption,
-        },
-        traceId: trace,
-      ).toJson(),
-      headers: {BelHeaders.traceId: trace},
-    );
+Response _refused(
+  String trace,
+  DepartureTransitionRefusal refusal,
+) => Response.json(
+  statusCode: HttpStatus.conflict,
+  body: ApiError(
+    code: switch (refusal) {
+      DepartureTransitionRefusal.unknownState =>
+        ErrorCode.departureUnknownState,
+      DepartureTransitionRefusal.notCrew => ErrorCode.departureNotCrew,
+      DepartureTransitionRefusal.cancelled => ErrorCode.departureCancelled,
+      DepartureTransitionRefusal.alreadyClosed => ErrorCode.departureHasLeft,
+      DepartureTransitionRefusal.outOfOrder => ErrorCode.departureOutOfOrder,
+      DepartureTransitionRefusal.cancelIsADisruption =>
+        ErrorCode.departureCancelIsADisruption,
+    },
+    traceId: trace,
+  ).toJson(),
+  headers: {BelHeaders.traceId: trace},
+);
 
 Response _badRequest(String trace) => Response.json(
   statusCode: HttpStatus.badRequest,

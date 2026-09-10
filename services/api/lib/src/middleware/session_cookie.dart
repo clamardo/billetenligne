@@ -33,10 +33,8 @@ final class SessionCookie {
       SessionCookie(domain: _blank(env['BEL__COOKIEDOMAIN']));
 
   /// The `Set-Cookie` value for a session that has just opened.
-  String issue(String selector, {required Duration ttl}) => _build(
-    value: selector,
-    maxAge: ttl.inSeconds,
-  );
+  String issue(String selector, {required Duration ttl}) =>
+      _build(value: selector, maxAge: ttl.inSeconds);
 
   /// The `Set-Cookie` value that ends one.
   ///

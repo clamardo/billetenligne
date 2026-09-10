@@ -283,7 +283,11 @@ void main() {
       expect(html, contains('<svg'));
       // Cropped rather than letterboxed: the header's height comes from the
       // text on it and will never match the drawing's proportions.
-      expect(html, contains('preserveAspectRatio="xMidYMid slice"'));
+      //
+      // `xMidYMax`, not `xMidYMid`. These scenes put the road and the coach on
+      // the bottom edge, so a centred crop of a short band cuts the coach in
+      // half and shows sky — anchoring to the bottom keeps the subject.
+      expect(html, contains('preserveAspectRatio="xMidYMax slice"'));
     });
 
     test("the operator's own photograph still wins", () {

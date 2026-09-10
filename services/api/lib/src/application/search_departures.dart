@@ -163,9 +163,7 @@ final class SearchDepartures {
     }
 
     if (after != null && after.sort != query.sort) {
-      return Err(
-        CursorSortChanged(cursorSort: after.sort, asked: query.sort),
-      );
+      return Err(CursorSortChanged(cursorSort: after.sort, asked: query.sort));
     }
 
     final size = (query.limit ?? pageSize).clamp(1, maxPageSize);

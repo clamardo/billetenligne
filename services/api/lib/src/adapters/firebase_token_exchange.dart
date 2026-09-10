@@ -56,9 +56,7 @@ final class FirebaseTokenExchange implements TokenExchange {
           'http://${config.emulatorHost}/securetoken.googleapis.com/v1/'
           'token?key=$apiKey',
         )
-      : Uri.parse(
-          'https://securetoken.googleapis.com/v1/token?key=$apiKey',
-        );
+      : Uri.parse('https://securetoken.googleapis.com/v1/token?key=$apiKey');
 
   @override
   Future<ExchangedSession> exchangeCustomToken(String customToken) async {
@@ -104,7 +102,8 @@ final class FirebaseTokenExchange implements TokenExchange {
       form
           ? payload.entries
                 .map(
-                  (e) => '${Uri.encodeQueryComponent(e.key)}='
+                  (e) =>
+                      '${Uri.encodeQueryComponent(e.key)}='
                       '${Uri.encodeQueryComponent('${e.value}')}',
                 )
                 .join('&')

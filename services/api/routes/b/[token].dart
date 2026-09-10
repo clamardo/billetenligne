@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bel_api/src/composition.dart';
+import 'package:bel_api/src/application/ports/ticket_links.dart';
 import 'package:bel_api/src/infrastructure/web/boarding_pass_page.dart';
 import 'package:bel_api/src/infrastructure/web/printed_ticket_page.dart';
 import 'package:bel_domain/bel_domain.dart';
@@ -67,7 +68,7 @@ Future<Response> onRequest(RequestContext context, String token) async {
     return Response(
       body: PrintedTicketPage.render(
         ticket: ticket,
-        design: _designFor(format),
+        design: await _designFor(services, ticket, format),
         catalog: Services.translations,
         language: language,
         autoPrint: context.request.uri.queryParameters['auto'] == '1',
@@ -96,13 +97,32 @@ TicketFormat? _format(String? raw) {
   return null;
 }
 
-/// The operator's own design, once they have saved one. Until then the
-/// starter, in their hue: a counter must be able to print on its first day
-/// without anybody having opened a builder.
-TicketDesign _designFor(TicketFormat format) => switch (format) {
-  TicketFormat.boardingPass => TicketStarters.classicPass,
-  TicketFormat.a4 => TicketStarters.fullPageReceipt,
-};
+/// The operator's own design, once they have saved one.
+///
+/// **The starter is not a fallback for an error, it is the normal case.** Most
+/// operators will never open the builder, and a counter has to be able to
+/// print on its first day. So a missing row, an operator who never chose, and
+/// a design saved for the other format all land on the same starter rather
+/// than on an empty page or a refusal.
+///
+/// The design is looked up by the operator on the *ticket*, never by anything
+/// the caller supplied — the reader here is anonymous, holding a link.
+Future<TicketDesign> _designFor(
+  Services services,
+  LinkedTicket ticket,
+  TicketFormat format,
+) async {
+  final saved = await services.ticketDesigns.defaultFor(
+    operatorCode: ticket.operatorCode,
+    format: format.name,
+  );
+  if (saved != null) return TicketDesign.fromJson(saved.design);
+
+  return switch (format) {
+    TicketFormat.boardingPass => TicketStarters.classicPass,
+    TicketFormat.a4 => TicketStarters.fullPageReceipt,
+  };
+}
 
 const Map<String, Object> _headers = {
   HttpHeaders.contentTypeHeader: 'text/html; charset=utf-8',

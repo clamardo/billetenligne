@@ -65,6 +65,7 @@ import 'infrastructure/postgres/postgres_web_sessions.dart';
 import 'middleware/session_cookie.dart';
 import 'application/ports/review_queue.dart';
 import 'application/ports/storefronts.dart';
+import 'application/ports/ticket_designs.dart';
 import 'application/ports/user_directory.dart';
 import 'application/pay_for_booking.dart';
 import 'application/reserve_booking.dart';
@@ -110,6 +111,7 @@ import 'infrastructure/postgres/postgres_second_factors.dart';
 import 'infrastructure/postgres/postgres_compliance_desk.dart';
 import 'infrastructure/postgres/postgres_review_queue.dart';
 import 'infrastructure/postgres/postgres_storefronts.dart';
+import 'infrastructure/postgres/postgres_ticket_designs.dart';
 import 'middleware/idempotency.dart';
 import 'ports/auth_gateway.dart';
 
@@ -145,6 +147,7 @@ final class Services {
     required this.reschedules,
     required this.platform,
     required this.storefronts,
+    required this.ticketDesigns,
     required this.applications,
     required this.seatAlerts,
     required this.compliance,
@@ -269,6 +272,11 @@ final class Services {
   /// from and the public page a stranger opens. One port, because the live
   /// preview in that editor is only honest if it previews the same record.
   final Storefronts storefronts;
+
+  /// The operator's printed-ticket stationery (ADR-0026). Read by the console
+  /// under the tenant's scope and by `/b/{token}` under the public one — see
+  /// the port for why that asymmetry is safe.
+  final TicketDesigns ticketDesigns;
 
   /// Self-signup (`03-operator-lifecycle.md` §2.2). On the **public** surface
   /// and not the console's, because an applicant belongs to no tenant yet —
@@ -576,6 +584,7 @@ final class Services {
       reschedules: reschedules,
       platform: PostgresPlatformConsole(db),
       storefronts: PostgresStorefronts(db),
+      ticketDesigns: PostgresTicketDesigns(db),
       applications: PostgresOperatorApplications(db),
       seatAlerts: PostgresSeatAlerts(db),
       compliance: PostgresComplianceDesk(db),
@@ -828,6 +837,7 @@ final class Services {
       reschedules: const NoReschedules(),
       platform: const UnavailablePlatformConsole(),
       storefronts: MemoryStorefronts.demo(),
+      ticketDesigns: const NoTicketDesigns(),
       applications: MemoryOperatorApplications(clock: clock),
       seatAlerts: const NoSeatAlerts(),
       compliance: const NoComplianceDesk(),

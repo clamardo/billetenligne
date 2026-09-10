@@ -28,6 +28,7 @@ export 'src/catalog/seat_alert_dto.dart';
 export 'src/catalog/seat_map_dto.dart';
 export 'src/catalog/station_dto.dart';
 export 'src/catalog/trip_dto.dart';
+export 'src/catalog/ticket_design_dto.dart';
 export 'src/catalog/vitrine_dto.dart';
 export 'src/common/headers.dart';
 export 'src/common/page.dart';

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:bel_contracts/bel_contracts.dart';
 import 'package:bel_domain/bel_domain.dart';
 import 'package:crypto/crypto.dart';
 import 'package:postgres/postgres.dart' hide Result;
@@ -100,6 +101,78 @@ final class PostgresTicketLinks implements TicketLinks {
     );
 
     return Ok(QueuedTicketLink(channel: channel, sentTo: to));
+  });
+
+  /// Twenty minutes. Long enough for a jammed printer, a second copy and a
+  /// customer who changed their mind about the format; short enough that a
+  /// URL glimpsed over a shoulder is dead before anybody could use it.
+  static const printWindow = Duration(minutes: 20);
+
+  @override
+  Future<Result<PrintLinkDto, LinkRefusal>> mintForPrint({
+    required String operatorId,
+    required String bookingRef,
+    required String format,
+    required String? byUserId,
+    required DateTime now,
+  }) => _db.transaction(DbScope.tenant(operatorId), (tx) async {
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT b.id, b.state::text AS state
+          FROM bookings b
+         WHERE b.ref = @ref AND b.operator_id = @operator
+      '''),
+      parameters: {
+        'ref': TypedValue(Type.text, bookingRef),
+        'operator': TypedValue(Type.uuid, operatorId),
+      },
+    );
+
+    // Another operator's booking is not found rather than refused, for the
+    // same reason as `queueSend`: the tenant policy already made it
+    // invisible, and "not yours" would confirm the reference exists.
+    if (rows.isEmpty) return const Err(UnknownBooking());
+    final booking = rows.first.toColumnMap();
+
+    // A reservation nobody has paid for has no ticket to print. Refused
+    // where the vendor is standing rather than printed as a blank square.
+    if (booking['state'] != 'confirmed') return const Err(NothingToSend());
+
+    final token = newToken();
+    final expiresAt = now.add(printWindow);
+
+    // No revoking of previous links here, unlike a send. A vendor printing a
+    // second copy must not kill the customer's emailed one — different
+    // channel, different life, and `mintInto`'s revoke is scoped to the
+    // channel it is minting for anyway.
+    await tx.execute(
+      Sql.named('''
+        INSERT INTO ticket_links
+          (booking_id, operator_id, token_hash, channel, sent_to, created_by,
+           expires_at)
+        VALUES (@booking, @operator, @hash, 'print', @at, @by, @expires)
+      '''),
+      parameters: {
+        'booking': TypedValue(Type.uuid, booking['id']),
+        'operator': TypedValue(Type.uuid, operatorId),
+        'hash': TypedValue(Type.text, hashOf(token)),
+        // Not an address. What a print was "sent to" is the till it came out
+        // of, which is what an operator auditing a double print needs.
+        'at': TypedValue(Type.text, 'console:${byUserId ?? 'unknown'}'),
+        'by': TypedValue(Type.uuid, byUserId),
+        'expires': TypedValue(Type.timestampTz, expiresAt),
+      },
+      ignoreRows: true,
+    );
+
+    return Ok(
+      PrintLinkDto(
+        url: urlFor(
+          token,
+        ).replace(queryParameters: {'format': format}).toString(),
+        expiresAt: expiresAt,
+      ),
+    );
   });
 
   @override

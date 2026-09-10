@@ -346,37 +346,36 @@ final class MemoryDepartureCatalogue implements DepartureCatalogue {
   Future<List<DepartureRow>> search(DepartureQuery query) async {
     final now = _clock.now();
 
-    final matches =
-        _inventory.departures.where((d) {
-          if (d.originCity != query.originCity) return false;
-          if (d.destinationCity != query.destinationCity) return false;
-          if (d.status == 'cancelled') return false;
-          if (!d.departsAt.isAfter(now)) return false;
-          if (query.operatorId != null && d.operatorId != query.operatorId) {
-            return false;
-          }
-          if (query.mode != null && d.mode != query.mode) return false;
-          if (query.maxFareMinor case final ceiling?) {
-            if (d.fare.minor > ceiling) return false;
-          }
-          // Hours of the departure day, the same window §6.1 describes. This
-          // fake reads the instant as local, exactly as its day check below
-          // already does — the timezone is Postgres's job, and the adapter
-          // test is where it is proven.
-          if (query.departFromHour case final from?) {
-            if (d.departsAt.hour < from) return false;
-          }
-          if (query.departToHour case final to?) {
-            if (d.departsAt.hour >= to) return false;
-          }
-          if (query.after case final after?) {
-            // The same strict ordering the SQL uses, and it has to be the same:
-            // a fake that paged differently would let a bug through that only
-            // ever shows up against Postgres.
-            if (_compare(query.sort, d, after) <= 0) return false;
-          }
-          return _isSameLocalDay(d.departsAt, query.localDate);
-        }).toList()..sort((a, b) => _order(query.sort, a, b));
+    final matches = _inventory.departures.where((d) {
+      if (d.originCity != query.originCity) return false;
+      if (d.destinationCity != query.destinationCity) return false;
+      if (d.status == 'cancelled') return false;
+      if (!d.departsAt.isAfter(now)) return false;
+      if (query.operatorId != null && d.operatorId != query.operatorId) {
+        return false;
+      }
+      if (query.mode != null && d.mode != query.mode) return false;
+      if (query.maxFareMinor case final ceiling?) {
+        if (d.fare.minor > ceiling) return false;
+      }
+      // Hours of the departure day, the same window §6.1 describes. This
+      // fake reads the instant as local, exactly as its day check below
+      // already does — the timezone is Postgres's job, and the adapter
+      // test is where it is proven.
+      if (query.departFromHour case final from?) {
+        if (d.departsAt.hour < from) return false;
+      }
+      if (query.departToHour case final to?) {
+        if (d.departsAt.hour >= to) return false;
+      }
+      if (query.after case final after?) {
+        // The same strict ordering the SQL uses, and it has to be the same:
+        // a fake that paged differently would let a bug through that only
+        // ever shows up against Postgres.
+        if (_compare(query.sort, d, after) <= 0) return false;
+      }
+      return _isSameLocalDay(d.departsAt, query.localDate);
+    }).toList()..sort((a, b) => _order(query.sort, a, b));
 
     return [
       for (final d in matches.take(query.limit))
