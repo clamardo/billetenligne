@@ -42,3 +42,6 @@ terraform/**/*.tfstate
 terraform/**/*.tfstate.*
 terraform/credentials-*.json
 !terraform/credentials-*.sample.json
+
+# Scratch output from the browser automation tools.
+.playwright-mcp/

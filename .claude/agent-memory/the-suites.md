@@ -124,3 +124,29 @@ before Python ever sees it — Dart interpolation inside such a block is silentl
 **Do instead:** quote the delimiter (`<<'PY'`), keep heredocs in **foreground** calls only, and for
 anything backgrounded write the script with the Write tool first and background only its
 invocation.
+
+---
+
+## Moving a control into `bottomNavigationBar` breaks every `findsOneWidget` below the fold
+
+**Tally: 2 — 2026-09-09, six tests across four files, from two edits on the same afternoon.**
+
+You are about to move a screen's primary action out of the scrolling body and into a fixed bar.
+Two things change at once and both break tests that were correct before:
+
+1. **The viewport gets shorter.** A `ListView` only builds what is near the visible window, so a
+   field that used to be in the tree is now absent — `findsNothing` where the screen is perfectly
+   fine. The failure reads as "the widget is gone", not "the widget is below the fold".
+2. **The bar is always built.** A control that used to be off-screen is now permanently in the
+   tree, so a loose finder that matched one widget starts matching two —
+   `find.textContaining('agence')` found the sentence *and* the button it had never seen before.
+
+The second round bit `tickets_flow_test.dart` (the rotating code under the QR) and
+`funnel_widget_test.dart` (its label) the moment the ticket screen got a bar — the same failure,
+one screen later. Assume it on **every** screen you add a bar to, and grep the screen's tests
+before running them.
+
+**Do instead:** scroll to what you assert on (`scrollUntilVisible`, or `drag` on
+`find.byType(ListView).last` where a Scaffold has more than one Scrollable), and make finders
+specific enough to survive a control becoming visible. Neither is a workaround: both assertions
+were relying on layout accidents.

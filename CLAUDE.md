@@ -35,6 +35,9 @@ the second occurrence, and is deleted when a guard makes the failure impossible.
 
 Project skills in [`.claude/skills/`](.claude/skills/):
 
+- **agent-memory** — when to read `.claude/agent-memory/` and what earns a place in it. It is
+  the only part of a session that survives compaction; read it before acting, write to it as
+  work happens.
 - **run-local-stack** — the verified way to bring Postgres, the API, the email emulator and the app
   up together, on ports that do not collide with the machine's own Postgres. Follow it verbatim;
   the `--dart-define`s in it are load-bearing.

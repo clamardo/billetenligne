@@ -121,3 +121,88 @@ twenty-line rewrite of the web surface later.
 
 An even split is not a layout decision, it is the absence of one. Stack the buttons unless both
 labels are short and known.
+
+---
+
+## A query string written into the path goes out as `%3F` and 404s
+
+**Tally: 2 — 2026-09-09 (payment options), 2026-09-09 (admin compliance).**
+
+You are about to add a client call with a parameter. `BelApiClient._send` builds its URI with
+`_base.replace(path: '${_base.path}$path')`, and **`Uri` escapes a path** — so a `?` written inside
+the path string becomes `%3F`, the whole thing becomes one segment, no route matches, and the
+server answers 404.
+
+```dart
+_get('/admin/v1/compliance?days=$withinDays')     // → /admin/v1/compliance%3Fdays=60
+_get('/admin/v1/compliance', query: {'days': '$withinDays'})   // correct
+```
+
+**What makes it expensive is the screen it produces**, not the 404. The back office rendered
+*"This version of the app does not understand the server's reply"* over a cheerful **"Nothing to
+chase"** — for a window in which one operator's insurance had already lapsed. Confident, empty and
+wrong. It was found by opening the page, months after a test for the identical bug on
+`paymentOptions` had been written and had not generalised.
+
+**Do instead:** every parameter goes in `query:`. The guard is one line in
+`packages/bel_client/test/bel_api_client_test.dart` — assert `url.path` ends where it should and
+`url.toString()` does not contain `%3F`. Write it for the endpoint you are adding; the two that
+exist did not stop the third.
+
+---
+
+## A row rebuilt from an upsert's `RETURNING` is not the row the joins describe
+
+**Tally: 1 — 2026-09-09. The most expensive defect found so far: the mandatory second factor did
+not exist, for anybody, in any app.**
+
+You are about to build a domain object from a write's own `RETURNING` clause. **A `RETURNING` sees
+the table it wrote and nothing else** — not the `LATERAL` joins beside it, not a view, not a
+sibling table. `PostgresIdentity._resolved` upserted into `user_accounts` and constructed an
+`Account` from that row, so every sign-in produced `staff: null` and `platformRole: null`.
+
+That value then flowed into three decisions that all silently took the wrong branch:
+
+- `SecondFactorSignIn.isRequiredFor` → **no authenticator was ever asked for**;
+- the capability checks → whatever they permit for a person with no roles;
+- the tenant scope.
+
+`byId` had always been correct, because it reads through the joined query. **Only the sign-in path
+was wrong, so nothing was red.** Four apps and a full integration suite were green over a product
+whose second factor did not exist, and it was found by signing in as a person and noticing a screen
+that did not appear.
+
+**Do instead:** write, then **re-read through the one query that builds this object**, and let the
+write return nothing but an id.
+
+```dart
+await tx.execute(Sql.named('INSERT … ON CONFLICT … RETURNING id'), …);
+final joined = await tx.execute(Sql.named(_columnsWithJoins + ' WHERE id = @id'), …);
+return _account(joined.first.toColumnMap());
+```
+
+**And test the resolver, not the write.** The guard is an integration test that signs in and
+asserts the *identity* that comes back — `services/api/test/integration/identity_pg_test.dart`,
+*"signing in resolves who somebody is, not only that they exist"*. A test that only asserts the row
+exists passes against the broken version.
+
+---
+
+## A `url()` whose SVG uses single quotes resolves to `none`, and reports nothing
+
+**Tally: 1 — 2026-09-09 (the woven background on the landing and storefront pages).**
+
+You are about to inline an SVG as a `data:` URI in server-rendered CSS. If you swap the SVG's
+attribute quotes to `'` and wrap the value in `url('…')`, the CSS string ends at the first
+attribute. The declaration is invalid, `getComputedStyle` says `background-image: none`, and
+**nothing appears in the console** — a page that looks exactly like one where you forgot the rule.
+
+**Do instead:** leave the SVG's `"` alone, wrap the value in `'…'`, and percent-encode only `%`,
+`#`, `<`, `>`. Then verify from the page rather than from the source:
+
+```js
+getComputedStyle(document.querySelector('.wrap')).backgroundImage   // must not be "none"
+```
+
+The same check catches the other silent one: `Uri.encodeComponent` on a colour *and* a later
+`#` → `%23` pass produces `%2523`.

@@ -55,6 +55,8 @@ change.** `git stash`, run, compare. It costs three minutes and it has been deci
 | 3 | Running the suites and reading what they say | [the-suites.md](the-suites.md) |
 | 4 | Copy the traveller reads | [what-people-read.md](what-people-read.md) |
 
+The habit of reading and writing this store is itself a skill: [`.claude/skills/agent-memory`](../skills/agent-memory/SKILL.md).
+
 ## How this file is maintained
 
 **As work happens**, not in a tidy-up at the end — a file written at the end is written from memory,

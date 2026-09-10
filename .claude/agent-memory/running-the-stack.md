@@ -97,3 +97,38 @@ cannot be sent to it and every code change costs a full rebuild. Give it a fifo 
 `mkfifo f; nohup bash -c 'exec 3<>f; flutter run … <&3' &` — then `echo r > f` reloads. And redirect the launch to
 a log file rather than piping it — a `flutter run` on the left of a pipe hides everything until it
 exits, which for a long-lived process is forever.
+
+---
+
+## A new `import` in a `lib/` file is not hot-reloadable — the API logs *Application reloaded* and serves the old code
+
+**Tally: 1 — 2026-09-09, adding `weave.dart` to the server-rendered pages.**
+
+`dart_frog dev` reloads changed *bodies*. Adding a **new library** to the program — a new file plus
+the `import` that pulls it in — is a change to the program's structure, and the running isolate
+cannot take it. It prints `[hotreload] - Application reloaded.` exactly as it does for a real
+reload, and keeps serving the previous build. You then debug a page that has none of your changes
+in it. I misread this as browser caching and lost a cycle to hard-reloads.
+
+**Do instead:** when the edit added a **file or an import**, restart the API. And when you restart,
+check the port is actually free first — a stale run holds 8080/8181 and the new one fails quietly:
+
+```bash
+ss -lptn 'sport = :8080 or sport = :8181'   # then kill -9 the pids
+```
+
+Same class as the `pkill` note above: kill in its own call, launch in another.
+
+---
+
+## Driving the apps on the emulator
+
+**Tally: 1 — 2026-09-09, re-scanning a ticket in the scanner.**
+
+- `adb shell input text` **appends**; a field with a previous value silently concatenates. Clear it
+  with repeated `input keyevent 67` (backspace) — `input keycombination 113 29` (ctrl-A) does not
+  select-all in a Flutter field.
+- `am force-stop` **detaches `flutter run`** ("Lost connection to device"). That is the correct way
+  to prove a session survives process death, but expect to relaunch the tooling afterwards.
+- Two back presses in the scanner exit it **into the traveller app** — both are installed on the
+  same emulator, and the second `keyevent 4` lands on whatever is behind.
