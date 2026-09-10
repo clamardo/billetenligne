@@ -59,131 +59,140 @@ final class ShareTripScreen extends StatelessWidget {
         leading: BackButton(onPressed: onClose),
         title: context.t('travel.share.title'),
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s4),
-          children: [
-            Center(child: KIllustration(KArt.route, size: 120)),
-            SizedBox(height: kilo.space.s2),
-            Text(
-              context.t('travel.share.lead', {
-                'origin': booking.originCity,
-                'destination': booking.destinationCity,
-                'date': Format.shortDate(booking.departsAt, locale: locale),
-              }),
-              style: kilo.text.body,
-            ),
-            SizedBox(height: kilo.space.s4),
-
-            if (live == null) ...[
-              KCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      context.t('travel.share.whatTheySee'),
-                      style: kilo.text.label,
-                    ),
-                    SizedBox(height: kilo.space.s2),
-                    for (final key in const [
-                      'travel.share.seeRoute',
-                      'travel.share.seeProgress',
-                      'travel.share.seeDisruption',
-                    ])
-                      Padding(
-                        padding: EdgeInsets.only(bottom: kilo.space.s1),
-                        child: Text(
-                          '· ${context.t(key)}',
-                          style: kilo.text.bodySm,
-                        ),
-                      ),
-                    SizedBox(height: kilo.space.s2),
-                    // The reassurance somebody actually wants before sending
-                    // a link to a group chat.
-                    Text(
-                      context.t('travel.share.neverSee'),
-                      style: kilo.text.bodySm.copyWith(
-                        color: kilo.color.contentSecondary,
-                      ),
-                    ),
-                  ],
-                ),
+      body: KPattern(
+        opacity: 0.05,
+        child: SafeArea(
+          child: ListView(
+            padding: EdgeInsets.all(kilo.space.s4),
+            children: [
+              Center(child: KIllustration(KArt.route, size: 120)),
+              SizedBox(height: kilo.space.s2),
+              Text(
+                context.t('travel.share.lead', {
+                  'origin': booking.originCity,
+                  'destination': booking.destinationCity,
+                  'date': Format.shortDate(booking.departsAt, locale: locale),
+                }),
+                style: kilo.text.body,
               ),
               SizedBox(height: kilo.space.s4),
-              KButton(
+
+              if (live == null) ...[
+                KCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        context.t('travel.share.whatTheySee'),
+                        style: kilo.text.label,
+                      ),
+                      SizedBox(height: kilo.space.s2),
+                      for (final key in const [
+                        'travel.share.seeRoute',
+                        'travel.share.seeProgress',
+                        'travel.share.seeDisruption',
+                      ])
+                        Padding(
+                          padding: EdgeInsets.only(bottom: kilo.space.s1),
+                          child: Text(
+                            '· ${context.t(key)}',
+                            style: kilo.text.bodySm,
+                          ),
+                        ),
+                      SizedBox(height: kilo.space.s2),
+                      // The reassurance somebody actually wants before sending
+                      // a link to a group chat.
+                      Text(
+                        context.t('travel.share.neverSee'),
+                        style: kilo.text.bodySm.copyWith(
+                          color: kilo.color.contentSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                KCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        context.t('travel.share.linkLabel'),
+                        style: kilo.text.bodySm.copyWith(
+                          color: kilo.color.contentSecondary,
+                        ),
+                      ),
+                      SizedBox(height: kilo.space.s2),
+                      SelectableText(
+                        live.url ?? context.t('travel.share.linkHidden'),
+                        style: kilo.text.body.copyWith(
+                          color: kilo.color.brandPrimary,
+                        ),
+                      ),
+                      SizedBox(height: kilo.space.s3),
+                      KButton(
+                        label: context.t('common.actions.copy'),
+                        tone: KButtonTone.ghost,
+                        onPressed: live.url == null
+                            ? null
+                            : () => Clipboard.setData(
+                                ClipboardData(text: live.url!),
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                SizedBox(height: kilo.space.s3),
+
+                Text(
+                  context.tPlural('travel.share.opens', live.opens),
+                  style: kilo.text.body,
+                ),
+                SizedBox(height: kilo.space.s1),
+                Text(
+                  context.t('travel.share.expires', {
+                    'date': Format.shortDate(live.expiresAt, locale: locale),
+                    'time': Format.time(live.expiresAt),
+                  }),
+                  style: kilo.text.bodySm.copyWith(
+                    color: kilo.color.contentSecondary,
+                  ),
+                ),
+
+                SizedBox(height: kilo.space.s2),
+              ],
+            ],
+          ),
+        ),
+      ),
+      // Before the link exists, the bar makes it. Afterwards it withdraws
+      // it, with the sentence that says what withdrawing does. One place for
+      // the action either way (`KActionBar`).
+      bottomNavigationBar: live == null
+          ? KActionBar(
+              child: KButton(
                 label: context.t('travel.share.create'),
                 icon: Icons.share,
                 loading: busy,
                 onPressed: busy ? null : onShare,
               ),
-            ] else ...[
-              KCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      context.t('travel.share.linkLabel'),
-                      style: kilo.text.bodySm.copyWith(
-                        color: kilo.color.contentSecondary,
-                      ),
-                    ),
-                    SizedBox(height: kilo.space.s2),
-                    SelectableText(
-                      live.url ?? context.t('travel.share.linkHidden'),
-                      style: kilo.text.body.copyWith(
-                        color: kilo.color.brandPrimary,
-                      ),
-                    ),
-                    SizedBox(height: kilo.space.s3),
-                    KButton(
-                      label: context.t('common.actions.copy'),
-                      tone: KButtonTone.ghost,
-                      onPressed: live.url == null
-                          ? null
-                          : () => Clipboard.setData(
-                              ClipboardData(text: live.url!),
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-
-              SizedBox(height: kilo.space.s3),
-
-              Text(
-                context.tPlural('travel.share.opens', live.opens),
-                style: kilo.text.body,
-              ),
-              SizedBox(height: kilo.space.s1),
-              Text(
-                context.t('travel.share.expires', {
-                  'date': Format.shortDate(live.expiresAt, locale: locale),
-                  'time': Format.time(live.expiresAt),
-                }),
-                style: kilo.text.bodySm.copyWith(
-                  color: kilo.color.contentSecondary,
-                ),
-              ),
-
-              SizedBox(height: kilo.space.s5),
-              KButton(
-                label: context.t('travel.share.revoke'),
-                tone: KButtonTone.secondary,
-                loading: busy,
-                onPressed: busy ? null : onRevoke,
-              ),
-              SizedBox(height: kilo.space.s2),
-              Text(
+            )
+          : KActionBar(
+              above: Text(
                 context.t('travel.share.revokeHint'),
                 style: kilo.text.bodySm.copyWith(
                   color: kilo.color.contentSecondary,
                 ),
                 textAlign: TextAlign.center,
               ),
-            ],
-          ],
-        ),
-      ),
+              child: KButton(
+                label: context.t('travel.share.revoke'),
+                tone: KButtonTone.secondary,
+                loading: busy,
+                onPressed: busy ? null : onRevoke,
+              ),
+            ),
     );
   }
 }

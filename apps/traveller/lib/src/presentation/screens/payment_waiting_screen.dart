@@ -35,98 +35,102 @@ final class PaymentWaitingScreen extends StatelessWidget {
         automaticallyImplyLeading: false,
         title: context.t('payment.waiting.title'),
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s5),
-          children: [
-            SizedBox(height: kilo.space.s5),
-            Center(
-              child: SizedBox(
-                width: 96,
-                height: 96,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        color: kilo.color.brandPrimarySoft,
-                        shape: BoxShape.circle,
+      body: KPattern(
+        opacity: 0.05,
+        child: SafeArea(
+          child: ListView(
+            padding: EdgeInsets.all(kilo.space.s5),
+            children: [
+              SizedBox(height: kilo.space.s5),
+              Center(
+                child: SizedBox(
+                  width: 96,
+                  height: 96,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: kilo.color.brandPrimarySoft,
+                          shape: BoxShape.circle,
+                        ),
                       ),
-                    ),
-                    const SizedBox(
-                      width: 96,
-                      height: 96,
-                      child: CircularProgressIndicator(),
-                    ),
-                    Icon(
-                      // Names where to look: their own handset, not this
-                      // screen — people stare at the app and miss the prompt.
-                      Icons.smartphone,
-                      color: kilo.color.brandPrimary,
-                      size: 32,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            SizedBox(height: kilo.space.s5),
-
-            Text(
-              context.t('payment.waitingExtra.checkPhone', {
-                'msisdn': Format.msisdn(step.payerMsisdn),
-              }),
-              style: kilo.text.bodyLg,
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: kilo.space.s3),
-            Text(
-              context.t('payment.confirm.step2'),
-              style: kilo.text.body.copyWith(
-                color: kilo.color.contentSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-
-            SizedBox(height: kilo.space.s6),
-
-            if (step.option.ussdCode != null)
-              KCard(
-                child: Column(
-                  children: [
-                    Text(
-                      context.t('payment.waiting.noPromptTitle'),
-                      style: kilo.text.bodySm,
-                      textAlign: TextAlign.center,
-                    ),
-                    SizedBox(height: kilo.space.s2),
-                    SelectableText(
-                      step.option.ussdCode!,
-                      style: kilo.text.h2.copyWith(
+                      const SizedBox(
+                        width: 96,
+                        height: 96,
+                        child: CircularProgressIndicator(),
+                      ),
+                      Icon(
+                        // Names where to look: their own handset, not this
+                        // screen — people stare at the app and miss the prompt.
+                        Icons.smartphone,
                         color: kilo.color.brandPrimary,
+                        size: 32,
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
+              SizedBox(height: kilo.space.s5),
 
-            SizedBox(height: kilo.space.s5),
-            Text(
-              // Honest about what backing out does and does not do. Somebody
-              // who has already typed their PIN must not be told the payment
-              // is cancelled — it may well have gone through.
-              context.t('payment.waitingExtra.leaveSafely'),
-              style: kilo.text.caption.copyWith(
-                color: kilo.color.contentSecondary,
+              Text(
+                context.t('payment.waitingExtra.checkPhone', {
+                  'msisdn': Format.msisdn(step.payerMsisdn),
+                }),
+                style: kilo.text.bodyLg,
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: kilo.space.s3),
-            KButton(
-              label: context.t('payment.waitingExtra.close'),
-              tone: KButtonTone.ghost,
-              onPressed: onCancel,
-            ),
-          ],
+              SizedBox(height: kilo.space.s3),
+              Text(
+                context.t('payment.confirm.step2'),
+                style: kilo.text.body.copyWith(
+                  color: kilo.color.contentSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+              SizedBox(height: kilo.space.s6),
+
+              if (step.option.ussdCode != null)
+                KCard(
+                  child: Column(
+                    children: [
+                      Text(
+                        context.t('payment.waiting.noPromptTitle'),
+                        style: kilo.text.bodySm,
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: kilo.space.s2),
+                      SelectableText(
+                        step.option.ussdCode!,
+                        style: kilo.text.h2.copyWith(
+                          color: kilo.color.brandPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              SizedBox(height: kilo.space.s5),
+            ],
+          ),
+        ),
+      ),
+      // The same bar every funnel screen ends on (`KActionBar`), and the one
+      // sentence somebody needs before pressing it goes in the slot made for
+      // a line of reassurance — honest about what backing out does and does
+      // not do. Somebody who has already typed their PIN must not be told
+      // the payment is cancelled: it may well have gone through.
+      bottomNavigationBar: KActionBar(
+        above: Text(
+          context.t('payment.waitingExtra.leaveSafely'),
+          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
+          textAlign: TextAlign.center,
+        ),
+        child: KButton(
+          label: context.t('payment.waitingExtra.close'),
+          tone: KButtonTone.ghost,
+          onPressed: onCancel,
         ),
       ),
     );

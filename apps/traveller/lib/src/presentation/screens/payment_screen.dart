@@ -199,14 +199,15 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                   style: kilo.text.body,
                 ),
               ),
-
-            SizedBox(height: kilo.space.s5),
-            KButton(
-              label: context.t('payment.method.continueLabel'),
-              onPressed: _ready ? widget.flow.review : null,
-              disabledHint: context.t('payment.method.needNumber'),
-            ),
           ],
+        ),
+      ),
+      // Same bar, same place, every screen of the funnel (`KActionBar`).
+      bottomNavigationBar: KActionBar(
+        child: KButton(
+          label: context.t('payment.method.continueLabel'),
+          onPressed: _ready ? widget.flow.review : null,
+          disabledHint: context.t('payment.method.needNumber'),
         ),
       ),
     );

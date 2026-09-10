@@ -176,10 +176,21 @@ final class SettingsScreen extends StatelessWidget {
                       darkLabel: context.t('travel.settings.themeDark'),
                     ),
                   ],
+                  SizedBox(height: kilo.space.s2),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+      // Settings has no next step, so the bar carries the only one there is:
+      // leaving. It is there because the bar is always there — a screen of
+      // controls that simply stops is the pattern this replaced.
+      bottomNavigationBar: KActionBar(
+        child: KButton(
+          label: context.t('common.actions.done'),
+          tone: KButtonTone.secondary,
+          onPressed: onBack,
         ),
       ),
     );

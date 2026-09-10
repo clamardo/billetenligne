@@ -52,6 +52,7 @@ final class BackOfficeSignIn extends StatefulWidget {
     required this.title,
     required this.t,
     this.icon = Icons.shield_outlined,
+    this.scene = KSceneArt.station,
     this.webSession = kIsWeb,
     super.key,
   });
@@ -66,6 +67,19 @@ final class BackOfficeSignIn extends StatefulWidget {
   final String title;
 
   final IconData icon;
+
+  /// The artwork behind the form.
+  ///
+  /// A bus station by default, because that is where the people who sign in
+  /// here are standing. The scanner passes [KSceneArt.scan] — a conductor
+  /// opens it at the coach door, not in an office — and the two back offices
+  /// keep the station.
+  ///
+  /// It is not decoration in the sense of being optional. This screen used to
+  /// be a forty-pixel icon and two fields centred on the bare surface colour,
+  /// and it was the first screen every member of staff met: three of the four
+  /// apps opened on a white sheet that could have belonged to any product.
+  final KSceneArt scene;
 
   /// Ask the server for a cookie session rather than a token (J11).
   ///
@@ -113,32 +127,83 @@ class _BackOfficeSignInState extends State<BackOfficeSignIn> {
       );
     }
 
+    final fields = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(widget.title, style: kilo.text.h2),
+        SizedBox(height: kilo.space.s5),
+        ...switch (_step) {
+          _Step.address => _address(context),
+          _Step.code => _code_(context),
+          _Step.secondFactor => _factor(context),
+          _Step.enrol => const [],
+        },
+      ],
+    );
+
     return Scaffold(
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: SingleChildScrollView(
-            padding: EdgeInsets.all(kilo.space.s5),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      // The brand is the ground, not a detail on it. Underneath everything is
+      // the same woven field the apps carry, so the surface never shows.
+      body: KPattern(
+        motif: KPatternMotif.kuba,
+        background: kilo.color.brandPrimary,
+        color: kilo.color.onBrandPrimary,
+        opacity: 0.10,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Two panes when there is width for them — the back offices are
+            // worked in a browser on a desk — and a band over a card when
+            // there is not, which is the scanner on a handset.
+            final wide = constraints.maxWidth >= 840;
+            final card = _Panel(
+              icon: widget.icon,
+              child: fields,
+            );
+
+            if (wide) {
+              return Row(
+                children: [
+                  Expanded(
+                    child: KScene(
+                      widget.scene,
+                      height: constraints.maxHeight,
+                      overlay: false,
+                    ),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: SingleChildScrollView(
+                        padding: EdgeInsets.all(kilo.space.s6),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 420),
+                          child: card,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            return Column(
               children: [
-                Icon(widget.icon, size: 40, color: kilo.color.brandPrimary),
-                SizedBox(height: kilo.space.s3),
-                Text(
-                  widget.title,
-                  style: kilo.text.h2,
-                  textAlign: TextAlign.center,
+                KScene(
+                  widget.scene,
+                  height: (constraints.maxHeight * 0.3).clamp(140.0, 260.0),
+                  overlay: false,
                 ),
-                SizedBox(height: kilo.space.s5),
-                ...switch (_step) {
-                  _Step.address => _address(context),
-                  _Step.code => _code_(context),
-                  _Step.secondFactor => _factor(context),
-                  _Step.enrol => const [],
-                },
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.all(kilo.space.s5),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 420),
+                      child: card,
+                    ),
+                  ),
+                ),
               ],
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
@@ -343,5 +408,51 @@ class _BackOfficeSignInState extends State<BackOfficeSignIn> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+}
+
+
+/// The form, raised off the woven ground.
+///
+/// A card rather than fields floating on the pattern: six digits typed under
+/// pressure at a coach door need a quiet white field to sit in, and the
+/// contrast gate has one surface to reason about instead of one per motif.
+class _Panel extends StatelessWidget {
+  const _Panel({required this.icon, required this.child});
+
+  final IconData icon;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final kilo = context.kilo;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: kilo.color.surfaceRaised,
+        borderRadius: BorderRadius.circular(kilo.space.s4),
+        boxShadow: [
+          BoxShadow(
+            color: kilo.color.contentPrimary.withValues(alpha: 0.12),
+            blurRadius: 24,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(kilo.space.s5),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Icon(icon, size: 32, color: kilo.color.brandPrimary),
+            ),
+            SizedBox(height: kilo.space.s3),
+            child,
+          ],
+        ),
+      ),
+    );
   }
 }

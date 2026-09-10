@@ -312,6 +312,7 @@ travel:
   # cinq fois.
   change:
     action: "Modifier mon départ"
+    keep: "Garder mon départ"
     title: "Changer de départ"
     lead: "{origin} → {destination}. Vous avez le départ de {time}, le {date}."
     seats:

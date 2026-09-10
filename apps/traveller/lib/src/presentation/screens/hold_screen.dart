@@ -169,29 +169,33 @@ final class HoldScreen extends StatelessWidget {
                     ),
                   ),
 
-                  SizedBox(height: kilo.space.s6),
-                  KButton(
-                    label: context.t('travel.hold.proceed', {
-                      'amount': Format.money(hold.total, locale: locale),
-                    }),
-                    onPressed: onPay,
-                    disabledHint: onPay == null
-                        ? context.t('travel.hold.paymentComingSoon')
-                        : null,
-                  ),
-                  SizedBox(height: kilo.space.s3),
-                  KButton(
-                    label: releasing
-                        ? context.t('travel.hold.releasing')
-                        : context.t('travel.hold.release'),
-                    tone: KButtonTone.ghost,
-                    loading: releasing,
-                    onPressed: releasing ? null : onRelease,
-                  ),
+                  SizedBox(height: kilo.space.s4),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+      // Paying is what the countdown is counting down to, so it stops
+      // scrolling away with the price breakdown. Same bar, same place, every
+      // screen of the funnel (`KActionBar`).
+      bottomNavigationBar: KActionBar(
+        above: KButton(
+          label: context.t('travel.hold.proceed', {
+            'amount': Format.money(hold.total, locale: locale),
+          }),
+          onPressed: onPay,
+          disabledHint: onPay == null
+              ? context.t('travel.hold.paymentComingSoon')
+              : null,
+        ),
+        child: KButton(
+          label: releasing
+              ? context.t('travel.hold.releasing')
+              : context.t('travel.hold.release'),
+          tone: KButtonTone.ghost,
+          loading: releasing,
+          onPressed: releasing ? null : onRelease,
         ),
       ),
     );

@@ -72,112 +72,116 @@ final class SeatAlertScreen extends StatelessWidget {
         leading: BackButton(onPressed: onBack),
         title: context.t('travel.alert.title'),
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s5),
-          children: [
-            Center(
-              child: Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: kilo.color.brandPrimarySoft,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.notifications_none,
-                  color: kilo.color.brandPrimary,
-                  size: 32,
+      body: KPattern(
+        opacity: 0.05,
+        child: SafeArea(
+          child: ListView(
+            padding: EdgeInsets.all(kilo.space.s5),
+            children: [
+              // Two pictures for two states, because they are two different
+              // pieces of news. Before: the road is blocked. After: the alert
+              // is placed, and that is worth looking like a good outcome.
+              Center(
+                child: KIllustration(
+                  watching ? KArt.success : KArt.noTrips,
+                  size: 110,
                 ),
               ),
-            ),
-            SizedBox(height: kilo.space.s4),
-            Text(
-              context.t('travel.alert.lead', {
-                'operator': departure.operatorName,
-                'route': '${departure.originCity}–${departure.destinationCity}',
-                'date': Format.shortDate(departure.departsAt, locale: locale),
-                'time': Format.time(departure.departsAt),
-              }),
-              style: kilo.text.bodyLg,
-            ),
-            SizedBox(height: kilo.space.s5),
-
-            if (failure case final f?) ...[
-              FailureView(f),
-              SizedBox(height: kilo.space.s5),
-            ],
-
-            if (watching) ...[
-              Row(
-                children: [
-                  Icon(
-                    Icons.notifications_active_outlined,
-                    color: kilo.color.brandPrimary,
-                  ),
-                  SizedBox(width: kilo.space.s2),
-                  Expanded(
-                    child: Text(
-                      context.t('travel.alert.watching'),
-                      style: kilo.text.h3,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: kilo.space.s3),
+              SizedBox(height: kilo.space.s4),
               Text(
-                context.t('travel.alert.watchingBody', {'count': '$seats'}),
-                style: kilo.text.body.copyWith(
-                  color: kilo.color.contentSecondary,
-                ),
+                context.t('travel.alert.lead', {
+                  'operator': departure.operatorName,
+                  'route':
+                      '${departure.originCity}–${departure.destinationCity}',
+                  'date': Format.shortDate(departure.departsAt, locale: locale),
+                  'time': Format.time(departure.departsAt),
+                }),
+                style: kilo.text.bodyLg,
               ),
-              SizedBox(height: kilo.space.s6),
-              KButton(
+              SizedBox(height: kilo.space.s5),
+
+              if (failure case final f?) ...[
+                FailureView(f),
+                SizedBox(height: kilo.space.s5),
+              ],
+
+              if (watching) ...[
+                Row(
+                  children: [
+                    Icon(
+                      Icons.notifications_active_outlined,
+                      color: kilo.color.brandPrimary,
+                    ),
+                    SizedBox(width: kilo.space.s2),
+                    Expanded(
+                      child: Text(
+                        context.t('travel.alert.watching'),
+                        style: kilo.text.h3,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: kilo.space.s3),
+                Text(
+                  context.t('travel.alert.watchingBody', {'count': '$seats'}),
+                  style: kilo.text.body.copyWith(
+                    color: kilo.color.contentSecondary,
+                  ),
+                ),
+              ] else ...[
+                Text(
+                  context.t('travel.alert.body'),
+                  style: kilo.text.body.copyWith(
+                    color: kilo.color.contentSecondary,
+                  ),
+                ),
+                SizedBox(height: kilo.space.s6),
+                Text(context.t('travel.alert.seats'), style: kilo.text.label),
+                SizedBox(height: kilo.space.s2),
+                // Chips rather than a stepper: every value is one tap, and the
+                // whole range is visible. A stepper on this screen would be
+                // four taps to say "we are four".
+                Wrap(
+                  spacing: kilo.space.s2,
+                  children: [
+                    for (var n = 1; n <= maxSeats; n++)
+                      ChoiceChip(
+                        label: Text('$n'),
+                        selected: n == seats,
+                        onSelected: saving ? null : (_) => onSeats(n),
+                      ),
+                  ],
+                ),
+                SizedBox(height: kilo.space.s5),
+              ],
+            ],
+          ),
+        ),
+      ),
+      // The bar every screen ends on (`KActionBar`). What it offers depends
+      // on which of the two states this screen is in, but where it sits does
+      // not — that is the whole point of it being the same bar.
+      bottomNavigationBar: watching
+          ? KActionBar(
+              above: KButton(
                 label: context.t('travel.alert.cancel'),
                 tone: KButtonTone.secondary,
                 loading: saving,
                 onPressed: saving ? null : onCancel,
               ),
-              SizedBox(height: kilo.space.s3),
-              KButton(
+              child: KButton(
                 label: context.t('travel.alert.back'),
                 tone: KButtonTone.ghost,
                 onPressed: onBack,
               ),
-            ] else ...[
-              Text(
-                context.t('travel.alert.body'),
-                style: kilo.text.body.copyWith(
-                  color: kilo.color.contentSecondary,
-                ),
-              ),
-              SizedBox(height: kilo.space.s6),
-              Text(context.t('travel.alert.seats'), style: kilo.text.label),
-              SizedBox(height: kilo.space.s2),
-              // Chips rather than a stepper: every value is one tap, and the
-              // whole range is visible. A stepper on this screen would be
-              // four taps to say "we are four".
-              Wrap(
-                spacing: kilo.space.s2,
-                children: [
-                  for (var n = 1; n <= maxSeats; n++)
-                    ChoiceChip(
-                      label: Text('$n'),
-                      selected: n == seats,
-                      onSelected: saving ? null : (_) => onSeats(n),
-                    ),
-                ],
-              ),
-              SizedBox(height: kilo.space.s6),
-              KButton(
+            )
+          : KActionBar(
+              child: KButton(
                 label: context.t('travel.alert.confirm'),
                 loading: saving,
                 onPressed: saving ? null : onConfirm,
               ),
-            ],
-          ],
-        ),
-      ),
+            ),
     );
   }
 }

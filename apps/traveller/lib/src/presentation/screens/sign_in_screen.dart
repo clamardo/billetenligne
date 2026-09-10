@@ -129,12 +129,17 @@ class _SignInScreenState extends State<SignInScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              // Only on the way in. By the code step the keyboard is up and
-              // the six digits are the whole of what matters — the picture
-              // would be fighting the numeric pad for a small handset's one
-              // screenful.
-              if (step is NeedsAddress || step is SendingCode)
-                const KScene(KSceneArt.roadtrip, height: 120),
+              // Tall on the way in, a strip once the keyboard is up. The
+              // six digits are the whole of what matters at the code step, so
+              // the picture must not fight the numeric pad for a small
+              // handset's one screenful — but removing it altogether left the
+              // only screen in the funnel that was a form on a blank field,
+              // in the middle of a purchase that is woven green either side
+              // of it.
+              KScene(
+                KSceneArt.roadtrip,
+                height: step is NeedsAddress || step is SendingCode ? 120 : 72,
+              ),
               Expanded(
                 child: ListView(
                   padding: EdgeInsets.all(kilo.space.s4),
@@ -153,6 +158,22 @@ class _SignInScreenState extends State<SignInScreen> {
           ),
         ),
       ),
+      // Every screen in this funnel closes on the same bar, in the same
+      // place. It is most of what "the experience is the same" means to
+      // somebody thumbing through a purchase — and it is what stopped these
+      // screens being a header over half a page of nothing.
+      bottomNavigationBar: switch (step) {
+        NeedsAddress() ||
+        SendingCode() => KActionBar(child: _addressAction(context, step)),
+        AwaitingCode() || VerifyingCode() => switch (_codeAction(
+          context,
+          step,
+        )) {
+          final action? => KActionBar(child: action),
+          _ => null,
+        },
+        SignedIn() => null,
+      },
     );
   }
 
@@ -222,14 +243,9 @@ class _SignInScreenState extends State<SignInScreen> {
         error: failure == null ? null : _message(context, failure),
         onChanged: (_) => setState(() {}),
       ),
-      SizedBox(height: kilo.space.s5),
-      KButton(
-        label: context.t(byPhone ? 'auth.phone.submit' : 'auth.email.submit'),
-        loading: sending,
-        onPressed: _address.text.trim().isEmpty
-            ? null
-            : () => widget.flow.requestCode(_address.text),
-      ),
+      // The button is not here. It is in the bar this screen ends on, which
+      // is where the funnel's other actions live and where a thumb already
+      // is (`KActionBar`).
       if (!phone) ...[
         SizedBox(height: kilo.space.s4),
         // Second, not absent (ADR-0024). Saying so is more honest than a
@@ -289,18 +305,7 @@ class _SignInScreenState extends State<SignInScreen> {
           if (value.trim().length == 6) widget.flow.submitCode(value);
         },
       ),
-      SizedBox(height: kilo.space.s5),
-      if (!spent) ...[
-        KButton(
-          label: context.t('auth.code.submit'),
-          loading: verifying,
-          onPressed: _code.text.trim().length == 6
-              ? () => widget.flow.submitCode(_code.text)
-              : null,
-          disabledHint: context.t('auth.code.label'),
-        ),
-        SizedBox(height: kilo.space.s3),
-      ],
+      SizedBox(height: kilo.space.s3),
       KButton(
         label: canResend
             ? context.t('auth.code.resend')
@@ -318,6 +323,38 @@ class _SignInScreenState extends State<SignInScreen> {
         onPressed: verifying ? null : widget.flow.changeAddress,
       ),
     ];
+  }
+
+  /// What the address step's bar offers.
+  Widget _addressAction(BuildContext context, SignInStep step) {
+    final sending = step is SendingCode;
+    final byPhone = widget.flow.channel == SignInChannel.phone;
+    return KButton(
+      label: context.t(byPhone ? 'auth.phone.submit' : 'auth.email.submit'),
+      loading: sending,
+      onPressed: _address.text.trim().isEmpty
+          ? null
+          : () => widget.flow.requestCode(_address.text),
+    );
+  }
+
+  /// What the code step's bar offers.
+  ///
+  /// Nothing when the code has been spent: the challenge is gone, so a submit
+  /// button could only ever be refused, and *send it again* — which is in the
+  /// body — is the one way forward.
+  Widget? _codeAction(BuildContext context, SignInStep step) {
+    final verifying = step is VerifyingCode;
+    final awaiting = step is AwaitingCode ? step : null;
+    if (awaiting?.codeSpent ?? false) return null;
+    return KButton(
+      label: context.t('auth.code.submit'),
+      loading: verifying,
+      onPressed: _code.text.trim().length == 6
+          ? () => widget.flow.submitCode(_code.text)
+          : null,
+      disabledHint: context.t('auth.code.label'),
+    );
   }
 
   /// A failure code becomes a sentence here and nowhere else. The client never

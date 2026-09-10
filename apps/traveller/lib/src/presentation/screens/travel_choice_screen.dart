@@ -67,87 +67,97 @@ final class TravelChoiceScreen extends StatelessWidget {
         leading: BackButton(onPressed: onClose),
         title: context.t('travel.choice.title'),
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s4),
-          children: [
-            KCard(
-              tone: kilo.color.warningSoft,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    context.t('travel.choice.trip', {
-                      'origin': choices.originCity,
-                      'destination': choices.destinationCity,
-                      'date': Format.shortDate(
-                        fallback?.departsAt ?? choices.deadline,
-                        locale: locale,
-                      ),
-                      'time': Format.time(
-                        fallback?.departsAt ?? choices.deadline,
-                      ),
-                    }),
-                    style: kilo.text.label,
-                  ),
-                  if (choices.reasonKey != null) ...[
-                    SizedBox(height: kilo.space.s1),
-                    Text(
-                      context.t(choices.reasonKey!),
-                      style: kilo.text.bodySm,
-                    ),
-                  ],
-                  // The dispatcher's own words. No catalog holds "le pont est
-                  // coupé à Loufoulakari", and that is the part somebody acts
-                  // on.
-                  if (choices.note != null) ...[
-                    SizedBox(height: kilo.space.s1),
-                    Text(choices.note!, style: kilo.text.bodySm),
-                  ],
-                ],
-              ),
-            ),
-
-            SizedBox(height: kilo.space.s4),
-
-            // What went wrong with the last tap, above the list it changed.
-            if (failure != null) ...[
+      body: KPattern(
+        opacity: 0.05,
+        child: SafeArea(
+          child: ListView(
+            padding: EdgeInsets.all(kilo.space.s4),
+            children: [
               KCard(
-                tone: kilo.color.dangerSoft,
-                child: Text(
-                  context.t(failure!.messageKey),
-                  style: kilo.text.body.copyWith(color: kilo.color.danger),
+                tone: kilo.color.warningSoft,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.t('travel.choice.trip', {
+                        'origin': choices.originCity,
+                        'destination': choices.destinationCity,
+                        'date': Format.shortDate(
+                          fallback?.departsAt ?? choices.deadline,
+                          locale: locale,
+                        ),
+                        'time': Format.time(
+                          fallback?.departsAt ?? choices.deadline,
+                        ),
+                      }),
+                      style: kilo.text.label,
+                    ),
+                    if (choices.reasonKey != null) ...[
+                      SizedBox(height: kilo.space.s1),
+                      Text(
+                        context.t(choices.reasonKey!),
+                        style: kilo.text.bodySm,
+                      ),
+                    ],
+                    // The dispatcher's own words. No catalog holds "le pont est
+                    // coupé à Loufoulakari", and that is the part somebody acts
+                    // on.
+                    if (choices.note != null) ...[
+                      SizedBox(height: kilo.space.s1),
+                      Text(choices.note!, style: kilo.text.bodySm),
+                    ],
+                  ],
                 ),
               ),
+
               SizedBox(height: kilo.space.s4),
-            ],
 
-            if (choices.open)
-              Text(context.t('travel.choice.lead'), style: kilo.text.label)
-            else
-              // Closed. The options below still render, so somebody can see
-              // what they were and what they are on, but nothing is tappable.
-              Text(
-                context.t('travel.choice.closed'),
-                style: kilo.text.body.copyWith(color: kilo.color.warning),
-              ),
+              // What went wrong with the last tap, above the list it changed.
+              if (failure != null) ...[
+                KCard(
+                  tone: kilo.color.dangerSoft,
+                  child: Text(
+                    context.t(failure!.messageKey),
+                    style: kilo.text.body.copyWith(color: kilo.color.danger),
+                  ),
+                ),
+                SizedBox(height: kilo.space.s4),
+              ],
 
-            SizedBox(height: kilo.space.s3),
+              if (choices.open)
+                Text(context.t('travel.choice.lead'), style: kilo.text.label)
+              else
+                // Closed. The options below still render, so somebody can see
+                // what they were and what they are on, but nothing is tappable.
+                Text(
+                  context.t('travel.choice.closed'),
+                  style: kilo.text.body.copyWith(color: kilo.color.warning),
+                ),
 
-            for (final option in choices.options) ...[
-              _OptionCard(
-                option: option,
-                seatsNeeded: choices.seatsNeeded,
-                onChoose: choices.open && !busy
-                    ? () => onChoose(option.id)
-                    : null,
-              ),
               SizedBox(height: kilo.space.s3),
-            ],
 
-            if (choices.open) ...[
+              for (final option in choices.options) ...[
+                _OptionCard(
+                  option: option,
+                  seatsNeeded: choices.seatsNeeded,
+                  onChoose: choices.open && !busy
+                      ? () => onChoose(option.id)
+                      : null,
+                ),
+                SizedBox(height: kilo.space.s3),
+              ],
+
               SizedBox(height: kilo.space.s2),
-              Text(
+            ],
+          ),
+        ),
+      ),
+      // Each option carries its own button, so the bar carries what the list
+      // cannot: leaving without choosing, and the sentence saying what
+      // happens if nobody ever does. Same bar, same place (`KActionBar`).
+      bottomNavigationBar: KActionBar(
+        above: choices.open
+            ? Text(
                 context.t('travel.choice.fallback', {
                   'time': Format.time(choices.deadline),
                 }),
@@ -155,9 +165,12 @@ final class TravelChoiceScreen extends StatelessWidget {
                   color: kilo.color.contentSecondary,
                 ),
                 textAlign: TextAlign.center,
-              ),
-            ],
-          ],
+              )
+            : null,
+        child: KButton(
+          label: context.t('common.actions.close'),
+          tone: KButtonTone.ghost,
+          onPressed: busy ? null : onClose,
         ),
       ),
     );
@@ -327,94 +340,102 @@ final class TravelChosenScreen extends StatelessWidget {
         }),
         automaticallyImplyLeading: false,
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s4),
-          children: [
-            Center(
-              child: KIllustration(
-                applied.kind == 'refund' ? KArt.payment : KArt.success,
-                size: 140,
-              ),
-            ),
-            SizedBox(height: kilo.space.s2),
-
-            if (applied.kind == 'refund') ...[
-              Text(
-                context.t('travel.choice.refundedBody', {
-                  'amount': applied.refunded == null
-                      ? '—'
-                      : Format.money(applied.refunded!, locale: locale),
-                }),
-                style: kilo.text.body,
-                textAlign: TextAlign.center,
-              ),
-              if (code != null) ...[
-                SizedBox(height: kilo.space.s4),
-                KCard(
-                  child: Column(
-                    children: [
-                      Text(
-                        context.t('travel.choice.claimCode'),
-                        style: kilo.text.bodySm.copyWith(
-                          color: kilo.color.contentSecondary,
-                        ),
-                      ),
-                      SizedBox(height: kilo.space.s2),
-                      // Selectable and spaced, like the agency payment code:
-                      // this one is read aloud across a counter too.
-                      SelectableText(
-                        code.split('').join(' '),
-                        textAlign: TextAlign.center,
-                        style: kilo.text.codeHero.copyWith(
-                          color: kilo.color.brandPrimary,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                      SizedBox(height: kilo.space.s2),
-                      Text(
-                        context.t('travel.choice.claimHelp'),
-                        style: kilo.text.bodySm.copyWith(
-                          color: kilo.color.contentSecondary,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
+      body: KPattern(
+        opacity: 0.05,
+        child: SafeArea(
+          child: ListView(
+            padding: EdgeInsets.all(kilo.space.s4),
+            children: [
+              Center(
+                child: KIllustration(
+                  applied.kind == 'refund' ? KArt.payment : KArt.success,
+                  size: 140,
                 ),
-              ],
-            ] else if (applied.kind == 'keep') ...[
-              Text(
-                context.t('travel.choice.keptBody'),
-                style: kilo.text.body,
-                textAlign: TextAlign.center,
-              ),
-            ] else ...[
-              Text(
-                context.t('travel.choice.movedBody', {
-                  'time': applied.departsAt == null
-                      ? '—'
-                      : Format.time(applied.departsAt!),
-                  'seats': applied.seatLabels.join(', '),
-                }),
-                style: kilo.text.body,
-                textAlign: TextAlign.center,
               ),
               SizedBox(height: kilo.space.s2),
-              // Said plainly, because the old QR is still in their photo roll
-              // and a conductor rejecting it at the door is our failure.
-              Text(
-                context.t('travel.choice.movedTicket'),
-                style: kilo.text.bodySm.copyWith(
-                  color: kilo.color.contentSecondary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
 
-            SizedBox(height: kilo.space.s5),
-            KButton(label: context.t('travel.choice.done'), onPressed: onDone),
-          ],
+              if (applied.kind == 'refund') ...[
+                Text(
+                  context.t('travel.choice.refundedBody', {
+                    'amount': applied.refunded == null
+                        ? '—'
+                        : Format.money(applied.refunded!, locale: locale),
+                  }),
+                  style: kilo.text.body,
+                  textAlign: TextAlign.center,
+                ),
+                if (code != null) ...[
+                  SizedBox(height: kilo.space.s4),
+                  KCard(
+                    child: Column(
+                      children: [
+                        Text(
+                          context.t('travel.choice.claimCode'),
+                          style: kilo.text.bodySm.copyWith(
+                            color: kilo.color.contentSecondary,
+                          ),
+                        ),
+                        SizedBox(height: kilo.space.s2),
+                        // Selectable and spaced, like the agency payment code:
+                        // this one is read aloud across a counter too.
+                        SelectableText(
+                          code.split('').join(' '),
+                          textAlign: TextAlign.center,
+                          style: kilo.text.codeHero.copyWith(
+                            color: kilo.color.brandPrimary,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                        SizedBox(height: kilo.space.s2),
+                        Text(
+                          context.t('travel.choice.claimHelp'),
+                          style: kilo.text.bodySm.copyWith(
+                            color: kilo.color.contentSecondary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ] else if (applied.kind == 'keep') ...[
+                Text(
+                  context.t('travel.choice.keptBody'),
+                  style: kilo.text.body,
+                  textAlign: TextAlign.center,
+                ),
+              ] else ...[
+                Text(
+                  context.t('travel.choice.movedBody', {
+                    'time': applied.departsAt == null
+                        ? '—'
+                        : Format.time(applied.departsAt!),
+                    'seats': applied.seatLabels.join(', '),
+                  }),
+                  style: kilo.text.body,
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: kilo.space.s2),
+                // Said plainly, because the old QR is still in their photo roll
+                // and a conductor rejecting it at the door is our failure.
+                Text(
+                  context.t('travel.choice.movedTicket'),
+                  style: kilo.text.bodySm.copyWith(
+                    color: kilo.color.contentSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+
+              SizedBox(height: kilo.space.s3),
+            ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: KActionBar(
+        child: KButton(
+          label: context.t('travel.choice.done'),
+          onPressed: onDone,
         ),
       ),
     );

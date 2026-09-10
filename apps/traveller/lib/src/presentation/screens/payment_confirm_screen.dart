@@ -42,6 +42,11 @@ final class PaymentConfirmScreen extends StatelessWidget {
         child: ListView(
           padding: EdgeInsets.all(kilo.space.s4),
           children: [
+            // The rail's own picture, the same one the method screen opened
+            // on. Continuity is the point: this is still the payment, one
+            // step further along, not a different part of the app.
+            Center(child: KIllustration(KArt.payment, size: 96)),
+            SizedBox(height: kilo.space.s2),
             Center(
               child: KMoney(
                 Format.money(step.amount, locale: locale),
@@ -113,22 +118,24 @@ final class PaymentConfirmScreen extends StatelessWidget {
                 ],
               ),
             ),
-
-            SizedBox(height: kilo.space.s5),
-            KButton(
-              label: context.t('payment.confirm.pay', {
-                'amount': Format.money(step.amount, locale: locale),
-              }),
-              loading: step.busy,
-              onPressed: flow.pay,
-            ),
-            SizedBox(height: kilo.space.s2),
-            KButton(
-              label: context.t('common.actions.back'),
-              tone: KButtonTone.ghost,
-              onPressed: step.busy ? null : onBack,
-            ),
           ],
+        ),
+      ),
+      // Same bar, same place, every screen of the funnel (`KActionBar`).
+      // Paying sits above backing out, as on the reservation screen: the
+      // fallback is for somebody who changed their mind, not the default.
+      bottomNavigationBar: KActionBar(
+        above: KButton(
+          label: context.t('payment.confirm.pay', {
+            'amount': Format.money(step.amount, locale: locale),
+          }),
+          loading: step.busy,
+          onPressed: flow.pay,
+        ),
+        child: KButton(
+          label: context.t('common.actions.back'),
+          tone: KButtonTone.ghost,
+          onPressed: step.busy ? null : onBack,
         ),
       ),
     );

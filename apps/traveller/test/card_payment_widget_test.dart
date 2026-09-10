@@ -163,6 +163,11 @@ void main() {
         ),
       );
 
+      // Scrolled to, not assumed on screen: the funnel's action now sits in
+      // a fixed bar at the foot of every screen (`KActionBar`), which is
+      // ninety pixels the scrolling body no longer has.
+      await tester.scrollUntilVisible(find.text('Numéro à débiter'), 120);
+
       expect(find.text('Numéro à débiter'), findsOneWidget);
     });
 
@@ -177,6 +182,11 @@ void main() {
           flow: flow,
           onBack: () {},
         ),
+      );
+
+      await tester.scrollUntilVisible(
+        find.textContaining('la page sécurisée de Carte bancaire'),
+        120,
       );
 
       // The field is gone rather than disabled: a greyed-out box still reads

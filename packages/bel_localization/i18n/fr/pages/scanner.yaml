@@ -23,13 +23,17 @@ scanner:
     # Ce n'est presque jamais une panne : c'est un conducteur que personne
     # n'a encore rattaché au départ.
     emptyBody: "Si vous attendez un car, votre exploitant ne vous a pas encore rattaché à ce départ."
+    endOfDay:
+      one: "C'est votre seul car aujourd'hui."
+      other: "Ce sont vos {count} cars d'aujourd'hui."
+    endOfDayBody: "Tirez vers le bas pour vérifier si vous en attendez un autre."
 
   boarding:
     changeCoach: "Changer de car"
     manual: "Embarquement manuel"
     upToDate: "À jour"
-    staleOnline: "Liste synchronisée il y a {minutes} min — actualisez"
-    staleOffline: "Hors ligne · liste à jour il y a {minutes} min"
+    listStale: "Liste synchronisée il y a {minutes} min — actualisez"
+    listFresh: "Liste à jour, synchronisée il y a {minutes} min"
     nothingToSend: "Rien à envoyer."
     sent:
       one: "{count} embarquement envoyé."
@@ -131,3 +135,6 @@ scanner:
   simulator:
     title: "SIMULATEUR — DEBUG"
     body: "Injecte de vrais billets signés dans le lecteur, sans caméra. Absent des versions publiées."
+    pasteLabel: "Coller le contenu d'un QR"
+    pasteHint: "1|BEL|…"
+    pasteSubmit: "Le lire"

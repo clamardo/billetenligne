@@ -172,25 +172,25 @@ final class ReservedScreen extends StatelessWidget {
             ),
 
             SizedBox(height: kilo.space.s5),
-
-            if (onPayNow != null) ...[
-              // Offered above "done", because paying now is what most people
-              // came to do — the agency code is the fallback for somebody
-              // without a wallet, not the other way round.
-              KButton(
+          ],
+        ),
+      ),
+      // Same bar, same place, every screen of the funnel (`KActionBar`).
+      bottomNavigationBar: KActionBar(
+        // Paying now is what most people came to do, so it sits above the
+        // fallback rather than beside it — the agency code is for somebody
+        // without a wallet, not the other way round.
+        above: onPayNow == null
+            ? null
+            : KButton(
                 label: context.t('travel.reserved.payNow'),
                 icon: Icons.smartphone,
                 onPressed: onPayNow,
               ),
-              SizedBox(height: kilo.space.s2),
-            ],
-
-            KButton(
-              label: context.t('travel.reserved.payLater'),
-              tone: KButtonTone.secondary,
-              onPressed: onDone,
-            ),
-          ],
+        child: KButton(
+          label: context.t('travel.reserved.payLater'),
+          tone: KButtonTone.secondary,
+          onPressed: onDone,
         ),
       ),
     );

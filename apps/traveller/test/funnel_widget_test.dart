@@ -447,10 +447,14 @@ void main() {
       expect(find.text('Réservation confirmée'), findsOneWidget);
       // Spaced, because a five-character code read aloud is read in pieces.
       expect(find.text('K 4 M 2 Q'), findsOneWidget);
-      // Which agency, and by when. Scrolled to, because the deadline sits
-      // below the fold on a test-sized screen and `findsOneWidget` only sees
-      // what a ListView has actually built.
-      expect(find.textContaining('agence'), findsOneWidget);
+      // Which agency, and by when. Named exactly rather than by the word
+      // "agence": the pay-at-the-counter button now lives in the screen's
+      // fixed action bar (`KActionBar`) and is therefore always built, so a
+      // loose match finds the sentence *and* the button and reports two.
+      expect(
+        find.textContaining('Présentez ce code dans une agence'),
+        findsOneWidget,
+      );
       // Dragged rather than `scrollUntilVisible`: that helper requires
       // exactly one Scrollable and this screen's Scaffold has more than one.
       await tester.drag(find.byType(ListView).last, const Offset(0, -400));
@@ -504,6 +508,9 @@ void main() {
 
       // The QR, and the six digits under it that a screenshot cannot fake.
       expect(find.byType(QrImageView), findsOneWidget);
+      // Scrolled to: the ticket screen ends on a fixed action bar, so the
+      // label under the QR is below the fold on a test-sized screen.
+      await tester.scrollUntilVisible(find.text('Code de contrôle'), 120);
       expect(find.text('Code de contrôle'), findsOneWidget);
     });
 
@@ -848,6 +855,12 @@ void main() {
       await tester.tap(find.byIcon(Icons.confirmation_number_outlined));
       await tester.pumpAndSettle();
 
+      // Dragged into view first: the tickets screen now ends on the funnel's
+      // fixed action bar (`KActionBar`), so the last card's own actions sit
+      // below the fold on a test-sized screen and a tap at their old
+      // coordinates lands on nothing.
+      await tester.drag(find.byType(ListView).last, const Offset(0, -200));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Retour vers Pointe-Noire'));
       await tester.pumpAndSettle();
 

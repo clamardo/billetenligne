@@ -53,111 +53,124 @@ final class PaymentCheckoutScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: KJourneyBar(automaticallyImplyLeading: false, title: rail),
-      body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s5),
-          children: [
-            SizedBox(height: kilo.space.s5),
-
-            if (url == null) ...[
-              // The PSP has not answered with a page yet. A real state, and
-              // one worth naming: a browser opening on nothing is worse than
-              // a sentence saying to wait a moment.
-              const Center(child: CircularProgressIndicator()),
+      body: KPattern(
+        opacity: 0.05,
+        child: SafeArea(
+          child: ListView(
+            padding: EdgeInsets.all(kilo.space.s5),
+            children: [
               SizedBox(height: kilo.space.s5),
-              Text(
-                context.t('payment.checkout.preparing'),
-                style: kilo.text.body,
-                textAlign: TextAlign.center,
-              ),
-            ] else ...[
-              Center(
-                child: Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    color: kilo.color.brandPrimarySoft,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.open_in_new,
-                    color: kilo.color.brandPrimary,
-                    size: 32,
+
+              if (url == null) ...[
+                // The PSP has not answered with a page yet. A real state, and
+                // one worth naming: a browser opening on nothing is worse than
+                // a sentence saying to wait a moment.
+                const Center(child: CircularProgressIndicator()),
+                SizedBox(height: kilo.space.s5),
+                Text(
+                  context.t('payment.checkout.preparing'),
+                  style: kilo.text.body,
+                  textAlign: TextAlign.center,
+                ),
+              ] else ...[
+                Center(
+                  child: Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: kilo.color.brandPrimarySoft,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.open_in_new,
+                      color: kilo.color.brandPrimary,
+                      size: 32,
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(height: kilo.space.s4),
-              Text(
-                context.t('payment.checkout.lead', {'rail': rail}),
-                style: kilo.text.bodyLg,
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: kilo.space.s3),
-              Text(
-                context.t('payment.checkout.onTheirPage'),
-                style: kilo.text.body.copyWith(
-                  color: kilo.color.contentSecondary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: kilo.space.s6),
-              if (onOpen case final open?) ...[
-                KButton(
-                  label: context.t('payment.checkout.open'),
-                  onPressed: () => open(url),
+                SizedBox(height: kilo.space.s4),
+                Text(
+                  context.t('payment.checkout.lead', {'rail': rail}),
+                  style: kilo.text.bodyLg,
+                  textAlign: TextAlign.center,
                 ),
                 SizedBox(height: kilo.space.s3),
                 Text(
-                  // Pressing it twice is safe, and saying so is what stops
-                  // somebody starting a second payment out of doubt.
-                  context.t('payment.checkout.openAgain'),
-                  style: kilo.text.caption.copyWith(
+                  context.t('payment.checkout.onTheirPage'),
+                  style: kilo.text.body.copyWith(
                     color: kilo.color.contentSecondary,
                   ),
                   textAlign: TextAlign.center,
                 ),
-              ] else ...[
-                // Matches `PaymentWaitingScreen`'s treatment of its USSD
-                // code: the one thing on this screen somebody has to copy
-                // by hand gets a card, not bare text.
-                KCard(
-                  child: Column(
-                    children: [
-                      Text(
-                        context.t('payment.checkout.copyLink'),
-                        style: kilo.text.bodySm,
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: kilo.space.s2),
-                      SelectableText(
-                        url,
-                        style: kilo.text.code,
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+                SizedBox(height: kilo.space.s6),
+                if (onOpen != null) ...[
+                  Text(
+                    // Pressing it twice is safe, and saying so is what stops
+                    // somebody starting a second payment out of doubt.
+                    context.t('payment.checkout.openAgain'),
+                    style: kilo.text.caption.copyWith(
+                      color: kilo.color.contentSecondary,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                ),
+                ] else ...[
+                  // Matches `PaymentWaitingScreen`'s treatment of its USSD
+                  // code: the one thing on this screen somebody has to copy
+                  // by hand gets a card, not bare text.
+                  KCard(
+                    child: Column(
+                      children: [
+                        Text(
+                          context.t('payment.checkout.copyLink'),
+                          style: kilo.text.bodySm,
+                          textAlign: TextAlign.center,
+                        ),
+                        SizedBox(height: kilo.space.s2),
+                        SelectableText(
+                          url,
+                          style: kilo.text.code,
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
-            ],
 
-            SizedBox(height: kilo.space.s5),
+              SizedBox(height: kilo.space.s5),
+            ],
+          ),
+        ),
+      ),
+      // The bar every funnel screen ends on (`KActionBar`). Opening the
+      // page is the action; backing out sits under it, with the sentence
+      // that keeps it honest — somebody who has already typed a card number
+      // must not be told the payment is cancelled, because it may well have
+      // gone through.
+      bottomNavigationBar: KActionBar(
+        above: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (onOpen case final open? when url != null) ...[
+              KButton(
+                label: context.t('payment.checkout.open'),
+                onPressed: () => open(url),
+              ),
+              SizedBox(height: kilo.space.s3),
+            ],
             Text(
-              // Honest about what backing out does and does not do. Somebody
-              // who has already typed a card number must not be told the
-              // payment is cancelled — it may well have gone through.
               context.t('payment.waitingExtra.leaveSafely'),
               style: kilo.text.caption.copyWith(
                 color: kilo.color.contentSecondary,
               ),
               textAlign: TextAlign.center,
             ),
-            SizedBox(height: kilo.space.s3),
-            KButton(
-              label: context.t('payment.waitingExtra.close'),
-              tone: KButtonTone.ghost,
-              onPressed: onCancel,
-            ),
           ],
+        ),
+        child: KButton(
+          label: context.t('payment.waitingExtra.close'),
+          tone: KButtonTone.ghost,
+          onPressed: onCancel,
         ),
       ),
     );

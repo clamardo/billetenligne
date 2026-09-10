@@ -722,6 +722,12 @@ void main() {
         now: now,
         mac: const HmacSha256Authenticator(),
       );
+      // Scrolled to first: the screen now ends on a fixed action bar, which
+      // shortens the scrolling viewport, and the code sits under the QR.
+      await tester.scrollUntilVisible(
+        find.text('${code.substring(0, 3)} ${code.substring(3)}'),
+        120,
+      );
       expect(
         find.text('${code.substring(0, 3)} ${code.substring(3)}'),
         findsOneWidget,
@@ -1302,7 +1308,16 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Remboursement intégral'), findsOneWidget);
-      final buttons = tester.widgetList<KButton>(find.byType(KButton));
+      // Nothing in the *list* can be pressed. The screen's action bar is not
+      // an option — it carries the way out, and a closed window with no way
+      // out is the blank page this test exists to prevent.
+      final buttons = tester.widgetList<KButton>(
+        find.descendant(
+          of: find.byType(ListView),
+          matching: find.byType(KButton),
+        ),
+      );
+      expect(buttons, isNotEmpty);
       expect(buttons.every((b) => b.onPressed == null), isTrue);
     });
 

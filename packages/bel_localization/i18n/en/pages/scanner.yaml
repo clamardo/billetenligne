@@ -23,13 +23,20 @@ scanner:
     # Almost never a fault: it is a conductor nobody has attached to the
     # departure yet.
     emptyBody: "If you are expecting a coach, your operator has not attached you to this departure yet."
+    # Closes the list rather than leaving the rest of the screen blank. A
+    # conductor with three coaches on it should be able to see that three is
+    # all of them, without counting.
+    endOfDay:
+      one: "That is your only coach today."
+      other: "That is all {count} of your coaches today."
+    endOfDayBody: "Pull down to check again if you are expecting another."
 
   boarding:
     changeCoach: "Change coach"
     manual: "Board by hand"
     upToDate: "Up to date"
-    staleOnline: "List synced {minutes} min ago — refresh"
-    staleOffline: "Offline · list up to date {minutes} min ago"
+    listStale: "List synced {minutes} min ago — refresh"
+    listFresh: "List up to date, synced {minutes} min ago"
     nothingToSend: "Nothing to send."
     sent:
       one: "{count} boarding sent."
@@ -129,3 +136,6 @@ scanner:
   simulator:
     title: "SIMULATOR — DEBUG"
     body: "Injects real signed tickets into the reader, without a camera. Absent from published builds."
+    pasteLabel: "Paste a QR payload"
+    pasteHint: "1|BEL|…"
+    pasteSubmit: "Read it"

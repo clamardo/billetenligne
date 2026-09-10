@@ -101,13 +101,14 @@ final class PaymentReceiptScreen extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
-
-            SizedBox(height: kilo.space.s5),
-            KButton(
-              label: context.t('payment.receipt.seeTicket'),
-              onPressed: onDone,
-            ),
           ],
+        ),
+      ),
+      // Same bar, same place, every screen of the funnel (`KActionBar`).
+      bottomNavigationBar: KActionBar(
+        child: KButton(
+          label: context.t('payment.receipt.seeTicket'),
+          onPressed: onDone,
         ),
       ),
     );

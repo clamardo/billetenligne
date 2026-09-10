@@ -58,54 +58,103 @@ final class CancelScreen extends StatelessWidget {
         leading: BackButton(onPressed: onClose),
         title: context.t('travel.cancel.title'),
       ),
-      body: SafeArea(
-        child: quote == null
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: EdgeInsets.all(kilo.space.s4),
-                children: [
-                  Text(
-                    context.t('travel.cancel.lead', {
-                      'origin': quote.originCity,
-                      'destination': quote.destinationCity,
-                      'date': Format.shortDate(quote.departsAt, locale: locale),
-                    }),
-                    style: kilo.text.body,
-                  ),
-                  Text(
-                    context.tPlural('travel.cancel.seats', quote.seatCount),
-                    style: kilo.text.bodySm.copyWith(
-                      color: kilo.color.contentSecondary,
+      body: KPattern(
+        opacity: 0.05,
+        child: SafeArea(
+          child: quote == null
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  padding: EdgeInsets.all(kilo.space.s4),
+                  children: [
+                    Text(
+                      context.t('travel.cancel.lead', {
+                        'origin': quote.originCity,
+                        'destination': quote.destinationCity,
+                        'date': Format.shortDate(
+                          quote.departsAt,
+                          locale: locale,
+                        ),
+                      }),
+                      style: kilo.text.body,
                     ),
-                  ),
-                  SizedBox(height: kilo.space.s4),
-
-                  if (failure != null) ...[
-                    KCard(
-                      tone: kilo.color.dangerSoft,
-                      child: Text(
-                        context.t(failure!.messageKey),
-                        style: kilo.text.body,
+                    Text(
+                      context.tPlural('travel.cancel.seats', quote.seatCount),
+                      style: kilo.text.bodySm.copyWith(
+                        color: kilo.color.contentSecondary,
                       ),
                     ),
                     SizedBox(height: kilo.space.s4),
-                  ],
 
-                  if (!quote.isPossible)
-                    KCard(
-                      tone: kilo.color.warningSoft,
-                      child: Text(
-                        context.t('errors.${quote.refusalCode}'),
-                        style: kilo.text.body,
+                    if (failure != null) ...[
+                      KCard(
+                        tone: kilo.color.dangerSoft,
+                        child: Text(
+                          context.t(failure!.messageKey),
+                          style: kilo.text.body,
+                        ),
                       ),
-                    )
-                  else if (!quote.owesMoney)
-                    ..._release(context)
-                  else
-                    ..._refund(context, quote, locale),
-                ],
-              ),
+                      SizedBox(height: kilo.space.s4),
+                    ],
+
+                    if (!quote.isPossible)
+                      KCard(
+                        tone: kilo.color.warningSoft,
+                        child: Text(
+                          context.t('errors.${quote.refusalCode}'),
+                          style: kilo.text.body,
+                        ),
+                      )
+                    else if (!quote.owesMoney)
+                      ..._release(context)
+                    else
+                      ..._refund(context, quote, locale),
+                  ],
+                ),
+        ),
       ),
+      // The bar every screen ends on (`KActionBar`). Keeping the seat is
+      // always the way out and always in the same place; what sits over it
+      // is whichever confirmation this booking actually offers — including
+      // none at all, when the policy refuses.
+      bottomNavigationBar: quote == null ? null : _bar(context, quote),
+    );
+  }
+
+  /// What the screen ends on, by branch. Deliberately one method: the three
+  /// branches differ in what they confirm, never in where the confirmation
+  /// is or in the fact that backing out is beneath it.
+  Widget _bar(BuildContext context, CancellationOfferDto quote) {
+    final kilo = context.kilo;
+    if (!quote.isPossible) {
+      return KActionBar(child: _keepButton(context));
+    }
+    return KActionBar(
+      above: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          KButton(
+            label: context.t(
+              quote.owesMoney
+                  ? 'travel.cancel.confirm'
+                  : 'travel.cancel.releaseConfirm',
+            ),
+            tone: KButtonTone.secondary,
+            loading: busy,
+            onPressed: busy ? null : onConfirm,
+          ),
+          if (quote.owesMoney) ...[
+            SizedBox(height: kilo.space.s2),
+            Text(
+              context.t('travel.cancel.irreversible'),
+              style: kilo.text.bodySm.copyWith(
+                color: kilo.color.contentSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
+      ),
+      child: _keepButton(context),
     );
   }
 
@@ -127,15 +176,6 @@ final class CancelScreen extends StatelessWidget {
           ],
         ),
       ),
-      SizedBox(height: kilo.space.s4),
-      KButton(
-        label: context.t('travel.cancel.releaseConfirm'),
-        tone: KButtonTone.secondary,
-        loading: busy,
-        onPressed: busy ? null : onConfirm,
-      ),
-      SizedBox(height: kilo.space.s2),
-      _keepButton(context),
     ];
   }
 
@@ -223,22 +263,6 @@ final class CancelScreen extends StatelessWidget {
             ),
           ),
       ],
-
-      SizedBox(height: kilo.space.s5),
-      KButton(
-        label: context.t('travel.cancel.confirm'),
-        tone: KButtonTone.secondary,
-        loading: busy,
-        onPressed: busy ? null : onConfirm,
-      ),
-      SizedBox(height: kilo.space.s2),
-      Text(
-        context.t('travel.cancel.irreversible'),
-        style: kilo.text.bodySm.copyWith(color: kilo.color.contentSecondary),
-        textAlign: TextAlign.center,
-      ),
-      SizedBox(height: kilo.space.s3),
-      _keepButton(context),
     ];
   }
 
@@ -300,90 +324,95 @@ final class CancelledScreen extends StatelessWidget {
         automaticallyImplyLeading: false,
         title: context.t('travel.cancel.doneTitle'),
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s4),
-          children: [
-            Center(
-              child: KIllustration(
-                // Mirrors `TravelChosenScreen`'s outcome art: money moving
-                // reads as `payment`, seat freed with nothing owed as
-                // `success`.
-                (refunded?.minor ?? 0) > 0 ? KArt.payment : KArt.success,
-                size: 140,
-              ),
-            ),
-            SizedBox(height: kilo.space.s2),
-            if (done.kind == 'release')
-              Text(
-                context.t('travel.cancel.releaseDone'),
-                style: kilo.text.body,
-              )
-            else if (code != null) ...[
-              Text(
-                context.t('travel.cancel.doneClaim', {
-                  'amount': refunded?.format(locale: locale) ?? '',
-                  'operator': booking.operatorName,
-                }),
-                style: kilo.text.body,
-              ),
-              SizedBox(height: kilo.space.s3),
-              KCard(
-                tone: kilo.color.brandPrimarySoft,
-                child: Column(
-                  children: [
-                    // Spaced, because this is read aloud across a counter and
-                    // typed by somebody else.
-                    Text(
-                      code.split('').join(' '),
-                      style: kilo.text.codeHero,
-                      textAlign: TextAlign.center,
-                    ),
-                    if (done.claimExpiresAt != null) ...[
-                      SizedBox(height: kilo.space.s2),
-                      Text(
-                        context.t('travel.cancel.doneClaimExpires', {
-                          'date': Format.shortDate(
-                            done.claimExpiresAt!,
-                            locale: locale,
-                          ),
-                        }),
-                        style: kilo.text.bodySm,
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ],
+      body: KPattern(
+        opacity: 0.05,
+        child: SafeArea(
+          child: ListView(
+            padding: EdgeInsets.all(kilo.space.s4),
+            children: [
+              Center(
+                child: KIllustration(
+                  // Mirrors `TravelChosenScreen`'s outcome art: money moving
+                  // reads as `payment`, seat freed with nothing owed as
+                  // `success`.
+                  (refunded?.minor ?? 0) > 0 ? KArt.payment : KArt.success,
+                  size: 140,
                 ),
               ),
               SizedBox(height: kilo.space.s2),
-              Text(
-                context.t('travel.cancel.doneSms'),
-                style: kilo.text.bodySm.copyWith(
-                  color: kilo.color.contentSecondary,
+              if (done.kind == 'release')
+                Text(
+                  context.t('travel.cancel.releaseDone'),
+                  style: kilo.text.body,
+                )
+              else if (code != null) ...[
+                Text(
+                  context.t('travel.cancel.doneClaim', {
+                    'amount': refunded?.format(locale: locale) ?? '',
+                    'operator': booking.operatorName,
+                  }),
+                  style: kilo.text.body,
                 ),
-              ),
-            ] else if ((refunded?.minor ?? 0) > 0)
-              Text(
-                context.t('travel.cancel.donePending', {
-                  'amount': refunded!.format(locale: locale),
-                  'hours': '${done.processingHours ?? 72}',
-                }),
-                style: kilo.text.body,
-              )
-            else
-              // Cancelled, seat freed, nothing owed. Said plainly rather than
-              // left as an empty screen somebody reads as a failure.
-              Text(
-                context.t('travel.cancel.doneNothing'),
-                style: kilo.text.body,
-              ),
+                SizedBox(height: kilo.space.s3),
+                KCard(
+                  tone: kilo.color.brandPrimarySoft,
+                  child: Column(
+                    children: [
+                      // Spaced, because this is read aloud across a counter and
+                      // typed by somebody else.
+                      Text(
+                        code.split('').join(' '),
+                        style: kilo.text.codeHero,
+                        textAlign: TextAlign.center,
+                      ),
+                      if (done.claimExpiresAt != null) ...[
+                        SizedBox(height: kilo.space.s2),
+                        Text(
+                          context.t('travel.cancel.doneClaimExpires', {
+                            'date': Format.shortDate(
+                              done.claimExpiresAt!,
+                              locale: locale,
+                            ),
+                          }),
+                          style: kilo.text.bodySm,
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                SizedBox(height: kilo.space.s2),
+                Text(
+                  context.t('travel.cancel.doneSms'),
+                  style: kilo.text.bodySm.copyWith(
+                    color: kilo.color.contentSecondary,
+                  ),
+                ),
+              ] else if ((refunded?.minor ?? 0) > 0)
+                Text(
+                  context.t('travel.cancel.donePending', {
+                    'amount': refunded!.format(locale: locale),
+                    'hours': '${done.processingHours ?? 72}',
+                  }),
+                  style: kilo.text.body,
+                )
+              else
+                // Cancelled, seat freed, nothing owed. Said plainly rather than
+                // left as an empty screen somebody reads as a failure.
+                Text(
+                  context.t('travel.cancel.doneNothing'),
+                  style: kilo.text.body,
+                ),
 
-            SizedBox(height: kilo.space.s5),
-            KButton(
-              label: context.t('travel.cancel.close'),
-              onPressed: onClose,
-            ),
-          ],
+              SizedBox(height: kilo.space.s3),
+            ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: KActionBar(
+        child: KButton(
+          label: context.t('travel.cancel.close'),
+          onPressed: onClose,
         ),
       ),
     );

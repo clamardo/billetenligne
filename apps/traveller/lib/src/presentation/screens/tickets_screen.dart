@@ -165,6 +165,20 @@ final class TicketsScreen extends StatelessWidget {
                 ),
         ),
       ),
+      // The same bar the rest of the funnel ends on, with the one thing
+      // somebody on this screen might want next. Without it a traveller
+      // holding a single ticket saw one card and two thirds of a handset
+      // with nothing in it and nothing to do.
+      bottomNavigationBar: _isEmpty || onSearch == null
+          ? null
+          : KActionBar(
+              child: KButton(
+                label: context.t('travel.tickets.emptyAction'),
+                tone: KButtonTone.secondary,
+                icon: Icons.search,
+                onPressed: onSearch,
+              ),
+            ),
     );
   }
 }

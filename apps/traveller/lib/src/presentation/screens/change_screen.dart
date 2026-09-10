@@ -73,118 +73,139 @@ final class ChangeScreen extends StatelessWidget {
         leading: BackButton(onPressed: onClose),
         title: context.t('travel.change.title'),
       ),
-      body: SafeArea(
-        child: screen == null
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: EdgeInsets.all(kilo.space.s4),
-                children: [
-                  Text(
-                    context.t('travel.change.lead', {
-                      'origin': screen.originCity,
-                      'destination': screen.destinationCity,
-                      'time': Format.time(screen.currentDepartsAt),
-                      'date': Format.shortDate(
-                        screen.currentDepartsAt,
-                        locale: locale,
-                      ),
-                    }),
-                    style: kilo.text.body,
-                  ),
-                  Text(
-                    context.tPlural('travel.change.seats', screen.seatsNeeded),
-                    style: kilo.text.bodySm.copyWith(
-                      color: kilo.color.contentSecondary,
-                    ),
-                  ),
-                  SizedBox(height: kilo.space.s3),
-
-                  if (failure != null) ...[
-                    KCard(
-                      tone: kilo.color.dangerSoft,
-                      child: Text(
-                        context.t(failure!.messageKey),
-                        style: kilo.text.body,
-                      ),
-                    ),
-                    SizedBox(height: kilo.space.s3),
-                  ],
-
-                  if (screen.pending case final order?) ...[
-                    _Pending(
-                      order: order,
-                      locale: locale,
-                      busy: busy,
-                      onPay: () => onPay(order.departureId),
-                      onCancel: onCancelPending,
-                    ),
-                    SizedBox(height: kilo.space.s3),
-                  ],
-
-                  if (screen.involuntary) ...[
-                    KCard(
-                      tone: kilo.color.warningSoft,
-                      child: Text(
-                        context.t('travel.change.involuntary'),
-                        style: kilo.text.body,
-                      ),
-                    ),
-                    SizedBox(height: kilo.space.s3),
-                  ],
-
-                  if (!screen.isOpen)
-                    KCard(
-                      tone: kilo.color.warningSoft,
-                      child: Text(
-                        context.t(
-                          'errors.${screen.refusalCode}',
-                          screen.refusalParams,
-                        ),
-                        style: kilo.text.body,
-                      ),
-                    )
-                  else if (screen.options.isEmpty)
-                    Text(context.t('travel.change.none'), style: kilo.text.body)
-                  else ...[
-                    // Said once, above the list, because it is true of every
-                    // row and repeating it eight times is noise.
+      body: KPattern(
+        opacity: 0.05,
+        child: SafeArea(
+          child: screen == null
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  padding: EdgeInsets.all(kilo.space.s4),
+                  children: [
                     Text(
-                      context.t('travel.change.cheaperKeepsFare'),
-                      style: kilo.text.caption.copyWith(
+                      context.t('travel.change.lead', {
+                        'origin': screen.originCity,
+                        'destination': screen.destinationCity,
+                        'time': Format.time(screen.currentDepartsAt),
+                        'date': Format.shortDate(
+                          screen.currentDepartsAt,
+                          locale: locale,
+                        ),
+                      }),
+                      style: kilo.text.body,
+                    ),
+                    Text(
+                      context.tPlural(
+                        'travel.change.seats',
+                        screen.seatsNeeded,
+                      ),
+                      style: kilo.text.bodySm.copyWith(
                         color: kilo.color.contentSecondary,
                       ),
                     ),
-                    SizedBox(height: kilo.space.s2),
-                    for (final option in screen.options)
-                      _Row(
-                        option: option,
-                        locale: locale,
-                        busy: busy,
-                        onTake: onTake,
-                        onPay: onPay,
-                      ),
-                  ],
+                    SizedBox(height: kilo.space.s3),
 
-                  if (screen.policyLines.isNotEmpty) ...[
-                    SizedBox(height: kilo.space.s4),
-                    Text(
-                      context.t('travel.change.terms'),
-                      style: kilo.text.label,
-                    ),
-                    SizedBox(height: kilo.space.s1),
-                    for (final line in screen.policyLines)
-                      Padding(
-                        padding: EdgeInsets.only(bottom: kilo.space.s1),
+                    if (failure != null) ...[
+                      KCard(
+                        tone: kilo.color.dangerSoft,
                         child: Text(
-                          '· ${context.tEncoded(line)}',
-                          style: kilo.text.caption.copyWith(
-                            color: kilo.color.contentSecondary,
-                          ),
+                          context.t(failure!.messageKey),
+                          style: kilo.text.body,
                         ),
                       ),
+                      SizedBox(height: kilo.space.s3),
+                    ],
+
+                    if (screen.pending case final order?) ...[
+                      _Pending(
+                        order: order,
+                        locale: locale,
+                        busy: busy,
+                        onPay: () => onPay(order.departureId),
+                        onCancel: onCancelPending,
+                      ),
+                      SizedBox(height: kilo.space.s3),
+                    ],
+
+                    if (screen.involuntary) ...[
+                      KCard(
+                        tone: kilo.color.warningSoft,
+                        child: Text(
+                          context.t('travel.change.involuntary'),
+                          style: kilo.text.body,
+                        ),
+                      ),
+                      SizedBox(height: kilo.space.s3),
+                    ],
+
+                    if (!screen.isOpen)
+                      KCard(
+                        tone: kilo.color.warningSoft,
+                        child: Text(
+                          context.t(
+                            'errors.${screen.refusalCode}',
+                            screen.refusalParams,
+                          ),
+                          style: kilo.text.body,
+                        ),
+                      )
+                    else if (screen.options.isEmpty)
+                      Text(
+                        context.t('travel.change.none'),
+                        style: kilo.text.body,
+                      )
+                    else ...[
+                      // Said once, above the list, because it is true of every
+                      // row and repeating it eight times is noise.
+                      Text(
+                        context.t('travel.change.cheaperKeepsFare'),
+                        style: kilo.text.caption.copyWith(
+                          color: kilo.color.contentSecondary,
+                        ),
+                      ),
+                      SizedBox(height: kilo.space.s2),
+                      for (final option in screen.options)
+                        _Row(
+                          option: option,
+                          locale: locale,
+                          busy: busy,
+                          onTake: onTake,
+                          onPay: onPay,
+                        ),
+                    ],
+
+                    if (screen.policyLines.isNotEmpty) ...[
+                      SizedBox(height: kilo.space.s4),
+                      Text(
+                        context.t('travel.change.terms'),
+                        style: kilo.text.label,
+                      ),
+                      SizedBox(height: kilo.space.s1),
+                      for (final line in screen.policyLines)
+                        Padding(
+                          padding: EdgeInsets.only(bottom: kilo.space.s1),
+                          child: Text(
+                            '· ${context.tEncoded(line)}',
+                            style: kilo.text.caption.copyWith(
+                              color: kilo.color.contentSecondary,
+                            ),
+                          ),
+                        ),
+                    ],
+                    SizedBox(height: kilo.space.s2),
                   ],
-                ],
-              ),
+                ),
+        ),
+      ),
+      // Every row on this screen is its own action, so the bar carries the
+      // one thing the list cannot: leaving without changing anything. It is
+      // still the same bar in the same place (`KActionBar`) — a screen that
+      // ended on a paragraph of terms ended on nothing.
+      bottomNavigationBar: KActionBar(
+        child: KButton(
+          label: context.t('travel.change.keep'),
+          tone: KButtonTone.ghost,
+          onPressed: busy ? null : onClose,
+        ),
       ),
     );
   }
@@ -416,47 +437,52 @@ final class DepartureChangedScreen extends StatelessWidget {
         automaticallyImplyLeading: false,
         title: context.t('travel.change.doneTitle'),
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s4),
-          children: [
-            Center(child: KIllustration(KArt.success, size: 140)),
-            SizedBox(height: kilo.space.s2),
-            Text(
-              context.t('travel.change.doneBody', {
-                'time': Format.time(applied.departsAt),
-                'date': Format.shortDate(applied.departsAt, locale: locale),
-              }),
-              style: kilo.text.body,
-            ),
-            if (applied.seatLabels.isNotEmpty) ...[
+      body: KPattern(
+        opacity: 0.05,
+        child: SafeArea(
+          child: ListView(
+            padding: EdgeInsets.all(kilo.space.s4),
+            children: [
+              Center(child: KIllustration(KArt.success, size: 140)),
+              SizedBox(height: kilo.space.s2),
+              Text(
+                context.t('travel.change.doneBody', {
+                  'time': Format.time(applied.departsAt),
+                  'date': Format.shortDate(applied.departsAt, locale: locale),
+                }),
+                style: kilo.text.body,
+              ),
+              if (applied.seatLabels.isNotEmpty) ...[
+                SizedBox(height: kilo.space.s3),
+                KCard(
+                  tone: kilo.color.brandPrimarySoft,
+                  child: Text(
+                    context.t('travel.change.doneSeats', {
+                      'seats': applied.seatLabels.join(', '),
+                    }),
+                    style: kilo.text.body,
+                  ),
+                ),
+              ],
               SizedBox(height: kilo.space.s3),
-              KCard(
-                tone: kilo.color.brandPrimarySoft,
-                child: Text(
-                  context.t('travel.change.doneSeats', {
-                    'seats': applied.seatLabels.join(', '),
-                  }),
-                  style: kilo.text.body,
+              // Said out loud: somebody who screenshotted their QR yesterday has
+              // a picture that will not scan, and finding that out at a coach
+              // door is the failure this sentence prevents.
+              Text(
+                context.t('travel.change.doneTicket'),
+                style: kilo.text.bodySm.copyWith(
+                  color: kilo.color.contentSecondary,
                 ),
               ),
+              SizedBox(height: kilo.space.s3),
             ],
-            SizedBox(height: kilo.space.s3),
-            // Said out loud: somebody who screenshotted their QR yesterday has
-            // a picture that will not scan, and finding that out at a coach
-            // door is the failure this sentence prevents.
-            Text(
-              context.t('travel.change.doneTicket'),
-              style: kilo.text.bodySm.copyWith(
-                color: kilo.color.contentSecondary,
-              ),
-            ),
-            SizedBox(height: kilo.space.s5),
-            KButton(
-              label: context.t('travel.change.close'),
-              onPressed: onClose,
-            ),
-          ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: KActionBar(
+        child: KButton(
+          label: context.t('travel.change.close'),
+          onPressed: onClose,
         ),
       ),
     );

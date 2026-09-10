@@ -123,18 +123,22 @@ class _PassengersScreenState extends State<PassengersScreen> {
               ),
               SizedBox(height: kilo.space.s4),
             ],
-
-            KButton(
-              label: context.t('travel.passengers.submit', {
-                'total': Format.money(widget.departure.total, locale: locale),
-              }),
-              loading: widget.busy,
-              onPressed: _complete ? _submit : null,
-              // A greyed control with no explanation is the most common way an
-              // app strands somebody.
-              disabledHint: context.t('travel.passengers.nameRequired'),
-            ),
           ],
+        ),
+      ),
+      // The funnel's action is always in the same place, on every screen
+      // (`KActionBar`). It also stops this page being a form with a header
+      // and half a handset of nothing under it.
+      bottomNavigationBar: KActionBar(
+        child: KButton(
+          label: context.t('travel.passengers.submit', {
+            'total': Format.money(widget.departure.total, locale: locale),
+          }),
+          loading: widget.busy,
+          onPressed: _complete ? _submit : null,
+          // A greyed control with no explanation is the most common way an
+          // app strands somebody.
+          disabledHint: context.t('travel.passengers.nameRequired'),
         ),
       ),
     );

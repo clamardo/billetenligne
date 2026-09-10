@@ -306,6 +306,7 @@ travel:
   # screen that prices only the row you tapped makes them tap five times.
   change:
     action: "Change my departure"
+    keep: "Keep my departure"
     title: "Change departure"
     lead: "{origin} → {destination}. You are on the {time} on {date}."
     seats:

@@ -128,292 +128,305 @@ class _TicketScreenState extends State<TicketScreen> {
         leading: BackButton(onPressed: widget.onClose),
         title: context.t('travel.ticket.title'),
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.all(kilo.space.s4),
-          children: [
-            // Above the void notice and above the QR. A passenger opening
-            // their ticket during a breakdown is looking for one thing, and
-            // it is not the code.
-            if (booking.disruption != null) ...[
-              DisruptionStrip(
-                disruption: booking.disruption!,
-                operatorName: booking.operatorName,
-                onChoices: widget.onChoices,
-              ),
-              SizedBox(height: kilo.space.s4),
-            ],
-
-            if (ticket.isVoid) ...[
-              KCard(
-                tone: kilo.color.dangerSoft,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      context.t('travel.ticket.voidedTitle'),
-                      style: kilo.text.h3.copyWith(color: kilo.color.danger),
-                    ),
-                    SizedBox(height: kilo.space.s1),
-                    Text(
-                      context.t('travel.ticket.voidedBody'),
-                      style: kilo.text.bodySm,
-                    ),
-                  ],
+      // A woven ground rather than a white field. The QR sits in its own
+      // raised card, so nothing behind it reaches the code the scanner reads.
+      body: KPattern(
+        opacity: 0.05,
+        child: SafeArea(
+          child: ListView(
+            padding: EdgeInsets.all(kilo.space.s4),
+            children: [
+              // Above the void notice and above the QR. A passenger opening
+              // their ticket during a breakdown is looking for one thing, and
+              // it is not the code.
+              if (booking.disruption != null) ...[
+                DisruptionStrip(
+                  disruption: booking.disruption!,
+                  operatorName: booking.operatorName,
+                  onChoices: widget.onChoices,
                 ),
-              ),
-              SizedBox(height: kilo.space.s4),
-            ],
+                SizedBox(height: kilo.space.s4),
+              ],
 
-            // The ticket is the one screen somebody holds up to another
-            // human being, and it used to open on two lines of centred grey
-            // text. A paper ticket is recognisable from across a yard; this
-            // buys some of that back — the colour, the woven motif and a torn
-            // edge, before anybody has read a word.
-            KTicketHeader(
-              origin: booking.originCity,
-              destination: booking.destinationCity,
-              subtitle:
-                  '${Format.shortDate(booking.departsAt, locale: locale)} · '
-                  '${Format.time(booking.departsAt)}',
-              footnote: booking.operatorName,
-              accent: AccentHue.tryByName(booking.operatorAccentHue),
-              // Only when the bytes are actually here. A monogram on the band
-              // would be the company's initials in the company's own colour
-              // beside the company's name — three sayings of one thing, on
-              // the screen with the least room to spare.
-              trailing: widget.logo == null
-                  ? null
-                  : KOperatorMark(
-                      name: booking.operatorName,
-                      accent:
-                          AccentHue.tryByName(booking.operatorAccentHue) ??
-                          AccentHue.foret,
-                      bytes: widget.logo,
-                      size: 40,
-                    ),
-            ),
-
-            // Where to stand, above the QR rather than below it. This is the
-            // line somebody reads the night before and again in a taxi, and
-            // "Brazzaville" is not an instruction at half past five in the
-            // morning. The directions the operator wrote come with it,
-            // because a yard's name is only half of finding it.
-            if (booking.originStation != null) ...[
-              SizedBox(height: kilo.space.s3),
-              KCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.place_outlined,
-                          size: 16,
-                          color: kilo.color.contentSecondary,
-                        ),
-                        SizedBox(width: kilo.space.s2),
-                        Expanded(
-                          child: Text(
-                            booking.originStation!.name,
-                            style: kilo.text.h3,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (booking.originStation!.boardingNotes != null) ...[
-                      SizedBox(height: kilo.space.s1),
-                      Text(
-                        booking.originStation!.boardingNotes!,
-                        style: kilo.text.bodySm.copyWith(
-                          color: kilo.color.contentSecondary,
-                        ),
-                      ),
-                    ],
-                    if (booking.destinationStation != null) ...[
-                      SizedBox(height: kilo.space.s2),
-                      Text(
-                        context.t('travel.ticket.arrivesAtStation', {
-                          'station': booking.destinationStation!.name,
-                        }),
-                        style: kilo.text.bodySm.copyWith(
-                          color: kilo.color.contentSecondary,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-
-            SizedBox(height: kilo.space.s4),
-
-            _QrCard(payload: ticket.qrPayload, dimmed: ticket.isVoid),
-
-            SizedBox(height: kilo.space.s3),
-
-            Text(
-              context.t('travel.ticket.showToConductor'),
-              style: kilo.text.bodySm.copyWith(
-                color: kilo.color.contentSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-
-            SizedBox(height: kilo.space.s4),
-
-            // The freshness code. Big, tabular, with the ring that proves it
-            // is alive — a static number would be indistinguishable from a
-            // screenshot, which is the one thing it exists to distinguish.
-            KCard(
-              child: Column(
-                children: [
-                  Text(
-                    context.t('travel.ticket.codeLabel'),
-                    style: kilo.text.bodySm.copyWith(
-                      color: kilo.color.contentSecondary,
-                    ),
-                  ),
-                  SizedBox(height: kilo.space.s2),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+              if (ticket.isVoid) ...[
+                KCard(
+                  tone: kilo.color.dangerSoft,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        // Grouped in threes: six digits read aloud across a
-                        // noisy platform are read in two halves.
-                        '${code.substring(0, 3)} ${code.substring(3)}',
-                        style: kilo.text.amountHero.copyWith(letterSpacing: 3),
+                        context.t('travel.ticket.voidedTitle'),
+                        style: kilo.text.h3.copyWith(color: kilo.color.danger),
                       ),
-                      SizedBox(width: kilo.space.s3),
-                      SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          value: remaining / RotatingCode.windowSeconds,
-                          strokeWidth: 3,
-                          color: kilo.color.brandPrimary,
-                        ),
+                      SizedBox(height: kilo.space.s1),
+                      Text(
+                        context.t('travel.ticket.voidedBody'),
+                        style: kilo.text.bodySm,
                       ),
                     ],
                   ),
-                  SizedBox(height: kilo.space.s2),
-                  Text(
-                    context.t('travel.ticket.codeHelp'),
-                    style: kilo.text.caption.copyWith(
-                      color: kilo.color.contentSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+                ),
+                SizedBox(height: kilo.space.s4),
+              ],
+
+              // The ticket is the one screen somebody holds up to another
+              // human being, and it used to open on two lines of centred grey
+              // text. A paper ticket is recognisable from across a yard; this
+              // buys some of that back — the colour, the woven motif and a torn
+              // edge, before anybody has read a word.
+              KTicketHeader(
+                origin: booking.originCity,
+                destination: booking.destinationCity,
+                subtitle:
+                    '${Format.shortDate(booking.departsAt, locale: locale)} · '
+                    '${Format.time(booking.departsAt)}',
+                footnote: booking.operatorName,
+                accent: AccentHue.tryByName(booking.operatorAccentHue),
+                // Only when the bytes are actually here. A monogram on the band
+                // would be the company's initials in the company's own colour
+                // beside the company's name — three sayings of one thing, on
+                // the screen with the least room to spare.
+                trailing: widget.logo == null
+                    ? null
+                    : KOperatorMark(
+                        name: booking.operatorName,
+                        accent:
+                            AccentHue.tryByName(booking.operatorAccentHue) ??
+                            AccentHue.foret,
+                        bytes: widget.logo,
+                        size: 40,
+                      ),
               ),
-            ),
 
-            SizedBox(height: kilo.space.s4),
-
-            KCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.symmetric(vertical: kilo.space.s2),
-                    child: Row(
-                      children: [
-                        // The one face on this screen. Not a photo — nothing
-                        // here fetches (ADR-0003) — but a coloured initial is
-                        // still one person's ticket rather than anybody's.
-                        KAvatar(
-                          seed: ticket.bookingRef,
-                          label: ticket.passengerName,
-                          size: KAvatarSize.small,
-                        ),
-                        SizedBox(width: kilo.space.s3),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                context.t('travel.ticket.passenger'),
-                                style: kilo.text.bodySm.copyWith(
-                                  color: kilo.color.contentSecondary,
-                                ),
-                              ),
-                              Text(ticket.passengerName, style: kilo.text.body),
-                            ],
+              // Where to stand, above the QR rather than below it. This is the
+              // line somebody reads the night before and again in a taxi, and
+              // "Brazzaville" is not an instruction at half past five in the
+              // morning. The directions the operator wrote come with it,
+              // because a yard's name is only half of finding it.
+              if (booking.originStation != null) ...[
+                SizedBox(height: kilo.space.s3),
+                KCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.place_outlined,
+                            size: 16,
+                            color: kilo.color.contentSecondary,
+                          ),
+                          SizedBox(width: kilo.space.s2),
+                          Expanded(
+                            child: Text(
+                              booking.originStation!.name,
+                              style: kilo.text.h3,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (booking.originStation!.boardingNotes != null) ...[
+                        SizedBox(height: kilo.space.s1),
+                        Text(
+                          booking.originStation!.boardingNotes!,
+                          style: kilo.text.bodySm.copyWith(
+                            color: kilo.color.contentSecondary,
                           ),
                         ),
                       ],
-                    ),
+                      if (booking.destinationStation != null) ...[
+                        SizedBox(height: kilo.space.s2),
+                        Text(
+                          context.t('travel.ticket.arrivesAtStation', {
+                            'station': booking.destinationStation!.name,
+                          }),
+                          style: kilo.text.bodySm.copyWith(
+                            color: kilo.color.contentSecondary,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  _line(
-                    context,
-                    context.t('common.labels.seat'),
-                    ticket.seatLabel,
-                  ),
-                  _line(
-                    context,
-                    context.t('common.labels.reference'),
-                    ticket.bookingRef,
-                  ),
-                ],
-              ),
-            ),
+                ),
+              ],
 
-            // Below the QR, because the ticket is what this screen is for,
-            // and above the share button, because a passenger who can see
-            // where the coach is is the one most likely to send that to
-            // somebody. Absent entirely when nobody could ask — see the
-            // field's own note.
-            if (widget.journey != null) ...[
               SizedBox(height: kilo.space.s4),
-              JourneyCard(journey: widget.journey!),
-            ],
 
-            if (booking.tickets.length > 1) ...[
+              _QrCard(payload: ticket.qrPayload, dimmed: ticket.isVoid),
+
               SizedBox(height: kilo.space.s3),
+
               Text(
-                context.t('travel.ticket.seatOf', {
-                  'index': widget.seatIndex + 1,
-                  'total': booking.tickets.length,
-                }),
+                context.t('travel.ticket.showToConductor'),
                 style: kilo.text.bodySm.copyWith(
                   color: kilo.color.contentSecondary,
                 ),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: kilo.space.s2),
-              KButton(
-                label: context.t('travel.ticket.nextPassenger'),
-                tone: KButtonTone.secondary,
-                icon: Icons.chevron_right,
-                onPressed: widget.onSeat == null
-                    ? null
-                    : () => widget.onSeat!(widget.seatIndex + 1),
-              ),
-            ],
 
-            // Below the QR, because the ticket is what this screen is for.
-            // Above the offline note, because sharing is the thing somebody
-            // does next — usually while still standing at the coach door.
-            if (widget.onShare != null) ...[
+              SizedBox(height: kilo.space.s4),
+
+              // The freshness code. Big, tabular, with the ring that proves it
+              // is alive — a static number would be indistinguishable from a
+              // screenshot, which is the one thing it exists to distinguish.
+              KCard(
+                child: Column(
+                  children: [
+                    Text(
+                      context.t('travel.ticket.codeLabel'),
+                      style: kilo.text.bodySm.copyWith(
+                        color: kilo.color.contentSecondary,
+                      ),
+                    ),
+                    SizedBox(height: kilo.space.s2),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          // Grouped in threes: six digits read aloud across a
+                          // noisy platform are read in two halves.
+                          '${code.substring(0, 3)} ${code.substring(3)}',
+                          style: kilo.text.amountHero.copyWith(
+                            letterSpacing: 3,
+                          ),
+                        ),
+                        SizedBox(width: kilo.space.s3),
+                        SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            value: remaining / RotatingCode.windowSeconds,
+                            strokeWidth: 3,
+                            color: kilo.color.brandPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: kilo.space.s2),
+                    Text(
+                      context.t('travel.ticket.codeHelp'),
+                      style: kilo.text.caption.copyWith(
+                        color: kilo.color.contentSecondary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+
+              SizedBox(height: kilo.space.s4),
+
+              KCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.symmetric(vertical: kilo.space.s2),
+                      child: Row(
+                        children: [
+                          // The one face on this screen. Not a photo — nothing
+                          // here fetches (ADR-0003) — but a coloured initial is
+                          // still one person's ticket rather than anybody's.
+                          KAvatar(
+                            seed: ticket.bookingRef,
+                            label: ticket.passengerName,
+                            size: KAvatarSize.small,
+                          ),
+                          SizedBox(width: kilo.space.s3),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  context.t('travel.ticket.passenger'),
+                                  style: kilo.text.bodySm.copyWith(
+                                    color: kilo.color.contentSecondary,
+                                  ),
+                                ),
+                                Text(
+                                  ticket.passengerName,
+                                  style: kilo.text.body,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _line(
+                      context,
+                      context.t('common.labels.seat'),
+                      ticket.seatLabel,
+                    ),
+                    _line(
+                      context,
+                      context.t('common.labels.reference'),
+                      ticket.bookingRef,
+                    ),
+                  ],
+                ),
+              ),
+
+              // Below the QR, because the ticket is what this screen is for,
+              // and above the share button, because a passenger who can see
+              // where the coach is is the one most likely to send that to
+              // somebody. Absent entirely when nobody could ask — see the
+              // field's own note.
+              if (widget.journey != null) ...[
+                SizedBox(height: kilo.space.s4),
+                JourneyCard(journey: widget.journey!),
+              ],
+
+              if (booking.tickets.length > 1) ...[
+                SizedBox(height: kilo.space.s3),
+                Text(
+                  context.t('travel.ticket.seatOf', {
+                    'index': widget.seatIndex + 1,
+                    'total': booking.tickets.length,
+                  }),
+                  style: kilo.text.bodySm.copyWith(
+                    color: kilo.color.contentSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: kilo.space.s2),
+                KButton(
+                  label: context.t('travel.ticket.nextPassenger'),
+                  tone: KButtonTone.secondary,
+                  icon: Icons.chevron_right,
+                  onPressed: widget.onSeat == null
+                      ? null
+                      : () => widget.onSeat!(widget.seatIndex + 1),
+                ),
+              ],
+
               SizedBox(height: kilo.space.s3),
-              KButton(
+            ],
+          ),
+        ),
+      ),
+      // The bar every screen ends on (`KActionBar`). Sharing is the thing
+      // somebody does next — usually while still standing at the coach door
+      // — so it is the action; the offline note is the line of reassurance
+      // over it, which is where somebody reads it rather than scrolls past.
+      bottomNavigationBar: KActionBar(
+        above: Text(
+          context.t('travel.ticket.offlineNote'),
+          style: kilo.text.caption.copyWith(color: kilo.color.contentSecondary),
+          textAlign: TextAlign.center,
+        ),
+        child: widget.onShare != null
+            ? KButton(
                 label: context.t('travel.share.action'),
-                tone: KButtonTone.ghost,
+                tone: KButtonTone.secondary,
                 icon: Icons.share,
                 onPressed: widget.onShare,
+              )
+            : KButton(
+                label: context.t('common.actions.back'),
+                tone: KButtonTone.ghost,
+                onPressed: widget.onClose,
               ),
-            ],
-
-            SizedBox(height: kilo.space.s3),
-            Text(
-              context.t('travel.ticket.offlineNote'),
-              style: kilo.text.caption.copyWith(
-                color: kilo.color.contentSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
       ),
     );
   }
