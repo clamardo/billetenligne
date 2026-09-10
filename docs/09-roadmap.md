@@ -331,6 +331,43 @@ week.
 
 ---
 
+## Recommended, not gated by any phase above — the driver's day
+
+[`19-the-drivers-day.md`](19-the-drivers-day.md), five slices **D1–D5**.
+
+`apps/scanner` answers one question in under two seconds with the radio off, and it answers it
+well. It is silent on the three other moments in a driver's day: *which runs are mine this week*,
+*has anything changed*, and *how do I tell the office*. The answer to all three today is the same
+phone call, on a network that fails for four hours at a stretch on the RN1.
+
+**Two pieces landed with the document.** The conductor's list is now a **span** —
+`from`/`to`, inclusive local dates, capped at a month, one call rather than seven because a week
+assembled from seven requests over a yard's signal finishes only if all seven do — and each row
+says whether the caller is rostered on that coach and as what, read from `departure_crew` as a
+LEFT JOIN and **never as a filter**, so a company that has not filled in a rota does not wake up
+to an empty screen. And `GET /console/v1/me` answers a **name, a matricule and a company** where
+it used to answer a UUID, which is what three surfaces were rendering where a person's name
+belongs. The matricule stays an identifier and not a credential (ADR-0024): it is on the roster
+and stuck to the dashboard of the coach, and accepting it at a sign-in prompt would add a secret
+to phish rather than a factor to hold.
+
+**What is left is the screens.** D1 puts a Day · Week · Month filter on the handset, with the one
+rule that matters — a row outside today is a plan row and **not pinnable**, because a manifest
+downloaded three weeks early is a list of tickets nobody has bought yet. D2 is the console rota:
+`POST /console/v1/departures/{id}/crew` has existed since J3 and **no screen calls it**, so today
+a month of shifts can only be written with `curl`. D3 and D4 are the bell and the thread —
+**server-sent events rather than a WebSocket**, which is what was asked for and is also right: it
+is one-way push with an ordinary POST for the reply, it survives a proxy that mangles upgrades,
+and it resumes itself with `Last-Event-ID` after the four hours of nothing that the RN1 costs.
+D5 is the last all-white screen in the product: the scan page, whose header is a bare strip while
+every other screen in the app wears the woven band.
+
+**All five are under one rule**: the door comes first. A rota, a bell and a chat thread are things
+somebody does while *not* standing in front of a queue, and none of them may sit in the boarding
+path, hold a lock on the redemption log, or run a timer while a verdict is on screen.
+
+---
+
 ## Recommended, not gated by any phase above — regional data residency
 
 [ADR-0032](adr/0032-regional-data-residency.md), **status: Proposed.** Every operator's data lives
